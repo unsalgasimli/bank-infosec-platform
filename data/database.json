@@ -1,0 +1,2679 @@
+{
+  "divisions": [
+    {
+      "id": "div-infosec",
+      "name": "Information Security Division",
+      "code": "CISO"
+    },
+    {
+      "id": "div-it",
+      "name": "IT Infrastructure & Cloud Division",
+      "code": "IT"
+    },
+    {
+      "id": "div-digital",
+      "name": "Digital & Core Banking Division",
+      "code": "DIGITAL"
+    },
+    {
+      "id": "div-risk",
+      "name": "Enterprise Risk & Compliance Division",
+      "code": "RISK"
+    },
+    {
+      "id": "div-audit",
+      "name": "Internal Audit & Assurance Division",
+      "code": "AUDIT"
+    }
+  ],
+  "departments": [
+    {
+      "id": "dept-soc",
+      "divisionId": "div-infosec",
+      "name": "Security Operations Center",
+      "code": "SOC",
+      "managerId": "usr-soc-lead"
+    },
+    {
+      "id": "dept-appsec",
+      "divisionId": "div-infosec",
+      "name": "Application Security & DevSecOps",
+      "code": "APPSEC",
+      "managerId": "usr-appsec-lead"
+    },
+    {
+      "id": "dept-vm",
+      "divisionId": "div-infosec",
+      "name": "Vulnerability & Attack Surface Management",
+      "code": "VM",
+      "managerId": "usr-vuln-analyst"
+    },
+    {
+      "id": "dept-grc",
+      "divisionId": "div-infosec",
+      "name": "Governance, Risk & Security Compliance",
+      "code": "GRC",
+      "managerId": "usr-grc-mgr"
+    },
+    {
+      "id": "dept-dlp",
+      "divisionId": "div-infosec",
+      "name": "Data Loss Prevention & Insider Threat",
+      "code": "DLP",
+      "managerId": "usr-dlp-analyst"
+    },
+    {
+      "id": "dept-iam",
+      "divisionId": "div-infosec",
+      "name": "Identity & Privileged Access Security",
+      "code": "IAM",
+      "managerId": "usr-iam-lead"
+    },
+    {
+      "id": "dept-secarch",
+      "divisionId": "div-infosec",
+      "name": "Security Architecture & Engineering",
+      "code": "ARCH",
+      "managerId": "usr-appsec-lead"
+    },
+    {
+      "id": "dept-coredev",
+      "divisionId": "div-digital",
+      "name": "Core Banking Engineering",
+      "code": "COREDEV",
+      "managerId": "usr-dev-lead"
+    },
+    {
+      "id": "dept-mobiledev",
+      "divisionId": "div-digital",
+      "name": "Mobile Banking & Channels",
+      "code": "MOBDEV",
+      "managerId": "usr-mobile-dev"
+    },
+    {
+      "id": "dept-infra",
+      "divisionId": "div-it",
+      "name": "Cloud & Infrastructure Operations",
+      "code": "INFRA",
+      "managerId": "usr-dba-lead"
+    },
+    {
+      "id": "dept-dba",
+      "divisionId": "div-it",
+      "name": "Database Administration & Storage",
+      "code": "DBA",
+      "managerId": "usr-dba-lead"
+    },
+    {
+      "id": "dept-legal",
+      "divisionId": "div-risk",
+      "name": "Legal & Regulatory Affairs",
+      "code": "LEGAL"
+    },
+    {
+      "id": "dept-audit",
+      "divisionId": "div-audit",
+      "name": "IT Audit & Regulatory Compliance",
+      "code": "ITAUDIT",
+      "managerId": "usr-auditor"
+    }
+  ],
+  "teams": [
+    {
+      "id": "team-soc-t2",
+      "departmentId": "dept-soc",
+      "name": "SOC Incident Response Tier-2/3",
+      "code": "SOC-IR",
+      "securityDomain": "SOC",
+      "leadId": "usr-soc-lead"
+    },
+    {
+      "id": "team-appsec",
+      "departmentId": "dept-appsec",
+      "name": "AppSec & Pentest Assessment Team",
+      "code": "APPSEC-ENG",
+      "securityDomain": "APPSEC",
+      "leadId": "usr-appsec-lead"
+    },
+    {
+      "id": "team-vm",
+      "departmentId": "dept-vm",
+      "name": "Vulnerability Remediation Team",
+      "code": "VM-OPS",
+      "securityDomain": "VULNERABILITY_MGMT",
+      "leadId": "usr-vuln-analyst"
+    },
+    {
+      "id": "team-grc",
+      "departmentId": "dept-grc",
+      "name": "GRC Policies & Risk Exception Team",
+      "code": "GRC-OPS",
+      "securityDomain": "GRC",
+      "leadId": "usr-grc-mgr"
+    },
+    {
+      "id": "team-dlp",
+      "departmentId": "dept-dlp",
+      "name": "DLP Forensics & Investigations",
+      "code": "DLP-INV",
+      "securityDomain": "DLP",
+      "leadId": "usr-dlp-analyst"
+    },
+    {
+      "id": "team-iam",
+      "departmentId": "dept-iam",
+      "name": "PAM & IAM Security Team",
+      "code": "IAM-OPS",
+      "securityDomain": "IAM_PAM",
+      "leadId": "usr-iam-lead"
+    },
+    {
+      "id": "team-coredev",
+      "departmentId": "dept-coredev",
+      "name": "ApexCore Switch Engineering Team",
+      "code": "CORE-DEV",
+      "leadId": "usr-dev-lead"
+    },
+    {
+      "id": "team-mobiledev",
+      "departmentId": "dept-mobiledev",
+      "name": "ApexMobile iOS/Android Team",
+      "code": "MOB-DEV",
+      "leadId": "usr-mobile-dev"
+    }
+  ],
+  "users": [
+    {
+      "id": "usr-ciso",
+      "username": "elena.vance",
+      "email": "elena.vance@apexbank.com",
+      "fullName": "Dr. Elena Vance",
+      "title": "Chief Information Security Officer (CISO)",
+      "divisionId": "div-infosec",
+      "departmentId": "dept-grc",
+      "teamIds": [
+        "team-grc"
+      ],
+      "roles": [
+        "CISO",
+        "INFOSEC_ADMIN",
+        "APPROVER",
+        "PLATFORM_ADMIN"
+      ],
+      "securityClearance": "HIGHLY_RESTRICTED_HR_LEGAL",
+      "ownedApplicationIds": [],
+      "ownedAssetIds": [],
+      "ownedRiskIds": [
+        "risk-01",
+        "risk-02"
+      ],
+      "isActive": true,
+      "avatarUrl": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80",
+      "phone": "+1 (555) 019-2831"
+    },
+    {
+      "id": "usr-soc-lead",
+      "username": "marcus.brody",
+      "email": "marcus.brody@apexbank.com",
+      "fullName": "Marcus Brody",
+      "title": "Head of SOC & Incident Commander",
+      "divisionId": "div-infosec",
+      "departmentId": "dept-soc",
+      "teamIds": [
+        "team-soc-t2"
+      ],
+      "roles": [
+        "INFOSEC_MANAGER",
+        "SOC_ANALYST",
+        "TEAM_LEAD",
+        "APPROVER"
+      ],
+      "securityClearance": "CONFIDENTIAL_SECURITY_ONLY",
+      "ownedApplicationIds": [],
+      "ownedAssetIds": [
+        "asset-siem",
+        "asset-firewall-dmz"
+      ],
+      "ownedRiskIds": [
+        "risk-03"
+      ],
+      "isActive": true,
+      "avatarUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+      "phone": "+1 (555) 019-3321"
+    },
+    {
+      "id": "usr-soc-analyst",
+      "username": "zack.taylor",
+      "email": "zack.taylor@apexbank.com",
+      "fullName": "Zack Taylor",
+      "title": "Senior SOC Incident Analyst",
+      "divisionId": "div-infosec",
+      "departmentId": "dept-soc",
+      "teamIds": [
+        "team-soc-t2"
+      ],
+      "roles": [
+        "SOC_ANALYST",
+        "SECURITY_ANALYST"
+      ],
+      "securityClearance": "CONFIDENTIAL_SECURITY_ONLY",
+      "ownedApplicationIds": [],
+      "ownedAssetIds": [],
+      "ownedRiskIds": [],
+      "isActive": true,
+      "avatarUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80"
+    },
+    {
+      "id": "usr-appsec-lead",
+      "username": "sarah.chen",
+      "email": "sarah.chen@apexbank.com",
+      "fullName": "Sarah Chen",
+      "title": "Principal AppSec & DevSecOps Lead",
+      "divisionId": "div-infosec",
+      "departmentId": "dept-appsec",
+      "teamIds": [
+        "team-appsec"
+      ],
+      "roles": [
+        "APPSEC_ANALYST",
+        "TEAM_LEAD",
+        "SECURITY_ANALYST",
+        "APPROVER"
+      ],
+      "securityClearance": "CONFIDENTIAL_SECURITY_ONLY",
+      "ownedApplicationIds": [
+        "app-api",
+        "app-online"
+      ],
+      "ownedAssetIds": [],
+      "ownedRiskIds": [
+        "risk-04"
+      ],
+      "isActive": true,
+      "avatarUrl": "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80"
+    },
+    {
+      "id": "usr-vuln-analyst",
+      "username": "liam.oconnor",
+      "email": "liam.oconnor@apexbank.com",
+      "fullName": "Liam O'Connor",
+      "title": "Lead Vulnerability Management Specialist",
+      "divisionId": "div-infosec",
+      "departmentId": "dept-vm",
+      "teamIds": [
+        "team-vm"
+      ],
+      "roles": [
+        "VULN_ANALYST",
+        "SECURITY_ANALYST",
+        "TEAM_LEAD"
+      ],
+      "securityClearance": "CONFIDENTIAL_SECURITY_ONLY",
+      "ownedApplicationIds": [],
+      "ownedAssetIds": [
+        "asset-k8s-prod",
+        "asset-db-cluster"
+      ],
+      "ownedRiskIds": [
+        "risk-05"
+      ],
+      "isActive": true,
+      "avatarUrl": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80"
+    },
+    {
+      "id": "usr-grc-mgr",
+      "username": "david.miller",
+      "email": "david.miller@apexbank.com",
+      "fullName": "David Miller",
+      "title": "GRC & Security Policy Manager",
+      "divisionId": "div-infosec",
+      "departmentId": "dept-grc",
+      "teamIds": [
+        "team-grc"
+      ],
+      "roles": [
+        "GRC_ANALYST",
+        "INFOSEC_MANAGER",
+        "APPROVER"
+      ],
+      "securityClearance": "CONFIDENTIAL_SECURITY_ONLY",
+      "ownedApplicationIds": [],
+      "ownedAssetIds": [],
+      "ownedRiskIds": [
+        "risk-01",
+        "risk-06"
+      ],
+      "isActive": true,
+      "avatarUrl": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80"
+    },
+    {
+      "id": "usr-dlp-analyst",
+      "username": "amina.almansoor",
+      "email": "amina.almansoor@apexbank.com",
+      "fullName": "Amina Al-Mansoor",
+      "title": "Senior DLP & Insider Threat Forensics Lead",
+      "divisionId": "div-infosec",
+      "departmentId": "dept-dlp",
+      "teamIds": [
+        "team-dlp"
+      ],
+      "roles": [
+        "DLP_ANALYST",
+        "SECURITY_ANALYST"
+      ],
+      "securityClearance": "HIGHLY_RESTRICTED_HR_LEGAL",
+      "ownedApplicationIds": [],
+      "ownedAssetIds": [],
+      "ownedRiskIds": [],
+      "isActive": true,
+      "avatarUrl": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80"
+    },
+    {
+      "id": "usr-iam-lead",
+      "username": "kevin.patel",
+      "email": "kevin.patel@apexbank.com",
+      "fullName": "Kevin Patel",
+      "title": "IAM & Privileged Access Engineer",
+      "divisionId": "div-infosec",
+      "departmentId": "dept-iam",
+      "teamIds": [
+        "team-iam"
+      ],
+      "roles": [
+        "SECURITY_ANALYST",
+        "APPROVER"
+      ],
+      "securityClearance": "RESTRICTED",
+      "ownedApplicationIds": [],
+      "ownedAssetIds": [
+        "asset-bastion-prod"
+      ],
+      "ownedRiskIds": [],
+      "isActive": true,
+      "avatarUrl": "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80"
+    },
+    {
+      "id": "usr-dev-lead",
+      "username": "alex.rivera",
+      "email": "alex.rivera@apexbank.com",
+      "fullName": "Alex Rivera",
+      "title": "Lead Software Architect - Core Banking Switch",
+      "divisionId": "div-digital",
+      "departmentId": "dept-coredev",
+      "teamIds": [
+        "team-coredev"
+      ],
+      "roles": [
+        "APPLICATION_OWNER",
+        "ASSIGNEE",
+        "REQUESTER"
+      ],
+      "securityClearance": "RESTRICTED",
+      "ownedApplicationIds": [
+        "app-core",
+        "app-swift"
+      ],
+      "ownedAssetIds": [],
+      "ownedRiskIds": [],
+      "isActive": true,
+      "avatarUrl": "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80"
+    },
+    {
+      "id": "usr-mobile-dev",
+      "username": "rachel.green",
+      "email": "rachel.green@apexbank.com",
+      "fullName": "Rachel Green",
+      "title": "Tech Lead - Mobile Channels",
+      "divisionId": "div-digital",
+      "departmentId": "dept-mobiledev",
+      "teamIds": [
+        "team-mobiledev"
+      ],
+      "roles": [
+        "APPLICATION_OWNER",
+        "ASSIGNEE",
+        "REQUESTER"
+      ],
+      "securityClearance": "INTERNAL",
+      "ownedApplicationIds": [
+        "app-mobile"
+      ],
+      "ownedAssetIds": [],
+      "ownedRiskIds": [],
+      "isActive": true,
+      "avatarUrl": "https://images.unsplash.com/photo-1534751516642-a171edd2521d?w=150&auto=format&fit=crop&q=80"
+    },
+    {
+      "id": "usr-dba-lead",
+      "username": "suresh.kumar",
+      "email": "suresh.kumar@apexbank.com",
+      "fullName": "Suresh Kumar",
+      "title": "Principal Database Administrator",
+      "divisionId": "div-it",
+      "departmentId": "dept-dba",
+      "teamIds": [],
+      "roles": [
+        "ASSET_OWNER",
+        "ASSIGNEE",
+        "APPROVER"
+      ],
+      "securityClearance": "RESTRICTED",
+      "ownedApplicationIds": [],
+      "ownedAssetIds": [
+        "asset-db-cluster",
+        "asset-db-oracle"
+      ],
+      "ownedRiskIds": [],
+      "isActive": true,
+      "avatarUrl": "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80"
+    },
+    {
+      "id": "usr-auditor",
+      "username": "hannah.schmidt",
+      "email": "hannah.schmidt@apexbank.com",
+      "fullName": "Hannah Schmidt",
+      "title": "Senior IT Regulatory Compliance Auditor",
+      "divisionId": "div-audit",
+      "departmentId": "dept-audit",
+      "teamIds": [],
+      "roles": [
+        "AUDITOR",
+        "READ_ONLY_USER"
+      ],
+      "securityClearance": "CONFIDENTIAL_SECURITY_ONLY",
+      "ownedApplicationIds": [],
+      "ownedAssetIds": [],
+      "ownedRiskIds": [],
+      "isActive": true,
+      "avatarUrl": "https://images.unsplash.com/photo-1567532939604-b6b5b0db2604?w=150&auto=format&fit=crop&q=80"
+    }
+  ],
+  "applications": [
+    {
+      "id": "app-core",
+      "code": "APEX-CORE",
+      "name": "ApexCore High-Throughput Payment Switch",
+      "description": "Mission-critical ISO 20022 interbank transaction switch, clearing wire transfers, SEPA, and real-time payments.",
+      "criticality": "TIER_1",
+      "businessOwnerId": "usr-dev-lead",
+      "technicalOwnerId": "usr-dev-lead",
+      "securityLeadId": "usr-appsec-lead",
+      "developmentTeamId": "team-coredev",
+      "environment": "PRODUCTION",
+      "techStack": [
+        "Java 21",
+        "Spring Boot 3",
+        "Kafka",
+        "PostgreSQL",
+        "HSM Luna PCIe"
+      ],
+      "gitRepositories": [
+        "git.apexbank.internal/core/payment-switch-backend"
+      ],
+      "connectedDatabases": [
+        "ApexCore-Prod-DB-Cluster (Active-Passive)"
+      ],
+      "connectedApis": [
+        "SWIFT Alliance Gateway",
+        "Federal Wire Gateway",
+        "SEPA Clearing API"
+      ],
+      "internetExposed": false,
+      "dataClassification": "RESTRICTED",
+      "activeRiskCount": 2,
+      "openVulnerabilitiesCount": 3
+    },
+    {
+      "id": "app-online",
+      "code": "APEX-ONLINE",
+      "name": "ApexOnline Retail & Commercial Web Banking",
+      "description": "Customer-facing web portal for retail, SME, and commercial corporate treasury users.",
+      "criticality": "TIER_1",
+      "businessOwnerId": "usr-dev-lead",
+      "technicalOwnerId": "usr-dev-lead",
+      "securityLeadId": "usr-appsec-lead",
+      "developmentTeamId": "team-coredev",
+      "environment": "PRODUCTION",
+      "techStack": [
+        "React",
+        "TypeScript",
+        "Node.js Express",
+        "Redis",
+        "NGINX WAF"
+      ],
+      "gitRepositories": [
+        "git.apexbank.internal/digital/apex-online-portal"
+      ],
+      "connectedDatabases": [
+        "ApexOnline-Redis-Session",
+        "ApexCore-ReadReplica"
+      ],
+      "connectedApis": [
+        "Open Banking API Gateway",
+        "SMS/MFA Gateway"
+      ],
+      "internetExposed": true,
+      "dataClassification": "RESTRICTED",
+      "activeRiskCount": 1,
+      "openVulnerabilitiesCount": 5
+    },
+    {
+      "id": "app-mobile",
+      "code": "APEX-MOB",
+      "name": "ApexMobile iOS & Android Banking App",
+      "description": "Native biometric authenticated mobile banking application used by 2.4M active retail depositors.",
+      "criticality": "TIER_1",
+      "businessOwnerId": "usr-mobile-dev",
+      "technicalOwnerId": "usr-mobile-dev",
+      "securityLeadId": "usr-appsec-lead",
+      "developmentTeamId": "team-mobiledev",
+      "environment": "PRODUCTION",
+      "techStack": [
+        "Swift 5.9",
+        "Kotlin Multiplatform",
+        "AppCheck",
+        "Certificate Pinning"
+      ],
+      "gitRepositories": [
+        "git.apexbank.internal/mobile/apex-ios",
+        "git.apexbank.internal/mobile/apex-android"
+      ],
+      "connectedDatabases": [
+        "Encrypted Realm DB (Local)"
+      ],
+      "connectedApis": [
+        "Open Banking API Gateway",
+        "FIDO2 WebAuthn Server"
+      ],
+      "internetExposed": true,
+      "dataClassification": "RESTRICTED",
+      "activeRiskCount": 1,
+      "openVulnerabilitiesCount": 2
+    },
+    {
+      "id": "app-swift",
+      "code": "APEX-SWIFT",
+      "name": "SWIFT Alliance Interbank Gateway",
+      "description": "SWIFT CSP compliant messaging interface for international cross-border financial telecommunication.",
+      "criticality": "TIER_1",
+      "businessOwnerId": "usr-dev-lead",
+      "technicalOwnerId": "usr-dev-lead",
+      "securityLeadId": "usr-ciso",
+      "developmentTeamId": "team-coredev",
+      "environment": "PRODUCTION",
+      "techStack": [
+        "SWIFT Alliance Access 7.6",
+        "RHEL 9 FIPS",
+        "Hardware Crypto Token"
+      ],
+      "gitRepositories": [
+        "git.apexbank.internal/sec/swift-connector-modules"
+      ],
+      "connectedDatabases": [
+        "SWIFT-Isolated-Audit-DB"
+      ],
+      "connectedApis": [
+        "SWIFT Global Network Interface (SGN)"
+      ],
+      "internetExposed": false,
+      "dataClassification": "HIGHLY_RESTRICTED_HR_LEGAL",
+      "activeRiskCount": 1,
+      "openVulnerabilitiesCount": 0
+    },
+    {
+      "id": "app-loan",
+      "code": "APEX-LOAN",
+      "name": "ApexLoan Underwriting & Origination Engine",
+      "description": "Mortgage and credit underwriting scoring engine with automated credit bureau rating integrations.",
+      "criticality": "TIER_2",
+      "businessOwnerId": "usr-dev-lead",
+      "technicalOwnerId": "usr-dev-lead",
+      "securityLeadId": "usr-appsec-lead",
+      "developmentTeamId": "team-coredev",
+      "environment": "PRODUCTION",
+      "techStack": [
+        "Python 3.12",
+        "FastAPI",
+        "PostgreSQL",
+        "Scikit-learn"
+      ],
+      "gitRepositories": [
+        "git.apexbank.internal/credit/loan-origination-api"
+      ],
+      "connectedDatabases": [
+        "ApexLoan-Postgres-Prod"
+      ],
+      "connectedApis": [
+        "CreditBureau API",
+        "Identity Verification KYC API"
+      ],
+      "internetExposed": false,
+      "dataClassification": "RESTRICTED",
+      "activeRiskCount": 1,
+      "openVulnerabilitiesCount": 4
+    },
+    {
+      "id": "app-api",
+      "code": "APEX-API",
+      "name": "ApexOpen Banking PSD2 API Gateway",
+      "description": "Regulatory PSD2 and Open Banking API gateway handling fintech third-party payment provider (TPP) access.",
+      "criticality": "TIER_1",
+      "businessOwnerId": "usr-dev-lead",
+      "technicalOwnerId": "usr-dev-lead",
+      "securityLeadId": "usr-appsec-lead",
+      "developmentTeamId": "team-coredev",
+      "environment": "PRODUCTION",
+      "techStack": [
+        "Kong Enterprise Gateway",
+        "OAuth2/mTLS",
+        "Go 1.22"
+      ],
+      "gitRepositories": [
+        "git.apexbank.internal/api/openbanking-kong-plugins"
+      ],
+      "connectedDatabases": [
+        "Kong-Postgres-Config"
+      ],
+      "connectedApis": [
+        "ApexCore Switch",
+        "Account Information Service"
+      ],
+      "internetExposed": true,
+      "dataClassification": "RESTRICTED",
+      "activeRiskCount": 1,
+      "openVulnerabilitiesCount": 2
+    },
+    {
+      "id": "app-treasury",
+      "code": "APEX-TREASURY",
+      "name": "Corporate FX & Liquidity Treasury Terminal",
+      "description": "Institutional trading and currency liquidity balancing terminal with Bloomberg & Reuters feeds.",
+      "criticality": "TIER_1",
+      "businessOwnerId": "usr-dev-lead",
+      "technicalOwnerId": "usr-dev-lead",
+      "securityLeadId": "usr-appsec-lead",
+      "developmentTeamId": "team-coredev",
+      "environment": "PRODUCTION",
+      "techStack": [
+        "C# .NET 8",
+        "WPF / ASP.NET Core",
+        "SQL Server AlwaysOn"
+      ],
+      "gitRepositories": [
+        "git.apexbank.internal/treasury/liquidity-manager"
+      ],
+      "connectedDatabases": [
+        "Treasury-MSSQL-Cluster"
+      ],
+      "connectedApis": [
+        "Refinitiv Market Data API",
+        "Bloomberg FIX Gateway"
+      ],
+      "internetExposed": false,
+      "dataClassification": "CONFIDENTIAL_SECURITY_ONLY",
+      "activeRiskCount": 0,
+      "openVulnerabilitiesCount": 1
+    },
+    {
+      "id": "app-crm",
+      "code": "APEX-CRM",
+      "name": "Wealth Management & Private Banking CRM",
+      "description": "High-net-worth client relationship management system tracking assets under management (AUM).",
+      "criticality": "TIER_2",
+      "businessOwnerId": "usr-dev-lead",
+      "technicalOwnerId": "usr-dev-lead",
+      "securityLeadId": "usr-grc-mgr",
+      "developmentTeamId": "team-coredev",
+      "environment": "PRODUCTION",
+      "techStack": [
+        "Salesforce Financial Services Cloud",
+        "MuleSoft ESB Integration"
+      ],
+      "gitRepositories": [
+        "git.apexbank.internal/crm/mulesoft-integrations"
+      ],
+      "connectedDatabases": [
+        "Salesforce Gov Cloud Storage"
+      ],
+      "connectedApis": [
+        "ApexCore Client Information API"
+      ],
+      "internetExposed": true,
+      "dataClassification": "HIGHLY_RESTRICTED_HR_LEGAL",
+      "activeRiskCount": 1,
+      "openVulnerabilitiesCount": 2
+    }
+  ],
+  "assets": [
+    {
+      "id": "asset-k8s-prod",
+      "name": "k8s-core-prod-cluster-01",
+      "assetType": "KUBERNETES_CLUSTER",
+      "hostname": "k8s-master01.prod.apexbank.internal",
+      "ipAddress": "10.120.40.10",
+      "environment": "PRODUCTION",
+      "criticality": "TIER_1",
+      "internetExposed": false,
+      "businessService": "Core Transaction Routing",
+      "applicationId": "app-core",
+      "ownerId": "usr-vuln-analyst",
+      "ownerName": "Liam O'Connor",
+      "departmentId": "dept-infra",
+      "dataClassification": "RESTRICTED",
+      "cmdbId": "CMDB-K8S-09412",
+      "openTicketCount": 3,
+      "criticalFindingCount": 1
+    },
+    {
+      "id": "asset-db-cluster",
+      "name": "db-postgres-payments-prod",
+      "assetType": "DATABASE",
+      "hostname": "pg-core-node01.db.apexbank.internal",
+      "ipAddress": "10.120.50.21",
+      "environment": "PRODUCTION",
+      "criticality": "TIER_1",
+      "internetExposed": false,
+      "businessService": "Financial Ledger Storage",
+      "applicationId": "app-core",
+      "ownerId": "usr-dba-lead",
+      "ownerName": "Suresh Kumar",
+      "departmentId": "dept-dba",
+      "dataClassification": "RESTRICTED",
+      "cmdbId": "CMDB-DB-00184",
+      "openTicketCount": 2,
+      "criticalFindingCount": 1
+    },
+    {
+      "id": "asset-firewall-dmz",
+      "name": "paloalto-edge-dmz-fw01",
+      "assetType": "FIREWALL",
+      "hostname": "pa-fw01.dmz.apexbank.com",
+      "ipAddress": "198.51.100.1",
+      "environment": "PRODUCTION",
+      "criticality": "TIER_1",
+      "internetExposed": true,
+      "businessService": "Internet Border Security Inspection",
+      "ownerId": "usr-soc-lead",
+      "ownerName": "Marcus Brody",
+      "departmentId": "dept-soc",
+      "dataClassification": "CONFIDENTIAL_SECURITY_ONLY",
+      "cmdbId": "CMDB-NET-8831",
+      "openTicketCount": 1,
+      "criticalFindingCount": 0
+    },
+    {
+      "id": "asset-siem",
+      "name": "splunk-enterprise-siem-cluster",
+      "assetType": "SERVER",
+      "hostname": "siem-indexer01.sec.apexbank.internal",
+      "ipAddress": "10.140.10.50",
+      "environment": "PRODUCTION",
+      "criticality": "TIER_1",
+      "internetExposed": false,
+      "businessService": "Security Log Aggregation & SOC Telemetry",
+      "ownerId": "usr-soc-lead",
+      "ownerName": "Marcus Brody",
+      "departmentId": "dept-soc",
+      "dataClassification": "CONFIDENTIAL_SECURITY_ONLY",
+      "cmdbId": "CMDB-SEC-0041",
+      "openTicketCount": 1,
+      "criticalFindingCount": 0
+    },
+    {
+      "id": "asset-bastion-prod",
+      "name": "cyberark-pam-bastion-01",
+      "assetType": "SERVER",
+      "hostname": "pam-psm01.sec.apexbank.internal",
+      "ipAddress": "10.140.20.15",
+      "environment": "PRODUCTION",
+      "criticality": "TIER_1",
+      "internetExposed": false,
+      "businessService": "Privileged Session Management & Jump Host",
+      "ownerId": "usr-iam-lead",
+      "ownerName": "Kevin Patel",
+      "departmentId": "dept-iam",
+      "dataClassification": "HIGHLY_RESTRICTED_HR_LEGAL",
+      "cmdbId": "CMDB-SEC-0109",
+      "openTicketCount": 1,
+      "criticalFindingCount": 0
+    },
+    {
+      "id": "asset-api-gw",
+      "name": "kong-gateway-edge-prod",
+      "assetType": "API_GATEWAY",
+      "hostname": "api.apexbank.com",
+      "ipAddress": "198.51.100.45",
+      "environment": "PRODUCTION",
+      "criticality": "TIER_1",
+      "internetExposed": true,
+      "businessService": "PSD2 Open Banking Public Entrypoint",
+      "applicationId": "app-api",
+      "ownerId": "usr-appsec-lead",
+      "ownerName": "Sarah Chen",
+      "departmentId": "dept-appsec",
+      "dataClassification": "RESTRICTED",
+      "cmdbId": "CMDB-GW-0419",
+      "openTicketCount": 2,
+      "criticalFindingCount": 1
+    }
+  ],
+  "workflows": [
+    {
+      "id": "wf-vuln-std",
+      "name": "Standard Vulnerability Remediation Workflow",
+      "description": "Multi-stage validation workflow for SAST, DAST, SCA, and Penetration Test security findings with retest and risk acceptance gates.",
+      "ticketTypeId": "type-vuln",
+      "version": 1,
+      "isActive": true,
+      "states": [
+        {
+          "id": "VULN_OPEN",
+          "name": "Open / Ingested",
+          "category": "TO_DO",
+          "color": "#64748B",
+          "isInitial": true
+        },
+        {
+          "id": "VULN_TRIAGE",
+          "name": "Triage & Verification",
+          "category": "IN_PROGRESS",
+          "color": "#3B82F6"
+        },
+        {
+          "id": "VULN_ASSIGNED",
+          "name": "Assigned to Dev / DevOps",
+          "category": "IN_PROGRESS",
+          "color": "#06B6D4"
+        },
+        {
+          "id": "VULN_REMEDIATION",
+          "name": "Remediation In Progress",
+          "category": "IN_PROGRESS",
+          "color": "#F59E0B"
+        },
+        {
+          "id": "VULN_RETEST_PENDING",
+          "name": "Security Retest Pending",
+          "category": "IN_REVIEW",
+          "color": "#8B5CF6"
+        },
+        {
+          "id": "VULN_FAILED_RETEST",
+          "name": "Failed Retest (Re-opened)",
+          "category": "IN_PROGRESS",
+          "color": "#EF4444"
+        },
+        {
+          "id": "VULN_RISK_ACCEPT_REVIEW",
+          "name": "Risk Acceptance In Review",
+          "category": "IN_REVIEW",
+          "color": "#F97316",
+          "isPausedSLA": true,
+          "pauseReason": "Under GRC Risk Evaluation"
+        },
+        {
+          "id": "VULN_RISK_ACCEPTED",
+          "name": "Risk Accepted",
+          "category": "DONE",
+          "color": "#10B981",
+          "isTerminal": true
+        },
+        {
+          "id": "VULN_REMEDIATED",
+          "name": "Remediated & Verified",
+          "category": "DONE",
+          "color": "#10B981",
+          "isTerminal": true
+        },
+        {
+          "id": "VULN_CLOSED",
+          "name": "Closed",
+          "category": "DONE",
+          "color": "#475569",
+          "isTerminal": true
+        }
+      ],
+      "transitions": [
+        {
+          "id": "tr-v1",
+          "name": "Start Triage",
+          "fromStateId": "VULN_OPEN",
+          "toStateId": "VULN_TRIAGE",
+          "allowedRoles": [
+            "SECURITY_ANALYST",
+            "APPSEC_ANALYST",
+            "VULN_ANALYST",
+            "INFOSEC_ADMIN"
+          ]
+        },
+        {
+          "id": "tr-v2",
+          "name": "Assign to Team",
+          "fromStateId": "VULN_TRIAGE",
+          "toStateId": "VULN_ASSIGNED",
+          "allowedRoles": [
+            "SECURITY_ANALYST",
+            "APPSEC_ANALYST",
+            "VULN_ANALYST",
+            "TEAM_LEAD"
+          ],
+          "requiredFields": [
+            "assigneeId",
+            "remediationDeadline"
+          ]
+        },
+        {
+          "id": "tr-v3",
+          "name": "Begin Remediation",
+          "fromStateId": "VULN_ASSIGNED",
+          "toStateId": "VULN_REMEDIATION",
+          "allowedRoles": [
+            "ASSIGNEE",
+            "APPLICATION_OWNER",
+            "SECURITY_ANALYST"
+          ]
+        },
+        {
+          "id": "tr-v4",
+          "name": "Submit for Security Retest",
+          "fromStateId": "VULN_REMEDIATION",
+          "toStateId": "VULN_RETEST_PENDING",
+          "allowedRoles": [
+            "ASSIGNEE",
+            "APPLICATION_OWNER"
+          ],
+          "requireComment": true,
+          "requireEvidence": true
+        },
+        {
+          "id": "tr-v5",
+          "name": "Pass Retest & Remediate",
+          "fromStateId": "VULN_RETEST_PENDING",
+          "toStateId": "VULN_REMEDIATED",
+          "allowedRoles": [
+            "APPSEC_ANALYST",
+            "VULN_ANALYST",
+            "SECURITY_ANALYST"
+          ],
+          "requireComment": true
+        },
+        {
+          "id": "tr-v6",
+          "name": "Fail Retest",
+          "fromStateId": "VULN_RETEST_PENDING",
+          "toStateId": "VULN_FAILED_RETEST",
+          "allowedRoles": [
+            "APPSEC_ANALYST",
+            "VULN_ANALYST"
+          ],
+          "requireComment": true
+        },
+        {
+          "id": "tr-v7",
+          "name": "Restart Remediation",
+          "fromStateId": "VULN_FAILED_RETEST",
+          "toStateId": "VULN_REMEDIATION",
+          "allowedRoles": [
+            "ASSIGNEE",
+            "APPLICATION_OWNER",
+            "SECURITY_ANALYST"
+          ]
+        },
+        {
+          "id": "tr-v8",
+          "name": "Request Risk Acceptance",
+          "fromStateId": "VULN_REMEDIATION",
+          "toStateId": "VULN_RISK_ACCEPT_REVIEW",
+          "allowedRoles": [
+            "APPLICATION_OWNER",
+            "ASSIGNEE",
+            "DEPARTMENT_MANAGER"
+          ],
+          "requireComment": true
+        },
+        {
+          "id": "tr-v9",
+          "name": "Approve Risk Acceptance",
+          "fromStateId": "VULN_RISK_ACCEPT_REVIEW",
+          "toStateId": "VULN_RISK_ACCEPTED",
+          "allowedRoles": [
+            "CISO",
+            "INFOSEC_MANAGER",
+            "APPROVER"
+          ],
+          "requireComment": true
+        },
+        {
+          "id": "tr-v10",
+          "name": "Close Ticket",
+          "fromStateId": "VULN_REMEDIATED",
+          "toStateId": "VULN_CLOSED",
+          "allowedRoles": [
+            "INFOSEC_ADMIN",
+            "APPSEC_ANALYST",
+            "VULN_ANALYST"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wf-incident-std",
+      "name": "NIST SP 800-61 / ISO 27035 Security Incident Lifecycle",
+      "description": "Banking Incident Response workflow with containment, eradication, forensics timeline, and central bank regulatory notification hooks.",
+      "ticketTypeId": "type-incident",
+      "version": 1,
+      "isActive": true,
+      "states": [
+        {
+          "id": "INC_NEW",
+          "name": "New / Alert Triggered",
+          "category": "TO_DO",
+          "color": "#EF4444",
+          "isInitial": true
+        },
+        {
+          "id": "INC_TRIAGE",
+          "name": "Active Triage & Scope",
+          "category": "IN_PROGRESS",
+          "color": "#F97316"
+        },
+        {
+          "id": "INC_INVESTIGATION",
+          "name": "Deep Forensics & Investigation",
+          "category": "IN_PROGRESS",
+          "color": "#3B82F6"
+        },
+        {
+          "id": "INC_CONTAINMENT",
+          "name": "Active Containment (Isolation)",
+          "category": "IN_PROGRESS",
+          "color": "#8B5CF6"
+        },
+        {
+          "id": "INC_ERADICATION",
+          "name": "Eradication & Remediation",
+          "category": "IN_PROGRESS",
+          "color": "#06B6D4"
+        },
+        {
+          "id": "INC_RECOVERY",
+          "name": "System Recovery & Monitoring",
+          "category": "IN_PROGRESS",
+          "color": "#10B981"
+        },
+        {
+          "id": "INC_PIR",
+          "name": "Post-Incident Review (PIR)",
+          "category": "IN_REVIEW",
+          "color": "#6366F1"
+        },
+        {
+          "id": "INC_CLOSED",
+          "name": "Closed",
+          "category": "DONE",
+          "color": "#475569",
+          "isTerminal": true
+        }
+      ],
+      "transitions": [
+        {
+          "id": "tr-inc-1",
+          "name": "Acknowledge & Triage",
+          "fromStateId": "INC_NEW",
+          "toStateId": "INC_TRIAGE",
+          "allowedRoles": [
+            "SOC_ANALYST",
+            "SECURITY_ANALYST",
+            "INFOSEC_MANAGER"
+          ]
+        },
+        {
+          "id": "tr-inc-2",
+          "name": "Initiate Investigation",
+          "fromStateId": "INC_TRIAGE",
+          "toStateId": "INC_INVESTIGATION",
+          "allowedRoles": [
+            "SOC_ANALYST",
+            "INFOSEC_MANAGER"
+          ]
+        },
+        {
+          "id": "tr-inc-3",
+          "name": "Trigger Containment",
+          "fromStateId": "INC_INVESTIGATION",
+          "toStateId": "INC_CONTAINMENT",
+          "allowedRoles": [
+            "SOC_ANALYST",
+            "TEAM_LEAD",
+            "INFOSEC_MANAGER"
+          ],
+          "requireComment": true
+        },
+        {
+          "id": "tr-inc-4",
+          "name": "Proceed to Eradication",
+          "fromStateId": "INC_CONTAINMENT",
+          "toStateId": "INC_ERADICATION",
+          "allowedRoles": [
+            "SOC_ANALYST",
+            "SECURITY_ANALYST"
+          ]
+        },
+        {
+          "id": "tr-inc-5",
+          "name": "Begin Recovery",
+          "fromStateId": "INC_ERADICATION",
+          "toStateId": "INC_RECOVERY",
+          "allowedRoles": [
+            "SOC_ANALYST",
+            "TEAM_LEAD"
+          ]
+        },
+        {
+          "id": "tr-inc-6",
+          "name": "Submit to PIR",
+          "fromStateId": "INC_RECOVERY",
+          "toStateId": "INC_PIR",
+          "allowedRoles": [
+            "SOC_ANALYST",
+            "INFOSEC_MANAGER"
+          ],
+          "requireComment": true
+        },
+        {
+          "id": "tr-inc-7",
+          "name": "Finalize & Close Incident",
+          "fromStateId": "INC_PIR",
+          "toStateId": "INC_CLOSED",
+          "allowedRoles": [
+            "CISO",
+            "INFOSEC_MANAGER",
+            "INFOSEC_ADMIN"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wf-exception-std",
+      "name": "Security Policy Exception & Risk Acceptance Chain",
+      "description": "Formal 4-tier approval workflow for policy exemptions with mandatory compensating controls and automated expiry countdown.",
+      "ticketTypeId": "type-exception",
+      "version": 1,
+      "isActive": true,
+      "states": [
+        {
+          "id": "EXC_DRAFT",
+          "name": "Draft Request",
+          "category": "TO_DO",
+          "color": "#64748B",
+          "isInitial": true
+        },
+        {
+          "id": "EXC_SUBMITTED",
+          "name": "Submitted / Asset Review",
+          "category": "IN_REVIEW",
+          "color": "#3B82F6"
+        },
+        {
+          "id": "EXC_INFOSEC_REVIEW",
+          "name": "InfoSec GRC Assessment",
+          "category": "IN_REVIEW",
+          "color": "#8B5CF6"
+        },
+        {
+          "id": "EXC_CISO_APPROVAL",
+          "name": "CISO Final Sign-off",
+          "category": "IN_REVIEW",
+          "color": "#F59E0B"
+        },
+        {
+          "id": "EXC_ACTIVE",
+          "name": "Active Exception (Approved)",
+          "category": "DONE",
+          "color": "#10B981"
+        },
+        {
+          "id": "EXC_EXPIRED",
+          "name": "Expired (Review Required)",
+          "category": "TO_DO",
+          "color": "#EF4444"
+        },
+        {
+          "id": "EXC_REJECTED",
+          "name": "Rejected / Denied",
+          "category": "CANCELLED",
+          "color": "#94A3B8",
+          "isTerminal": true
+        }
+      ],
+      "transitions": [
+        {
+          "id": "tr-exc-1",
+          "name": "Submit for Review",
+          "fromStateId": "EXC_DRAFT",
+          "toStateId": "EXC_SUBMITTED",
+          "allowedRoles": [
+            "REQUESTER",
+            "APPLICATION_OWNER",
+            "ASSIGNEE"
+          ]
+        },
+        {
+          "id": "tr-exc-2",
+          "name": "Pass to InfoSec GRC",
+          "fromStateId": "EXC_SUBMITTED",
+          "toStateId": "EXC_INFOSEC_REVIEW",
+          "allowedRoles": [
+            "ASSET_OWNER",
+            "APPLICATION_OWNER",
+            "DEPARTMENT_MANAGER"
+          ]
+        },
+        {
+          "id": "tr-exc-3",
+          "name": "Escalate to CISO",
+          "fromStateId": "EXC_INFOSEC_REVIEW",
+          "toStateId": "EXC_CISO_APPROVAL",
+          "allowedRoles": [
+            "GRC_ANALYST",
+            "INFOSEC_MANAGER"
+          ]
+        },
+        {
+          "id": "tr-exc-4",
+          "name": "CISO Final Approve",
+          "fromStateId": "EXC_CISO_APPROVAL",
+          "toStateId": "EXC_ACTIVE",
+          "allowedRoles": [
+            "CISO",
+            "INFOSEC_ADMIN"
+          ],
+          "requireComment": true
+        },
+        {
+          "id": "tr-exc-5",
+          "name": "Reject Request",
+          "fromStateId": "EXC_CISO_APPROVAL",
+          "toStateId": "EXC_REJECTED",
+          "allowedRoles": [
+            "CISO",
+            "INFOSEC_MANAGER"
+          ],
+          "requireComment": true
+        }
+      ]
+    }
+  ],
+  "slaPolicies": [
+    {
+      "id": "sla-tier1-banking",
+      "name": "Tier-1 Mission Critical Banking SLA",
+      "description": "Strict 24/7 SLA for Tier 1 payments, core banking, and external perimeter systems.",
+      "isDefault": true,
+      "businessHoursOnly": false,
+      "businessStartTime": "00:00",
+      "businessEndTime": "23:59",
+      "timezone": "UTC",
+      "excludeWeekends": false,
+      "excludeHolidays": false,
+      "thresholds": {
+        "CRITICAL": {
+          "acknowledgmentMinutes": 15,
+          "firstResponseMinutes": 30,
+          "remediationMinutes": 240,
+          "resolutionMinutes": 240
+        },
+        "HIGH": {
+          "acknowledgmentMinutes": 60,
+          "firstResponseMinutes": 120,
+          "remediationMinutes": 1440,
+          "resolutionMinutes": 1440
+        },
+        "MEDIUM": {
+          "acknowledgmentMinutes": 240,
+          "firstResponseMinutes": 480,
+          "remediationMinutes": 7200,
+          "resolutionMinutes": 7200
+        },
+        "LOW": {
+          "acknowledgmentMinutes": 480,
+          "firstResponseMinutes": 960,
+          "remediationMinutes": 21600,
+          "resolutionMinutes": 21600
+        },
+        "INFORMATIONAL": {
+          "acknowledgmentMinutes": 1440,
+          "firstResponseMinutes": 2880,
+          "remediationMinutes": 43200,
+          "resolutionMinutes": 43200
+        }
+      }
+    },
+    {
+      "id": "sla-standard-biz",
+      "name": "Standard Business Hours InfoSec SLA",
+      "description": "Standard 09:00-18:00 business hours policy excluding weekends and bank holidays.",
+      "isDefault": false,
+      "businessHoursOnly": true,
+      "businessStartTime": "09:00",
+      "businessEndTime": "18:00",
+      "timezone": "UTC",
+      "excludeWeekends": true,
+      "excludeHolidays": true,
+      "thresholds": {
+        "CRITICAL": {
+          "acknowledgmentMinutes": 30,
+          "firstResponseMinutes": 60,
+          "remediationMinutes": 480,
+          "resolutionMinutes": 480
+        },
+        "HIGH": {
+          "acknowledgmentMinutes": 120,
+          "firstResponseMinutes": 240,
+          "remediationMinutes": 1440,
+          "resolutionMinutes": 1440
+        },
+        "MEDIUM": {
+          "acknowledgmentMinutes": 480,
+          "firstResponseMinutes": 960,
+          "remediationMinutes": 4320,
+          "resolutionMinutes": 4320
+        },
+        "LOW": {
+          "acknowledgmentMinutes": 960,
+          "firstResponseMinutes": 1920,
+          "remediationMinutes": 12960,
+          "resolutionMinutes": 12960
+        },
+        "INFORMATIONAL": {
+          "acknowledgmentMinutes": 2880,
+          "firstResponseMinutes": 5760,
+          "remediationMinutes": 25920,
+          "resolutionMinutes": 25920
+        }
+      }
+    }
+  ],
+  "tickets": [
+    {
+      "id": "tick-appsec-001",
+      "key": "APPSEC-2026-0001",
+      "projectCode": "APPSEC",
+      "ticketTypeId": "type-vuln",
+      "ticketTypeName": "Application Security Finding",
+      "category": "VULNERABILITY",
+      "securityDomain": "APPSEC",
+      "title": "SQL Injection in ApexLoan Mortgage Underwriting API Endpoint",
+      "description": "Checkmarx SAST scan and manual verification confirmed unsanitized user parameter in dynamic PostgreSQL query construction inside `CreditUnderwritingService.java` line 142. Allows unauthenticated extraction of applicant credit bureau scores and SSNs.",
+      "statusId": "VULN_ASSIGNED",
+      "statusName": "Assigned to Dev / DevOps",
+      "statusCategory": "IN_PROGRESS",
+      "workflowId": "wf-vuln-std",
+      "workflowVersion": 1,
+      "technicalSeverity": "CRITICAL",
+      "businessPriority": "P1_URGENT",
+      "businessImpact": "CATASTROPHIC",
+      "inherentRisk": "CRITICAL",
+      "residualRisk": "HIGH",
+      "riskScore": 98,
+      "cvssScore": 9.8,
+      "cvssVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "confidentiality": "CONFIDENTIAL_SECURITY_ONLY",
+      "reporterId": "usr-appsec-lead",
+      "assigneeId": "usr-dev-lead",
+      "securityOwnerId": "usr-appsec-lead",
+      "teamId": "team-coredev",
+      "departmentId": "dept-coredev",
+      "applicationId": "app-loan",
+      "assetId": "asset-k8s-prod",
+      "riskOwnerId": "usr-dev-lead",
+      "watcherIds": [
+        "usr-ciso",
+        "usr-appsec-lead",
+        "usr-dev-lead"
+      ],
+      "findingDetails": {
+        "vulnerabilityTitle": "SQL Injection in Mortgage Assessment Filter",
+        "cweId": "CWE-89",
+        "cweName": "Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')",
+        "cveId": "CVE-2026-90412",
+        "cvssScore": 9.8,
+        "cvssVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+        "owaspCategory": "A03:2021 - Injection",
+        "endpoint": "/api/v2/underwriting/assessments/query",
+        "httpParameter": "applicantTaxId",
+        "affectedService": "ApexLoan-Underwriting-Service",
+        "affectedComponent": "UnderwritingRepository.java",
+        "filePath": "src/main/java/com/apexbank/loan/repository/UnderwritingRepository.java",
+        "codeLine": 142,
+        "gitBranch": "main",
+        "gitRepository": "git.apexbank.internal/credit/loan-origination-api",
+        "packageName": "com.apexbank.loan",
+        "exploitability": "FUNCTIONAL",
+        "proofOfConcept": "POST /api/v2/underwriting/assessments/query\nContent-Type: application/json\n\n{\"applicantTaxId\": \"999-00-1111' OR 1=1; --\"}\n\nReturns unauthenticated full customer database records.",
+        "remediationRecommendation": "Replace dynamic raw SQL string interpolation with parameterized queries using Spring Data JPA `PreparedStatement` or named query parameters.",
+        "compensatingControls": "Imperva WAF rule 942100 active in blocking mode for SQLi on `/api/v2/underwriting/*`.",
+        "scannerSource": "CHECKMARX",
+        "findingFingerprint": "f94a8e23b7c8910d6e8340aef1277a94",
+        "observationCount": 3,
+        "firstDetectedAt": "2026-08-16T08:30:00Z",
+        "lastDetectedAt": "2026-08-17T06:00:00Z"
+      },
+      "detectedAt": "2026-08-16T08:30:00Z",
+      "createdAt": "2026-08-16T08:45:00Z",
+      "updatedAt": "2026-08-17T11:00:00Z",
+      "assignedAt": "2026-08-16T09:00:00Z",
+      "acknowledgedAt": "2026-08-16T08:50:00Z",
+      "firstResponseAt": "2026-08-16T09:15:00Z",
+      "dueDate": "2026-08-17T18:00:00Z",
+      "remediationDeadline": "2026-08-17T18:00:00Z",
+      "slaPolicyId": "sla-tier1-banking",
+      "slaState": "SAFE",
+      "slaBreachDeadline": "2026-08-17T18:00:00Z",
+      "slaRemainingMinutes": 293,
+      "version": 4,
+      "tags": [
+        "OWASP-A03",
+        "SAST-Checkmarx",
+        "PCI-DSS-6.5.1",
+        "P1-Critical"
+      ]
+    },
+    {
+      "id": "tick-soc-001",
+      "key": "SOC-2026-0012",
+      "projectCode": "SOC",
+      "ticketTypeId": "type-incident",
+      "ticketTypeName": "Security Incident Case",
+      "category": "INCIDENT",
+      "securityDomain": "SOC",
+      "title": "Distributed Credential Stuffing Attack Against ApexOnline Web Banking Login",
+      "description": "Splunk SIEM correlation alert detected 48,000 failed authentication attempts per minute originating from 1,200 residential proxy nodes in Eastern Europe targeting retail customer accounts.",
+      "statusId": "INC_CONTAINMENT",
+      "statusName": "Active Containment (Isolation)",
+      "statusCategory": "IN_PROGRESS",
+      "workflowId": "wf-incident-std",
+      "workflowVersion": 1,
+      "technicalSeverity": "CRITICAL",
+      "businessPriority": "P1_URGENT",
+      "businessImpact": "CATASTROPHIC",
+      "inherentRisk": "CRITICAL",
+      "residualRisk": "MEDIUM",
+      "riskScore": 95,
+      "confidentiality": "CONFIDENTIAL_SECURITY_ONLY",
+      "reporterId": "usr-soc-analyst",
+      "assigneeId": "usr-soc-lead",
+      "securityOwnerId": "usr-soc-lead",
+      "teamId": "team-soc-t2",
+      "departmentId": "dept-soc",
+      "applicationId": "app-online",
+      "assetId": "asset-firewall-dmz",
+      "watcherIds": [
+        "usr-ciso",
+        "usr-soc-lead",
+        "usr-soc-analyst",
+        "usr-dev-lead"
+      ],
+      "incidentDetails": {
+        "incidentType": "CREDENTIAL_DUMPING",
+        "detectionSource": "SIEM_CORRELATION",
+        "affectedApplicationIds": [
+          "app-online"
+        ],
+        "affectedAssetIds": [
+          "asset-firewall-dmz",
+          "asset-api-gw"
+        ],
+        "iocs": {
+          "ipAddresses": [
+            "185.220.101.5",
+            "185.220.101.6",
+            "45.154.255.88",
+            "194.26.29.112"
+          ],
+          "urls": [
+            "https://online.apexbank.com/api/v1/auth/login"
+          ],
+          "fileHashes": [],
+          "emailSenders": []
+        },
+        "mitreAttack": [
+          {
+            "tactic": "Initial Access",
+            "techniqueId": "T1078.003",
+            "techniqueName": "Valid Accounts: Local Accounts"
+          },
+          {
+            "tactic": "Credential Access",
+            "techniqueId": "T1110.004",
+            "techniqueName": "Brute Force: Credential Stuffing"
+          },
+          {
+            "tactic": "Defense Evasion",
+            "techniqueId": "T1090.003",
+            "techniqueName": "Proxy: Multi-hop Proxy"
+          }
+        ],
+        "containmentActions": "Enforced rate limiting at Cloudflare / Palo Alto edge WAF (max 3 attempts/min per IP subnet). Enabled mandatory reCAPTCHA Enterprise and forced out-of-band push MFA on all suspicious logins.",
+        "eradicationActions": "Identified 14 compromised accounts and automatically invalidated active OAuth sessions and triggered self-service password reset flows with biometric re-verification.",
+        "regulatoryImpact": true,
+        "regulatoryNotificationDeadline": "2026-08-18T12:00:00Z",
+        "dataBreachIndication": false,
+        "dataBreachRecordsCount": 0
+      },
+      "detectedAt": "2026-08-17T02:15:00Z",
+      "createdAt": "2026-08-17T02:20:00Z",
+      "updatedAt": "2026-08-17T12:30:00Z",
+      "assignedAt": "2026-08-17T02:22:00Z",
+      "acknowledgedAt": "2026-08-17T02:21:00Z",
+      "firstResponseAt": "2026-08-17T02:25:00Z",
+      "dueDate": "2026-08-17T14:20:00Z",
+      "remediationDeadline": "2026-08-17T14:20:00Z",
+      "slaPolicyId": "sla-tier1-banking",
+      "slaState": "AT_RISK",
+      "slaBreachDeadline": "2026-08-17T14:20:00Z",
+      "slaRemainingMinutes": 73,
+      "version": 6,
+      "tags": [
+        "SIEM-Alert",
+        "MITRE-T1110",
+        "Credential-Stuffing",
+        "SOC-P1"
+      ]
+    },
+    {
+      "id": "tick-vm-001",
+      "key": "VM-2026-0034",
+      "projectCode": "VM",
+      "ticketTypeId": "type-vuln",
+      "ticketTypeName": "Infrastructure Vulnerability",
+      "category": "VULNERABILITY",
+      "securityDomain": "VULNERABILITY_MGMT",
+      "title": "OpenSSL Remote Code Execution (RCE) on Core Payment Kubernetes Nodes",
+      "description": "Trivy infrastructure container vulnerability scan identified CVE-2026-21894 in Alpine base images hosting the Core Banking Switch payment processing microservice.",
+      "statusId": "VULN_REMEDIATION",
+      "statusName": "Remediation In Progress",
+      "statusCategory": "IN_PROGRESS",
+      "workflowId": "wf-vuln-std",
+      "workflowVersion": 1,
+      "technicalSeverity": "HIGH",
+      "businessPriority": "P2_HIGH",
+      "businessImpact": "SIGNIFICANT",
+      "inherentRisk": "HIGH",
+      "residualRisk": "MEDIUM",
+      "riskScore": 84,
+      "cvssScore": 8.8,
+      "cvssVector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+      "confidentiality": "INTERNAL",
+      "reporterId": "usr-vuln-analyst",
+      "assigneeId": "usr-dev-lead",
+      "securityOwnerId": "usr-vuln-analyst",
+      "teamId": "team-vm",
+      "departmentId": "dept-vm",
+      "applicationId": "app-core",
+      "assetId": "asset-k8s-prod",
+      "riskOwnerId": "usr-dev-lead",
+      "watcherIds": [
+        "usr-vuln-analyst",
+        "usr-dev-lead"
+      ],
+      "findingDetails": {
+        "vulnerabilityTitle": "OpenSSL Memory Corruption Buffer Overflow",
+        "cweId": "CWE-120",
+        "cweName": "Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')",
+        "cveId": "CVE-2026-21894",
+        "cvssScore": 8.8,
+        "cvssVector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+        "owaspCategory": "A06:2021 - Vulnerable and Outdated Components",
+        "affectedService": "payment-router-container",
+        "packageName": "openssl",
+        "installedVersion": "3.0.12-r0",
+        "fixedVersion": "3.0.13-r0",
+        "exploitability": "POC",
+        "remediationRecommendation": "Update base Docker image to Alpine 3.19.2 containing openssl >= 3.0.13-r0 and redeploy pods via ArgoCD rolling upgrade.",
+        "scannerSource": "TRIVY",
+        "findingFingerprint": "7a12bc99401f8d43ea890114bcdef220",
+        "observationCount": 1,
+        "firstDetectedAt": "2026-08-15T10:00:00Z",
+        "lastDetectedAt": "2026-08-17T04:00:00Z"
+      },
+      "detectedAt": "2026-08-15T10:00:00Z",
+      "createdAt": "2026-08-15T10:15:00Z",
+      "updatedAt": "2026-08-17T09:30:00Z",
+      "assignedAt": "2026-08-15T11:00:00Z",
+      "acknowledgedAt": "2026-08-15T10:30:00Z",
+      "firstResponseAt": "2026-08-15T11:30:00Z",
+      "dueDate": "2026-08-18T18:00:00Z",
+      "remediationDeadline": "2026-08-18T18:00:00Z",
+      "slaPolicyId": "sla-tier1-banking",
+      "slaState": "SAFE",
+      "slaBreachDeadline": "2026-08-18T18:00:00Z",
+      "slaRemainingMinutes": 1733,
+      "version": 3,
+      "tags": [
+        "Trivy-SCA",
+        "OpenSSL",
+        "Kubernetes",
+        "Tier-1"
+      ]
+    },
+    {
+      "id": "tick-grc-001",
+      "key": "GRC-2026-0078",
+      "projectCode": "GRC",
+      "ticketTypeId": "type-exception",
+      "ticketTypeName": "Security Policy Exception Request",
+      "category": "SECURITY_EXCEPTION",
+      "securityDomain": "GRC",
+      "title": "Exception: Delayed TLS 1.3 Cipher Suite Migration on Legacy SWIFT Bastion",
+      "description": "Requesting 90-day extension to maintain TLS 1.2 CBC cipher suites for legacy SWIFT Alliance Access partner node pending scheduled Q4 hardware crypto card firmware overhaul.",
+      "statusId": "EXC_INFOSEC_REVIEW",
+      "statusName": "InfoSec GRC Assessment",
+      "statusCategory": "IN_REVIEW",
+      "workflowId": "wf-exception-std",
+      "workflowVersion": 1,
+      "technicalSeverity": "MEDIUM",
+      "businessPriority": "P3_MEDIUM",
+      "businessImpact": "MODERATE",
+      "inherentRisk": "MEDIUM",
+      "residualRisk": "LOW",
+      "riskScore": 55,
+      "confidentiality": "RESTRICTED",
+      "reporterId": "usr-dev-lead",
+      "assigneeId": "usr-grc-mgr",
+      "securityOwnerId": "usr-grc-mgr",
+      "teamId": "team-grc",
+      "departmentId": "dept-grc",
+      "applicationId": "app-swift",
+      "assetId": "asset-bastion-prod",
+      "riskOwnerId": "usr-dev-lead",
+      "watcherIds": [
+        "usr-ciso",
+        "usr-grc-mgr",
+        "usr-dev-lead",
+        "usr-auditor"
+      ],
+      "exceptionDetails": {
+        "requestedControlId": "SEC-CTRL-CRYPTO-04",
+        "requestedControlName": "Mandatory TLS 1.3 / Deprecation of Legacy CBC Ciphers",
+        "reason": "Legacy SWIFT partner gateway HSM firmware v4.2 does not support TLS 1.3 without vendor kernel rebuild scheduled for Oct 2026.",
+        "businessJustification": "Premature deprecation will halt international correspondent bank settlement wires exceeding $450M daily volume.",
+        "inherentRisk": "MEDIUM",
+        "compensatingControls": "Dedicated IPSec GRE tunnel with AES-256-GCM encryption between bank DMZ and SWIFT network; MAC address IP locking; 24/7 dedicated SOC alert on TLS renegotiation attempts.",
+        "riskOwnerId": "usr-dev-lead",
+        "effectiveDate": "2026-08-01",
+        "expirationDate": "2026-11-01",
+        "autoRenew": false,
+        "renewalCount": 0,
+        "reviewFrequencyDays": 30
+      },
+      "createdAt": "2026-08-10T09:00:00Z",
+      "updatedAt": "2026-08-17T10:00:00Z",
+      "dueDate": "2026-08-20T18:00:00Z",
+      "remediationDeadline": "2026-11-01T00:00:00Z",
+      "slaPolicyId": "sla-standard-biz",
+      "slaState": "SAFE",
+      "slaRemainingMinutes": 108653,
+      "version": 2,
+      "tags": [
+        "Security-Exception",
+        "SWIFT-CSP",
+        "TLS-Migration",
+        "GRC-Review"
+      ]
+    },
+    {
+      "id": "tick-dlp-001",
+      "key": "DLP-2026-0090",
+      "projectCode": "DLP",
+      "ticketTypeId": "type-incident",
+      "ticketTypeName": "DLP Incident Investigation",
+      "category": "DLP_ALERT",
+      "securityDomain": "DLP",
+      "title": "DLP Sensor Alert: Bulk Export of High-Net-Worth Client Account Records to External Cloud",
+      "description": "Forcepoint endpoint DLP agent intercepted an encrypted 45MB ZIP archive containing 1,840 customer wealth account statements being uploaded to an unapproved personal MEGA cloud storage link.",
+      "statusId": "INC_INVESTIGATION",
+      "statusName": "Deep Forensics & Investigation",
+      "statusCategory": "IN_PROGRESS",
+      "workflowId": "wf-incident-std",
+      "workflowVersion": 1,
+      "technicalSeverity": "HIGH",
+      "businessPriority": "P1_URGENT",
+      "businessImpact": "SIGNIFICANT",
+      "inherentRisk": "CRITICAL",
+      "residualRisk": "HIGH",
+      "riskScore": 89,
+      "confidentiality": "HIGHLY_RESTRICTED_HR_LEGAL",
+      "restrictedUserIds": [
+        "usr-ciso",
+        "usr-dlp-analyst",
+        "usr-grc-mgr"
+      ],
+      "restrictedTeamIds": [
+        "team-dlp"
+      ],
+      "reporterId": "usr-dlp-analyst",
+      "assigneeId": "usr-dlp-analyst",
+      "securityOwnerId": "usr-dlp-analyst",
+      "teamId": "team-dlp",
+      "departmentId": "dept-dlp",
+      "applicationId": "app-crm",
+      "watcherIds": [
+        "usr-ciso",
+        "usr-dlp-analyst"
+      ],
+      "incidentDetails": {
+        "incidentType": "DATA_EXFILTRATION",
+        "detectionSource": "DLP_SENSOR",
+        "affectedApplicationIds": [
+          "app-crm"
+        ],
+        "iocs": {
+          "ipAddresses": [
+            "10.160.88.42"
+          ],
+          "urls": [
+            "https://mega.nz/upload/sec-dump-401.zip"
+          ],
+          "fileHashes": [
+            "a5892f38c7304b12d5918e910243bcda89104fa2891230491823901a8b9f1234"
+          ]
+        },
+        "mitreAttack": [
+          {
+            "tactic": "Exfiltration",
+            "techniqueId": "T1567.002",
+            "techniqueName": "Exfiltration to Cloud Storage"
+          },
+          {
+            "tactic": "Collection",
+            "techniqueId": "T1005",
+            "techniqueName": "Data from Local System"
+          }
+        ],
+        "containmentActions": "Endpoint network adapter quarantined via CrowdStrike EDR. Access token to Salesforce Wealth CRM immediately revoked.",
+        "regulatoryImpact": true,
+        "dataBreachIndication": true,
+        "dataBreachRecordsCount": 1840
+      },
+      "detectedAt": "2026-08-17T07:10:00Z",
+      "createdAt": "2026-08-17T07:15:00Z",
+      "updatedAt": "2026-08-17T11:45:00Z",
+      "dueDate": "2026-08-17T19:15:00Z",
+      "remediationDeadline": "2026-08-17T19:15:00Z",
+      "slaPolicyId": "sla-tier1-banking",
+      "slaState": "SAFE",
+      "slaRemainingMinutes": 368,
+      "version": 4,
+      "tags": [
+        "DLP-Forcepoint",
+        "Data-Exfiltration",
+        "GDPR-PII",
+        "HR-Confidential"
+      ]
+    },
+    {
+      "id": "tick-iam-001",
+      "key": "IAM-2026-0102",
+      "projectCode": "IAM",
+      "ticketTypeId": "type-iam",
+      "ticketTypeName": "Emergency PAM Break-Glass Request",
+      "category": "IAM_REQUEST",
+      "securityDomain": "IAM_PAM",
+      "title": "Emergency Break-Glass Privileged Access to ApexCore Production Database",
+      "description": "Requesting 2-hour emergency elevated SYSDBA access on `db-postgres-payments-prod` to apply urgent partition index repair following deadlock during end-of-day batch settlement.",
+      "statusId": "VULN_OPEN",
+      "statusName": "Open / Ingested",
+      "statusCategory": "TO_DO",
+      "workflowId": "wf-vuln-std",
+      "workflowVersion": 1,
+      "technicalSeverity": "HIGH",
+      "businessPriority": "P1_URGENT",
+      "businessImpact": "SIGNIFICANT",
+      "inherentRisk": "HIGH",
+      "residualRisk": "MEDIUM",
+      "riskScore": 78,
+      "confidentiality": "RESTRICTED",
+      "reporterId": "usr-dba-lead",
+      "assigneeId": "usr-iam-lead",
+      "securityOwnerId": "usr-iam-lead",
+      "teamId": "team-iam",
+      "departmentId": "dept-iam",
+      "applicationId": "app-core",
+      "assetId": "asset-db-cluster",
+      "watcherIds": [
+        "usr-ciso",
+        "usr-iam-lead",
+        "usr-dba-lead"
+      ],
+      "createdAt": "2026-08-17T12:00:00Z",
+      "updatedAt": "2026-08-17T12:05:00Z",
+      "dueDate": "2026-08-17T13:00:00Z",
+      "remediationDeadline": "2026-08-17T13:00:00Z",
+      "slaPolicyId": "sla-tier1-banking",
+      "slaState": "BREACHED",
+      "slaRemainingMinutes": 0,
+      "version": 1,
+      "tags": [
+        "Break-Glass",
+        "CyberArk-PAM",
+        "Tier-1-DBA",
+        "Emergency"
+      ]
+    },
+    {
+      "id": "tick-audit-001",
+      "key": "AUDIT-2026-0126",
+      "projectCode": "AUDIT",
+      "ticketTypeId": "type-audit",
+      "ticketTypeName": "External Regulatory Audit Finding",
+      "category": "AUDIT_FINDING",
+      "securityDomain": "AUDIT_COMPLIANCE",
+      "title": "Central Bank Cybersecurity Audit: Insufficient Separation of Duties in Cloud CI/CD Deployment",
+      "description": "Audit observed that developers who commit source code to master branch are technically capable of deploying release artifacts directly to production Kubernetes namespaces without dual-custody approval gates (violating Central Bank Mandate 2025/11 Section 4.2).",
+      "statusId": "VULN_ASSIGNED",
+      "statusName": "Assigned to Dev / DevOps",
+      "statusCategory": "IN_PROGRESS",
+      "workflowId": "wf-vuln-std",
+      "workflowVersion": 1,
+      "technicalSeverity": "HIGH",
+      "businessPriority": "P2_HIGH",
+      "businessImpact": "SIGNIFICANT",
+      "inherentRisk": "HIGH",
+      "residualRisk": "MEDIUM",
+      "riskScore": 82,
+      "confidentiality": "CONFIDENTIAL_SECURITY_ONLY",
+      "reporterId": "usr-auditor",
+      "assigneeId": "usr-appsec-lead",
+      "securityOwnerId": "usr-grc-mgr",
+      "teamId": "team-appsec",
+      "departmentId": "dept-appsec",
+      "applicationId": "app-core",
+      "riskOwnerId": "usr-ciso",
+      "watcherIds": [
+        "usr-ciso",
+        "usr-grc-mgr",
+        "usr-auditor",
+        "usr-appsec-lead"
+      ],
+      "createdAt": "2026-08-05T14:00:00Z",
+      "updatedAt": "2026-08-16T16:00:00Z",
+      "dueDate": "2026-08-25T18:00:00Z",
+      "remediationDeadline": "2026-08-25T18:00:00Z",
+      "slaPolicyId": "sla-standard-biz",
+      "slaState": "SAFE",
+      "slaRemainingMinutes": 11813,
+      "version": 3,
+      "tags": [
+        "Central-Bank-Finding",
+        "SoD-Control",
+        "PCI-DSS-Req6",
+        "Audit-2026"
+      ]
+    },
+    {
+      "id": "tick-tprm-001",
+      "key": "TPRM-2026-0138",
+      "projectCode": "TPRM",
+      "ticketTypeId": "type-tprm",
+      "ticketTypeName": "Third-Party Vendor Risk Assessment",
+      "category": "THIRD_PARTY_ASSESSMENT",
+      "securityDomain": "THIRD_PARTY_RISK",
+      "title": "Third-Party Security Due Diligence: Cloud Identity Verification Provider (VeriID Inc)",
+      "description": "Assessing SOC 2 Type II workpapers, ISO 27001 certificate, and penetration test summary for VeriID Inc prior to onboarding for biometric customer onboarding.",
+      "statusId": "VULN_TRIAGE",
+      "statusName": "Triage & Verification",
+      "statusCategory": "IN_PROGRESS",
+      "workflowId": "wf-vuln-std",
+      "workflowVersion": 1,
+      "technicalSeverity": "MEDIUM",
+      "businessPriority": "P3_MEDIUM",
+      "businessImpact": "MODERATE",
+      "inherentRisk": "HIGH",
+      "residualRisk": "LOW",
+      "riskScore": 62,
+      "confidentiality": "INTERNAL",
+      "reporterId": "usr-grc-mgr",
+      "assigneeId": "usr-grc-mgr",
+      "securityOwnerId": "usr-grc-mgr",
+      "teamId": "team-grc",
+      "departmentId": "dept-grc",
+      "applicationId": "app-mobile",
+      "watcherIds": [
+        "usr-grc-mgr",
+        "usr-mobile-dev"
+      ],
+      "createdAt": "2026-08-12T11:00:00Z",
+      "updatedAt": "2026-08-16T15:00:00Z",
+      "dueDate": "2026-08-22T18:00:00Z",
+      "remediationDeadline": "2026-08-22T18:00:00Z",
+      "slaPolicyId": "sla-standard-biz",
+      "slaState": "SAFE",
+      "slaRemainingMinutes": 7493,
+      "version": 2,
+      "tags": [
+        "TPRM",
+        "Vendor-Onboarding",
+        "SOC2-Review",
+        "Cloud-KYC"
+      ]
+    },
+    {
+      "id": "tick-arch-001",
+      "key": "ARCH-2026-0114",
+      "projectCode": "ARCH",
+      "ticketTypeId": "type-arch",
+      "ticketTypeName": "Security Architecture Review",
+      "category": "SECURITY_REVIEW",
+      "securityDomain": "SEC_ARCHITECTURE",
+      "title": "Threat Modeling & Architecture Review: Cloud-Native Instant Cross-Border Clearing Service",
+      "description": "Comprehensive STRIDE threat modeling and zero-trust cryptographic review of the new AWS/Azure hybrid multi-cloud microservices architecture for real-time payments.",
+      "statusId": "VULN_TRIAGE",
+      "statusName": "Triage & Verification",
+      "statusCategory": "IN_PROGRESS",
+      "workflowId": "wf-vuln-std",
+      "workflowVersion": 1,
+      "technicalSeverity": "MEDIUM",
+      "businessPriority": "P2_HIGH",
+      "businessImpact": "SIGNIFICANT",
+      "inherentRisk": "HIGH",
+      "residualRisk": "LOW",
+      "riskScore": 68,
+      "confidentiality": "RESTRICTED",
+      "reporterId": "usr-appsec-lead",
+      "assigneeId": "usr-appsec-lead",
+      "securityOwnerId": "usr-appsec-lead",
+      "teamId": "team-appsec",
+      "departmentId": "dept-appsec",
+      "applicationId": "app-core",
+      "watcherIds": [
+        "usr-ciso",
+        "usr-appsec-lead",
+        "usr-dev-lead"
+      ],
+      "createdAt": "2026-08-14T10:00:00Z",
+      "updatedAt": "2026-08-17T09:00:00Z",
+      "dueDate": "2026-08-28T18:00:00Z",
+      "remediationDeadline": "2026-08-28T18:00:00Z",
+      "slaPolicyId": "sla-standard-biz",
+      "slaState": "SAFE",
+      "slaRemainingMinutes": 16133,
+      "version": 2,
+      "tags": [
+        "STRIDE",
+        "Architecture-Review",
+        "Cloud-Security",
+        "Zero-Trust"
+      ]
+    }
+  ],
+  "approvals": [
+    {
+      "id": "appr-grc-001",
+      "ticketId": "tick-grc-001",
+      "title": "Security Policy Exception Approval Chain: TLS 1.3 Migration Delay",
+      "status": "PENDING",
+      "createdAt": "2026-08-10T09:30:00Z",
+      "steps": [
+        {
+          "id": "step-1",
+          "stepNumber": 1,
+          "name": "Asset / Technical Owner Endorsement",
+          "requiredRole": "APPLICATION_OWNER",
+          "assignedApproverId": "usr-dev-lead",
+          "assignedApproverName": "Alex Rivera",
+          "status": "APPROVED",
+          "decisionByUserId": "usr-dev-lead",
+          "decisionByUserName": "Alex Rivera",
+          "decisionAt": "2026-08-10T10:15:00Z",
+          "comments": "Endorsed. SWIFT partner connectivity requires backward compatibility until Q4 hardware maintenance window.",
+          "immutableSignatureHash": "sha256-8a901f4c3910ebf190240182410a8ef190248102948190248109284102948123",
+          "isMandatory": true
+        },
+        {
+          "id": "step-2",
+          "stepNumber": 2,
+          "name": "InfoSec GRC Assessment & Compensating Control Verification",
+          "requiredRole": "GRC_ANALYST",
+          "assignedApproverId": "usr-grc-mgr",
+          "assignedApproverName": "David Miller",
+          "status": "APPROVED",
+          "decisionByUserId": "usr-grc-mgr",
+          "decisionByUserName": "David Miller",
+          "decisionAt": "2026-08-12T14:30:00Z",
+          "comments": "Compensating controls (isolated IPSec GRE tunnel + 24/7 dedicated SOC alert) validated and meet risk criteria.",
+          "immutableSignatureHash": "sha256-4b910fae19023490184019284019284019284019284019284019284019284019",
+          "isMandatory": true
+        },
+        {
+          "id": "step-3",
+          "stepNumber": 3,
+          "name": "CISO Final Executive Risk Sign-off",
+          "requiredRole": "CISO",
+          "assignedApproverId": "usr-ciso",
+          "assignedApproverName": "Dr. Elena Vance",
+          "status": "PENDING",
+          "isMandatory": true
+        }
+      ]
+    }
+  ],
+  "risks": [
+    {
+      "id": "risk-01",
+      "riskCode": "RISK-2026-0001",
+      "title": "Legacy Cryptographic Protocols on SWIFT Partner Interfaces",
+      "description": "Legacy hardware dependencies prevent immediate enforcement of TLS 1.3 and Perfect Forward Secrecy across partner communication paths.",
+      "ownerId": "usr-ciso",
+      "ownerName": "Dr. Elena Vance",
+      "departmentId": "dept-grc",
+      "affectedApplicationIds": [
+        "app-swift",
+        "app-core"
+      ],
+      "affectedAssetIds": [
+        "asset-bastion-prod"
+      ],
+      "likelihood": 2,
+      "impact": 4,
+      "inherentScore": 8,
+      "inherentRating": "HIGH",
+      "existingControls": "IPSec layer-3 network encryption and dedicated leased fiber lines.",
+      "residualLikelihood": 1,
+      "residualImpact": 3,
+      "residualScore": 3,
+      "residualRating": "LOW",
+      "treatmentStrategy": "MITIGATE",
+      "treatmentPlan": "Execute HSM hardware refresh and decommission TLS 1.2 by Q4 2026.",
+      "treatmentDeadline": "2026-11-30",
+      "status": "TREATMENT_IN_PROGRESS",
+      "linkedTicketIds": [
+        "tick-grc-001"
+      ],
+      "createdAt": "2026-01-15T09:00:00Z",
+      "updatedAt": "2026-08-10T10:00:00Z"
+    },
+    {
+      "id": "risk-02",
+      "riskCode": "RISK-2026-0002",
+      "title": "Unauthenticated API Endpoint Abuse via Automated Botnets",
+      "description": "Public-facing retail online banking endpoints susceptible to large-scale automated credential stuffing and scraping attacks.",
+      "ownerId": "usr-ciso",
+      "ownerName": "Dr. Elena Vance",
+      "departmentId": "dept-soc",
+      "affectedApplicationIds": [
+        "app-online",
+        "app-api"
+      ],
+      "affectedAssetIds": [
+        "asset-firewall-dmz",
+        "asset-api-gw"
+      ],
+      "likelihood": 5,
+      "impact": 4,
+      "inherentScore": 20,
+      "inherentRating": "CRITICAL",
+      "existingControls": "Cloudflare Bot Management, Palo Alto Threat Prevention, Mandatory 2FA.",
+      "residualLikelihood": 2,
+      "residualImpact": 3,
+      "residualScore": 6,
+      "residualRating": "MEDIUM",
+      "treatmentStrategy": "MITIGATE",
+      "treatmentPlan": "Deploy behavioral biometrics and FIDO2 passkey hardware authentication.",
+      "treatmentDeadline": "2026-09-30",
+      "status": "TREATMENT_IN_PROGRESS",
+      "linkedTicketIds": [
+        "tick-soc-001"
+      ],
+      "createdAt": "2026-02-01T08:00:00Z",
+      "updatedAt": "2026-08-17T03:00:00Z"
+    },
+    {
+      "id": "risk-03",
+      "riskCode": "RISK-2026-0003",
+      "title": "Insider Threat Data Exfiltration of Wealth Management Records",
+      "description": "Risk of privileged CRM operators or analysts exporting confidential high-net-worth customer portfolios.",
+      "ownerId": "usr-soc-lead",
+      "ownerName": "Marcus Brody",
+      "departmentId": "dept-dlp",
+      "affectedApplicationIds": [
+        "app-crm"
+      ],
+      "affectedAssetIds": [],
+      "likelihood": 3,
+      "impact": 5,
+      "inherentScore": 15,
+      "inherentRating": "CRITICAL",
+      "existingControls": "Forcepoint Endpoint DLP, USB block policy, Salesforce Shield field audit trail.",
+      "residualLikelihood": 1,
+      "residualImpact": 4,
+      "residualScore": 4,
+      "residualRating": "MEDIUM",
+      "treatmentStrategy": "MITIGATE",
+      "treatmentPlan": "Deploy User and Entity Behavior Analytics (UEBA) and watermarking on customer exports.",
+      "treatmentDeadline": "2026-10-15",
+      "status": "TREATMENT_IN_PROGRESS",
+      "linkedTicketIds": [
+        "tick-dlp-001"
+      ],
+      "createdAt": "2026-03-10T10:00:00Z",
+      "updatedAt": "2026-08-17T08:00:00Z"
+    },
+    {
+      "id": "risk-04",
+      "riskCode": "RISK-2026-0004",
+      "title": "SQL Injection in Legacy Credit Origination Workflows",
+      "description": "Vulnerability in legacy data layer allows potential database compromise through underwriting endpoints.",
+      "ownerId": "usr-appsec-lead",
+      "ownerName": "Sarah Chen",
+      "departmentId": "dept-appsec",
+      "affectedApplicationIds": [
+        "app-loan"
+      ],
+      "affectedAssetIds": [
+        "asset-k8s-prod"
+      ],
+      "likelihood": 4,
+      "impact": 5,
+      "inherentScore": 20,
+      "inherentRating": "CRITICAL",
+      "existingControls": "Imperva WAF in blocking mode, DB audit logging.",
+      "residualLikelihood": 1,
+      "residualImpact": 4,
+      "residualScore": 4,
+      "residualRating": "MEDIUM",
+      "treatmentStrategy": "MITIGATE",
+      "treatmentPlan": "Refactor repository code to parameterized queries in release 4.12.",
+      "treatmentDeadline": "2026-08-18",
+      "status": "TREATMENT_IN_PROGRESS",
+      "linkedTicketIds": [
+        "tick-appsec-001"
+      ],
+      "createdAt": "2026-08-16T09:00:00Z",
+      "updatedAt": "2026-08-17T10:00:00Z"
+    }
+  ],
+  "comments": [
+    {
+      "id": "comm-01",
+      "ticketId": "tick-appsec-001",
+      "authorId": "usr-appsec-lead",
+      "authorName": "Sarah Chen",
+      "authorRole": "Principal AppSec Lead",
+      "authorAvatar": "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80",
+      "content": "Confirmed vulnerability via manual Burp Suite test on staging. The dynamic query in `UnderwritingRepository.java` bypasses ORM mapping. WAF rule 942100 is temporarily preventing external exploitation, but internal APIs remain vulnerable. Please patch within the 24-hour Critical SLA window.",
+      "visibility": "PUBLIC",
+      "confidentiality": "CONFIDENTIAL_SECURITY_ONLY",
+      "mentions": [
+        "usr-dev-lead"
+      ],
+      "createdAt": "2026-08-16T09:15:00Z",
+      "isEdited": false,
+      "reactions": [
+        {
+          "emoji": "🚨",
+          "userIds": [
+            "usr-dev-lead"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "comm-02",
+      "ticketId": "tick-appsec-001",
+      "authorId": "usr-dev-lead",
+      "authorName": "Alex Rivera",
+      "authorRole": "Lead Software Architect",
+      "authorAvatar": "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80",
+      "content": "Understood. We have written a hotfix using JPA CriteriaBuilder with parameterized predicates. Branch `hotfix/underwriting-sqli-cve-2026-90412` is building in GitLab CI now. We will submit for AppSec retest as soon as unit tests finish.",
+      "visibility": "PUBLIC",
+      "confidentiality": "INTERNAL",
+      "mentions": [
+        "usr-appsec-lead"
+      ],
+      "createdAt": "2026-08-17T09:45:00Z",
+      "isEdited": false,
+      "reactions": [
+        {
+          "emoji": "👍",
+          "userIds": [
+            "usr-appsec-lead",
+            "usr-ciso"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "comm-03",
+      "ticketId": "tick-appsec-001",
+      "authorId": "usr-ciso",
+      "authorName": "Dr. Elena Vance",
+      "authorRole": "Chief Information Security Officer",
+      "authorAvatar": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80",
+      "content": "Internal Security Note: If remediation is not verified by 18:00 UTC, notify Risk Committee and initiate out-of-cycle emergency deployment authorization.",
+      "visibility": "SECURITY_TEAM_ONLY",
+      "confidentiality": "CONFIDENTIAL_SECURITY_ONLY",
+      "mentions": [
+        "usr-appsec-lead"
+      ],
+      "createdAt": "2026-08-17T11:00:00Z",
+      "isEdited": false,
+      "reactions": []
+    }
+  ],
+  "attachments": [
+    {
+      "id": "att-01",
+      "ticketId": "tick-appsec-001",
+      "fileName": "Checkmarx_SAST_Assessment_Report_ApexLoan_v4.pdf",
+      "fileSizeBytes": 2489120,
+      "mimeType": "application/pdf",
+      "evidenceType": "SAST_SCAN_LOG",
+      "sha256Checksum": "8f902bf8910248aef01924810294810928410928410294810928410294810294",
+      "isEncrypted": true,
+      "virusScanStatus": "CLEAN",
+      "confidentiality": "CONFIDENTIAL_SECURITY_ONLY",
+      "uploaderId": "usr-appsec-lead",
+      "uploaderName": "Sarah Chen",
+      "uploadedAt": "2026-08-16T08:45:00Z",
+      "isImmutableEvidence": true,
+      "retentionUntil": "2033-08-16T00:00:00Z",
+      "downloadCount": 4
+    },
+    {
+      "id": "att-02",
+      "ticketId": "tick-soc-001",
+      "fileName": "Splunk_PCAP_Credential_Stuffing_Trace_20260817.pcap",
+      "fileSizeBytes": 14205800,
+      "mimeType": "application/vnd.tcpdump.pcap",
+      "evidenceType": "NETWORK_PCAP",
+      "sha256Checksum": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "isEncrypted": true,
+      "virusScanStatus": "CLEAN",
+      "confidentiality": "CONFIDENTIAL_SECURITY_ONLY",
+      "uploaderId": "usr-soc-analyst",
+      "uploaderName": "Zack Taylor",
+      "uploadedAt": "2026-08-17T02:40:00Z",
+      "isImmutableEvidence": true,
+      "retentionUntil": "2031-08-17T00:00:00Z",
+      "downloadCount": 2
+    }
+  ],
+  "auditEvents": [
+    {
+      "id": "aud-eafcb1da-dc7a-4d3c-b63f-b0dc6486421c",
+      "timestamp": "2026-08-17T13:02:19.807Z",
+      "actorId": "usr-ciso",
+      "actorName": "Dr. Elena Vance",
+      "actorRole": "CISO",
+      "ipAddress": "10.140.12.8",
+      "userAgent": "AegisSec-Client/1.0",
+      "correlationId": "req-337ea844",
+      "action": "RESTRICTED_ACCESS_VIEWED",
+      "entityType": "TICKET",
+      "entityId": "tick-appsec-001",
+      "entityKey": "APPSEC-2026-0001"
+    },
+    {
+      "id": "aud-001",
+      "timestamp": "2026-08-16T08:45:00Z",
+      "actorId": "usr-appsec-lead",
+      "actorName": "Sarah Chen",
+      "actorRole": "Principal AppSec Lead",
+      "ipAddress": "10.140.12.8",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/128.0",
+      "correlationId": "req-890124-init",
+      "action": "TICKET_CREATED",
+      "entityType": "TICKET",
+      "entityId": "tick-appsec-001",
+      "entityKey": "APPSEC-2026-0001",
+      "metadata": {
+        "title": "SQL Injection in ApexLoan Mortgage Underwriting API Endpoint",
+        "severity": "CRITICAL"
+      }
+    },
+    {
+      "id": "aud-002",
+      "timestamp": "2026-08-16T09:00:00Z",
+      "actorId": "usr-appsec-lead",
+      "actorName": "Sarah Chen",
+      "actorRole": "Principal AppSec Lead",
+      "ipAddress": "10.140.12.8",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/128.0",
+      "correlationId": "req-890125-assign",
+      "action": "ASSIGNMENT_CHANGED",
+      "entityType": "TICKET",
+      "entityId": "tick-appsec-001",
+      "entityKey": "APPSEC-2026-0001",
+      "fieldChanges": [
+        {
+          "field": "assigneeId",
+          "oldValue": null,
+          "newValue": "usr-dev-lead"
+        },
+        {
+          "field": "status",
+          "oldValue": "VULN_TRIAGE",
+          "newValue": "VULN_ASSIGNED"
+        }
+      ]
+    },
+    {
+      "id": "aud-003",
+      "timestamp": "2026-08-17T02:20:00Z",
+      "actorId": "usr-soc-analyst",
+      "actorName": "Zack Taylor",
+      "actorRole": "Senior SOC Incident Analyst",
+      "ipAddress": "10.140.10.51",
+      "userAgent": "Splunk-Webhook-Agent/3.2",
+      "correlationId": "soc-alert-stuffing-99",
+      "action": "TICKET_CREATED",
+      "entityType": "TICKET",
+      "entityId": "tick-soc-001",
+      "entityKey": "SOC-2026-0012",
+      "metadata": {
+        "incidentType": "CREDENTIAL_DUMPING",
+        "severity": "CRITICAL"
+      }
+    },
+    {
+      "id": "aud-004",
+      "timestamp": "2026-08-12T14:30:00Z",
+      "actorId": "usr-grc-mgr",
+      "actorName": "David Miller",
+      "actorRole": "GRC & Security Policy Manager",
+      "ipAddress": "10.140.15.22",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+      "correlationId": "appr-grc-step2-sign",
+      "action": "APPROVAL_DECISION",
+      "entityType": "APPROVAL",
+      "entityId": "appr-grc-001",
+      "entityKey": "GRC-2026-0078",
+      "metadata": {
+        "stepNumber": 2,
+        "decision": "APPROVED",
+        "hash": "sha256-4b910fae19023490184019284019284019284019284019284019284019284019"
+      }
+    }
+  ],
+  "automationRules": [
+    {
+      "id": "rule-01",
+      "name": "Auto-Escalate Critical Tier-1 Findings to CISO & On-Call Manager",
+      "description": "When any Critical vulnerability is created against a Tier-1 banking application, automatically add CISO as watcher, set P1 priority, and post internal SLA warning.",
+      "isActive": true,
+      "trigger": "TICKET_CREATED",
+      "conditions": [
+        {
+          "field": "technicalSeverity",
+          "operator": "EQUALS",
+          "value": "CRITICAL"
+        },
+        {
+          "field": "businessImpact",
+          "operator": "IN",
+          "value": [
+            "CATASTROPHIC",
+            "SIGNIFICANT"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "type": "SET_PRIORITY",
+          "payload": {
+            "priority": "P1_URGENT"
+          }
+        },
+        {
+          "type": "ESCALATE_TO_CISO",
+          "payload": {
+            "notifyEmail": "elena.vance@apexbank.com"
+          }
+        },
+        {
+          "type": "ADD_INTERNAL_NOTE",
+          "payload": {
+            "note": "[AUTOMATION] Critical Tier-1 asset finding identified. 4-hour SLA remediation countdown initiated."
+          }
+        }
+      ],
+      "executionCount": 14,
+      "lastExecutedAt": "2026-08-17T02:20:00Z"
+    },
+    {
+      "id": "rule-02",
+      "name": "Auto-Assign SAST / DAST Findings to Application Owners",
+      "description": "When AppSec scanner ingests finding with designated repository, automatically assign to lead developer.",
+      "isActive": true,
+      "trigger": "TICKET_CREATED",
+      "conditions": [
+        {
+          "field": "category",
+          "operator": "EQUALS",
+          "value": "VULNERABILITY"
+        },
+        {
+          "field": "applicationId",
+          "operator": "EQUALS",
+          "value": "app-loan"
+        }
+      ],
+      "actions": [
+        {
+          "type": "ASSIGN_USER",
+          "payload": {
+            "userId": "usr-dev-lead"
+          }
+        },
+        {
+          "type": "ADD_TAG",
+          "payload": {
+            "tag": "Auto-Assigned-AppOwner"
+          }
+        }
+      ],
+      "executionCount": 28,
+      "lastExecutedAt": "2026-08-16T08:45:00Z"
+    }
+  ],
+  "queues": [
+    {
+      "id": "queue-soc-critical",
+      "name": "SOC: Critical Alerts & Active Containments",
+      "code": "SOC-CRIT",
+      "securityDomain": "SOC",
+      "description": "Unresolved high and critical security incidents under active containment.",
+      "iconName": "ShieldAlert",
+      "jqlFilter": "project = SOC AND severity IN (CRITICAL, HIGH) AND status != CLOSED",
+      "visibleColumns": [
+        "key",
+        "title",
+        "severity",
+        "status",
+        "assignee",
+        "slaRemainingMinutes",
+        "updatedAt"
+      ],
+      "slaWarningMinutes": 60,
+      "count": 1
+    },
+    {
+      "id": "queue-appsec-retest",
+      "name": "AppSec: Security Retest Queue",
+      "code": "APPSEC-RETEST",
+      "securityDomain": "APPSEC",
+      "description": "Vulnerability remediation submissions requiring AppSec verification and exploit testing.",
+      "iconName": "Code",
+      "jqlFilter": "project = APPSEC AND status = VULN_RETEST_PENDING",
+      "visibleColumns": [
+        "key",
+        "title",
+        "cvssScore",
+        "application",
+        "assignee",
+        "dueDate"
+      ],
+      "slaWarningMinutes": 240,
+      "count": 0
+    },
+    {
+      "id": "queue-vm-breach",
+      "name": "Vulnerability: SLA At Risk & Breached",
+      "code": "VM-SLA",
+      "securityDomain": "VULNERABILITY_MGMT",
+      "description": "Vulnerabilities with less than 24 hours remaining before regulatory SLA breach.",
+      "iconName": "ClockAlert",
+      "jqlFilter": "project IN (VM, APPSEC) AND slaState IN (AT_RISK, BREACHED) AND status != CLOSED",
+      "visibleColumns": [
+        "key",
+        "title",
+        "severity",
+        "application",
+        "assignee",
+        "slaRemainingMinutes",
+        "slaState"
+      ],
+      "slaWarningMinutes": 120,
+      "count": 1
+    },
+    {
+      "id": "queue-grc-approvals",
+      "name": "GRC: Pending Risk Sign-offs & Exceptions",
+      "code": "GRC-APPR",
+      "securityDomain": "GRC",
+      "description": "Security exceptions and risk acceptances pending manager or CISO executive review.",
+      "iconName": "FileCheck",
+      "jqlFilter": "project = GRC AND status IN (EXC_INFOSEC_REVIEW, EXC_CISO_APPROVAL)",
+      "visibleColumns": [
+        "key",
+        "title",
+        "inherentRisk",
+        "application",
+        "riskOwner",
+        "dueDate"
+      ],
+      "slaWarningMinutes": 480,
+      "count": 1
+    },
+    {
+      "id": "queue-dlp-high",
+      "name": "DLP: Active Insider Threat Forensics",
+      "code": "DLP-ACTIVE",
+      "securityDomain": "DLP",
+      "description": "Restricted DLP incidents involving data exfiltration and customer PII.",
+      "iconName": "Lock",
+      "jqlFilter": "project = DLP AND status != INC_CLOSED",
+      "visibleColumns": [
+        "key",
+        "title",
+        "severity",
+        "status",
+        "assignee",
+        "updatedAt"
+      ],
+      "slaWarningMinutes": 180,
+      "count": 1
+    }
+  ],
+  "kbArticles": [
+    {
+      "id": "kb-01",
+      "slug": "sql-injection-remediation-guide",
+      "title": "Bank-Wide Standard: SQL Injection Prevention & Parameterization Guide",
+      "category": "REMEDIATION_GUIDE",
+      "summary": "Mandatory coding patterns and architectural controls to eliminate SQL injection in Java Spring, .NET, and Python services across Tier-1 banking applications.",
+      "contentMarkdown": "## Overview\nAll database interactions involving user-supplied input must strictly use parameterized queries, prepared statements, or ORM criteria builders. Dynamic SQL string concatenation or string formatting is strictly forbidden.\n\n### Approved Java Spring Pattern\n```java\n// CORRECT: Parameterized Prepared Query\n@Query(\"SELECT u FROM Account u WHERE u.accountNumber = :accountNum AND u.status = :status\")\nOptional<Account> findActiveAccount(@Param(\"accountNum\") String accountNum, @Param(\"status\") AccountStatus status);\n```\n\n### Forbidden Pattern\n```java\n// VULNERABLE: Direct String Concatenation\nString query = \"SELECT * FROM accounts WHERE id = '\" + userInput + \"'\";\n```\n\n### Verification Gate\nBefore resolving an SQLi ticket, the developer must attach a clean Checkmarx SAST scan report and provide passing unit test fixtures.",
+      "associatedCwes": [
+        "CWE-89"
+      ],
+      "associatedCves": [
+        "CVE-2026-90412"
+      ],
+      "associatedDomains": [
+        "APPSEC"
+      ],
+      "authorName": "Sarah Chen",
+      "authorRole": "Principal AppSec Lead",
+      "approvedByCiso": true,
+      "version": "2.1",
+      "lastReviewedAt": "2026-07-15",
+      "tags": [
+        "CWE-89",
+        "SQLi",
+        "AppSec-Standard",
+        "PCI-DSS"
+      ],
+      "viewCount": 412
+    },
+    {
+      "id": "kb-02",
+      "slug": "ransomware-containment-sop",
+      "title": "Incident Response Playbook: Endpoint & Server Ransomware Containment (SOP-SOC-04)",
+      "category": "INCIDENT_PLAYBOOK",
+      "summary": "Step-by-step emergency procedures for isolating infected endpoints, preserving volatile memory, revoking domain tokens, and notifying the Executive Incident Team.",
+      "contentMarkdown": "## Phase 1: Immediate Network Isolation (0 - 15 Minutes)\n1. **CrowdStrike EDR Network Containment**: Trigger host isolation immediately via Falcon console.\n2. **Switch Port Shutdown**: If EDR agent is unresponsive, execute emergency Cisco Catalyst port shutdown via Network Ops.\n3. **Domain Token Revocation**: Revoke Kerberos TGT tickets and disable Active Directory computer account.\n\n## Phase 2: Volatile Memory & Forensic Artifacts (15 - 60 Minutes)\n- Capture live RAM dump via WinPmem / LiME before system reboot.\n- Export Windows Security Event Log (IDs 4624, 4625, 4688, 7045, 1102).\n\n## Phase 3: Central Bank Notification Trigger\nIf ransomware involves encrypted financial or customer databases, the CISO must notify the Central Bank Financial Cyber Directorate within 24 hours.",
+      "associatedDomains": [
+        "SOC"
+      ],
+      "authorName": "Marcus Brody",
+      "authorRole": "Head of SOC",
+      "approvedByCiso": true,
+      "version": "3.0",
+      "lastReviewedAt": "2026-08-01",
+      "tags": [
+        "SOC-Playbook",
+        "Ransomware",
+        "Containment",
+        "Forensics"
+      ],
+      "viewCount": 684
+    },
+    {
+      "id": "kb-03",
+      "slug": "security-exception-guidelines",
+      "title": "GRC Standard Operating Procedure: Requesting and Managing Security Policy Exceptions",
+      "category": "SECURITY_POLICY",
+      "summary": "Criteria, mandatory compensating controls, risk ownership thresholds, and renewal limits for bank information security policy exemptions.",
+      "contentMarkdown": "## Eligibility Criteria\nSecurity policy exceptions may only be requested when immediate remediation introduces unacceptable operational disruption to critical payment flows or when vendor dependencies prevent compliance within the standard SLA window.\n\n### Mandatory Requirements:\n1. Identified and tested **Compensating Control** that reduces residual risk score to MEDIUM or LOW.\n2. Endorsement by **Division Head / Application Owner**.\n3. Definite expiration date not exceeding **180 days**.\n4. CISO executive approval for all HIGH or CRITICAL inherent risk items.\n\n### Automatic Expiry Warnings:\nNotifications will be dispatched at 30 days, 14 days, 7 days, and 1 day prior to expiration. If not renewed or remediated, tickets will automatically return to active review.",
+      "associatedDomains": [
+        "GRC"
+      ],
+      "authorName": "David Miller",
+      "authorRole": "GRC Manager",
+      "approvedByCiso": true,
+      "version": "1.4",
+      "lastReviewedAt": "2026-06-20",
+      "tags": [
+        "GRC",
+        "Security-Exception",
+        "Risk-Acceptance",
+        "Policy"
+      ],
+      "viewCount": 320
+    }
+  ],
+  "savedFilters": [
+    {
+      "id": "flt-01",
+      "name": "My Active Assigned Tickets",
+      "jql": "assignee = currentUser() AND status != CLOSED",
+      "userId": "usr-appsec-lead",
+      "isGlobal": true
+    },
+    {
+      "id": "flt-02",
+      "name": "All Critical Unresolved Bank Vulnerabilities",
+      "jql": "severity = CRITICAL AND status != CLOSED",
+      "userId": "usr-ciso",
+      "isGlobal": true
+    },
+    {
+      "id": "flt-03",
+      "name": "Pending GRC Approvals (My Action Required)",
+      "jql": "category IN (SECURITY_EXCEPTION, RISK_ACCEPTANCE) AND status IN (EXC_INFOSEC_REVIEW, EXC_CISO_APPROVAL)",
+      "userId": "usr-grc-mgr",
+      "isGlobal": true
+    }
+  ]
+}
