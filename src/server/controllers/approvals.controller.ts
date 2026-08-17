@@ -13,7 +13,8 @@ export class ApprovalsController {
 
   public static submitDecision(req: AuthenticatedRequest, res: Response): void {
     const user = req.user!;
-    const { chainId, stepId } = req.params;
+    const chainId = req.params.chainId as string;
+    const stepId = req.params.stepId as string;
     const { decision, comments, delegatedToUserId } = req.body;
 
     const result = ApprovalService.submitDecision({
@@ -24,6 +25,7 @@ export class ApprovalsController {
       comments,
       delegatedToUserId,
     });
+
 
     if (!result.success) {
       res.status(400).json(result);

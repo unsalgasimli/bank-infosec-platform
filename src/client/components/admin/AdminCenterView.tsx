@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext.js';
-import { Settings, Users, Workflow, Clock, Zap, ShieldAlert, FileText, ArrowRight } from 'lucide-react';
+import { Settings, Users, Workflow, Clock, Zap, FileText, ArrowRight } from 'lucide-react';
 import { Badge } from '../common/Badge.js';
 import { AuditEvent } from '../../../shared/types/audit.js';
 
@@ -21,30 +21,30 @@ export const AdminCenterView: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-bank-950">
-      <div className="bg-bank-900 border border-slate-800 rounded-xl p-5 flex items-center justify-between">
+    <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-bank-950">
+      <div className="bg-bank-900 border border-slate-800 rounded-lg p-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-3 rounded-lg bg-blue-950 text-blue-400 border border-blue-800">
-            <Settings className="w-6 h-6" />
+          <div className="p-2.5 rounded bg-bank-950 text-blue-400 border border-slate-800">
+            <Settings className="w-5 h-5" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-white tracking-tight">
-              Bank Administration & System Audit Log
+              Administration & System Audit Log
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">
-              Enterprise configuration, RBAC directory, workflow state machines, automation rules, and tamper-resistant audit records.
+              Enterprise configuration, RBAC directory, workflow state machines, automation rules, and audit records.
             </p>
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-slate-800 flex items-center gap-6 text-xs font-bold uppercase tracking-wider">
+      <div className="border-b border-slate-800 flex items-center gap-6 text-xs font-semibold uppercase tracking-wider">
         {[
-          { id: 'AUDIT', label: 'Complete Audit Log Trail', icon: FileText },
-          { id: 'USERS', label: 'Bank User & Role Directory', icon: Users },
-          { id: 'WORKFLOWS', label: 'Workflows & State Machines', icon: Workflow },
-          { id: 'SLA', label: 'SLA Banking Policies', icon: Clock },
+          { id: 'AUDIT', label: 'System Audit Log', icon: FileText },
+          { id: 'USERS', label: 'User & Role Directory', icon: Users },
+          { id: 'WORKFLOWS', label: 'Workflows & States', icon: Workflow },
+          { id: 'SLA', label: 'SLA Policies', icon: Clock },
           { id: 'AUTOMATION', label: 'Automation Rules', icon: Zap },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -52,16 +52,16 @@ export const AdminCenterView: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`pb-3 flex items-center gap-2 transition-colors relative ${
+              className={`pb-2.5 flex items-center gap-1.5 transition-colors relative ${
                 activeTab === tab.id
-                  ? 'text-blue-400 font-extrabold'
+                  ? 'text-blue-400 font-bold'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              <Icon className="w-4 h-4" />
+              <Icon className="w-3.5 h-3.5" />
               <span>{tab.label}</span>
               {activeTab === tab.id && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full" />
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
               )}
             </button>
           );
@@ -70,25 +70,25 @@ export const AdminCenterView: React.FC = () => {
 
       {/* Audit Log Tab */}
       {activeTab === 'AUDIT' && (
-        <div className="bg-bank-900 border border-slate-800 rounded-xl p-5 space-y-4">
+        <div className="bg-bank-900 border border-slate-800 rounded-lg p-5 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-              Immutable System Audit Log ({auditEvents.length} Recent Records)
+            <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+              Audit Log ({auditEvents.length} Recent Records)
             </h3>
-            <span className="text-xs text-slate-400 font-mono">SHA-256 Tamper Sealed</span>
+            <span className="text-[11px] text-slate-400 font-mono">Append-Only Verified</span>
           </div>
 
           <div className="divide-y divide-slate-800 text-xs font-mono">
             {auditEvents.map((evt) => (
-              <div key={evt.id} className="py-3 space-y-1 hover:bg-slate-800/30 px-2 rounded transition-colors">
+              <div key={evt.id} className="py-2.5 space-y-1 hover:bg-slate-800/30 px-2 rounded transition-colors">
                 <div className="flex items-center justify-between font-sans">
                   <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 font-mono text-[10px] font-bold">
+                    <span className="px-1.5 py-0.2 rounded bg-slate-850 text-blue-300 font-mono text-[10px] font-semibold border border-slate-700">
                       {evt.action}
                     </span>
-                    <span className="font-bold text-white">{evt.actorName}</span>
-                    <span className="text-slate-500">({evt.actorRole})</span>
-                    {evt.entityKey && <span className="font-mono text-navy-300 font-bold">[{evt.entityKey}]</span>}
+                    <span className="font-semibold text-white">{evt.actorName}</span>
+                    <span className="text-slate-500 text-[11px]">({evt.actorRole})</span>
+                    {evt.entityKey && <span className="font-mono text-blue-400 font-semibold">[{evt.entityKey}]</span>}
                   </div>
                   <span className="text-slate-400 text-[11px]">
                     {new Date(evt.timestamp).toLocaleString()}
@@ -96,13 +96,13 @@ export const AdminCenterView: React.FC = () => {
                 </div>
 
                 {evt.fieldChanges && evt.fieldChanges.length > 0 && (
-                  <div className="text-[11px] text-slate-300 pl-4 space-y-0.5">
+                  <div className="text-[11px] text-slate-300 pl-3 space-y-0.5">
                     {evt.fieldChanges.map((ch, i) => (
                       <div key={i} className="flex items-center gap-2">
                         <span className="text-slate-400">{ch.field}:</span>
                         <span className="text-red-400 line-through">{String(ch.oldValue || 'none')}</span>
                         <ArrowRight className="w-3 h-3 text-slate-600" />
-                        <span className="text-emerald-400 font-bold">{String(ch.newValue)}</span>
+                        <span className="text-emerald-400 font-semibold">{String(ch.newValue)}</span>
                       </div>
                     ))}
                   </div>
@@ -116,35 +116,35 @@ export const AdminCenterView: React.FC = () => {
 
       {/* Users Tab */}
       {activeTab === 'USERS' && (
-        <div className="bg-bank-900 border border-slate-800 rounded-xl overflow-hidden shadow-md">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-bank-950 border-b border-slate-800 text-slate-400 uppercase font-bold text-[10px] tracking-wider">
+        <div className="bg-bank-900 border border-slate-800 rounded-lg overflow-hidden">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead className="bg-bank-950 border-b border-slate-800 text-slate-400 uppercase font-semibold text-[10px] tracking-wider">
               <tr>
-                <th className="px-4 py-3">Employee Name</th>
-                <th className="px-3 py-3">Roles</th>
-                <th className="px-3 py-3">Department</th>
-                <th className="px-3 py-3">Clearance</th>
-                <th className="px-3 py-3">Status</th>
+                <th className="px-4 py-2.5">Employee Name</th>
+                <th className="px-3 py-2.5">Roles</th>
+                <th className="px-3 py-2.5">Department</th>
+                <th className="px-3 py-2.5">Clearance</th>
+                <th className="px-3 py-2.5">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
               {allUsers.map((u) => (
                 <tr key={u.id} className="hover:bg-slate-800/40">
-                  <td className="px-4 py-3 font-semibold text-white">
+                  <td className="px-4 py-2.5 font-semibold text-white">
                     <div>{u.fullName}</div>
                     <div className="text-[11px] text-slate-400 font-normal">{u.email}</div>
                   </td>
-                  <td className="px-3 py-3">
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-blue-300 font-mono text-[10px] font-bold">
+                  <td className="px-3 py-2.5">
+                    <span className="px-1.5 py-0.5 rounded bg-slate-850 text-blue-300 font-mono text-[10px] border border-slate-700">
                       {u.roles.join(', ')}
                     </span>
                   </td>
-                  <td className="px-3 py-3 text-slate-300">{u.departmentId}</td>
-                  <td className="px-3 py-3">
+                  <td className="px-3 py-2.5 text-slate-300">{u.departmentId}</td>
+                  <td className="px-3 py-2.5">
                     <Badge type="CONFIDENTIALITY" value={u.securityClearance} size="sm" />
                   </td>
-                  <td className="px-3 py-3">
-                    <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-mono">
+                  <td className="px-3 py-2.5">
+                    <span className="px-2 py-0.5 rounded bg-bank-950 text-emerald-400 border border-emerald-900 text-[10px] font-mono">
                       ACTIVE
                     </span>
                   </td>
@@ -157,18 +157,18 @@ export const AdminCenterView: React.FC = () => {
 
       {/* Workflows Tab */}
       {activeTab === 'WORKFLOWS' && adminData && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {adminData.workflows?.map((wf: any) => (
-            <div key={wf.id} className="bg-bank-900 border border-slate-800 rounded-xl p-5 space-y-3">
+            <div key={wf.id} className="bg-bank-900 border border-slate-800 rounded-lg p-4 space-y-2.5">
               <div className="flex items-center justify-between">
-                <h3 className="font-bold text-white text-sm">{wf.name}</h3>
-                <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 font-mono text-xs">v{wf.version}</span>
+                <h3 className="font-semibold text-white text-xs">{wf.name}</h3>
+                <span className="px-1.5 py-0.2 rounded bg-bank-950 text-blue-300 font-mono text-[10px] border border-slate-750">v{wf.version}</span>
               </div>
-              <p className="text-xs text-slate-400">{wf.description}</p>
-              <div className="flex flex-wrap gap-2 pt-2">
+              <p className="text-[11px] text-slate-400">{wf.description}</p>
+              <div className="flex flex-wrap gap-1.5 pt-1">
                 {wf.states.map((s: any) => (
-                  <div key={s.id} className="px-2.5 py-1 rounded bg-bank-950 border border-slate-700 text-xs font-mono flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                  <div key={s.id} className="px-2 py-0.5 rounded bg-bank-950 border border-slate-700 text-xs font-mono flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: s.color }} />
                     <span className="text-slate-200">{s.name}</span>
                   </div>
                 ))}
@@ -180,22 +180,22 @@ export const AdminCenterView: React.FC = () => {
 
       {/* SLA Policies Tab */}
       {activeTab === 'SLA' && adminData && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {adminData.slaPolicies?.map((sla: any) => (
-            <div key={sla.id} className="bg-bank-900 border border-slate-800 rounded-xl p-5 space-y-3">
+            <div key={sla.id} className="bg-bank-900 border border-slate-800 rounded-lg p-4 space-y-2.5">
               <div className="flex items-center justify-between">
-                <h3 className="font-bold text-white text-sm">{sla.name}</h3>
-                <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-xs font-mono font-bold">
+                <h3 className="font-semibold text-white text-xs">{sla.name}</h3>
+                <span className="px-2 py-0.5 rounded bg-bank-950 text-emerald-400 border border-emerald-900 text-[10px] font-mono">
                   {sla.isDefault ? 'DEFAULT' : 'CONFIGURED'}
                 </span>
               </div>
-              <p className="text-xs text-slate-400">{sla.description}</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 text-xs">
+              <p className="text-[11px] text-slate-400">{sla.description}</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 pt-1 text-xs">
                 {Object.entries(sla.thresholds || {}).map(([sev, th]: [string, any]) => (
-                  <div key={sev} className="p-2.5 bg-bank-950 rounded-lg border border-slate-800">
-                    <div className="font-bold text-white">{sev}</div>
-                    <div className="text-slate-400 text-[11px] mt-1">Ack: {th.acknowledgmentMinutes}m</div>
-                    <div className="text-amber-400 text-[11px] font-bold">Remediate: {Math.round(th.remediationMinutes / 60)}h</div>
+                  <div key={sev} className="p-2 bg-bank-950 rounded border border-slate-800">
+                    <div className="font-semibold text-white">{sev}</div>
+                    <div className="text-slate-400 text-[11px] mt-0.5">Ack: {th.acknowledgmentMinutes}m</div>
+                    <div className="text-amber-300 text-[11px] font-semibold">Remediate: {Math.round(th.remediationMinutes / 60)}h</div>
                   </div>
                 ))}
               </div>
@@ -206,19 +206,19 @@ export const AdminCenterView: React.FC = () => {
 
       {/* Automation Rules Tab */}
       {activeTab === 'AUTOMATION' && adminData && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {adminData.automationRules?.map((rule: any) => (
-            <div key={rule.id} className="bg-bank-900 border border-slate-800 rounded-xl p-5 space-y-3">
+            <div key={rule.id} className="bg-bank-900 border border-slate-800 rounded-lg p-4 space-y-2.5">
               <div className="flex items-center justify-between">
-                <h3 className="font-bold text-white text-sm">{rule.name}</h3>
-                <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 text-xs font-mono font-bold">
+                <h3 className="font-semibold text-white text-xs">{rule.name}</h3>
+                <span className="px-2 py-0.5 rounded bg-bank-950 text-blue-300 border border-slate-700 text-[10px] font-mono">
                   Executed {rule.executionCount} Times
                 </span>
               </div>
-              <p className="text-xs text-slate-400">{rule.description}</p>
-              <div className="p-3 bg-bank-950 rounded-lg border border-slate-800 text-xs font-mono text-slate-300 space-y-1">
+              <p className="text-[11px] text-slate-400">{rule.description}</p>
+              <div className="p-2.5 bg-bank-950 rounded border border-slate-800 text-xs font-mono text-slate-300 space-y-1">
                 <div>TRIGGER: <strong className="text-blue-400">{rule.trigger}</strong></div>
-                <div>CONDITIONS: <span className="text-amber-400">{JSON.stringify(rule.conditions)}</span></div>
+                <div>CONDITIONS: <span className="text-amber-300">{JSON.stringify(rule.conditions)}</span></div>
                 <div>ACTIONS: <span className="text-emerald-400">{JSON.stringify(rule.actions)}</span></div>
               </div>
             </div>
@@ -228,3 +228,4 @@ export const AdminCenterView: React.FC = () => {
     </div>
   );
 };
+

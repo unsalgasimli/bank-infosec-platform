@@ -11,7 +11,7 @@
     "build:client": "vite build",
     "build:server": "tsc -p tsconfig.server.json",
     "build": "npm run build:client && npm run build:server",
-    "test": "node --test dist/tests/**/*.test.js || tsx --test src/tests/**/*.test.ts",
+    "test": "tsx --test src/tests/**/*.test.ts",
     "start": "node dist/server/index.js"
   },
   "dependencies": {

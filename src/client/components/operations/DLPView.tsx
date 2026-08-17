@@ -19,11 +19,11 @@ export const DLPView: React.FC<DLPViewProps> = ({ tickets, onSelectTicket }) => 
   );
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-bank-950">
-      <div className="bg-bank-900 border border-purple-900/60 rounded-xl p-5 flex items-center justify-between">
+    <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-bank-950">
+      <div className="bg-bank-900 border border-slate-800 rounded-lg p-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-3 rounded-lg bg-purple-950 text-purple-400 border border-purple-800">
-            <Lock className="w-6 h-6" />
+          <div className="p-2.5 rounded bg-bank-950 text-purple-400 border border-slate-800">
+            <Lock className="w-5 h-5" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-white tracking-tight">
@@ -38,9 +38,9 @@ export const DLPView: React.FC<DLPViewProps> = ({ tickets, onSelectTicket }) => 
       </div>
 
       {!canViewDLP ? (
-        <div className="p-12 text-center bg-bank-900 border border-red-900/60 rounded-xl space-y-3">
-          <UserX className="w-12 h-12 text-red-400 mx-auto" />
-          <h3 className="text-base font-bold text-white">Access Restricted by Bank ABAC Policy</h3>
+        <div className="p-10 text-center bg-bank-900 border border-red-900/60 rounded-lg space-y-3">
+          <UserX className="w-10 h-10 text-red-400 mx-auto" />
+          <h3 className="text-sm font-bold text-white">Access Restricted by ABAC Policy</h3>
           <p className="text-xs text-slate-400 max-w-md mx-auto">
             You do not have the required <strong>DLP_ANALYST</strong> or <strong>CISO</strong> role clearance to view confidential employee data investigations. Switch personas from the top bar to test authorized access.
           </p>
@@ -51,18 +51,18 @@ export const DLPView: React.FC<DLPViewProps> = ({ tickets, onSelectTicket }) => 
             <div
               key={t.id}
               onClick={() => onSelectTicket(t)}
-              className="p-5 bg-bank-900 border border-purple-900/50 hover:border-purple-500 rounded-xl cursor-pointer transition-all space-y-3 shadow-md"
+              className="p-4 bg-bank-900 border border-slate-800 hover:border-slate-700 rounded-lg cursor-pointer transition-colors space-y-2.5"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Badge type="PROJECT" value={t.projectCode} />
-                  <span className="font-mono font-bold text-white">{t.key}</span>
+                  <span className="font-mono font-semibold text-white text-xs">{t.key}</span>
                   <Badge type="CONFIDENTIALITY" value={t.confidentiality} />
                 </div>
                 <SLARing remainingMinutes={t.slaRemainingMinutes} state={t.slaState} size="sm" />
               </div>
-              <h3 className="text-sm font-bold text-slate-100">{t.title}</h3>
-              <p className="text-xs text-slate-400 line-clamp-2">{t.description}</p>
+              <h3 className="text-xs font-semibold text-slate-100">{t.title}</h3>
+              <p className="text-[11px] text-slate-400 line-clamp-2">{t.description}</p>
             </div>
           ))}
         </div>
@@ -70,3 +70,4 @@ export const DLPView: React.FC<DLPViewProps> = ({ tickets, onSelectTicket }) => 
     </div>
   );
 };
+

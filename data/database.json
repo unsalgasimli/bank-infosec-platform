@@ -1470,7 +1470,7 @@
       "slaPolicyId": "sla-tier1-banking",
       "slaState": "SAFE",
       "slaBreachDeadline": "2026-08-17T18:00:00Z",
-      "slaRemainingMinutes": 293,
+      "slaRemainingMinutes": 257,
       "version": 4,
       "tags": [
         "OWASP-A03",
@@ -1572,7 +1572,7 @@
       "slaPolicyId": "sla-tier1-banking",
       "slaState": "AT_RISK",
       "slaBreachDeadline": "2026-08-17T14:20:00Z",
-      "slaRemainingMinutes": 73,
+      "slaRemainingMinutes": 40,
       "version": 6,
       "tags": [
         "SIEM-Alert",
@@ -1648,7 +1648,7 @@
       "slaPolicyId": "sla-tier1-banking",
       "slaState": "SAFE",
       "slaBreachDeadline": "2026-08-18T18:00:00Z",
-      "slaRemainingMinutes": 1733,
+      "slaRemainingMinutes": 1700,
       "version": 3,
       "tags": [
         "Trivy-SCA",
@@ -1713,7 +1713,7 @@
       "remediationDeadline": "2026-11-01T00:00:00Z",
       "slaPolicyId": "sla-standard-biz",
       "slaState": "SAFE",
-      "slaRemainingMinutes": 108653,
+      "slaRemainingMinutes": 108620,
       "version": 2,
       "tags": [
         "Security-Exception",
@@ -1802,8 +1802,8 @@
       "dueDate": "2026-08-17T19:15:00Z",
       "remediationDeadline": "2026-08-17T19:15:00Z",
       "slaPolicyId": "sla-tier1-banking",
-      "slaState": "SAFE",
-      "slaRemainingMinutes": 368,
+      "slaState": "AT_RISK",
+      "slaRemainingMinutes": 335,
       "version": 4,
       "tags": [
         "DLP-Forcepoint",
@@ -1902,7 +1902,7 @@
       "remediationDeadline": "2026-08-25T18:00:00Z",
       "slaPolicyId": "sla-standard-biz",
       "slaState": "SAFE",
-      "slaRemainingMinutes": 11813,
+      "slaRemainingMinutes": 11780,
       "version": 3,
       "tags": [
         "Central-Bank-Finding",
@@ -1949,7 +1949,7 @@
       "remediationDeadline": "2026-08-22T18:00:00Z",
       "slaPolicyId": "sla-standard-biz",
       "slaState": "SAFE",
-      "slaRemainingMinutes": 7493,
+      "slaRemainingMinutes": 7460,
       "version": 2,
       "tags": [
         "TPRM",
@@ -1997,7 +1997,7 @@
       "remediationDeadline": "2026-08-28T18:00:00Z",
       "slaPolicyId": "sla-standard-biz",
       "slaState": "SAFE",
-      "slaRemainingMinutes": 16133,
+      "slaRemainingMinutes": 16100,
       "version": 2,
       "tags": [
         "STRIDE",
@@ -2300,6 +2300,20 @@
     }
   ],
   "auditEvents": [
+    {
+      "id": "aud-9cbc7472-64ec-456c-8779-30a0ac320c2a",
+      "timestamp": "2026-08-17T13:43:16.709Z",
+      "actorId": "usr-dlp-analyst",
+      "actorName": "Amina Al-Mansoor",
+      "actorRole": "DLP_ANALYST",
+      "ipAddress": "10.140.12.8",
+      "userAgent": "AegisSec-Client/1.0",
+      "correlationId": "req-869a6171",
+      "action": "RESTRICTED_ACCESS_VIEWED",
+      "entityType": "TICKET",
+      "entityId": "tick-appsec-001",
+      "entityKey": "APPSEC-2026-0001"
+    },
     {
       "id": "aud-eafcb1da-dc7a-4d3c-b63f-b0dc6486421c",
       "timestamp": "2026-08-17T13:02:19.807Z",

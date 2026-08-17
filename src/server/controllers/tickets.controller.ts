@@ -253,7 +253,7 @@ export class TicketsController {
 
   public static transition(req: AuthenticatedRequest, res: Response): void {
     const user = req.user!;
-    const ticketId = req.params.id;
+    const ticketId = req.params.id as string;
     const { transitionId, comment, requiredFieldUpdates } = req.body;
 
     const result = WorkflowService.executeTransition({
@@ -263,6 +263,7 @@ export class TicketsController {
       comment,
       requiredFieldUpdates,
     });
+
 
     if (!result.success) {
       res.status(400).json(result);

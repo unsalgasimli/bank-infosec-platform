@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { KBArticle } from '../../../shared/types/kb.js';
-import { BookOpen, Search, ShieldCheck, CheckCircle2, ArrowRight, FileText } from 'lucide-react';
+import { BookOpen, Search, ShieldCheck } from 'lucide-react';
 
 interface KnowledgeBaseViewProps {
   articles: KBArticle[];
@@ -20,22 +20,22 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
   return (
     <div className="flex-1 flex h-full bg-bank-950 overflow-hidden">
       {/* Left Article List */}
-      <div className="w-96 bg-bank-900 border-r border-slate-800 flex flex-col h-full shrink-0">
-        <div className="p-4 border-b border-slate-800 space-y-3">
+      <div className="w-80 bg-bank-900 border-r border-slate-800 flex flex-col h-full shrink-0">
+        <div className="p-3.5 border-b border-slate-800 space-y-2.5">
           <div className="flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-blue-400" />
-            <h2 className="text-sm font-bold text-white uppercase tracking-wider">
-              Security Playbooks & Standards
+            <BookOpen className="w-4 h-4 text-blue-400" />
+            <h2 className="text-xs font-bold text-white uppercase tracking-wider">
+              Playbooks & Standards
             </h2>
           </div>
           <div className="relative">
-            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
+            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search playbooks, CWEs, SOPs..."
-              className="w-full bg-bank-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+              placeholder="Search playbooks, SOPs..."
+              className="w-full bg-bank-950 border border-slate-700 rounded pl-7 pr-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
             />
           </div>
         </div>
@@ -47,18 +47,18 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
               <div
                 key={art.id}
                 onClick={() => setSelectedArticle(art)}
-                className={`p-3 rounded-lg border text-xs cursor-pointer transition-all ${
+                className={`p-2.5 rounded border text-xs cursor-pointer transition-colors ${
                   isSelected
-                    ? 'bg-blue-950/60 border-blue-500 shadow text-white'
-                    : 'bg-bank-900/60 border-slate-800/80 hover:border-slate-700 text-slate-300 hover:bg-slate-800'
+                    ? 'bg-slate-800 border-blue-500 text-white font-medium'
+                    : 'bg-bank-900 border-slate-800 hover:border-slate-700 text-slate-300 hover:bg-slate-850'
                 }`}
               >
-                <div className="flex items-center justify-between text-[10px] font-mono text-blue-400 font-bold mb-1">
+                <div className="flex items-center justify-between text-[10px] font-mono text-blue-400 mb-0.5">
                   <span>{art.category.replace(/_/g, ' ')}</span>
                   <span>v{art.version}</span>
                 </div>
-                <h4 className="font-bold text-slate-100 line-clamp-2">{art.title}</h4>
-                <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">{art.summary}</p>
+                <h4 className="font-semibold text-slate-100 line-clamp-1">{art.title}</h4>
+                <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">{art.summary}</p>
               </div>
             );
           })}
@@ -66,37 +66,37 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
       </div>
 
       {/* Right Article Viewer */}
-      <div className="flex-1 overflow-y-auto p-8 space-y-6">
+      <div className="flex-1 overflow-y-auto p-6 space-y-5">
         {selectedArticle ? (
-          <div className="max-w-3xl space-y-6">
-            <div className="space-y-2 border-b border-slate-800 pb-4">
+          <div className="max-w-3xl space-y-5">
+            <div className="space-y-1.5 border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 font-mono text-xs font-bold border border-blue-800">
+                <span className="px-2 py-0.5 rounded bg-bank-950 text-blue-300 font-mono text-xs border border-slate-750 font-medium">
                   {selectedArticle.category.replace(/_/g, ' ')}
                 </span>
                 {selectedArticle.approvedByCiso && (
-                  <span className="flex items-center gap-1 text-emerald-400 text-xs font-bold font-mono">
+                  <span className="flex items-center gap-1 text-emerald-400 text-xs font-mono">
                     <ShieldCheck className="w-3.5 h-3.5" /> Approved Standard
                   </span>
                 )}
               </div>
-              <h1 className="text-2xl font-black text-white tracking-tight leading-snug">
+              <h1 className="text-xl font-bold text-white tracking-tight leading-snug">
                 {selectedArticle.title}
               </h1>
-              <div className="text-xs text-slate-400">
+              <div className="text-[11px] text-slate-400">
                 Author: <strong className="text-slate-200">{selectedArticle.authorName}</strong> ({selectedArticle.authorRole}) • Last Reviewed: {selectedArticle.lastReviewedAt}
               </div>
             </div>
 
-            <div className="p-4 bg-bank-900 border border-slate-800 rounded-xl text-xs text-slate-300 leading-relaxed font-normal whitespace-pre-wrap font-sans">
+            <div className="p-4 bg-bank-900 border border-slate-800 rounded-lg text-xs text-slate-200 leading-relaxed font-normal whitespace-pre-wrap font-sans">
               {selectedArticle.contentMarkdown}
             </div>
 
             {selectedArticle.tags && (
-              <div className="flex items-center gap-2 pt-2">
-                <span className="text-xs font-bold text-slate-400">Tags:</span>
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-xs font-semibold text-slate-400">Tags:</span>
                 {selectedArticle.tags.map((t) => (
-                  <span key={t} className="px-2 py-0.5 rounded bg-bank-900 border border-slate-700 text-slate-300 font-mono text-xs">
+                  <span key={t} className="px-2 py-0.5 rounded bg-bank-900 border border-slate-700 text-slate-300 font-mono text-[11px]">
                     #{t}
                   </span>
                 ))}
@@ -105,10 +105,11 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
           </div>
         ) : (
           <div className="text-center py-20 text-slate-500 text-xs">
-            Select a knowledge base article from the sidebar to view full playbook.
+            Select a playbook from the sidebar to view full details.
           </div>
         )}
       </div>
     </div>
   );
 };
+

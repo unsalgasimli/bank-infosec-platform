@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { TopBar } from './TopBar.js';
 import { Sidebar } from './Sidebar.js';
 import { CommandPalette } from './CommandPalette.js';
+import { Ticket } from '../../../shared/types/ticket.js';
+import { BankApplication, BankAsset } from '../../../shared/types/asset.js';
 import { TicketCreateModal } from '../tickets/TicketCreateModal.js';
-import { Ticket } from '../../shared/types/ticket.js';
-import { BankApplication, BankAsset } from '../../shared/types/asset.js';
 
 interface AppLayoutProps {
   activeView: string;

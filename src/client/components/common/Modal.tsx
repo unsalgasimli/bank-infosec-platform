@@ -45,24 +45,25 @@ export const Modal: React.FC<ModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-bank-950/80 backdrop-blur-md transition-opacity" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/60 transition-opacity" onClick={onClose} />
       <div
-        className={`relative w-full ${maxWidthClass} bg-bank-900 border border-slate-700/80 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] z-10`}
+        className={`relative w-full ${maxWidthClass} bg-bank-900 border border-slate-700 rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[90vh] z-10`}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-bank-850">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-bank-850">
           <div>
-            <h2 className="text-lg font-bold text-white tracking-tight">{title}</h2>
+            <h2 className="text-base font-bold text-white tracking-tight">{title}</h2>
             {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+            className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="p-6 overflow-y-auto flex-1">{children}</div>
+        <div className="p-5 overflow-y-auto flex-1">{children}</div>
       </div>
     </div>
   );
 };
+

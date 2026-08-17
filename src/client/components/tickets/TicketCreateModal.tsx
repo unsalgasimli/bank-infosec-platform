@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { Modal } from '../common/Modal.js';
 import { useAuth } from '../../context/AuthContext.js';
 import { BankApplication, BankAsset } from '../../../shared/types/asset.js';
-import { TicketProjectCode, TicketCategory, TechnicalSeverity, BusinessPriority, BusinessImpact, ConfidentialityTier, SecurityDomain } from '../../../shared/types/ticket.js';
+import { TicketProjectCode, TicketCategory, TechnicalSeverity, BusinessPriority, BusinessImpact } from '../../../shared/types/ticket.js';
+import { ConfidentialityTier, SecurityDomain } from '../../../shared/types/auth.js';
 import { Shield, Flame, Bug, CheckCircle2, Lock, FileCode, Server } from 'lucide-react';
+
 
 interface TicketCreateModalProps {
   isOpen: boolean;
@@ -162,14 +164,14 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Create Banking Security Ticket / Case"
-      subtitle="Contextual schema automatically dynamically configures for bank security operations."
+      title="Create Security Ticket / Case"
+      subtitle="Contextual ticket schema automatically configured for banking security operations."
       maxWidth="4xl"
     >
-      <form onSubmit={handleSubmit} className="space-y-6 text-xs">
+      <form onSubmit={handleSubmit} className="space-y-5 text-xs">
         {/* Project Selection Tabs */}
         <div>
-          <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+          <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
             Security Project & Domain
           </label>
           <div className="grid grid-cols-5 gap-2">
@@ -187,13 +189,13 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({
                   type="button"
                   key={proj.code}
                   onClick={() => handleProjectChange(proj.code as any)}
-                  className={`p-2.5 rounded-lg border flex flex-col items-center gap-1.5 transition-all ${
+                  className={`p-2 rounded-md border flex flex-col items-center gap-1 transition-colors ${
                     isSelected
-                      ? 'bg-blue-600/20 border-blue-500 text-blue-400 font-bold shadow-md'
+                      ? 'bg-slate-800 border-blue-500 text-blue-400 font-semibold'
                       : 'bg-bank-950 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className="w-3.5 h-3.5" />
                   <span className="text-[11px]">{proj.label}</span>
                 </button>
               );
@@ -204,34 +206,34 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({
         {/* Title and Description */}
         <div className="space-y-3">
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1">Ticket Summary / Title (Mandatory)</label>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">Ticket Summary / Title (Mandatory)</label>
             <input
               type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Unauthenticated BOLA parameter in Funds Transfer API"
-              className="w-full bg-bank-950 border border-slate-700/80 rounded-lg p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-medium"
+              className="w-full bg-bank-950 border border-slate-750 rounded-md p-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-medium"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1">Comprehensive Description & Findings Context</label>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">Comprehensive Description & Findings Context</label>
             <textarea
               rows={3}
               required
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Provide full technical context, reproduction steps, observed impacts, and error outputs..."
-              className="w-full bg-bank-950 border border-slate-700/80 rounded-lg p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+              placeholder="Provide technical context, reproduction steps, observed impacts, and error outputs..."
+              className="w-full bg-bank-950 border border-slate-750 rounded-md p-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
             />
           </div>
         </div>
 
         {/* Severity, Priority, Confidentiality Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-bank-950 p-3 rounded-lg border border-slate-800">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-bank-950 p-3 rounded-md border border-slate-800">
           <div>
-            <label className="block text-slate-400 text-[11px] font-bold mb-1">Technical Severity</label>
+            <label className="block text-slate-400 text-[11px] font-semibold mb-1">Technical Severity</label>
             <select
               value={technicalSeverity}
               onChange={(e) => setTechnicalSeverity(e.target.value as any)}
@@ -246,7 +248,7 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-slate-400 text-[11px] font-bold mb-1">Business Priority</label>
+            <label className="block text-slate-400 text-[11px] font-semibold mb-1">Business Priority</label>
             <select
               value={businessPriority}
               onChange={(e) => setBusinessPriority(e.target.value as any)}
@@ -260,7 +262,7 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-slate-400 text-[11px] font-bold mb-1">Confidentiality Tier</label>
+            <label className="block text-slate-400 text-[11px] font-semibold mb-1">Confidentiality Tier</label>
             <select
               value={confidentiality}
               onChange={(e) => setConfidentiality(e.target.value as any)}
@@ -274,7 +276,7 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-slate-400 text-[11px] font-bold mb-1">Assignee</label>
+            <label className="block text-slate-400 text-[11px] font-semibold mb-1">Assignee</label>
             <select
               value={assigneeId}
               onChange={(e) => setAssigneeId(e.target.value)}
@@ -292,11 +294,11 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({
         {/* Affected Application & Asset */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1">Affected Banking Application</label>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">Affected Banking Application</label>
             <select
               value={applicationId}
               onChange={(e) => setApplicationId(e.target.value)}
-              className="w-full bg-bank-950 border border-slate-700 rounded-lg p-2 text-xs text-white"
+              className="w-full bg-bank-950 border border-slate-700 rounded-md p-1.5 text-xs text-white"
             >
               <option value="">-- None / Non-Application --</option>
               {applications.map((app) => (
@@ -308,11 +310,11 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1">Affected Infrastructure Asset (CMDB)</label>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">Affected Infrastructure Asset (CMDB)</label>
             <select
               value={assetId}
               onChange={(e) => setAssetId(e.target.value)}
-              className="w-full bg-bank-950 border border-slate-700 rounded-lg p-2 text-xs text-white"
+              className="w-full bg-bank-950 border border-slate-700 rounded-md p-1.5 text-xs text-white"
             >
               <option value="">-- None / App-Only --</option>
               {assets.map((ast) => (
@@ -326,8 +328,8 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({
 
         {/* Dynamic Context Fields for Vulnerabilities */}
         {category === 'VULNERABILITY' && (
-          <div className="bg-bank-950 border border-slate-800 rounded-lg p-4 space-y-3">
-            <h4 className="text-xs font-bold text-blue-400 uppercase tracking-wider">Vulnerability Locus & CVSS</h4>
+          <div className="bg-bank-950 border border-slate-800 rounded-md p-3.5 space-y-3">
+            <h4 className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Vulnerability Details & CVSS</h4>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-[11px] text-slate-400 mb-1">CWE ID</label>
@@ -340,7 +342,7 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-[11px] text-slate-400 mb-1">CVE ID (if applicable)</label>
+                <label className="block text-[11px] text-slate-400 mb-1">CVE ID</label>
                 <input
                   type="text"
                   value={cveId}
@@ -387,13 +389,13 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-[11px] text-slate-400 mb-1">Proof of Concept (POC Payload)</label>
+              <label className="block text-[11px] text-slate-400 mb-1">Proof of Concept Payload</label>
               <textarea
                 rows={2}
                 value={proofOfConcept}
                 onChange={(e) => setProofOfConcept(e.target.value)}
                 placeholder="HTTP request or code payload demonstrating exploitability..."
-                className="w-full bg-bank-900 border border-slate-700 rounded p-2 text-xs text-emerald-400 font-mono"
+                className="w-full bg-bank-900 border border-slate-700 rounded p-2 text-xs text-slate-200 font-mono"
               />
             </div>
           </div>
@@ -401,8 +403,8 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({
 
         {/* Dynamic Context Fields for Security Exceptions */}
         {category === 'SECURITY_EXCEPTION' && (
-          <div className="bg-bank-950 border border-slate-800 rounded-lg p-4 space-y-3">
-            <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider">Security Exception Parameters</h4>
+          <div className="bg-bank-950 border border-slate-800 rounded-md p-3.5 space-y-3">
+            <h4 className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Security Exception Parameters</h4>
             <div>
               <label className="block text-[11px] text-slate-400 mb-1">Policy Control ID</label>
               <input
@@ -439,8 +441,8 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({
 
         {/* Dynamic Context Fields for SOC / DLP Incidents */}
         {(category === 'INCIDENT' || category === 'DLP_ALERT') && (
-          <div className="bg-bank-950 border border-slate-800 rounded-lg p-4 space-y-3">
-            <h4 className="text-xs font-bold text-red-400 uppercase tracking-wider">Incident Telemetry & IOCs</h4>
+          <div className="bg-bank-950 border border-slate-800 rounded-md p-3.5 space-y-3">
+            <h4 className="text-xs font-semibold text-red-400 uppercase tracking-wider">Incident Telemetry & IOCs</h4>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] text-slate-400 mb-1">Incident Type</label>
@@ -483,23 +485,24 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({
         )}
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+        <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition-colors"
+            className="px-3.5 py-1.5 rounded-md bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700 transition-colors"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={isSubmitting || !title.trim()}
-            className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 transition-all hover:scale-105 disabled:opacity-50"
+            className="px-4 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
           >
-            {isSubmitting ? 'Creating Case...' : 'Create Security Ticket'}
+            {isSubmitting ? 'Creating Case...' : 'Create Ticket'}
           </button>
         </div>
       </form>
     </Modal>
   );
 };
+

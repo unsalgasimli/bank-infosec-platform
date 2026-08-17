@@ -24,7 +24,6 @@ import {
   Shield,
   Layers,
   ArrowRight,
-  Sparkles,
   ExternalLink,
 } from 'lucide-react';
 
@@ -92,17 +91,17 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
   return (
     <div className="flex-1 flex flex-col h-full bg-bank-950 overflow-hidden">
       {/* Top Action Header */}
-      <div className="bg-bank-900 border-b border-slate-800 px-6 py-3 flex items-center justify-between z-10 shrink-0">
+      <div className="bg-bank-900 border-b border-slate-800 px-6 py-2.5 flex items-center justify-between z-10 shrink-0">
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
-            className="p-1.5 rounded-lg bg-bank-950 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-colors"
+            className="p-1 rounded bg-bank-950 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-700 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div className="flex items-center gap-2">
             <Badge type="PROJECT" value={ticket.projectCode} />
-            <span className="text-base font-mono font-bold text-white tracking-tight">{ticket.key}</span>
+            <span className="text-sm font-mono font-bold text-white">{ticket.key}</span>
             <Badge type="CONFIDENTIALITY" value={ticket.confidentiality} />
           </div>
         </div>
@@ -113,7 +112,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
             <button
               key={trans.id}
               onClick={() => handleTransitionClick(trans)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-700 to-navy-600 hover:from-blue-600 hover:to-navy-500 text-white text-xs font-bold shadow-md border border-blue-500/30 transition-all hover:scale-105 active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm border border-blue-500/40 transition-colors"
             >
               <span>{trans.name}</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -125,29 +124,29 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
       {/* Main Split Layout */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Scrollable Area */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {/* Ticket Title & Status Header */}
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="px-2.5 py-1 rounded bg-blue-950/80 text-blue-300 border border-blue-800 text-xs font-bold font-mono">
+              <span className="px-2.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700 text-xs font-medium font-mono">
                 {ticket.statusName}
               </span>
               <Badge type="SEVERITY" value={ticket.technicalSeverity} />
               <Badge type="PRIORITY" value={ticket.businessPriority} />
               {ticket.cvssScore && (
-                <span className="px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800 text-xs font-mono font-bold">
+                <span className="px-2 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-700 text-xs font-mono font-semibold">
                   CVSS {ticket.cvssScore}
                 </span>
               )}
             </div>
 
-            <h1 className="text-xl font-bold text-white tracking-tight leading-snug">
+            <h1 className="text-lg font-bold text-white tracking-tight leading-snug">
               {ticket.title}
             </h1>
           </div>
 
           {/* Tab Navigation */}
-          <div className="border-b border-slate-800 flex items-center gap-6 text-xs font-bold uppercase tracking-wider">
+          <div className="border-b border-slate-800 flex items-center gap-6 text-xs font-semibold uppercase tracking-wider">
             {[
               { id: 'OVERVIEW', label: 'Overview & Technical Details' },
               { id: 'ACTIVITY', label: 'Activity Timeline' },
@@ -159,15 +158,15 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`pb-3 transition-colors relative ${
+                className={`pb-2.5 transition-colors relative ${
                   activeTab === tab.id
-                    ? 'text-blue-400 font-extrabold'
+                    ? 'text-blue-400 font-bold'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 {tab.label}
                 {activeTab === tab.id && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full" />
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
                 )}
               </button>
             ))}
@@ -210,7 +209,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
         </div>
 
         {/* Right Info Sidebar Panel */}
-        <div className="w-80 bg-bank-900 border-l border-slate-800 overflow-y-auto p-5 space-y-6 shrink-0 text-xs">
+        <div className="w-80 bg-bank-900 border-l border-slate-800 overflow-y-auto p-5 space-y-5 shrink-0 text-xs">
           {/* SLA Card */}
           <SLARing
             remainingMinutes={ticket.slaRemainingMinutes}
@@ -220,18 +219,18 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
           />
 
           {/* People / Ownership Section */}
-          <div className="space-y-3">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-1.5">
+          <div className="space-y-2.5">
+            <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-1">
               People & Ownership
             </h4>
 
             {/* Assignee */}
             <div className="flex items-center justify-between">
               <span className="text-slate-400">Assignee:</span>
-              <div className="flex items-center gap-1.5 font-bold text-slate-200">
+              <div className="flex items-center gap-1.5 font-medium text-slate-200">
                 {assignee ? (
                   <>
-                    <User className="w-3.5 h-3.5 text-blue-400" />
+                    <User className="w-3.5 h-3.5 text-slate-400" />
                     <span>{assignee.fullName}</span>
                   </>
                 ) : (
@@ -243,7 +242,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
             {/* Security Owner */}
             <div className="flex items-center justify-between">
               <span className="text-slate-400">Security Lead:</span>
-              <span className="font-bold text-slate-200">{securityOwner?.fullName || 'InfoSec Pool'}</span>
+              <span className="font-medium text-slate-200">{securityOwner?.fullName || 'InfoSec Pool'}</span>
             </div>
 
             {/* Reporter */}
@@ -254,8 +253,8 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
           </div>
 
           {/* Risk Metrics Section */}
-          <div className="space-y-3">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-1.5">
+          <div className="space-y-2.5">
+            <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-1">
               Risk & Severity Ratings
             </h4>
 
@@ -270,9 +269,9 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-slate-400">Calculated Risk Score:</span>
+              <span className="text-slate-400">Calculated Risk:</span>
               <div className="flex items-center gap-2">
-                <div className="w-16 h-2 bg-bank-950 rounded-full overflow-hidden border border-slate-700">
+                <div className="w-16 h-1.5 bg-bank-950 rounded-full overflow-hidden border border-slate-700">
                   <div
                     className={`h-full ${
                       ticket.riskScore >= 80 ? 'bg-red-500' : ticket.riskScore >= 50 ? 'bg-amber-500' : 'bg-blue-500'
@@ -286,9 +285,9 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
           </div>
 
           {/* Dates & SLA Milestones */}
-          <div className="space-y-3">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-1.5">
-              Dates & Banking Deadlines
+          <div className="space-y-2.5">
+            <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-1">
+              Dates & Deadlines
             </h4>
 
             <div className="flex items-center justify-between text-[11px]">
@@ -298,7 +297,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
 
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-slate-400">Remediation SLA:</span>
-              <span className="font-mono text-amber-300 font-bold">{new Date(ticket.remediationDeadline).toLocaleDateString()}</span>
+              <span className="font-mono text-amber-300 font-semibold">{new Date(ticket.remediationDeadline).toLocaleDateString()}</span>
             </div>
 
             <div className="flex items-center justify-between text-[11px]">
@@ -310,8 +309,8 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
           {/* Tags */}
           {ticket.tags && ticket.tags.length > 0 && (
             <div className="space-y-2">
-              <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-1.5">
-                Tags & Compliance Controls
+              <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-1">
+                Tags & Compliance
               </h4>
               <div className="flex flex-wrap gap-1.5">
                 {ticket.tags.map((tag) => (
@@ -330,24 +329,24 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
 
       {/* Transition Comment Modal */}
       {selectedTransition && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bank-950/80 backdrop-blur-md">
-          <div className="w-full max-w-md bg-bank-900 border border-slate-700 rounded-xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="w-full max-w-md bg-bank-900 border border-slate-700 rounded-lg p-5 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider">
                 Transition to: {selectedTransition.name}
               </h3>
               <button onClick={() => setSelectedTransition(null)} className="text-slate-400 hover:text-white">✕</button>
             </div>
 
             {selectedTransition.requireEvidence && (
-              <div className="p-3 bg-amber-950/40 border border-amber-800 rounded-lg text-xs text-amber-300 flex items-center gap-2">
+              <div className="p-2.5 bg-amber-950/40 border border-amber-800 rounded text-xs text-amber-300 flex items-center gap-2">
                 <Shield className="w-4 h-4 shrink-0" />
                 <span>Notice: Evidence attachments are required before submitting for retest.</span>
               </div>
             )}
 
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-300">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300">
                 Transition Justification Comment {selectedTransition.requireComment && '(Mandatory)'}
               </label>
               <textarea
@@ -356,21 +355,21 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
                 value={transitionComment}
                 onChange={(e) => setTransitionComment(e.target.value)}
                 placeholder="Enter justification for workflow state change..."
-                className="w-full bg-bank-950 border border-slate-800 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                className="w-full bg-bank-950 border border-slate-800 rounded p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
               />
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
               <button
                 onClick={() => setSelectedTransition(null)}
-                className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700"
+                className="px-3.5 py-1.5 rounded bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmTransition}
                 disabled={isTransitioning || (selectedTransition.requireComment && !transitionComment.trim())}
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md disabled:opacity-50"
+                className="px-3.5 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm disabled:opacity-50"
               >
                 {isTransitioning ? 'Transitioning...' : 'Execute Transition'}
               </button>
@@ -381,3 +380,4 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
     </div>
   );
 };
+
