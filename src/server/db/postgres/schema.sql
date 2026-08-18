@@ -360,3 +360,160 @@ CREATE TABLE IF NOT EXISTS saved_filters (
     is_global BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- ----------------------------------------------------------------------------
+-- 11. Enterprise ITSM lifecycle extensions
+-- ----------------------------------------------------------------------------
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ticket_type VARCHAR(32);
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS request_type_id VARCHAR(64);
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS request_type_name VARCHAR(128);
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS intake_channel VARCHAR(32) DEFAULT 'PORTAL';
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS resolution_code VARCHAR(32);
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS resolution_summary TEXT;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS urgency VARCHAR(16) DEFAULT 'MEDIUM';
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS requester_id VARCHAR(64) REFERENCES bank_users(id) ON DELETE RESTRICT;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS on_behalf_of_user_id VARCHAR(64) REFERENCES bank_users(id) ON DELETE SET NULL;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS assignment_group_id VARCHAR(64) REFERENCES bank_teams(id) ON DELETE SET NULL;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS owner_id VARCHAR(64) REFERENCES bank_users(id) ON DELETE SET NULL;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS participant_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS organization_id VARCHAR(64);
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS site_id VARCHAR(64);
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS affected_service_id VARCHAR(64);
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS affected_asset_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS parent_ticket_id VARCHAR(64) REFERENCES tickets(id) ON DELETE SET NULL;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS duplicate_of_ticket_id VARCHAR(64) REFERENCES tickets(id) ON DELETE SET NULL;
+
+CREATE TABLE IF NOT EXISTS ticket_relationships (
+    id VARCHAR(64) PRIMARY KEY,
+    source_ticket_id VARCHAR(64) NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    target_ticket_id VARCHAR(64) NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    relationship_type VARCHAR(32) NOT NULL,
+    note TEXT,
+    created_by_user_id VARCHAR(64) NOT NULL REFERENCES bank_users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT ticket_relationship_distinct CHECK (source_ticket_id <> target_ticket_id),
+    CONSTRAINT ticket_relationship_unique UNIQUE (source_ticket_id, target_ticket_id, relationship_type)
+);
+
+CREATE TABLE IF NOT EXISTS ticket_tasks (
+    id VARCHAR(64) PRIMARY KEY,
+    ticket_id VARCHAR(64) NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT,
+    owner_id VARCHAR(64) REFERENCES bank_users(id) ON DELETE SET NULL,
+    group_id VARCHAR(64) REFERENCES bank_teams(id) ON DELETE SET NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'TO_DO',
+    due_at TIMESTAMPTZ,
+    dependency_task_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    completion_condition TEXT,
+    created_by_user_id VARCHAR(64) NOT NULL REFERENCES bank_users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS ticket_worklogs (
+    id VARCHAR(64) PRIMARY KEY,
+    ticket_id VARCHAR(64) NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    agent_id VARCHAR(64) NOT NULL REFERENCES bank_users(id),
+    started_at TIMESTAMPTZ NOT NULL,
+    duration_minutes INTEGER NOT NULL CHECK (duration_minutes BETWEEN 1 AND 1440),
+    description TEXT NOT NULL,
+    billable BOOLEAN NOT NULL DEFAULT FALSE,
+    activity_type VARCHAR(32) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ticket_sla_instances (
+    id VARCHAR(64) PRIMARY KEY,
+    ticket_id VARCHAR(64) NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    policy_id VARCHAR(64) NOT NULL REFERENCES sla_policies(id) ON DELETE RESTRICT,
+    metric VARCHAR(32) NOT NULL,
+    target_minutes INTEGER NOT NULL CHECK (target_minutes > 0),
+    started_at TIMESTAMPTZ NOT NULL,
+    deadline_at TIMESTAMPTZ NOT NULL,
+    state VARCHAR(16) NOT NULL,
+    elapsed_minutes INTEGER NOT NULL DEFAULT 0,
+    remaining_minutes INTEGER NOT NULL,
+    paused_at TIMESTAMPTZ,
+    paused_reason TEXT,
+    accrued_paused_minutes INTEGER NOT NULL DEFAULT 0,
+    completed_at TIMESTAMPTZ,
+    breached_at TIMESTAMPTZ,
+    CONSTRAINT ticket_sla_metric_unique UNIQUE (ticket_id, metric)
+);
+
+CREATE TABLE IF NOT EXISTS ticket_satisfaction (
+    id VARCHAR(64) PRIMARY KEY,
+    ticket_id VARCHAR(64) NOT NULL UNIQUE REFERENCES tickets(id) ON DELETE CASCADE,
+    requester_id VARCHAR(64) NOT NULL REFERENCES bank_users(id),
+    score SMALLINT NOT NULL CHECK (score BETWEEN 1 AND 5),
+    comment TEXT,
+    agent_rating SMALLINT CHECK (agent_rating BETWEEN 1 AND 5),
+    resolution_quality SMALLINT CHECK (resolution_quality BETWEEN 1 AND 5),
+    speed_rating SMALLINT CHECK (speed_rating BETWEEN 1 AND 5),
+    submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ticket_ai_recommendations (
+    id VARCHAR(64) PRIMARY KEY,
+    ticket_id VARCHAR(64) NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    status VARCHAR(32) NOT NULL DEFAULT 'PENDING_REVIEW',
+    recommendation JSONB NOT NULL,
+    confidence NUMERIC(4,3) NOT NULL CHECK (confidence BETWEEN 0 AND 1),
+    engine_version VARCHAR(64) NOT NULL,
+    requires_human_confirmation BOOLEAN NOT NULL DEFAULT TRUE CHECK (requires_human_confirmation = TRUE),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    reviewed_at TIMESTAMPTZ,
+    reviewed_by_user_id VARCHAR(64) REFERENCES bank_users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_relationships_source ON ticket_relationships(source_ticket_id);
+CREATE INDEX IF NOT EXISTS idx_relationships_target ON ticket_relationships(target_ticket_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_ticket ON ticket_tasks(ticket_id, status);
+CREATE INDEX IF NOT EXISTS idx_worklogs_ticket ON ticket_worklogs(ticket_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sla_instances_ticket ON ticket_sla_instances(ticket_id, state);
+CREATE INDEX IF NOT EXISTS idx_ai_recommendations_ticket ON ticket_ai_recommendations(ticket_id, created_at DESC);
+
+-- ----------------------------------------------------------------------------
+-- 12. Backend-owned workflow template catalog and immutable launch runs
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS workflow_templates (
+    id VARCHAR(64) PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    short_name VARCHAR(128),
+    domain VARCHAR(128) NOT NULL,
+    description TEXT NOT NULL,
+    icon_name VARCHAR(64) NOT NULL,
+    project_code VARCHAR(16) NOT NULL,
+    workflow_id VARCHAR(64) NOT NULL REFERENCES workflows(id) ON DELETE RESTRICT,
+    sla_policy_id VARCHAR(64) REFERENCES sla_policies(id) ON DELETE RESTRICT,
+    owner_department_id VARCHAR(64) REFERENCES bank_departments(id) ON DELETE RESTRICT,
+    participating_department_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
+    task_definitions JSONB NOT NULL,
+    estimated_days INTEGER NOT NULL CHECK (estimated_days BETWEEN 1 AND 3650),
+    version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS workflow_runs (
+    id VARCHAR(64) PRIMARY KEY,
+    template_id VARCHAR(64) REFERENCES workflow_templates(id) ON DELETE SET NULL,
+    template_version INTEGER NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    status VARCHAR(16) NOT NULL CHECK (status IN ('COMPLETED', 'FAILED')),
+    idempotency_key VARCHAR(120),
+    parameters JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_ticket_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_by_user_id VARCHAR(64) NOT NULL REFERENCES bank_users(id) ON DELETE RESTRICT,
+    error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT workflow_run_idempotency UNIQUE (created_by_user_id, idempotency_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_workflow_templates_active ON workflow_templates(is_active, domain);
+CREATE INDEX IF NOT EXISTS idx_workflow_runs_template ON workflow_runs(template_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_workflow_runs_actor ON workflow_runs(created_by_user_id, created_at DESC);

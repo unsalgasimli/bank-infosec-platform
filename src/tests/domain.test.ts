@@ -9,8 +9,15 @@ import { SearchService } from '../server/services/search.service.js';
 import { db, DatabaseSchema } from '../server/db/database.js';
 import { BankUser } from '../shared/types/auth.js';
 import { Ticket } from '../shared/types/ticket.js';
+import fs from 'node:fs';
+import path from 'node:path';
 
 test('AegisSec BankSecOps Domain Logic & Security Test Suite', async (t) => {
+  const originalDatabase = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'data/database.json'), 'utf8')) as DatabaseSchema;
+  t.after(() => {
+    db.data = originalDatabase;
+    db.persist();
+  });
   const cisoUser: BankUser = {
     id: 'usr-ciso',
     username: 'ciso.officer',
@@ -158,7 +165,6 @@ test('AegisSec BankSecOps Domain Logic & Security Test Suite', async (t) => {
     residualRisk: 'CRITICAL',
     riskScore: 95,
     confidentiality: 'CONFIDENTIAL_SECURITY_ONLY',
-    restrictedRoleIds: [],
     restrictedUserIds: ['usr-ciso', 'usr-dlp-analyst'],
     reporterId: 'usr-dlp-analyst',
     assigneeId: 'usr-dlp-analyst',
@@ -173,7 +179,7 @@ test('AegisSec BankSecOps Domain Logic & Security Test Suite', async (t) => {
     version: 1,
   };
 
-  const testSchema: DatabaseSchema = {
+  const testSchema = {
     divisions: [],
     departments: [],
     teams: [],
@@ -263,7 +269,7 @@ test('AegisSec BankSecOps Domain Logic & Security Test Suite', async (t) => {
     queues: [],
     kbArticles: [],
     savedFilters: [],
-  };
+  } as unknown as DatabaseSchema;
 
   // Setup test database
   db.reset(testSchema);
@@ -397,25 +403,4 @@ test('AegisSec BankSecOps Domain Logic & Security Test Suite', async (t) => {
     assert.ok(results2.every((t) => t.statusCategory !== 'DONE' || t.statusId !== 'VULN_CLOSED'));
   });
 
-  // Teardown: restore clean empty database
-  db.reset({
-    divisions: [],
-    departments: [],
-    teams: [],
-    users: [],
-    workflows: [],
-    slaPolicies: [],
-    tickets: [],
-    approvals: [],
-    assets: [],
-    applications: [],
-    risks: [],
-    comments: [],
-    attachments: [],
-    auditEvents: [],
-    automationRules: [],
-    queues: [],
-    kbArticles: [],
-    savedFilters: [],
-  });
 });

@@ -23,7 +23,7 @@ export class SearchService {
     const query = jqlQuery.trim();
 
     // Fast text search if no JQL operators
-    if (!query.includes('=') && !query.includes('IN') && !query.includes('AND') && !query.includes('OR')) {
+    if (!/[=~<>]|\b(?:IN|NOT|AND|OR)\b/i.test(query)) {
       const lower = query.toLowerCase();
       return authorizedTickets.filter((t) => {
         return (
@@ -37,15 +37,24 @@ export class SearchService {
       });
     }
 
-    // Split on AND
-    const clauses = query.split(/\s+AND\s+/i);
-
     return authorizedTickets.filter((ticket) => {
-      return clauses.every((clause) => SearchService.evaluateClause(ticket, clause.trim(), user));
+      return query.split(/\s+OR\s+/i).some((group) =>
+        group.split(/\s+AND\s+/i).every((clause) => SearchService.evaluateClause(ticket, clause.trim(), user))
+      );
     });
   }
 
   private static evaluateClause(ticket: Ticket, clause: string, user: BankUser): boolean {
+    const containsMatch = clause.match(/^(\w+)\s*~\s*(.+)$/i);
+    if (containsMatch) {
+      const field = containsMatch[1].toLowerCase();
+      const expected = containsMatch[2].trim().replace(/^['"]|['"]$/g, '').toLowerCase();
+      if (field === 'text') {
+        return [ticket.key, ticket.title, ticket.description, ...ticket.tags].some((value) => value.toLowerCase().includes(expected));
+      }
+      return String(SearchService.getFieldValue(ticket, field, user) || '').toLowerCase().includes(expected);
+    }
+
     // Check IN operator: field IN (val1, val2, ...)
     const inMatch = clause.match(/^(\w+)\s+IN\s+\(([^)]+)\)$/i);
     if (inMatch) {
@@ -72,6 +81,23 @@ export class SearchService {
       const resolvedTarget = value === 'currentUser()' ? user.id : value.toLowerCase();
       const ticketVal = SearchService.getFieldValue(ticket, field, user)?.toLowerCase();
       return ticketVal !== resolvedTarget;
+    }
+
+    const comparisonMatch = clause.match(/^(\w+)\s*(>=|<=|>|<)\s*(.+)$/i);
+    if (comparisonMatch) {
+      const actual = SearchService.getFieldValue(ticket, comparisonMatch[1].toLowerCase(), user);
+      const expectedRaw = comparisonMatch[3].trim().replace(/^['"]|['"]$/g, '');
+      if (actual === undefined) return false;
+      const actualDate = Date.parse(actual);
+      const expectedDate = Date.parse(expectedRaw);
+      const [left, right] = Number.isNaN(actualDate) || Number.isNaN(expectedDate)
+        ? [Number(actual), Number(expectedRaw)]
+        : [actualDate, expectedDate];
+      if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+      if (comparisonMatch[2] === '>=') return left >= right;
+      if (comparisonMatch[2] === '<=') return left <= right;
+      if (comparisonMatch[2] === '>') return left > right;
+      return left < right;
     }
 
     // Check = operator: field = value
@@ -134,12 +160,28 @@ export class SearchService {
         return ticket.assetId;
       case 'slastate':
         return ticket.slaState;
+      case 'created':
+      case 'createdat':
+        return ticket.createdAt;
+      case 'updated':
+      case 'updatedat':
+        return ticket.updatedAt;
+      case 'due':
+      case 'duedate':
+        return ticket.dueDate;
+      case 'resolution':
+      case 'resolutioncode':
+        return ticket.resolutionCode;
+      case 'requester':
+      case 'requesterid':
+        return ticket.requesterId || ticket.reporterId;
       case 'cve':
         return ticket.findingDetails?.cveId;
       case 'cwe':
         return ticket.findingDetails?.cweId;
       default:
-        return (ticket as any)[field];
+        const value = (ticket as any)[field];
+        return value === undefined || value === null ? undefined : String(value);
     }
   }
 }

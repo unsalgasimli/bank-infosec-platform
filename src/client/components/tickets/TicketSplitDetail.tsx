@@ -15,6 +15,8 @@ import { EvidenceTab } from './tabs/EvidenceTab.js';
 import { ApprovalsTab } from './tabs/ApprovalsTab.js';
 import { AuditTab } from './tabs/AuditTab.js';
 import { ActivityTab } from './tabs/ActivityTab.js';
+import { LifecycleTab } from './tabs/LifecycleTab.js';
+import { TicketLifecycleBundle } from '../../../shared/types/itsm.js';
 import {
   ArrowLeft,
   Share2,
@@ -37,11 +39,13 @@ interface TicketSplitDetailProps {
   approvalChain?: TicketApprovalChain;
   application?: BankApplication;
   asset?: BankAsset;
+  lifecycle?: TicketLifecycleBundle;
   onBack: () => void;
-  onTransition: (transitionId: string, comment?: string) => Promise<void>;
+  onTransition: (transitionId: string, comment?: string, requiredFieldUpdates?: Record<string, any>) => Promise<void>;
   onAddComment: (content: string, visibility: CommentVisibility) => Promise<void>;
   onApprovalDecision: (stepId: string, decision: ApprovalDecision, comments: string) => Promise<void>;
   onUpdateTicket: (updates: Partial<Ticket>) => Promise<void>;
+  onRefresh: () => Promise<void> | void;
 }
 
 export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
@@ -53,24 +57,28 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
   approvalChain,
   application,
   asset,
+  lifecycle,
   onBack,
   onTransition,
   onAddComment,
   onApprovalDecision,
   onUpdateTicket,
+  onRefresh,
 }) => {
   const { allUsers, currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'ACTIVITY' | 'COMMENTS' | 'EVIDENCE' | 'APPROVALS' | 'AUDIT'>('OVERVIEW');
+  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'LIFECYCLE' | 'ACTIVITY' | 'COMMENTS' | 'EVIDENCE' | 'APPROVALS' | 'AUDIT'>('OVERVIEW');
   const [transitionComment, setTransitionComment] = useState('');
   const [selectedTransition, setSelectedTransition] = useState<WorkflowTransition | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [resolutionCode, setResolutionCode] = useState('FIXED');
+  const [resolutionSummary, setResolutionSummary] = useState('');
 
   const assignee = allUsers.find((u) => u.id === ticket.assigneeId);
   const reporter = allUsers.find((u) => u.id === ticket.reporterId);
   const securityOwner = allUsers.find((u) => u.id === ticket.securityOwnerId);
 
   const handleTransitionClick = (trans: WorkflowTransition) => {
-    if (trans.requireComment || trans.requireEvidence) {
+    if (trans.requireComment || trans.requireEvidence || (trans.requiredFields?.length || 0) > 0) {
       setSelectedTransition(trans);
     } else {
       onTransition(trans.id);
@@ -81,9 +89,13 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
     if (!selectedTransition) return;
     setIsTransitioning(true);
     try {
-      await onTransition(selectedTransition.id, transitionComment);
+      const requiredFieldUpdates: Record<string, any> = {};
+      if (selectedTransition.requiredFields?.includes('resolutionCode')) requiredFieldUpdates.resolutionCode = resolutionCode;
+      if (selectedTransition.requiredFields?.includes('resolutionSummary')) requiredFieldUpdates.resolutionSummary = resolutionSummary;
+      await onTransition(selectedTransition.id, transitionComment, requiredFieldUpdates);
       setSelectedTransition(null);
       setTransitionComment('');
+      setResolutionSummary('');
     } finally {
       setIsTransitioning(false);
     }
@@ -165,6 +177,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
           <div className="border-b border-[#DFE1E6] flex items-center gap-6 text-xs font-semibold uppercase tracking-wider">
             {[
               { id: 'OVERVIEW', label: 'Overview & Technical Details' },
+              { id: 'LIFECYCLE', label: 'Lifecycle' },
               { id: 'ACTIVITY', label: 'Activity Timeline' },
               { id: 'COMMENTS', label: `Comments (${comments.length})` },
               { id: 'EVIDENCE', label: `Evidence (${attachments.length})` },
@@ -199,6 +212,10 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
 
           {activeTab === 'ACTIVITY' && (
             <ActivityTab comments={comments} auditEvents={auditEvents} />
+          )}
+
+          {activeTab === 'LIFECYCLE' && (
+            <LifecycleTab ticket={ticket} lifecycle={lifecycle} onRefresh={onRefresh} />
           )}
 
           {activeTab === 'COMMENTS' && (
@@ -266,6 +283,17 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
               <span className="text-[#5E6C84]">Reporter:</span>
               <span className="text-[#172B4D]">{reporter?.fullName || 'Automated Scanner'}</span>
             </div>
+          </div>
+
+          {/* Risk Metrics Section */}
+          <div className="space-y-2.5">
+            <h4 className="text-[10px] font-bold uppercase tracking-wider text-[#5E6C84] border-b border-[#DFE1E6] pb-1">
+              Request classification
+            </h4>
+            <div className="flex items-center justify-between"><span className="text-[#5E6C84]">Type:</span><span className="font-medium text-[#172B4D]">{(ticket.type || ticket.category).replaceAll('_', ' ')}</span></div>
+            <div className="flex items-center justify-between"><span className="text-[#5E6C84]">Request:</span><span className="max-w-40 truncate font-medium text-[#172B4D]">{ticket.requestTypeName || ticket.ticketTypeName}</span></div>
+            <div className="flex items-center justify-between"><span className="text-[#5E6C84]">Urgency:</span><span className="font-mono font-bold text-[#172B4D]">{ticket.urgency || 'Not set'}</span></div>
+            <div className="flex items-center justify-between"><span className="text-[#5E6C84]">Channel:</span><span className="font-mono text-[#172B4D]">{ticket.intakeChannel || 'LEGACY'}</span></div>
           </div>
 
           {/* Risk Metrics Section */}
@@ -375,6 +403,30 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
               />
             </div>
 
+            {selectedTransition.requiredFields?.includes('resolutionCode') && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-[#172B4D]">Resolution code</label>
+                <select value={resolutionCode} onChange={(event) => setResolutionCode(event.target.value)} className="jira-input">
+                  {['FIXED', 'WORKAROUND', 'DUPLICATE', 'FALSE_POSITIVE', 'USER_ERROR', 'KNOWN_ISSUE', 'REJECTED', 'CANCELLED', 'NO_ACTION_REQUIRED', 'MITIGATED', 'RISK_ACCEPTED'].map((code) => (
+                    <option key={code} value={code}>{code.replaceAll('_', ' ')}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {selectedTransition.requiredFields?.includes('resolutionSummary') && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-[#172B4D]">Resolution summary</label>
+                <textarea
+                  rows={3}
+                  value={resolutionSummary}
+                  onChange={(event) => setResolutionSummary(event.target.value)}
+                  placeholder="Describe the outcome, evidence, and any remaining risk..."
+                  className="jira-input"
+                />
+              </div>
+            )}
+
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#DFE1E6]">
               <button
                 onClick={() => setSelectedTransition(null)}
@@ -384,7 +436,11 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
               </button>
               <button
                 onClick={handleConfirmTransition}
-                disabled={isTransitioning || (selectedTransition.requireComment && !transitionComment.trim())}
+                disabled={
+                  isTransitioning ||
+                  (selectedTransition.requireComment && !transitionComment.trim()) ||
+                  (selectedTransition.requiredFields?.includes('resolutionSummary') && !resolutionSummary.trim())
+                }
                 className="jira-btn-primary"
               >
                 {isTransitioning ? 'Transitioning...' : 'Execute Transition'}
@@ -396,5 +452,3 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
     </div>
   );
 };
-
-

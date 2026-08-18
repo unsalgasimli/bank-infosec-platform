@@ -33,10 +33,10 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
       const q = search.toLowerCase();
       return (
         ast.name.toLowerCase().includes(q) ||
-        ast.hostname.toLowerCase().includes(q) ||
+        ast.hostname?.toLowerCase().includes(q) ||
         (ast.ipAddress && ast.ipAddress.toLowerCase().includes(q)) ||
-        ast.cmdbId.toLowerCase().includes(q) ||
-        ast.ownerName.toLowerCase().includes(q)
+        ast.cmdbId?.toLowerCase().includes(q) ||
+        ast.ownerName?.toLowerCase().includes(q)
       );
     }
     return true;
@@ -361,5 +361,4 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
     </div>
   );
 };
-
 

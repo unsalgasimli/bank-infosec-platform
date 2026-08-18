@@ -39,7 +39,7 @@ export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSel
       return (
         r.title.toLowerCase().includes(q) ||
         r.riskCode.toLowerCase().includes(q) ||
-        r.ownerName.toLowerCase().includes(q) ||
+        r.ownerName?.toLowerCase().includes(q) ||
         r.treatmentPlan.toLowerCase().includes(q)
       );
     }
@@ -339,5 +339,4 @@ export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSel
     </div>
   );
 };
-
 

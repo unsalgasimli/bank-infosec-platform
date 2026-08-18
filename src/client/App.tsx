@@ -160,12 +160,12 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleTransition = async (transitionId: string, comment?: string) => {
+  const handleTransition = async (transitionId: string, comment?: string, requiredFieldUpdates?: Record<string, any>) => {
     if (!selectedTicketId) return;
     const res = await fetchWithAuth(`/api/tickets/${selectedTicketId}/transition`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transitionId, comment }),
+      body: JSON.stringify({ transitionId, comment, requiredFieldUpdates }),
     });
     const data = await res.json();
     if (data.success) {
@@ -291,6 +291,7 @@ export const App: React.FC = () => {
           approvalChain={ticketDetailData.approvalChain}
           application={ticketDetailData.application}
           asset={ticketDetailData.asset}
+          lifecycle={ticketDetailData.lifecycle}
           onBack={() => setSelectedTicketId(null)}
           onTransition={handleTransition}
           onAddComment={handleAddComment}
@@ -302,6 +303,12 @@ export const App: React.FC = () => {
               body: JSON.stringify(updates),
             });
             loadData();
+          }}
+          onRefresh={async () => {
+            loadData();
+            const response = await fetchWithAuth(`/api/tickets/${selectedTicketId}`);
+            const detail = await response.json();
+            if (detail.success) setTicketDetailData(detail);
           }}
         />
       ) : (

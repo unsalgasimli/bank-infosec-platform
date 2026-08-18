@@ -489,7 +489,7 @@
       "id": "wf-secops-default",
       "name": "Bank SecOps Incident & Finding Lifecycle",
       "description": "ISO 27001 & PCI-DSS standard state machine for banking security tickets",
-      "version": 1,
+      "version": 2,
       "isActive": true,
       "ticketTypeId": "SEC",
       "states": [
@@ -506,6 +506,30 @@
           "color": "#1C2B41"
         },
         {
+          "id": "WAITING_FOR_CUSTOMER",
+          "name": "Waiting for Customer",
+          "category": "IN_REVIEW",
+          "color": "#594300",
+          "isPausedSLA": true,
+          "pauseReason": "Waiting for requester information"
+        },
+        {
+          "id": "WAITING_FOR_VENDOR",
+          "name": "Waiting for Vendor",
+          "category": "IN_REVIEW",
+          "color": "#594300",
+          "isPausedSLA": true,
+          "pauseReason": "Waiting for external vendor"
+        },
+        {
+          "id": "WAITING_FOR_APPROVAL",
+          "name": "Waiting for Approval",
+          "category": "IN_REVIEW",
+          "color": "#403294",
+          "isPausedSLA": true,
+          "pauseReason": "Approval decision pending"
+        },
+        {
           "id": "UNDER_REVIEW",
           "name": "Under Review",
           "category": "IN_REVIEW",
@@ -513,9 +537,23 @@
         },
         {
           "id": "RESOLVED",
-          "name": "Resolved / Closed",
+          "name": "Resolved",
+          "category": "IN_REVIEW",
+          "color": "#164B35"
+        },
+        {
+          "id": "CLOSED",
+          "name": "Closed",
           "category": "DONE",
-          "color": "#162E25"
+          "color": "#162E25",
+          "isTerminal": true
+        },
+        {
+          "id": "CANCELLED",
+          "name": "Cancelled",
+          "category": "CANCELLED",
+          "color": "#5E6C84",
+          "isTerminal": true
         }
       ],
       "transitions": [
@@ -527,6 +565,56 @@
           "allowedRoles": [
             "SECURITY_ANALYST",
             "SOC_ANALYST",
+            "CISO"
+          ]
+        },
+        {
+          "id": "tr-wait-customer",
+          "name": "Wait for Customer",
+          "fromStateId": "IN_PROGRESS",
+          "toStateId": "WAITING_FOR_CUSTOMER",
+          "allowedRoles": [
+            "SECURITY_ANALYST",
+            "SOC_ANALYST",
+            "APPSEC_ANALYST",
+            "CISO"
+          ],
+          "requireComment": true
+        },
+        {
+          "id": "tr-wait-vendor",
+          "name": "Wait for Vendor",
+          "fromStateId": "IN_PROGRESS",
+          "toStateId": "WAITING_FOR_VENDOR",
+          "allowedRoles": [
+            "SECURITY_ANALYST",
+            "SOC_ANALYST",
+            "APPSEC_ANALYST",
+            "CISO"
+          ],
+          "requireComment": true
+        },
+        {
+          "id": "tr-resume-customer",
+          "name": "Resume Work",
+          "fromStateId": "WAITING_FOR_CUSTOMER",
+          "toStateId": "IN_PROGRESS",
+          "allowedRoles": [
+            "SECURITY_ANALYST",
+            "SOC_ANALYST",
+            "APPSEC_ANALYST",
+            "CISO"
+          ]
+        },
+        {
+          "id": "tr-resume-vendor",
+          "name": "Resume Work",
+          "fromStateId": "WAITING_FOR_VENDOR",
+          "toStateId": "IN_PROGRESS",
+          "allowedRoles": [
+            "SECURITY_ANALYST",
+            "SOC_ANALYST",
+            "APPSEC_ANALYST",
             "CISO"
           ]
         },
@@ -551,6 +639,30 @@
             "CISO",
             "TEAM_LEAD",
             "APPROVER"
+          ],
+          "requireComment": true,
+          "requiredFields": [
+            "resolutionCode",
+            "resolutionSummary"
+          ],
+          "actions": [
+            "SET_RESOLVED_AT",
+            "STOP_SLA"
+          ]
+        },
+        {
+          "id": "tr-close",
+          "name": "Close Ticket",
+          "fromStateId": "RESOLVED",
+          "toStateId": "CLOSED",
+          "allowedRoles": [
+            "CISO",
+            "TEAM_LEAD",
+            "APPROVER",
+            "REQUESTER"
+          ],
+          "actions": [
+            "SET_CLOSED_AT"
           ]
         },
         {
@@ -562,6 +674,37 @@
             "CISO",
             "TEAM_LEAD",
             "PLATFORM_ADMIN"
+          ]
+        },
+        {
+          "id": "tr-reopen-closed",
+          "name": "Reopen",
+          "fromStateId": "CLOSED",
+          "toStateId": "OPEN",
+          "allowedRoles": [
+            "CISO",
+            "TEAM_LEAD",
+            "PLATFORM_ADMIN"
+          ],
+          "actions": [
+            "CLEAR_RESOLUTION",
+            "START_SLA"
+          ]
+        },
+        {
+          "id": "tr-cancel",
+          "name": "Cancel Ticket",
+          "fromStateId": "OPEN",
+          "toStateId": "CANCELLED",
+          "allowedRoles": [
+            "CISO",
+            "TEAM_LEAD",
+            "PLATFORM_ADMIN"
+          ],
+          "requireComment": true,
+          "requiredFields": [
+            "resolutionCode",
+            "resolutionSummary"
           ]
         }
       ]
@@ -813,6 +956,527 @@
   ],
   "tickets": [
     {
+      "id": "tick-db32e7bd",
+      "key": "SEC-2026-0012",
+      "projectCode": "SEC",
+      "ticketTypeId": "VULNERABILITY",
+      "ticketTypeName": "VULNERABILITY",
+      "type": "VULNERABILITY",
+      "intakeChannel": "PORTAL",
+      "category": "VULNERABILITY",
+      "securityDomain": "APPSEC",
+      "title": "[ASDaDASDA] Step 1: AppSec SAST/DAST & Dependency Vulnerability Scan",
+      "description": "Perform static code and binary verification for SWIFT Alliance patch package.\n\nWorkflow: SWIFT Alliance Production Release & Security Validation\nContext: ASDaDASDA",
+      "statusId": "OPEN",
+      "statusName": "Open / Triage",
+      "statusCategory": "TO_DO",
+      "workflowId": "wf-secops-default",
+      "workflowVersion": 2,
+      "technicalSeverity": "HIGH",
+      "businessPriority": "P1_URGENT",
+      "businessImpact": "SIGNIFICANT",
+      "inherentRisk": "HIGH",
+      "residualRisk": "LOW",
+      "riskScore": 70,
+      "confidentiality": "RESTRICTED",
+      "restrictedUserIds": [],
+      "restrictedTeamIds": [],
+      "reporterId": "usr-ciso",
+      "requesterId": "usr-ciso",
+      "assigneeId": "usr-appsec-spec",
+      "assignedAt": "2026-08-18T14:24:25.401Z",
+      "ownerId": "usr-ciso",
+      "securityOwnerId": "usr-ciso",
+      "departmentId": "dept-secops",
+      "targetDepartmentId": "dept-secops",
+      "watcherIds": [
+        "usr-ciso",
+        "usr-appsec-spec"
+      ],
+      "customFields": [],
+      "createdAt": "2026-08-18T14:24:25.401Z",
+      "updatedAt": "2026-08-18T14:24:25.401Z",
+      "detectedAt": "2026-08-18T14:24:25.401Z",
+      "dueDate": "2026-08-20T14:24:25.401Z",
+      "remediationDeadline": "2026-08-19T14:24:25.401Z",
+      "slaPolicyId": "sla-p1-emergency",
+      "slaState": "SAFE",
+      "version": 1,
+      "tags": [
+        "APPSEC",
+        "SWIFT",
+        "SAST",
+        "WORKFLOW_RUN",
+        "BP-CROSS-SWIFT"
+      ],
+      "slaRemainingMinutes": 1440
+    },
+    {
+      "id": "tick-d48bd04f",
+      "key": "SEC-2026-0013",
+      "projectCode": "SEC",
+      "ticketTypeId": "SECURITY_REVIEW",
+      "ticketTypeName": "SECURITY REVIEW",
+      "type": "SERVICE_REQUEST",
+      "intakeChannel": "PORTAL",
+      "category": "SECURITY_REVIEW",
+      "securityDomain": "GENERAL_INFOSEC",
+      "title": "[ASDaDASDA] Step 2: IT DC1 Perimeter Firewall Rule & WAF Isolation Tuning",
+      "description": "Verify Palo Alto perimeter isolation and port 9443 bidirectional TLS restriction.\n\nWorkflow: SWIFT Alliance Production Release & Security Validation\nContext: ASDaDASDA",
+      "statusId": "OPEN",
+      "statusName": "Open / Triage",
+      "statusCategory": "TO_DO",
+      "workflowId": "wf-secops-default",
+      "workflowVersion": 2,
+      "technicalSeverity": "CRITICAL",
+      "businessPriority": "P1_URGENT",
+      "businessImpact": "SIGNIFICANT",
+      "inherentRisk": "CRITICAL",
+      "residualRisk": "LOW",
+      "riskScore": 90,
+      "confidentiality": "RESTRICTED",
+      "restrictedUserIds": [],
+      "restrictedTeamIds": [],
+      "reporterId": "usr-ciso",
+      "requesterId": "usr-ciso",
+      "assigneeId": "usr-it-lead",
+      "assignedAt": "2026-08-18T14:24:25.401Z",
+      "ownerId": "usr-ciso",
+      "securityOwnerId": "usr-ciso",
+      "departmentId": "dept-it",
+      "targetDepartmentId": "dept-it",
+      "watcherIds": [
+        "usr-ciso",
+        "usr-it-lead"
+      ],
+      "customFields": [],
+      "createdAt": "2026-08-18T14:24:25.401Z",
+      "updatedAt": "2026-08-18T14:24:25.401Z",
+      "detectedAt": "2026-08-18T14:24:25.401Z",
+      "dueDate": "2026-08-18T16:24:25.401Z",
+      "remediationDeadline": "2026-08-18T16:24:25.401Z",
+      "slaPolicyId": "sla-p1-emergency",
+      "slaState": "AT_RISK",
+      "version": 1,
+      "tags": [
+        "IT_OPS",
+        "FIREWALL",
+        "WAF",
+        "WORKFLOW_RUN",
+        "BP-CROSS-SWIFT"
+      ],
+      "slaRemainingMinutes": 120
+    },
+    {
+      "id": "tick-9c522d7b",
+      "key": "SEC-2026-0014",
+      "projectCode": "SEC",
+      "ticketTypeId": "SECURITY_REVIEW",
+      "ticketTypeName": "SECURITY REVIEW",
+      "type": "SERVICE_REQUEST",
+      "intakeChannel": "PORTAL",
+      "category": "SECURITY_REVIEW",
+      "securityDomain": "GENERAL_INFOSEC",
+      "title": "[ASDaDASDA] Step 3: Core Banking HSM Key Ceremony & Production Deployment",
+      "description": "Execute Thales HSM cryptographic key ceremony and cutover SWIFT ISO 20022 traffic.\n\nWorkflow: SWIFT Alliance Production Release & Security Validation\nContext: ASDaDASDA",
+      "statusId": "OPEN",
+      "statusName": "Open / Triage",
+      "statusCategory": "TO_DO",
+      "workflowId": "wf-secops-default",
+      "workflowVersion": 2,
+      "technicalSeverity": "CRITICAL",
+      "businessPriority": "P1_URGENT",
+      "businessImpact": "SIGNIFICANT",
+      "inherentRisk": "CRITICAL",
+      "residualRisk": "LOW",
+      "riskScore": 90,
+      "confidentiality": "RESTRICTED",
+      "restrictedUserIds": [],
+      "restrictedTeamIds": [],
+      "reporterId": "usr-ciso",
+      "requesterId": "usr-ciso",
+      "assigneeId": "usr-core-lead",
+      "assignedAt": "2026-08-18T14:24:25.401Z",
+      "ownerId": "usr-ciso",
+      "securityOwnerId": "usr-ciso",
+      "departmentId": "dept-core",
+      "targetDepartmentId": "dept-core",
+      "watcherIds": [
+        "usr-ciso",
+        "usr-core-lead"
+      ],
+      "customFields": [],
+      "createdAt": "2026-08-18T14:24:25.401Z",
+      "updatedAt": "2026-08-18T14:24:25.401Z",
+      "detectedAt": "2026-08-18T14:24:25.401Z",
+      "dueDate": "2026-08-18T16:24:25.401Z",
+      "remediationDeadline": "2026-08-18T16:24:25.401Z",
+      "slaPolicyId": "sla-p1-emergency",
+      "slaState": "AT_RISK",
+      "version": 1,
+      "tags": [
+        "CORE_BANK",
+        "HSM",
+        "SWIFT_DEPLOY",
+        "WORKFLOW_RUN",
+        "BP-CROSS-SWIFT"
+      ],
+      "slaRemainingMinutes": 120
+    },
+    {
+      "id": "tick-013f69eb",
+      "key": "SEC-2026-0011",
+      "projectCode": "SEC",
+      "ticketTypeId": "IAM_REQUEST",
+      "ticketTypeName": "IAM REQUEST",
+      "type": "SERVICE_REQUEST",
+      "intakeChannel": "PORTAL",
+      "category": "IAM_REQUEST",
+      "securityDomain": "IAM_PAM",
+      "title": "wfwefadsfas",
+      "description": "efwsadfsadfdfs sdfafsd\n\nWorkflow: saasdf",
+      "statusId": "OPEN",
+      "statusName": "Open / Triage",
+      "statusCategory": "TO_DO",
+      "workflowId": "wf-secops-default",
+      "workflowVersion": 2,
+      "technicalSeverity": "INFORMATIONAL",
+      "businessPriority": "P1_URGENT",
+      "businessImpact": "SIGNIFICANT",
+      "inherentRisk": "MEDIUM",
+      "residualRisk": "LOW",
+      "riskScore": 50,
+      "confidentiality": "RESTRICTED",
+      "restrictedUserIds": [],
+      "restrictedTeamIds": [],
+      "reporterId": "usr-ciso",
+      "requesterId": "usr-ciso",
+      "assigneeId": "usr-hr-lead",
+      "assignedAt": "2026-08-18T14:23:35.343Z",
+      "assignmentGroupId": "team-hr-ops",
+      "teamId": "team-hr-ops",
+      "ownerId": "usr-ciso",
+      "securityOwnerId": "usr-ciso",
+      "departmentId": "dept-hr",
+      "targetDepartmentId": "dept-hr",
+      "watcherIds": [
+        "usr-ciso",
+        "usr-hr-lead"
+      ],
+      "customFields": [],
+      "createdAt": "2026-08-18T14:23:35.343Z",
+      "updatedAt": "2026-08-18T14:23:35.343Z",
+      "detectedAt": "2026-08-18T14:23:35.343Z",
+      "dueDate": "2026-09-17T14:23:35.343Z",
+      "remediationDeadline": "2026-09-01T14:23:35.343Z",
+      "slaPolicyId": "sla-p1-emergency",
+      "slaState": "SAFE",
+      "version": 1,
+      "tags": [
+        "WORKFLOW_RUN",
+        "CUSTOM-404E4286-836C-46FC-8734-8B63E16A3441"
+      ],
+      "slaRemainingMinutes": 20159
+    },
+    {
+      "id": "tick-5f613b30",
+      "key": "SEC-2026-0010",
+      "projectCode": "SEC",
+      "ticketTypeId": "type-vuln",
+      "ticketTypeName": "Cyber Security Initiative",
+      "category": "SECURITY_REVIEW",
+      "securityDomain": "GRC",
+      "title": "PCI-DSS 4.0 Requirement 6.4: Automated Web Application & API Protection",
+      "description": "Deploy runtime AST sensor to detect deserialization flaws in client-facing mobile banking gateway payloads before release.\n\n*Converted from Wrike Ideate Canvas (COMPLIANCE)*",
+      "statusId": "OPEN",
+      "statusName": "Open / Triage",
+      "statusCategory": "TO_DO",
+      "workflowId": "wf-secops-default",
+      "workflowVersion": 1,
+      "technicalSeverity": "HIGH",
+      "businessPriority": "P2_HIGH",
+      "businessImpact": "SIGNIFICANT",
+      "inherentRisk": "HIGH",
+      "residualRisk": "MEDIUM",
+      "riskScore": 70,
+      "confidentiality": "RESTRICTED",
+      "restrictedUserIds": [],
+      "restrictedTeamIds": [],
+      "reporterId": "usr-it-lead",
+      "assigneeId": "usr-it-lead",
+      "securityOwnerId": "usr-it-lead",
+      "departmentId": "dept-it",
+      "watcherIds": [
+        "usr-it-lead"
+      ],
+      "tags": [
+        "PCI_DSS",
+        "APPSEC",
+        "CVE_REMEDIATION",
+        "WRIKE_IDEATE_CONVERTED"
+      ],
+      "customFields": [],
+      "createdAt": "2026-08-18T14:22:07.692Z",
+      "updatedAt": "2026-08-18T14:22:07.692Z",
+      "detectedAt": "2026-08-18T14:22:07.692Z",
+      "dueDate": "2026-08-25T14:22:07.692Z",
+      "remediationDeadline": "2026-08-21T14:22:07.692Z",
+      "slaPolicyId": "sla-tier1-banking",
+      "slaState": "SAFE",
+      "version": 1,
+      "slaRemainingMinutes": 4317
+    },
+    {
+      "id": "tick-a042de0d",
+      "key": "SUB-2026-0009",
+      "projectCode": "SEC",
+      "ticketTypeId": "SECURITY_REVIEW",
+      "ticketTypeName": "Step 4: Core Banking Operator Authorization & CISO Dual Sign-off",
+      "category": "SECURITY_REVIEW",
+      "securityDomain": "GENERAL_INFOSEC",
+      "title": "Step 4: Core Banking Operator Authorization & CISO Dual Sign-off",
+      "description": "Grant role-based Temenos T24 operator access and execute final executive 4-eyes approval.\n\n*Part of Cross-Department Workflow:* **Employee Onboarding & Security Clearance Pipeline** (CROSS-2026-0005)",
+      "statusId": "WAITING_ON_DEPENDENCY",
+      "statusName": "Pending Previous Step",
+      "statusCategory": "TO_DO",
+      "workflowId": "wf-secops-default",
+      "workflowVersion": 1,
+      "technicalSeverity": "CRITICAL",
+      "businessPriority": "P1_URGENT",
+      "businessImpact": "MODERATE",
+      "inherentRisk": "MEDIUM",
+      "residualRisk": "LOW",
+      "riskScore": 60,
+      "confidentiality": "RESTRICTED",
+      "reporterId": "usr-appsec-spec",
+      "assigneeId": "usr-core-lead",
+      "securityOwnerId": "usr-appsec-spec",
+      "departmentId": "dept-core",
+      "targetDepartmentId": "dept-core",
+      "parentTaskId": "tick-815dce34",
+      "crossDepartmentId": "cross-wf-1787062674772",
+      "departmentStepIndex": 4,
+      "watcherIds": [
+        "usr-appsec-spec",
+        "usr-core-lead"
+      ],
+      "createdAt": "2026-08-18T14:17:54.772Z",
+      "updatedAt": "2026-08-18T14:17:54.772Z",
+      "dueDate": "2026-08-22T14:17:54.773Z",
+      "remediationDeadline": "2026-08-22T14:17:54.773Z",
+      "slaPolicyId": "sla-p1-emergency",
+      "slaState": "SAFE",
+      "version": 1,
+      "tags": [
+        "CROSS_SUBTASK",
+        "CORE_BANK",
+        "CORE_BANK",
+        "T24",
+        "CISO_SIGN_OFF"
+      ],
+      "slaRemainingMinutes": 5753
+    },
+    {
+      "id": "tick-902a2698",
+      "key": "SUB-2026-0008",
+      "projectCode": "SEC",
+      "ticketTypeId": "SECURITY_REVIEW",
+      "ticketTypeName": "Step 3: Infosec PAM Access & Hardware FIDO2 YubiKey Issuance",
+      "category": "SECURITY_REVIEW",
+      "securityDomain": "GENERAL_INFOSEC",
+      "title": "Step 3: Infosec PAM Access & Hardware FIDO2 YubiKey Issuance",
+      "description": "Enroll in CyberArk PAM, issue hardware YubiKey 5C, verify MFA and assign clearance level.\n\n*Part of Cross-Department Workflow:* **Employee Onboarding & Security Clearance Pipeline** (CROSS-2026-0005)",
+      "statusId": "WAITING_ON_DEPENDENCY",
+      "statusName": "Pending Previous Step",
+      "statusCategory": "TO_DO",
+      "workflowId": "wf-secops-default",
+      "workflowVersion": 1,
+      "technicalSeverity": "HIGH",
+      "businessPriority": "P1_URGENT",
+      "businessImpact": "MODERATE",
+      "inherentRisk": "MEDIUM",
+      "residualRisk": "LOW",
+      "riskScore": 60,
+      "confidentiality": "RESTRICTED",
+      "reporterId": "usr-appsec-spec",
+      "assigneeId": "usr-soc-lead",
+      "securityOwnerId": "usr-appsec-spec",
+      "departmentId": "dept-secops",
+      "targetDepartmentId": "dept-secops",
+      "parentTaskId": "tick-815dce34",
+      "crossDepartmentId": "cross-wf-1787062674772",
+      "departmentStepIndex": 3,
+      "watcherIds": [
+        "usr-appsec-spec",
+        "usr-soc-lead"
+      ],
+      "createdAt": "2026-08-18T14:17:54.772Z",
+      "updatedAt": "2026-08-18T14:17:54.772Z",
+      "dueDate": "2026-08-21T14:17:54.773Z",
+      "remediationDeadline": "2026-08-21T14:17:54.773Z",
+      "slaPolicyId": "sla-p1-emergency",
+      "slaState": "SAFE",
+      "version": 1,
+      "tags": [
+        "CROSS_SUBTASK",
+        "INFOSEC",
+        "INFOSEC",
+        "YUBIKEY",
+        "PAM_CLEARANCE"
+      ],
+      "slaRemainingMinutes": 4313
+    },
+    {
+      "id": "tick-9778114a",
+      "key": "SUB-2026-0007",
+      "projectCode": "SEC",
+      "ticketTypeId": "IAM_REQUEST",
+      "ticketTypeName": "Step 2: IT Active Directory & Corporate Hardware Provisioning",
+      "category": "IAM_REQUEST",
+      "securityDomain": "GENERAL_INFOSEC",
+      "title": "Step 2: IT Active Directory & Corporate Hardware Provisioning",
+      "description": "Create AD account, provision corporate encrypted laptop, mailbox, and Cisco VPN certificate.\n\n*Part of Cross-Department Workflow:* **Employee Onboarding & Security Clearance Pipeline** (CROSS-2026-0005)",
+      "statusId": "WAITING_ON_DEPENDENCY",
+      "statusName": "Pending Previous Step",
+      "statusCategory": "TO_DO",
+      "workflowId": "wf-secops-default",
+      "workflowVersion": 1,
+      "technicalSeverity": "HIGH",
+      "businessPriority": "P2_HIGH",
+      "businessImpact": "MODERATE",
+      "inherentRisk": "MEDIUM",
+      "residualRisk": "LOW",
+      "riskScore": 60,
+      "confidentiality": "RESTRICTED",
+      "reporterId": "usr-appsec-spec",
+      "assigneeId": "usr-it-lead",
+      "securityOwnerId": "usr-appsec-spec",
+      "departmentId": "dept-it",
+      "targetDepartmentId": "dept-it",
+      "parentTaskId": "tick-815dce34",
+      "crossDepartmentId": "cross-wf-1787062674772",
+      "departmentStepIndex": 2,
+      "watcherIds": [
+        "usr-appsec-spec",
+        "usr-it-lead"
+      ],
+      "createdAt": "2026-08-18T14:17:54.772Z",
+      "updatedAt": "2026-08-18T14:17:54.772Z",
+      "dueDate": "2026-08-20T14:17:54.773Z",
+      "remediationDeadline": "2026-08-20T14:17:54.773Z",
+      "slaPolicyId": "sla-p1-emergency",
+      "slaState": "SAFE",
+      "version": 1,
+      "tags": [
+        "CROSS_SUBTASK",
+        "IT_OPS",
+        "IT_OPS",
+        "ACTIVE_DIRECTORY",
+        "LAPTOP"
+      ],
+      "slaRemainingMinutes": 2873
+    },
+    {
+      "id": "tick-3294632d",
+      "key": "SUB-2026-0006",
+      "projectCode": "SEC",
+      "ticketTypeId": "SECURITY_REVIEW",
+      "ticketTypeName": "Step 1: HR Background & KYC Clearance Check",
+      "category": "SECURITY_REVIEW",
+      "securityDomain": "GENERAL_INFOSEC",
+      "title": "Step 1: HR Background & KYC Clearance Check",
+      "description": "Verify identity documents, background check clearance, NDA and signed employment contract.\n\n*Part of Cross-Department Workflow:* **Employee Onboarding & Security Clearance Pipeline** (CROSS-2026-0005)",
+      "statusId": "OPEN",
+      "statusName": "Open",
+      "statusCategory": "TO_DO",
+      "workflowId": "wf-secops-default",
+      "workflowVersion": 1,
+      "technicalSeverity": "MEDIUM",
+      "businessPriority": "P2_HIGH",
+      "businessImpact": "MODERATE",
+      "inherentRisk": "MEDIUM",
+      "residualRisk": "LOW",
+      "riskScore": 60,
+      "confidentiality": "RESTRICTED",
+      "reporterId": "usr-appsec-spec",
+      "assigneeId": "usr-hr-lead",
+      "securityOwnerId": "usr-appsec-spec",
+      "departmentId": "dept-hr",
+      "targetDepartmentId": "dept-hr",
+      "parentTaskId": "tick-815dce34",
+      "crossDepartmentId": "cross-wf-1787062674772",
+      "departmentStepIndex": 1,
+      "watcherIds": [
+        "usr-appsec-spec",
+        "usr-hr-lead"
+      ],
+      "createdAt": "2026-08-18T14:17:54.772Z",
+      "updatedAt": "2026-08-18T14:17:54.772Z",
+      "dueDate": "2026-08-19T14:17:54.773Z",
+      "remediationDeadline": "2026-08-19T14:17:54.773Z",
+      "slaPolicyId": "sla-p1-emergency",
+      "slaState": "SAFE",
+      "version": 1,
+      "tags": [
+        "CROSS_SUBTASK",
+        "HR_LEGAL",
+        "HR",
+        "ONBOARDING",
+        "KYC"
+      ],
+      "slaRemainingMinutes": 1433
+    },
+    {
+      "id": "tick-815dce34",
+      "key": "CROSS-2026-0005",
+      "projectCode": "SEC",
+      "ticketTypeId": "CROSS_DEPT_WORKFLOW",
+      "ticketTypeName": "Cross-Department Orchestration",
+      "category": "SECURITY_REVIEW",
+      "securityDomain": "GENERAL_INFOSEC",
+      "title": "Employee Onboarding & Security Clearance Pipeline",
+      "description": "Enterprise Cross-Department Workflow Orchestrator. Subtasks distributed across: dept-hr, dept-it, dept-secops, dept-core.",
+      "statusId": "IN_PROGRESS",
+      "statusName": "In Progress",
+      "statusCategory": "IN_PROGRESS",
+      "workflowId": "wf-secops-default",
+      "workflowVersion": 1,
+      "technicalSeverity": "HIGH",
+      "businessPriority": "P1_URGENT",
+      "businessImpact": "SIGNIFICANT",
+      "inherentRisk": "HIGH",
+      "residualRisk": "LOW",
+      "riskScore": 75,
+      "confidentiality": "RESTRICTED",
+      "reporterId": "usr-appsec-spec",
+      "assigneeId": "usr-appsec-spec",
+      "securityOwnerId": "usr-appsec-spec",
+      "departmentId": "dept-secops",
+      "watcherIds": [
+        "usr-appsec-spec"
+      ],
+      "isCrossDepartmentParent": true,
+      "crossDepartmentId": "cross-wf-1787062674772",
+      "participatingDepartmentIds": [
+        "dept-hr",
+        "dept-it",
+        "dept-secops",
+        "dept-core"
+      ],
+      "createdAt": "2026-08-18T14:17:54.772Z",
+      "updatedAt": "2026-08-18T14:17:54.772Z",
+      "dueDate": "2026-08-25T14:17:54.773Z",
+      "remediationDeadline": "2026-08-23T14:17:54.773Z",
+      "slaPolicyId": "sla-p1-emergency",
+      "slaState": "SAFE",
+      "version": 1,
+      "tags": [
+        "CROSS_DEPARTMENT",
+        "MULTI_DEPT_PIPELINE"
+      ],
+      "slaRemainingMinutes": 7193
+    },
+    {
       "id": "tick-soc-101",
       "key": "SEC-101",
       "projectCode": "SEC",
@@ -851,9 +1515,9 @@
       ],
       "dueDate": "2026-08-19T12:56:03.106Z",
       "remediationDeadline": "2026-08-19T12:56:03.106Z",
-      "slaState": "BREACHED",
+      "slaState": "SAFE",
       "slaBreachDeadline": "2026-08-18T11:56:03.106Z",
-      "slaRemainingMinutes": -45,
+      "slaRemainingMinutes": 1351,
       "version": 1,
       "createdAt": "2026-08-18T08:56:03.106Z",
       "updatedAt": "2026-08-18T12:56:03.106Z"
@@ -897,8 +1561,8 @@
       ],
       "dueDate": "2026-08-20T12:56:03.106Z",
       "remediationDeadline": "2026-08-20T12:56:03.106Z",
-      "slaState": "AT_RISK",
-      "slaRemainingMinutes": 75,
+      "slaState": "SAFE",
+      "slaRemainingMinutes": 2791,
       "version": 1,
       "createdAt": "2026-08-18T10:56:03.106Z",
       "updatedAt": "2026-08-18T12:56:03.106Z"
@@ -942,7 +1606,7 @@
       "dueDate": "2026-08-21T12:56:03.106Z",
       "remediationDeadline": "2026-08-21T12:56:03.106Z",
       "slaState": "SAFE",
-      "slaRemainingMinutes": 320,
+      "slaRemainingMinutes": 4231,
       "version": 1,
       "createdAt": "2026-08-18T04:56:03.106Z",
       "updatedAt": "2026-08-18T12:56:03.106Z"
@@ -1060,6 +1724,203 @@
   "attachments": [],
   "auditEvents": [
     {
+      "id": "aud-405820a4-3a6c-45aa-b541-d288ae3ada76",
+      "timestamp": "2026-08-18T14:24:25.423Z",
+      "actorId": "usr-ciso",
+      "actorName": "Unsal Gasimli",
+      "actorRole": "PLATFORM_ADMIN",
+      "ipAddress": "10.140.12.8",
+      "userAgent": "AegisSec-Client/1.0",
+      "correlationId": "req-36c28955",
+      "action": "TICKET_UPDATED",
+      "entityType": "TICKET",
+      "entityId": "tick-9c522d7b",
+      "entityKey": "SEC-2026-0014",
+      "metadata": {
+        "automationRuleId": "rule-1",
+        "automationRuleName": "Auto-Escalate Critical P1 Incidents to CISO & Trigger 15-min SLA"
+      }
+    },
+    {
+      "id": "aud-3185d5bb-62c2-4bdc-875e-fd079e60868c",
+      "timestamp": "2026-08-18T14:24:25.420Z",
+      "actorId": "usr-ciso",
+      "actorName": "Unsal Gasimli",
+      "actorRole": "PLATFORM_ADMIN",
+      "ipAddress": "10.140.12.8",
+      "userAgent": "AegisSec-Client/1.0",
+      "correlationId": "req-294228be",
+      "action": "TICKET_CREATED",
+      "entityType": "TICKET",
+      "entityId": "tick-9c522d7b",
+      "entityKey": "SEC-2026-0014",
+      "metadata": {
+        "workflowRunId": "run-dd31bbb2",
+        "templateId": "bp-cross-swift",
+        "assigneeId": "usr-core-lead"
+      }
+    },
+    {
+      "id": "aud-4ce8e8de-b507-443a-b391-3cb2660830f9",
+      "timestamp": "2026-08-18T14:24:25.412Z",
+      "actorId": "usr-ciso",
+      "actorName": "Unsal Gasimli",
+      "actorRole": "PLATFORM_ADMIN",
+      "ipAddress": "10.140.12.8",
+      "userAgent": "AegisSec-Client/1.0",
+      "correlationId": "req-0e8edf71",
+      "action": "TICKET_UPDATED",
+      "entityType": "TICKET",
+      "entityId": "tick-d48bd04f",
+      "entityKey": "SEC-2026-0013",
+      "metadata": {
+        "automationRuleId": "rule-1",
+        "automationRuleName": "Auto-Escalate Critical P1 Incidents to CISO & Trigger 15-min SLA"
+      }
+    },
+    {
+      "id": "aud-99b8a472-f6a4-4dc6-8157-05bd3dd35999",
+      "timestamp": "2026-08-18T14:24:25.409Z",
+      "actorId": "usr-ciso",
+      "actorName": "Unsal Gasimli",
+      "actorRole": "PLATFORM_ADMIN",
+      "ipAddress": "10.140.12.8",
+      "userAgent": "AegisSec-Client/1.0",
+      "correlationId": "req-d55df8b1",
+      "action": "TICKET_CREATED",
+      "entityType": "TICKET",
+      "entityId": "tick-d48bd04f",
+      "entityKey": "SEC-2026-0013",
+      "metadata": {
+        "workflowRunId": "run-dd31bbb2",
+        "templateId": "bp-cross-swift",
+        "assigneeId": "usr-it-lead"
+      }
+    },
+    {
+      "id": "aud-b04b4a10-7f2b-4d06-af78-4e74d122ed21",
+      "timestamp": "2026-08-18T14:24:25.404Z",
+      "actorId": "usr-ciso",
+      "actorName": "Unsal Gasimli",
+      "actorRole": "PLATFORM_ADMIN",
+      "ipAddress": "10.140.12.8",
+      "userAgent": "AegisSec-Client/1.0",
+      "correlationId": "req-6f8bfbcc",
+      "action": "TICKET_CREATED",
+      "entityType": "TICKET",
+      "entityId": "tick-db32e7bd",
+      "entityKey": "SEC-2026-0012",
+      "metadata": {
+        "workflowRunId": "run-dd31bbb2",
+        "templateId": "bp-cross-swift",
+        "assigneeId": "usr-appsec-spec"
+      }
+    },
+    {
+      "id": "aud-898e9020-0c1a-49c8-809a-e38ff90e9f77",
+      "timestamp": "2026-08-18T14:23:35.348Z",
+      "actorId": "usr-ciso",
+      "actorName": "Unsal Gasimli",
+      "actorRole": "PLATFORM_ADMIN",
+      "ipAddress": "10.140.12.8",
+      "userAgent": "AegisSec-Client/1.0",
+      "correlationId": "req-d22d0171",
+      "action": "TICKET_CREATED",
+      "entityType": "TICKET",
+      "entityId": "tick-013f69eb",
+      "entityKey": "SEC-2026-0011",
+      "metadata": {
+        "workflowRunId": "run-229264af",
+        "templateId": "custom-404e4286-836c-46fc-8734-8b63e16a3441",
+        "assigneeId": "usr-hr-lead"
+      }
+    },
+    {
+      "id": "aud-b2283096-5e2b-4907-91f6-62dceb5e1fb1",
+      "timestamp": "2026-08-18T14:22:19.975Z",
+      "actorId": "usr-it-lead",
+      "actorName": "Murad Rustamov",
+      "actorRole": "DEPARTMENT_ADMIN",
+      "ipAddress": "10.140.12.8",
+      "userAgent": "AegisSec-Client/1.0",
+      "correlationId": "req-bc65953e",
+      "action": "TICKET_CREATED",
+      "entityType": "TICKET",
+      "entityId": "idea-1787062939972-374rb",
+      "entityKey": "idea-1787062939972-374rb",
+      "metadata": {
+        "action": "CREATED_IDEATE_NOTE",
+        "title": "ierjg[oierg",
+        "category": "GENERAL"
+      }
+    },
+    {
+      "id": "aud-194f13d1-2c6e-4125-8a22-12c88bdbac08",
+      "timestamp": "2026-08-18T14:22:07.695Z",
+      "actorId": "usr-it-lead",
+      "actorName": "Murad Rustamov",
+      "actorRole": "DEPARTMENT_ADMIN",
+      "ipAddress": "10.140.12.8",
+      "userAgent": "AegisSec-Client/1.0",
+      "correlationId": "req-99955dad",
+      "action": "TICKET_CREATED",
+      "entityType": "TICKET",
+      "entityId": "tick-5f613b30",
+      "entityKey": "SEC-2026-0010",
+      "metadata": {
+        "action": "CONVERTED_IDEATE_TO_TASK",
+        "ideaId": "idea-3",
+        "title": "PCI-DSS 4.0 Requirement 6.4: Automated Web Application & API Protection"
+      }
+    },
+    {
+      "id": "aud-95f42e0f-9631-42a4-a494-bc122ff872d6",
+      "timestamp": "2026-08-18T14:17:54.773Z",
+      "actorId": "usr-appsec-spec",
+      "actorName": "Leyla Aliyeva",
+      "actorRole": "APPSEC_ANALYST",
+      "ipAddress": "10.140.12.8",
+      "userAgent": "AegisSec-Client/1.0",
+      "correlationId": "req-da84a467",
+      "action": "TICKET_CREATED",
+      "entityType": "TICKET",
+      "entityId": "tick-815dce34",
+      "entityKey": "CROSS-2026-0005",
+      "metadata": {
+        "action": "LAUNCHED_CROSS_DEPARTMENT_WORKFLOW",
+        "title": "Employee Onboarding & Security Clearance Pipeline",
+        "subtasksCount": 4
+      }
+    },
+    {
+      "id": "aud-10cf563c-4ec4-4ffa-98bf-b73db086101e",
+      "timestamp": "2026-08-18T14:17:01.885Z",
+      "actorId": "usr-appsec-spec",
+      "actorName": "Leyla Aliyeva",
+      "actorRole": "APPSEC_ANALYST",
+      "ipAddress": "10.140.12.8",
+      "userAgent": "AegisSec-Client/1.0",
+      "correlationId": "req-9032419c",
+      "action": "RESTRICTED_ACCESS_VIEWED",
+      "entityType": "TICKET",
+      "entityId": "tick-appsec-102",
+      "entityKey": "SEC-102"
+    },
+    {
+      "id": "aud-061d97e1-28c9-490d-aae2-5a122d1276cc",
+      "timestamp": "2026-08-18T14:16:12.226Z",
+      "actorId": "usr-ciso",
+      "actorName": "Unsal Gasimli",
+      "actorRole": "PLATFORM_ADMIN",
+      "ipAddress": "10.140.12.8",
+      "userAgent": "AegisSec-Client/1.0",
+      "correlationId": "req-4fe35988",
+      "action": "RESTRICTED_ACCESS_VIEWED",
+      "entityType": "TICKET",
+      "entityId": "tick-soc-101",
+      "entityKey": "SEC-101"
+    },
+    {
       "id": "aud-01",
       "timestamp": "2026-08-18T10:56:03.106Z",
       "actorId": "usr-soc-lead",
@@ -1128,8 +1989,8 @@
           }
         }
       ],
-      "executionCount": 142,
-      "lastExecutedAt": "2026-08-18T11:56:03.107Z"
+      "executionCount": 144,
+      "lastExecutedAt": "2026-08-18T14:24:25.425Z"
     },
     {
       "id": "rule-2",
@@ -1258,7 +2119,7 @@
       "color": "amber",
       "x": 820,
       "y": 60,
-      "status": "IDEA",
+      "status": "CONVERTED",
       "priority": "P2_HIGH",
       "assignee": "Leyla Aliyeva (AppSec)",
       "tags": [
@@ -1267,28 +2128,9 @@
         "CVE_REMEDIATION"
       ],
       "createdAt": "2026-08-15T12:56:03.107Z",
-      "updatedAt": "2026-08-15T12:56:03.107Z"
-    },
-    {
-      "id": "idea-4",
-      "title": "Real-time DLP Sensor Interception on CRM Pan Number Exports",
-      "description": "Block unencrypted USB exports of debit/credit card records and route automated incident triage ticket to SOC hunting queue.",
-      "category": "INCIDENT_IR",
-      "color": "coral",
-      "x": 60,
-      "y": 340,
-      "status": "CONVERTED",
-      "convertedTicketKey": "SEC-104",
-      "convertedTicketId": "tick-dlp-104",
-      "priority": "P1_URGENT",
-      "assignee": "Elnur Mammadov (SOC Lead)",
-      "tags": [
-        "DLP",
-        "CARDHOLDER_DATA",
-        "SOC_TRIAGE"
-      ],
-      "createdAt": "2026-08-14T12:56:03.107Z",
-      "updatedAt": "2026-08-14T12:56:03.107Z"
+      "updatedAt": "2026-08-18T14:22:07.692Z",
+      "convertedTicketKey": "SEC-2026-0010",
+      "convertedTicketId": "tick-5f613b30"
     },
     {
       "id": "idea-5",
@@ -1327,6 +2169,24 @@
       ],
       "createdAt": "2026-08-12T12:56:03.107Z",
       "updatedAt": "2026-08-12T12:56:03.107Z"
+    },
+    {
+      "id": "idea-1787062939972-374rb",
+      "title": "ierjg[oierg",
+      "description": "ergergwe",
+      "category": "GENERAL",
+      "color": "blue",
+      "x": 144.64655559111955,
+      "y": 234.60613191984004,
+      "status": "IDEA",
+      "priority": "P2_HIGH",
+      "assignee": "Murad Rustamov",
+      "tags": [
+        "IDEATION",
+        "GENERAL"
+      ],
+      "createdAt": "2026-08-18T14:22:19.972Z",
+      "updatedAt": "2026-08-18T14:22:19.972Z"
     }
   ],
   "requestForms": [
@@ -1435,6 +2295,19 @@
           "type": "textarea",
           "required": true,
           "placeholder": "Explain business reason, impact if denied, IPS monitoring..."
+        },
+        {
+          "id": "urgency",
+          "label": "Urgency Tier",
+          "type": "select",
+          "required": true,
+          "options": [
+            "EMERGENCY",
+            "HIGH",
+            "MEDIUM",
+            "LOW"
+          ],
+          "defaultValue": "HIGH"
         }
       ]
     },
@@ -1629,6 +2502,21 @@
             "CISO_SIGN_OFF"
           ]
         }
+      ],
+      "shortName": "Employee Onboarding",
+      "version": 1,
+      "isActive": true,
+      "projectCode": "SEC",
+      "workflowId": "wf-secops-default",
+      "slaPolicyId": "sla-p1-emergency",
+      "parameters": [
+        {
+          "id": "subject",
+          "label": "Employee Name & Role",
+          "type": "TEXT",
+          "required": true,
+          "placeholder": "e.g. Aysel Mammadova — Treasury Analyst"
+        }
       ]
     },
     {
@@ -1704,6 +2592,21 @@
             "SWIFT_DEPLOY"
           ]
         }
+      ],
+      "shortName": "SWIFT Release Pipeline",
+      "version": 1,
+      "isActive": true,
+      "projectCode": "SEC",
+      "workflowId": "wf-secops-default",
+      "slaPolicyId": "sla-p1-emergency",
+      "parameters": [
+        {
+          "id": "subject",
+          "label": "Release / Change Reference",
+          "type": "TEXT",
+          "required": true,
+          "placeholder": "e.g. SWIFT 2026.08 production release"
+        }
       ]
     },
     {
@@ -1751,6 +2654,21 @@
             "HARDENING"
           ]
         }
+      ],
+      "shortName": "Server Provisioning",
+      "version": 1,
+      "isActive": true,
+      "projectCode": "SEC",
+      "workflowId": "wf-secops-default",
+      "slaPolicyId": "sla-p1-emergency",
+      "parameters": [
+        {
+          "id": "subject",
+          "label": "Server / Service Name",
+          "type": "TEXT",
+          "required": true,
+          "placeholder": "e.g. payments-api-prod-03"
+        }
       ]
     },
     {
@@ -1797,6 +2715,21 @@
             "CI_CD",
             "DEFECTDOJO"
           ]
+        }
+      ],
+      "shortName": "AppSec Finding Lifecycle",
+      "version": 1,
+      "isActive": true,
+      "projectCode": "APPSEC",
+      "workflowId": "wf-secops-default",
+      "slaPolicyId": "sla-p1-emergency",
+      "parameters": [
+        {
+          "id": "subject",
+          "label": "Application / Finding",
+          "type": "TEXT",
+          "required": true,
+          "placeholder": "e.g. Mobile Banking — CWE-89"
         }
       ]
     }
@@ -1853,6 +2786,36 @@
       "id": "dep-2",
       "fromTaskId": "tick-appsec-102",
       "toTaskId": "tick-exc-103",
+      "type": "FINISH_TO_START"
+    },
+    {
+      "id": "dep-cross-782760",
+      "fromTaskId": "tick-3294632d",
+      "toTaskId": "tick-9778114a",
+      "type": "FINISH_TO_START"
+    },
+    {
+      "id": "dep-cross-c5f985",
+      "fromTaskId": "tick-9778114a",
+      "toTaskId": "tick-902a2698",
+      "type": "FINISH_TO_START"
+    },
+    {
+      "id": "dep-cross-efb1a2",
+      "fromTaskId": "tick-902a2698",
+      "toTaskId": "tick-a042de0d",
+      "type": "FINISH_TO_START"
+    },
+    {
+      "id": "dep-8803af9f",
+      "fromTaskId": "tick-db32e7bd",
+      "toTaskId": "tick-d48bd04f",
+      "type": "FINISH_TO_START"
+    },
+    {
+      "id": "dep-d9cb1d0f",
+      "fromTaskId": "tick-d48bd04f",
+      "toTaskId": "tick-9c522d7b",
       "type": "FINISH_TO_START"
     }
   ],
@@ -2334,6 +3297,54 @@
   ],
   "notifications": [
     {
+      "id": "notif-a0d7d429",
+      "userId": "usr-core-lead",
+      "title": "Cross-Department Task Assigned: [Core Banking Engineering & SWIFT]",
+      "message": "You were assigned Step 4 (\"Step 4: Core Banking Operator Authorization & CISO Dual Sign-off\") under \"Employee Onboarding & Security Clearance Pipeline\".",
+      "type": "ASSIGNMENT",
+      "severity": "CRITICAL",
+      "timestamp": "2026-08-18T14:17:54.772Z",
+      "isRead": false,
+      "ticketId": "tick-a042de0d",
+      "ticketKey": "SUB-2026-0009"
+    },
+    {
+      "id": "notif-c40a0678",
+      "userId": "usr-soc-lead",
+      "title": "Cross-Department Task Assigned: [Information Security & Cyber Defense]",
+      "message": "You were assigned Step 3 (\"Step 3: Infosec PAM Access & Hardware FIDO2 YubiKey Issuance\") under \"Employee Onboarding & Security Clearance Pipeline\".",
+      "type": "ASSIGNMENT",
+      "severity": "HIGH",
+      "timestamp": "2026-08-18T14:17:54.772Z",
+      "isRead": false,
+      "ticketId": "tick-902a2698",
+      "ticketKey": "SUB-2026-0008"
+    },
+    {
+      "id": "notif-ad074da5",
+      "userId": "usr-it-lead",
+      "title": "Cross-Department Task Assigned: [IT Infrastructure & Cloud Operations]",
+      "message": "You were assigned Step 2 (\"Step 2: IT Active Directory & Corporate Hardware Provisioning\") under \"Employee Onboarding & Security Clearance Pipeline\".",
+      "type": "ASSIGNMENT",
+      "severity": "HIGH",
+      "timestamp": "2026-08-18T14:17:54.772Z",
+      "isRead": false,
+      "ticketId": "tick-9778114a",
+      "ticketKey": "SUB-2026-0007"
+    },
+    {
+      "id": "notif-01268dc8",
+      "userId": "usr-hr-lead",
+      "title": "Cross-Department Task Assigned: [Human Resources & Personnel]",
+      "message": "You were assigned Step 1 (\"Step 1: HR Background & KYC Clearance Check\") under \"Employee Onboarding & Security Clearance Pipeline\".",
+      "type": "ASSIGNMENT",
+      "severity": "HIGH",
+      "timestamp": "2026-08-18T14:17:54.772Z",
+      "isRead": false,
+      "ticketId": "tick-3294632d",
+      "ticketKey": "SUB-2026-0006"
+    },
+    {
       "id": "notif-01",
       "userId": "usr-ciso",
       "title": "SLA At-Risk Alert: 45 Mins Remaining",
@@ -2357,5 +3368,723 @@
       "ticketId": "tick-exc-103",
       "ticketKey": "GRC-2026-0078"
     }
-  ]
+  ],
+  "workflowRuns": [
+    {
+      "id": "run-229264af",
+      "templateVersion": 1,
+      "title": "saasdf",
+      "status": "COMPLETED",
+      "parameters": {},
+      "createdTicketIds": [
+        "tick-013f69eb"
+      ],
+      "createdByUserId": "usr-ciso",
+      "createdAt": "2026-08-18T14:23:35.343Z"
+    },
+    {
+      "id": "run-dd31bbb2",
+      "templateId": "bp-cross-swift",
+      "templateVersion": 1,
+      "title": "SWIFT Alliance Production Release & Security Validation: ASDaDASDA",
+      "status": "COMPLETED",
+      "idempotencyKey": "0fbce9a5-7109-45fd-bf6e-9519452987b2",
+      "parameters": {
+        "subject": "ASDaDASDA"
+      },
+      "createdTicketIds": [
+        "tick-db32e7bd",
+        "tick-d48bd04f",
+        "tick-9c522d7b"
+      ],
+      "createdByUserId": "usr-ciso",
+      "createdAt": "2026-08-18T14:24:25.401Z"
+    }
+  ],
+  "ticketRelationships": [],
+  "ticketTasks": [],
+  "ticketWorklogs": [],
+  "ticketSlaInstances": [
+    {
+      "id": "sla-52e0d3a7",
+      "ticketId": "tick-grc-103",
+      "policyId": "sla-p1-emergency",
+      "metric": "ACKNOWLEDGMENT",
+      "targetMinutes": 60,
+      "startedAt": "2026-08-18T04:56:03.106Z",
+      "deadlineAt": "2026-08-18T05:56:03.106Z",
+      "state": "BREACHED",
+      "elapsedMinutes": 558,
+      "remainingMinutes": 0,
+      "accruedPausedMinutes": 0,
+      "breachedAt": "2026-08-18T05:56:03.106Z"
+    },
+    {
+      "id": "sla-24595177",
+      "ticketId": "tick-grc-103",
+      "policyId": "sla-p1-emergency",
+      "metric": "FIRST_RESPONSE",
+      "targetMinutes": 240,
+      "startedAt": "2026-08-18T04:56:03.106Z",
+      "deadlineAt": "2026-08-18T08:56:03.106Z",
+      "state": "BREACHED",
+      "elapsedMinutes": 558,
+      "remainingMinutes": 0,
+      "accruedPausedMinutes": 0,
+      "breachedAt": "2026-08-18T08:56:03.106Z"
+    },
+    {
+      "id": "sla-4beaebf3",
+      "ticketId": "tick-grc-103",
+      "policyId": "sla-p1-emergency",
+      "metric": "ASSIGNMENT",
+      "targetMinutes": 60,
+      "startedAt": "2026-08-18T04:56:03.106Z",
+      "deadlineAt": "2026-08-18T05:56:03.106Z",
+      "state": "BREACHED",
+      "elapsedMinutes": 558,
+      "remainingMinutes": 0,
+      "accruedPausedMinutes": 0,
+      "breachedAt": "2026-08-18T05:56:03.106Z"
+    },
+    {
+      "id": "sla-5d6ef71a",
+      "ticketId": "tick-grc-103",
+      "policyId": "sla-p1-emergency",
+      "metric": "REMEDIATION",
+      "targetMinutes": 4320,
+      "startedAt": "2026-08-18T04:56:03.106Z",
+      "deadlineAt": "2026-08-21T04:56:03.106Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 558,
+      "remainingMinutes": 3762,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-90084fb3",
+      "ticketId": "tick-grc-103",
+      "policyId": "sla-p1-emergency",
+      "metric": "RESOLUTION",
+      "targetMinutes": 10080,
+      "startedAt": "2026-08-18T04:56:03.106Z",
+      "deadlineAt": "2026-08-25T04:56:03.106Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 558,
+      "remainingMinutes": 9522,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-dbefafb7",
+      "ticketId": "tick-soc-101",
+      "policyId": "sla-p1-emergency",
+      "metric": "ACKNOWLEDGMENT",
+      "targetMinutes": 15,
+      "startedAt": "2026-08-18T08:56:03.106Z",
+      "deadlineAt": "2026-08-18T09:11:03.106Z",
+      "state": "BREACHED",
+      "elapsedMinutes": 320,
+      "remainingMinutes": 0,
+      "accruedPausedMinutes": 0,
+      "breachedAt": "2026-08-18T09:11:03.106Z"
+    },
+    {
+      "id": "sla-27ef7d81",
+      "ticketId": "tick-soc-101",
+      "policyId": "sla-p1-emergency",
+      "metric": "FIRST_RESPONSE",
+      "targetMinutes": 15,
+      "startedAt": "2026-08-18T08:56:03.106Z",
+      "deadlineAt": "2026-08-18T09:11:03.106Z",
+      "state": "BREACHED",
+      "elapsedMinutes": 320,
+      "remainingMinutes": 0,
+      "accruedPausedMinutes": 0,
+      "breachedAt": "2026-08-18T09:11:03.106Z"
+    },
+    {
+      "id": "sla-7b3e6dfa",
+      "ticketId": "tick-soc-101",
+      "policyId": "sla-p1-emergency",
+      "metric": "ASSIGNMENT",
+      "targetMinutes": 15,
+      "startedAt": "2026-08-18T08:56:03.106Z",
+      "deadlineAt": "2026-08-18T09:11:03.106Z",
+      "state": "BREACHED",
+      "elapsedMinutes": 320,
+      "remainingMinutes": 0,
+      "accruedPausedMinutes": 0,
+      "breachedAt": "2026-08-18T09:11:03.106Z"
+    },
+    {
+      "id": "sla-3ea8f80a",
+      "ticketId": "tick-soc-101",
+      "policyId": "sla-p1-emergency",
+      "metric": "REMEDIATION",
+      "targetMinutes": 120,
+      "startedAt": "2026-08-18T08:56:03.106Z",
+      "deadlineAt": "2026-08-18T10:56:03.106Z",
+      "state": "BREACHED",
+      "elapsedMinutes": 320,
+      "remainingMinutes": 0,
+      "accruedPausedMinutes": 0,
+      "breachedAt": "2026-08-18T10:56:03.106Z"
+    },
+    {
+      "id": "sla-864163ac",
+      "ticketId": "tick-soc-101",
+      "policyId": "sla-p1-emergency",
+      "metric": "RESOLUTION",
+      "targetMinutes": 120,
+      "startedAt": "2026-08-18T08:56:03.106Z",
+      "deadlineAt": "2026-08-18T10:56:03.106Z",
+      "state": "BREACHED",
+      "elapsedMinutes": 320,
+      "remainingMinutes": 0,
+      "accruedPausedMinutes": 0,
+      "breachedAt": "2026-08-18T10:56:03.106Z"
+    },
+    {
+      "id": "sla-5480e173",
+      "ticketId": "tick-soc-101",
+      "policyId": "sla-p1-emergency",
+      "metric": "CONTAINMENT",
+      "targetMinutes": 120,
+      "startedAt": "2026-08-18T08:56:03.106Z",
+      "deadlineAt": "2026-08-18T10:56:03.106Z",
+      "state": "BREACHED",
+      "elapsedMinutes": 320,
+      "remainingMinutes": 0,
+      "accruedPausedMinutes": 0,
+      "breachedAt": "2026-08-18T10:56:03.106Z"
+    },
+    {
+      "id": "sla-fefe7c82",
+      "ticketId": "tick-appsec-102",
+      "policyId": "sla-p1-emergency",
+      "metric": "ACKNOWLEDGMENT",
+      "targetMinutes": 30,
+      "startedAt": "2026-08-18T10:56:03.106Z",
+      "deadlineAt": "2026-08-18T11:26:03.106Z",
+      "state": "BREACHED",
+      "elapsedMinutes": 200,
+      "remainingMinutes": 0,
+      "accruedPausedMinutes": 0,
+      "breachedAt": "2026-08-18T11:26:03.106Z"
+    },
+    {
+      "id": "sla-ad08c03a",
+      "ticketId": "tick-appsec-102",
+      "policyId": "sla-p1-emergency",
+      "metric": "FIRST_RESPONSE",
+      "targetMinutes": 60,
+      "startedAt": "2026-08-18T10:56:03.106Z",
+      "deadlineAt": "2026-08-18T11:56:03.106Z",
+      "state": "BREACHED",
+      "elapsedMinutes": 200,
+      "remainingMinutes": 0,
+      "accruedPausedMinutes": 0,
+      "breachedAt": "2026-08-18T11:56:03.106Z"
+    },
+    {
+      "id": "sla-f683fb0f",
+      "ticketId": "tick-appsec-102",
+      "policyId": "sla-p1-emergency",
+      "metric": "ASSIGNMENT",
+      "targetMinutes": 30,
+      "startedAt": "2026-08-18T10:56:03.106Z",
+      "deadlineAt": "2026-08-18T11:26:03.106Z",
+      "state": "BREACHED",
+      "elapsedMinutes": 200,
+      "remainingMinutes": 0,
+      "accruedPausedMinutes": 0,
+      "breachedAt": "2026-08-18T11:26:03.106Z"
+    },
+    {
+      "id": "sla-d0e9eda8",
+      "ticketId": "tick-appsec-102",
+      "policyId": "sla-p1-emergency",
+      "metric": "REMEDIATION",
+      "targetMinutes": 1440,
+      "startedAt": "2026-08-18T10:56:03.106Z",
+      "deadlineAt": "2026-08-19T10:56:03.106Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 200,
+      "remainingMinutes": 1240,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-b9830bdc",
+      "ticketId": "tick-appsec-102",
+      "policyId": "sla-p1-emergency",
+      "metric": "RESOLUTION",
+      "targetMinutes": 2880,
+      "startedAt": "2026-08-18T10:56:03.106Z",
+      "deadlineAt": "2026-08-20T10:56:03.106Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 200,
+      "remainingMinutes": 2680,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-c9b6848e",
+      "ticketId": "tick-9778114a",
+      "policyId": "sla-p1-emergency",
+      "metric": "ACKNOWLEDGMENT",
+      "targetMinutes": 30,
+      "startedAt": "2026-08-18T14:17:54.772Z",
+      "deadlineAt": "2026-08-18T14:47:54.772Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 30,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-8c443af2",
+      "ticketId": "tick-9778114a",
+      "policyId": "sla-p1-emergency",
+      "metric": "FIRST_RESPONSE",
+      "targetMinutes": 60,
+      "startedAt": "2026-08-18T14:17:54.772Z",
+      "deadlineAt": "2026-08-18T15:17:54.772Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 60,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-825dfe84",
+      "ticketId": "tick-9778114a",
+      "policyId": "sla-p1-emergency",
+      "metric": "ASSIGNMENT",
+      "targetMinutes": 30,
+      "startedAt": "2026-08-18T14:17:54.772Z",
+      "deadlineAt": "2026-08-18T14:47:54.772Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 30,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-1c76e423",
+      "ticketId": "tick-9778114a",
+      "policyId": "sla-p1-emergency",
+      "metric": "REMEDIATION",
+      "targetMinutes": 1440,
+      "startedAt": "2026-08-18T14:17:54.772Z",
+      "deadlineAt": "2026-08-19T14:17:54.772Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 1440,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-83ea67a0",
+      "ticketId": "tick-9778114a",
+      "policyId": "sla-p1-emergency",
+      "metric": "RESOLUTION",
+      "targetMinutes": 2880,
+      "startedAt": "2026-08-18T14:17:54.772Z",
+      "deadlineAt": "2026-08-20T14:17:54.772Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 2880,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-701d6edb",
+      "ticketId": "tick-a042de0d",
+      "policyId": "sla-p1-emergency",
+      "metric": "ACKNOWLEDGMENT",
+      "targetMinutes": 15,
+      "startedAt": "2026-08-18T14:17:54.772Z",
+      "deadlineAt": "2026-08-18T14:32:54.772Z",
+      "state": "AT_RISK",
+      "elapsedMinutes": 3,
+      "remainingMinutes": 12,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-cdf03b3b",
+      "ticketId": "tick-a042de0d",
+      "policyId": "sla-p1-emergency",
+      "metric": "FIRST_RESPONSE",
+      "targetMinutes": 15,
+      "startedAt": "2026-08-18T14:17:54.772Z",
+      "deadlineAt": "2026-08-18T14:32:54.772Z",
+      "state": "AT_RISK",
+      "elapsedMinutes": 3,
+      "remainingMinutes": 12,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-ea4b8664",
+      "ticketId": "tick-a042de0d",
+      "policyId": "sla-p1-emergency",
+      "metric": "ASSIGNMENT",
+      "targetMinutes": 15,
+      "startedAt": "2026-08-18T14:17:54.772Z",
+      "deadlineAt": "2026-08-18T14:32:54.772Z",
+      "state": "AT_RISK",
+      "elapsedMinutes": 3,
+      "remainingMinutes": 12,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-4f8804bc",
+      "ticketId": "tick-a042de0d",
+      "policyId": "sla-p1-emergency",
+      "metric": "REMEDIATION",
+      "targetMinutes": 120,
+      "startedAt": "2026-08-18T14:17:54.772Z",
+      "deadlineAt": "2026-08-18T16:17:54.772Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 3,
+      "remainingMinutes": 117,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-0cc270ca",
+      "ticketId": "tick-a042de0d",
+      "policyId": "sla-p1-emergency",
+      "metric": "RESOLUTION",
+      "targetMinutes": 120,
+      "startedAt": "2026-08-18T14:17:54.772Z",
+      "deadlineAt": "2026-08-18T16:17:54.772Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 3,
+      "remainingMinutes": 117,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-93c3498c",
+      "ticketId": "tick-5f613b30",
+      "policyId": "sla-p1-emergency",
+      "metric": "ACKNOWLEDGMENT",
+      "targetMinutes": 30,
+      "startedAt": "2026-08-18T14:22:07.692Z",
+      "deadlineAt": "2026-08-18T14:52:07.692Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 30,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-1aabbeca",
+      "ticketId": "tick-5f613b30",
+      "policyId": "sla-p1-emergency",
+      "metric": "FIRST_RESPONSE",
+      "targetMinutes": 60,
+      "startedAt": "2026-08-18T14:22:07.692Z",
+      "deadlineAt": "2026-08-18T15:22:07.692Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 60,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-d4850e0f",
+      "ticketId": "tick-5f613b30",
+      "policyId": "sla-p1-emergency",
+      "metric": "ASSIGNMENT",
+      "targetMinutes": 30,
+      "startedAt": "2026-08-18T14:22:07.692Z",
+      "deadlineAt": "2026-08-18T14:52:07.692Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 30,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-f388f9e1",
+      "ticketId": "tick-5f613b30",
+      "policyId": "sla-p1-emergency",
+      "metric": "REMEDIATION",
+      "targetMinutes": 1440,
+      "startedAt": "2026-08-18T14:22:07.692Z",
+      "deadlineAt": "2026-08-19T14:22:07.692Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 1440,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-f119ddcb",
+      "ticketId": "tick-5f613b30",
+      "policyId": "sla-p1-emergency",
+      "metric": "RESOLUTION",
+      "targetMinutes": 2880,
+      "startedAt": "2026-08-18T14:22:07.692Z",
+      "deadlineAt": "2026-08-20T14:22:07.692Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 2880,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-a4c53a19",
+      "ticketId": "tick-013f69eb",
+      "policyId": "sla-p1-emergency",
+      "metric": "ACKNOWLEDGMENT",
+      "targetMinutes": 240,
+      "startedAt": "2026-08-18T14:23:35.343Z",
+      "deadlineAt": "2026-08-18T18:23:35.343Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 240,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-9aa758e7",
+      "ticketId": "tick-013f69eb",
+      "policyId": "sla-p1-emergency",
+      "metric": "FIRST_RESPONSE",
+      "targetMinutes": 1440,
+      "startedAt": "2026-08-18T14:23:35.343Z",
+      "deadlineAt": "2026-08-19T14:23:35.343Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 1440,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-60108f25",
+      "ticketId": "tick-013f69eb",
+      "policyId": "sla-p1-emergency",
+      "metric": "ASSIGNMENT",
+      "targetMinutes": 240,
+      "startedAt": "2026-08-18T14:23:35.343Z",
+      "deadlineAt": "2026-08-18T18:23:35.343Z",
+      "state": "MET",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 240,
+      "accruedPausedMinutes": 0,
+      "completedAt": "2026-08-18T14:23:35.343Z"
+    },
+    {
+      "id": "sla-bf50f15c",
+      "ticketId": "tick-013f69eb",
+      "policyId": "sla-p1-emergency",
+      "metric": "REMEDIATION",
+      "targetMinutes": 20160,
+      "startedAt": "2026-08-18T14:23:35.343Z",
+      "deadlineAt": "2026-09-01T14:23:35.343Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 20160,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-25a6245f",
+      "ticketId": "tick-013f69eb",
+      "policyId": "sla-p1-emergency",
+      "metric": "RESOLUTION",
+      "targetMinutes": 43200,
+      "startedAt": "2026-08-18T14:23:35.343Z",
+      "deadlineAt": "2026-09-17T14:23:35.343Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 43200,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-1f92d139",
+      "ticketId": "tick-db32e7bd",
+      "policyId": "sla-p1-emergency",
+      "metric": "ACKNOWLEDGMENT",
+      "targetMinutes": 30,
+      "startedAt": "2026-08-18T14:24:25.401Z",
+      "deadlineAt": "2026-08-18T14:54:25.401Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 30,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-a917753a",
+      "ticketId": "tick-db32e7bd",
+      "policyId": "sla-p1-emergency",
+      "metric": "FIRST_RESPONSE",
+      "targetMinutes": 60,
+      "startedAt": "2026-08-18T14:24:25.401Z",
+      "deadlineAt": "2026-08-18T15:24:25.401Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 60,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-b97240f0",
+      "ticketId": "tick-db32e7bd",
+      "policyId": "sla-p1-emergency",
+      "metric": "ASSIGNMENT",
+      "targetMinutes": 30,
+      "startedAt": "2026-08-18T14:24:25.401Z",
+      "deadlineAt": "2026-08-18T14:54:25.401Z",
+      "state": "MET",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 30,
+      "accruedPausedMinutes": 0,
+      "completedAt": "2026-08-18T14:24:25.401Z"
+    },
+    {
+      "id": "sla-1266f2c8",
+      "ticketId": "tick-db32e7bd",
+      "policyId": "sla-p1-emergency",
+      "metric": "REMEDIATION",
+      "targetMinutes": 1440,
+      "startedAt": "2026-08-18T14:24:25.401Z",
+      "deadlineAt": "2026-08-19T14:24:25.401Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 1440,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-e629eb78",
+      "ticketId": "tick-db32e7bd",
+      "policyId": "sla-p1-emergency",
+      "metric": "RESOLUTION",
+      "targetMinutes": 2880,
+      "startedAt": "2026-08-18T14:24:25.401Z",
+      "deadlineAt": "2026-08-20T14:24:25.401Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 2880,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-d0017b46",
+      "ticketId": "tick-d48bd04f",
+      "policyId": "sla-p1-emergency",
+      "metric": "ACKNOWLEDGMENT",
+      "targetMinutes": 15,
+      "startedAt": "2026-08-18T14:24:25.401Z",
+      "deadlineAt": "2026-08-18T14:39:25.401Z",
+      "state": "AT_RISK",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 15,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-327cc0da",
+      "ticketId": "tick-d48bd04f",
+      "policyId": "sla-p1-emergency",
+      "metric": "FIRST_RESPONSE",
+      "targetMinutes": 15,
+      "startedAt": "2026-08-18T14:24:25.401Z",
+      "deadlineAt": "2026-08-18T14:39:25.401Z",
+      "state": "AT_RISK",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 15,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-b7dd2050",
+      "ticketId": "tick-d48bd04f",
+      "policyId": "sla-p1-emergency",
+      "metric": "ASSIGNMENT",
+      "targetMinutes": 15,
+      "startedAt": "2026-08-18T14:24:25.401Z",
+      "deadlineAt": "2026-08-18T14:39:25.401Z",
+      "state": "MET",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 15,
+      "accruedPausedMinutes": 0,
+      "completedAt": "2026-08-18T14:24:25.401Z"
+    },
+    {
+      "id": "sla-c56c1a64",
+      "ticketId": "tick-d48bd04f",
+      "policyId": "sla-p1-emergency",
+      "metric": "REMEDIATION",
+      "targetMinutes": 120,
+      "startedAt": "2026-08-18T14:24:25.401Z",
+      "deadlineAt": "2026-08-18T16:24:25.401Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 120,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-99ee6789",
+      "ticketId": "tick-d48bd04f",
+      "policyId": "sla-p1-emergency",
+      "metric": "RESOLUTION",
+      "targetMinutes": 120,
+      "startedAt": "2026-08-18T14:24:25.401Z",
+      "deadlineAt": "2026-08-18T16:24:25.401Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 120,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-87d256c7",
+      "ticketId": "tick-9c522d7b",
+      "policyId": "sla-p1-emergency",
+      "metric": "ACKNOWLEDGMENT",
+      "targetMinutes": 15,
+      "startedAt": "2026-08-18T14:24:25.401Z",
+      "deadlineAt": "2026-08-18T14:39:25.401Z",
+      "state": "AT_RISK",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 15,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-dc1a34c3",
+      "ticketId": "tick-9c522d7b",
+      "policyId": "sla-p1-emergency",
+      "metric": "FIRST_RESPONSE",
+      "targetMinutes": 15,
+      "startedAt": "2026-08-18T14:24:25.401Z",
+      "deadlineAt": "2026-08-18T14:39:25.401Z",
+      "state": "AT_RISK",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 15,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-1a370617",
+      "ticketId": "tick-9c522d7b",
+      "policyId": "sla-p1-emergency",
+      "metric": "ASSIGNMENT",
+      "targetMinutes": 15,
+      "startedAt": "2026-08-18T14:24:25.401Z",
+      "deadlineAt": "2026-08-18T14:39:25.401Z",
+      "state": "MET",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 15,
+      "accruedPausedMinutes": 0,
+      "completedAt": "2026-08-18T14:24:25.401Z"
+    },
+    {
+      "id": "sla-7acf687f",
+      "ticketId": "tick-9c522d7b",
+      "policyId": "sla-p1-emergency",
+      "metric": "REMEDIATION",
+      "targetMinutes": 120,
+      "startedAt": "2026-08-18T14:24:25.401Z",
+      "deadlineAt": "2026-08-18T16:24:25.401Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 120,
+      "accruedPausedMinutes": 0
+    },
+    {
+      "id": "sla-2be0c2f2",
+      "ticketId": "tick-9c522d7b",
+      "policyId": "sla-p1-emergency",
+      "metric": "RESOLUTION",
+      "targetMinutes": 120,
+      "startedAt": "2026-08-18T14:24:25.401Z",
+      "deadlineAt": "2026-08-18T16:24:25.401Z",
+      "state": "RUNNING",
+      "elapsedMinutes": 0,
+      "remainingMinutes": 120,
+      "accruedPausedMinutes": 0
+    }
+  ],
+  "ticketSatisfaction": [],
+  "ticketAiRecommendations": []
 }

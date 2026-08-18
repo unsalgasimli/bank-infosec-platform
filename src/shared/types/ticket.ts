@@ -1,4 +1,5 @@
 import { ConfidentialityTier, SecurityDomain } from './auth.js';
+import type { EnterpriseTicketType, TicketIntakeChannel, TicketResolutionCode, TicketUrgency } from './itsm.js';
 
 export type TicketProjectCode =
   | 'SEC'
@@ -68,6 +69,7 @@ export interface MitreAttackRef {
 }
 
 export interface IncidentDetails {
+  incidentPhase?: 'DETECTED' | 'TRIAGE' | 'INVESTIGATION' | 'CONTAINMENT' | 'ERADICATION' | 'RECOVERY' | 'POST_INCIDENT_REVIEW';
   incidentType: 'PHISHING' | 'RANSOMWARE' | 'UNAUTHORIZED_ACCESS' | 'CREDENTIAL_DUMPING' | 'DATA_EXFILTRATION' | 'DDOS' | 'INSIDER_THREAT' | 'MALWARE' | 'POLICY_VIOLATION';
   detectionSource: 'SIEM_CORRELATION' | 'EDR_ALERT' | 'USER_REPORT' | 'FIREWALL_ALERT' | 'DLP_SENSOR' | 'THREAT_INTEL' | 'AUDITOR';
   affectedUserIds?: string[];
@@ -120,6 +122,10 @@ export interface Ticket {
   projectCode: TicketProjectCode;
   ticketTypeId: string;
   ticketTypeName: string;
+  type?: EnterpriseTicketType;
+  requestTypeId?: string;
+  requestTypeName?: string;
+  intakeChannel?: TicketIntakeChannel;
   category: TicketCategory;
   securityDomain: SecurityDomain;
   title: string;
@@ -129,6 +135,8 @@ export interface Ticket {
   statusId: string;
   statusName: string;
   statusCategory: 'TO_DO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE' | 'CANCELLED';
+  resolutionCode?: TicketResolutionCode;
+  resolutionSummary?: string;
   workflowId: string;
   workflowVersion: number;
   
@@ -136,6 +144,7 @@ export interface Ticket {
   technicalSeverity: TechnicalSeverity;
   businessPriority: BusinessPriority;
   businessImpact: BusinessImpact;
+  urgency?: TicketUrgency;
   inherentRisk: RiskRating;
   residualRisk: RiskRating;
   riskScore: number; // 0 - 100
@@ -149,7 +158,11 @@ export interface Ticket {
   
   // Ownership & Department Context
   reporterId: string;
+  requesterId?: string;
+  onBehalfOfUserId?: string;
   assigneeId?: string;
+  assignmentGroupId?: string;
+  ownerId?: string;
   securityOwnerId?: string;
   teamId?: string;
   departmentId?: string;
@@ -158,6 +171,13 @@ export interface Ticket {
   assetId?: string;
   riskOwnerId?: string;
   watcherIds: string[];
+  participantIds?: string[];
+  organizationId?: string;
+  siteId?: string;
+  affectedServiceId?: string;
+  affectedAssetIds?: string[];
+  parentTicketId?: string;
+  duplicateOfTicketId?: string;
 
   // Cross-Department Orchestration
   parentTaskId?: string;

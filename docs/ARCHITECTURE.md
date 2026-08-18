@@ -44,6 +44,8 @@ flowchart TD
 
 ## 2. Core Architectural Pillars
 
+The canonical enterprise ticket lifecycle, invariants, and API extensions are documented in [TICKET_MANAGEMENT.md](./TICKET_MANAGEMENT.md).
+
 ### 2.1 Dual-Engine Database Architecture
 - **PostgreSQL 16 (Primary Production Engine)**: Complete relational DDL schema with foreign key constraints, transactional integrity, and GIN indices on JSONB payloads (for custom fields, scanner findings, MITRE ATT&CK techniques, and exception details).
 - **In-Memory Adapter (Development & Testing Engine)**: Zero-dependency in-memory execution for rapid developer workflow and sub-second CI unit test execution.

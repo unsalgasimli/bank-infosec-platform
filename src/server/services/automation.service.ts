@@ -64,7 +64,9 @@ export class AutomationService {
           }
           break;
         case 'ASSIGN_USER':
-          if (action.payload.userId) {
+          // Assignment rules fill an unassigned queue item. A workflow template's
+          // explicit routing is authoritative and must not be silently replaced.
+          if (action.payload.userId && !ticket.assigneeId) {
             ticket.assigneeId = action.payload.userId;
             ticket.assignedAt = new Date().toISOString();
           }

@@ -32,6 +32,7 @@ export interface BankAsset {
   applicationId?: string;
   ownerId: string;
   ownerName?: string;
+  operatingSystem?: string;
   departmentId: string;
   dataClassification: ConfidentialityTier;
   cmdbId?: string;

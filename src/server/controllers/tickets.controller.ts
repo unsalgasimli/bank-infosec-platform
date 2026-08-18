@@ -9,6 +9,55 @@ import { AuditService } from '../services/audit.service.js';
 import { AutomationService } from '../services/automation.service.js';
 import { SearchService } from '../services/search.service.js';
 import { Ticket } from '../../shared/types/ticket.js';
+import { TicketLifecycleService } from '../services/ticket-lifecycle.service.js';
+import { TicketRelationshipType, TicketTaskStatus } from '../../shared/types/itsm.js';
+
+const TICKET_EDITABLE_FIELDS = new Set([
+  'title',
+  'description',
+  'technicalSeverity',
+  'businessImpact',
+  'urgency',
+  'inherentRisk',
+  'residualRisk',
+  'riskScore',
+  'cvssScore',
+  'cvssVector',
+  'confidentiality',
+  'restrictedUserIds',
+  'restrictedTeamIds',
+  'assigneeId',
+  'assignmentGroupId',
+  'ownerId',
+  'securityOwnerId',
+  'teamId',
+  'departmentId',
+  'targetDepartmentId',
+  'applicationId',
+  'assetId',
+  'affectedAssetIds',
+  'affectedServiceId',
+  'riskOwnerId',
+  'watcherIds',
+  'participantIds',
+  'dueDate',
+  'remediationDeadline',
+  'tags',
+  'customFields',
+]);
+
+const TICKET_ADMIN_FIELDS = new Set([
+  'confidentiality',
+  'restrictedUserIds',
+  'restrictedTeamIds',
+  'assigneeId',
+  'assignmentGroupId',
+  'ownerId',
+  'securityOwnerId',
+  'teamId',
+  'departmentId',
+  'targetDepartmentId',
+]);
 
 export class TicketsController {
   public static list(req: AuthenticatedRequest, res: Response): void {
@@ -74,6 +123,7 @@ export class TicketsController {
     // Linked application and asset details
     const application = db.data.applications.find((a) => a.id === ticket.applicationId);
     const asset = db.data.assets.find((a) => a.id === ticket.assetId);
+    const lifecycle = TicketLifecycleService.getBundle(ticket, user);
 
     // Log restricted case view
     if (ticket.confidentiality === 'HIGHLY_RESTRICTED_HR_LEGAL' || ticket.confidentiality === 'CONFIDENTIAL_SECURITY_ONLY') {
@@ -96,22 +146,35 @@ export class TicketsController {
       transitions,
       application,
       asset,
+      lifecycle,
     });
   }
 
   public static create(req: AuthenticatedRequest, res: Response): void {
     try {
       const user = req.user!;
-      const body = req.body;
+      const body = TicketLifecycleService.validateAndNormalizeCreateInput(req.body, user);
 
       const projectCode = body.projectCode || 'SEC';
-      const count = (db.data.tickets || []).length + 1;
-      const key = `${projectCode}-2026-${String(count).padStart(4, '0')}`;
+      const year = new Date().getUTCFullYear();
+      const highestSequence = (db.data.tickets || []).reduce((highest, ticket) => {
+        const match = ticket.key.match(new RegExp(`^${projectCode}-${year}-(\\d+)$`));
+        return match ? Math.max(highest, Number(match[1])) : highest;
+      }, 0);
+      const key = `${projectCode}-${year}-${String(highestSequence + 1).padStart(4, '0')}`;
       const now = new Date().toISOString();
 
       const defaultWorkflow = (db.data.workflows || [])[0];
       const initialStatus = defaultWorkflow?.states?.[0] || { id: 'OPEN', name: 'Open', category: 'TO_DO' };
       const defaultSlaPolicy = (db.data.slaPolicies || [])[0] || { id: 'sla-p1-emergency' };
+      const slaPolicyId = body.slaPolicyId || defaultSlaPolicy.id;
+      const technicalSeverity = body.technicalSeverity || 'MEDIUM';
+      const slaDeadlines = TicketLifecycleService.calculateSlaDeadlines(slaPolicyId, technicalSeverity, now);
+
+      const canAssign = user.roles.some((role) =>
+        ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'TEAM_LEAD', 'SECURITY_ANALYST', 'SOC_ANALYST', 'APPSEC_ANALYST', 'VULN_ANALYST', 'GRC_ANALYST', 'DLP_ANALYST'].includes(role)
+      );
+      const assigneeId = canAssign ? body.assigneeId : undefined;
 
       const newTicket: Ticket = {
         id: `tick-${uuidv4().substring(0, 8)}`,
@@ -119,6 +182,10 @@ export class TicketsController {
         projectCode,
         ticketTypeId: body.ticketTypeId || body.category || 'VULNERABILITY',
         ticketTypeName: body.ticketTypeName || 'Security Ticket',
+        type: body.type,
+        requestTypeId: body.requestTypeId,
+        requestTypeName: body.requestTypeName,
+        intakeChannel: body.intakeChannel,
         category: body.category || 'VULNERABILITY',
         securityDomain: body.securityDomain || 'GENERAL_INFOSEC',
         title: body.title || 'Untitled Security Task',
@@ -127,10 +194,11 @@ export class TicketsController {
         statusName: body.statusName || initialStatus.name,
         statusCategory: (body.statusCategory || initialStatus.category || 'TO_DO') as any,
         workflowId: body.workflowId || defaultWorkflow?.id || 'wf-secops-default',
-        workflowVersion: 1,
-        technicalSeverity: body.technicalSeverity || 'MEDIUM',
+        workflowVersion: defaultWorkflow?.version || 1,
+        technicalSeverity,
         businessPriority: body.businessPriority || 'P3_MEDIUM',
         businessImpact: body.businessImpact || 'MODERATE',
+        urgency: body.urgency,
         inherentRisk: body.inherentRisk || 'MEDIUM',
         residualRisk: body.residualRisk || 'LOW',
         riskScore: body.riskScore || 50,
@@ -140,14 +208,24 @@ export class TicketsController {
         restrictedUserIds: body.restrictedUserIds || [],
         restrictedTeamIds: body.restrictedTeamIds || [],
         reporterId: user.id,
-        assigneeId: body.assigneeId || user.id,
+        requesterId: body.requesterId,
+        onBehalfOfUserId: body.onBehalfOfUserId,
+        assigneeId,
+        assignmentGroupId: body.assignmentGroupId,
+        ownerId: body.ownerId || body.securityOwnerId || user.id,
         securityOwnerId: body.securityOwnerId || user.id,
         teamId: body.teamId,
         departmentId: body.departmentId || user.departmentId,
         applicationId: body.applicationId || undefined,
         assetId: body.assetId || undefined,
         riskOwnerId: body.riskOwnerId,
-        watcherIds: [user.id, ...(body.watcherIds || [])],
+        watcherIds: Array.from(new Set([user.id, ...(body.watcherIds || [])])),
+        participantIds: body.participantIds,
+        organizationId: body.organizationId,
+        siteId: body.siteId,
+        affectedServiceId: body.affectedServiceId,
+        affectedAssetIds: body.affectedAssetIds,
+        parentTicketId: body.parentTicketId,
         findingDetails: body.findingDetails,
         incidentDetails: body.incidentDetails,
         exceptionDetails: body.exceptionDetails,
@@ -155,9 +233,10 @@ export class TicketsController {
         createdAt: now,
         updatedAt: now,
         detectedAt: body.detectedAt || now,
-        dueDate: body.dueDate || new Date(Date.now() + 86400000 * 7).toISOString(),
-        remediationDeadline: body.remediationDeadline || new Date(Date.now() + 86400000 * 3).toISOString(),
-        slaPolicyId: body.slaPolicyId || defaultSlaPolicy.id,
+        assignedAt: assigneeId ? now : undefined,
+        dueDate: body.dueDate || slaDeadlines.resolutionDeadline,
+        remediationDeadline: body.remediationDeadline || slaDeadlines.remediationDeadline,
+        slaPolicyId,
         slaState: 'SAFE',
         version: 1,
         tags: body.tags || [],
@@ -172,6 +251,7 @@ export class TicketsController {
         db.data.tickets = [];
       }
       db.data.tickets.unshift(newTicket);
+      TicketLifecycleService.initializeSlaMetrics(newTicket);
 
       // Audit log
       AuditService.log({
@@ -189,8 +269,12 @@ export class TicketsController {
       db.persist();
       res.status(201).json({ success: true, ticket: newTicket });
     } catch (err: any) {
-      console.error('Failed to create ticket', err);
-      res.status(500).json({ success: false, error: err.message || 'Internal Server Error' });
+      const validationError = err?.name === 'ZodError' || /does not exist|inactive/.test(err?.message || '');
+      res.status(validationError ? 400 : 500).json({
+        success: false,
+        error: validationError ? 'Ticket validation failed.' : err.message || 'Internal Server Error',
+        details: validationError ? err.issues || err.message : undefined,
+      });
     }
   }
 
@@ -227,9 +311,34 @@ export class TicketsController {
       return;
     }
 
+    try {
+      TicketLifecycleService.validateTicketUpdates(updates);
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: 'Ticket update validation failed.', details: error.issues || error.message });
+      return;
+    }
+
+    const rejectedFields = Object.keys(updates).filter((key) => !TICKET_EDITABLE_FIELDS.has(key) && key !== 'version');
+    if (rejectedFields.length > 0) {
+      res.status(400).json({
+        success: false,
+        error: `Fields must be changed through their dedicated lifecycle operation: ${rejectedFields.join(', ')}`,
+      });
+      return;
+    }
+
+    const requestedAdminFields = Object.keys(updates).filter((key) => TICKET_ADMIN_FIELDS.has(key));
+    const canAdministerTicket = user.roles.some((role) =>
+      ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'TEAM_LEAD'].includes(role)
+    );
+    if (requestedAdminFields.length > 0 && !canAdministerTicket) {
+      res.status(403).json({ success: false, error: `Administrative ticket permission required for: ${requestedAdminFields.join(', ')}` });
+      return;
+    }
+
     const fieldChanges: { field: string; oldValue: any; newValue: any }[] = [];
     for (const [k, v] of Object.entries(updates)) {
-      if (k !== 'id' && k !== 'key' && k !== 'version' && (ticket as any)[k] !== v) {
+      if (TICKET_EDITABLE_FIELDS.has(k) && (ticket as any)[k] !== v) {
         fieldChanges.push({ field: k, oldValue: (ticket as any)[k], newValue: v });
         (ticket as any)[k] = v;
       }
@@ -237,6 +346,14 @@ export class TicketsController {
 
     ticket.updatedAt = new Date().toISOString();
     ticket.version += 1;
+
+    if (updates.businessImpact || updates.urgency) {
+      ticket.businessPriority = TicketLifecycleService.calculatePriority(
+        ticket.businessImpact,
+        ticket.urgency || 'MEDIUM'
+      );
+    }
+    if (updates.assigneeId && !ticket.assignedAt) ticket.assignedAt = ticket.updatedAt;
 
     // Recalculate SLA
     const sla = SLAService.calculateSLA(ticket);
@@ -300,6 +417,26 @@ export class TicketsController {
       return;
     }
 
+    const access = AuthService.canAccessResource({ user, action: 'WRITE', resourceType: 'TICKET', resource: ticket });
+    if (!access.allowed) {
+      res.status(403).json({ success: false, error: access.reason });
+      return;
+    }
+
+    if (typeof content !== 'string' || content.trim().length === 0 || content.length > 50_000) {
+      res.status(400).json({ success: false, error: 'Comment content is required and must be shorter than 50,000 characters.' });
+      return;
+    }
+
+    const internalVisibility = visibility === 'SECURITY_TEAM_ONLY';
+    const canWriteInternal = user.roles.some((role) =>
+      ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'TEAM_LEAD', 'SECURITY_ANALYST', 'SOC_ANALYST', 'APPSEC_ANALYST', 'VULN_ANALYST', 'GRC_ANALYST', 'DLP_ANALYST'].includes(role)
+    );
+    if (internalVisibility && !canWriteInternal) {
+      res.status(403).json({ success: false, error: 'Internal security notes require an agent or security role.' });
+      return;
+    }
+
     const newComment = {
       id: `comm-${uuidv4().substring(0, 8)}`,
       ticketId: ticket.id,
@@ -307,7 +444,7 @@ export class TicketsController {
       authorName: user.fullName,
       authorRole: user.roles[0] || 'ANALYST',
       authorAvatar: user.avatarUrl,
-      content,
+      content: content.trim(),
       visibility: visibility || 'PUBLIC',
       confidentiality: ticket.confidentiality,
       mentions: mentions || [],
@@ -318,6 +455,9 @@ export class TicketsController {
 
     db.data.comments.unshift(newComment);
     ticket.updatedAt = new Date().toISOString();
+    if (!internalVisibility && !ticket.firstResponseAt && user.id !== (ticket.requesterId || ticket.reporterId)) {
+      ticket.firstResponseAt = ticket.updatedAt;
+    }
 
     AuditService.log({
       actor: user,
@@ -334,12 +474,137 @@ export class TicketsController {
     res.status(201).json({ success: true, comment: newComment });
   }
 
+  public static getLifecycle(req: AuthenticatedRequest, res: Response): void {
+    const ticket = TicketsController.getAuthorizedTicket(req, res, 'READ');
+    if (!ticket) return;
+    res.json({ success: true, lifecycle: TicketLifecycleService.getBundle(ticket, req.user!) });
+  }
+
+  public static addRelationship(req: AuthenticatedRequest, res: Response): void {
+    const ticket = TicketsController.getAuthorizedTicket(req, res, 'WRITE');
+    if (!ticket) return;
+    try {
+      const relationship = TicketLifecycleService.addRelationship(
+        ticket,
+        req.body.targetTicketId,
+        req.body.type as TicketRelationshipType,
+        req.user!,
+        req.body.note
+      );
+      res.status(201).json({ success: true, relationship });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  public static mergeDuplicate(req: AuthenticatedRequest, res: Response): void {
+    const ticket = TicketsController.getAuthorizedTicket(req, res, 'WRITE');
+    if (!ticket) return;
+    try {
+      const result = TicketLifecycleService.mergeDuplicate(ticket, req.body.primaryTicketId, req.user!, Boolean(req.body.moveComments));
+      res.json({ success: true, ...result });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  public static addTask(req: AuthenticatedRequest, res: Response): void {
+    const ticket = TicketsController.getAuthorizedTicket(req, res, 'WRITE');
+    if (!ticket) return;
+    try {
+      const task = TicketLifecycleService.addTask(ticket, req.body, req.user!);
+      res.status(201).json({ success: true, task });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  public static updateTask(req: AuthenticatedRequest, res: Response): void {
+    const ticket = TicketsController.getAuthorizedTicket(req, res, 'WRITE');
+    if (!ticket) return;
+    try {
+      const task = TicketLifecycleService.updateTask(ticket, String(req.params.taskId), req.body.status as TicketTaskStatus, req.user!);
+      res.json({ success: true, task });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  public static addWorklog(req: AuthenticatedRequest, res: Response): void {
+    const ticket = TicketsController.getAuthorizedTicket(req, res, 'WRITE');
+    if (!ticket) return;
+    try {
+      const worklog = TicketLifecycleService.addWorklog(ticket, req.body, req.user!);
+      res.status(201).json({ success: true, worklog });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  public static submitSatisfaction(req: AuthenticatedRequest, res: Response): void {
+    const ticket = TicketsController.getAuthorizedTicket(req, res, 'READ');
+    if (!ticket) return;
+    const user = req.user!;
+    if (user.id !== (ticket.requesterId || ticket.reporterId) && !user.roles.includes('PLATFORM_ADMIN')) {
+      res.status(403).json({ success: false, error: 'Only the requester can submit satisfaction feedback.' });
+      return;
+    }
+    try {
+      const satisfaction = TicketLifecycleService.submitSatisfaction(ticket, req.body, user);
+      res.status(201).json({ success: true, satisfaction });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  public static analyze(req: AuthenticatedRequest, res: Response): void {
+    const ticket = TicketsController.getAuthorizedTicket(req, res, 'WRITE');
+    if (!ticket) return;
+    const recommendation = TicketLifecycleService.analyze(ticket);
+    AuditService.log({
+      actor: req.user!,
+      action: 'TICKET_UPDATED',
+      entityType: 'TICKET',
+      entityId: ticket.id,
+      entityKey: ticket.key,
+      metadata: { lifecycleAction: 'AI_RECOMMENDATION_CREATED', recommendationId: recommendation.id },
+    });
+    res.status(201).json({ success: true, recommendation });
+  }
+
+  public static applyRecommendation(req: AuthenticatedRequest, res: Response): void {
+    const ticket = TicketsController.getAuthorizedTicket(req, res, 'WRITE');
+    if (!ticket) return;
+    if (req.body.confirmed !== true) {
+      res.status(400).json({ success: false, error: 'Explicit human confirmation is required.' });
+      return;
+    }
+    try {
+      const recommendation = TicketLifecycleService.applyRecommendation(ticket, String(req.params.recommendationId), req.user!);
+      res.json({ success: true, recommendation, ticket });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
   public static bulkUpdate(req: AuthenticatedRequest, res: Response): void {
     const user = req.user!;
     const { ticketIds, action, value } = req.body;
 
     if (!Array.isArray(ticketIds) || ticketIds.length === 0) {
       res.status(400).json({ success: false, error: 'No ticket IDs specified.' });
+      return;
+    }
+
+    const canBulkUpdate = user.roles.some((role) =>
+      ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'TEAM_LEAD', 'SECURITY_ANALYST', 'SOC_ANALYST', 'APPSEC_ANALYST', 'VULN_ANALYST', 'GRC_ANALYST', 'DLP_ANALYST'].includes(role)
+    );
+    if (!canBulkUpdate) {
+      res.status(403).json({ success: false, error: 'An agent role is required for bulk ticket changes.' });
+      return;
+    }
+    if (!['ASSIGN', 'SET_PRIORITY', 'SET_SEVERITY', 'ADD_TAG'].includes(action)) {
+      res.status(400).json({ success: false, error: 'Unsupported bulk action.' });
       return;
     }
 
@@ -516,5 +781,23 @@ export class TicketsController {
       tickets: createdTickets,
       dependencies: createdDependencies,
     });
+  }
+
+  private static getAuthorizedTicket(
+    req: AuthenticatedRequest,
+    res: Response,
+    action: 'READ' | 'WRITE'
+  ): Ticket | undefined {
+    const ticket = db.data.tickets.find((candidate) => candidate.id === req.params.id || candidate.key === req.params.id);
+    if (!ticket) {
+      res.status(404).json({ success: false, error: 'Ticket not found' });
+      return undefined;
+    }
+    const access = AuthService.canAccessResource({ user: req.user!, action, resourceType: 'TICKET', resource: ticket });
+    if (!access.allowed) {
+      res.status(403).json({ success: false, error: access.reason });
+      return undefined;
+    }
+    return ticket;
   }
 }

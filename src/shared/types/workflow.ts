@@ -18,6 +18,8 @@ export interface WorkflowTransition {
   approvalChainId?: string;
   isAutomated?: boolean;
   automationTriggerName?: string;
+  validators?: WorkflowValidationRule[];
+  actions?: Array<'SET_RESOLVED_AT' | 'SET_CLOSED_AT' | 'CLEAR_RESOLUTION' | 'START_SLA' | 'STOP_SLA' | 'PAUSE_SLA' | 'RESUME_SLA'>;
 }
 
 export interface WorkflowState {

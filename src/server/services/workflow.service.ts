@@ -4,6 +4,8 @@ import { Workflow, WorkflowTransition, WorkflowState } from '../../shared/types/
 import { db } from '../db/database.js';
 import { AuditService } from './audit.service.js';
 import { SLAService } from './sla.service.js';
+import { AuthService } from './auth.service.js';
+import { TicketLifecycleService } from './ticket-lifecycle.service.js';
 
 export class WorkflowService {
   public static getWorkflowById(workflowId: string): Workflow | undefined {
@@ -39,12 +41,14 @@ export class WorkflowService {
   }): { success: boolean; ticket?: Ticket; error?: string } {
     const { ticketId, transitionId, user, comment, requiredFieldUpdates } = params;
 
-    const ticketIndex = db.data.tickets.findIndex((t) => t.id === ticketId);
+    const ticketIndex = db.data.tickets.findIndex((t) => t.id === ticketId || t.key === ticketId);
     if (ticketIndex === -1) {
       return { success: false, error: 'Ticket not found.' };
     }
 
     const ticket = db.data.tickets[ticketIndex];
+    const access = AuthService.canAccessResource({ user, action: 'TRANSITION', resourceType: 'TICKET', resource: ticket });
+    if (!access.allowed) return { success: false, error: access.reason };
     const workflow = WorkflowService.getWorkflowById(ticket.workflowId);
     if (!workflow) {
       return { success: false, error: 'Workflow not found for this ticket.' };
@@ -88,6 +92,20 @@ export class WorkflowService {
       }
     }
 
+    const allowedTransitionFields = new Set(['resolutionCode', 'resolutionSummary', 'riskOwnerId', 'assigneeId']);
+    const proposedUpdates = requiredFieldUpdates || {};
+    const unsupported = Object.keys(proposedUpdates).filter((field) => !allowedTransitionFields.has(field));
+    if (unsupported.length > 0) {
+      return { success: false, error: `Unsupported transition fields: ${unsupported.join(', ')}` };
+    }
+
+    for (const field of transition.requiredFields || []) {
+      const value = proposedUpdates[field] ?? (ticket as any)[field];
+      if (value === undefined || value === null || String(value).trim() === '') {
+        return { success: false, error: `${field} is required for transition ${transition.name}.` };
+      }
+    }
+
     const targetState = workflow.states.find((s) => s.id === transition.toStateId);
     if (!targetState) {
       return { success: false, error: 'Target workflow state not found.' };
@@ -103,13 +121,19 @@ export class WorkflowService {
     ticket.updatedAt = new Date().toISOString();
     ticket.version += 1;
 
-    if (requiredFieldUpdates) {
-      Object.assign(ticket, requiredFieldUpdates);
-    }
+    Object.assign(ticket, proposedUpdates);
 
     if (targetState.category === 'DONE') {
       ticket.resolvedAt = new Date().toISOString();
       ticket.slaState = 'MET';
+    }
+    if (targetState.id === 'CLOSED') ticket.closedAt = new Date().toISOString();
+    if (targetState.id === 'OPEN' && oldStatusId !== 'OPEN') {
+      ticket.reopenedAt = new Date().toISOString();
+      ticket.resolutionCode = undefined;
+      ticket.resolutionSummary = undefined;
+      ticket.resolvedAt = undefined;
+      ticket.closedAt = undefined;
     }
 
     // Recalculate SLA
@@ -117,6 +141,7 @@ export class WorkflowService {
     ticket.slaState = sla.state;
     ticket.slaRemainingMinutes = sla.remainingMinutes;
     ticket.slaPausedReason = sla.pausedReason;
+    TicketLifecycleService.refreshSlaMetrics(ticket);
 
     // Add comment if provided
     if (comment && comment.trim().length > 0) {

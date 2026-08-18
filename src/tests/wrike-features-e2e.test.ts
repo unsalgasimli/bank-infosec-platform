@@ -9,6 +9,10 @@ import { AssetsController, RisksController, KBController } from '../server/contr
 import { AuthController } from '../server/controllers/auth.controller.js';
 import { HealthController } from '../server/controllers/health.controller.js';
 import { NotificationsController } from '../server/controllers/notifications.controller.js';
+import { pgClient } from '../server/db/postgres/client.js';
+import { cacheService } from '../server/services/cache.service.js';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // Mock Express Request & Response helper
 function mockReqRes(body: any = {}, params: any = {}, query: any = {}, user: any = null) {
@@ -42,6 +46,12 @@ function mockReqRes(body: any = {}, params: any = {}, query: any = {}, user: any
 }
 
 test('🛡️ WRIKE PRODUCTION BACKEND COMPREHENSIVE E2E VERIFICATION', async (t) => {
+  const originalDatabase = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'data/database.json'), 'utf8'));
+  t.after(async () => {
+    db.data = originalDatabase;
+    db.persist();
+    await Promise.all([pgClient.close(), cacheService.close()]);
+  });
   const cisoUser = db.data.users.find((u) => u.roles.includes('CISO')) || db.data.users[0];
   const socLead = db.data.users.find((u) => u.roles.includes('TEAM_LEAD')) || db.data.users[1];
 
@@ -226,7 +236,12 @@ test('🛡️ WRIKE PRODUCTION BACKEND COMPREHENSIVE E2E VERIFICATION', async (t
   });
 
   await t.test('6.2. Blueprints: Launch Turnkey Project Blueprint', async () => {
-    const { req, res } = mockReqRes({}, { id: 'bp-swift' }, {}, cisoUser);
+    const { req, res } = mockReqRes(
+      { parameters: { subject: 'SWIFT 2026.08 production release' }, idempotencyKey: 'wrike-e2e-swift-launch-0001' },
+      { id: 'bp-cross-swift' },
+      {},
+      cisoUser
+    );
     await WrikeController.launchBlueprint(req, res);
     assert.strictEqual(res.getStatus(), 201);
     assert.ok(res.getData().success);

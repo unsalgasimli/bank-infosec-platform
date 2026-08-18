@@ -1,6 +1,7 @@
 import { BankRole } from './auth.js';
 
 export type ApprovalDecision = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED' | 'DELEGATED' | 'ESCALATED';
+export type ApprovalMode = 'ANY_ONE' | 'ALL' | 'MAJORITY' | 'SEQUENTIAL' | 'PARALLEL';
 
 export interface ApprovalStep {
   id: string;
@@ -25,6 +26,7 @@ export interface TicketApprovalChain {
   title: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
   createdAt: string;
+  mode?: ApprovalMode;
   completedAt?: string;
   steps: ApprovalStep[];
 }

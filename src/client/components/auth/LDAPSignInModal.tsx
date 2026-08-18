@@ -6,9 +6,10 @@ import { Modal } from '../common/Modal.js';
 interface LDAPSignInModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
-export const LDAPSignInModal: React.FC<LDAPSignInModalProps> = ({ isOpen, onClose }) => {
+export const LDAPSignInModal: React.FC<LDAPSignInModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const { ldapLogin, switchUser, allUsers, currentUser } = useAuth();
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -41,6 +42,7 @@ export const LDAPSignInModal: React.FC<LDAPSignInModalProps> = ({ isOpen, onClos
     if (result.success) {
       setSuccessMessage(`Active Directory LDAP bind successful for '${usernameOrEmail}'.`);
       setTimeout(() => {
+        onSuccess?.();
         onClose();
         setSuccessMessage(null);
       }, 700);
@@ -215,6 +217,7 @@ export const LDAPSignInModal: React.FC<LDAPSignInModalProps> = ({ isOpen, onClos
                       onClick={() => {
                         setUsernameOrEmail(u.username);
                         switchUser(u.id);
+                        onSuccess?.();
                       }}
                       className="px-2 py-1 rounded bg-[#FFFFFF] hover:bg-[#EBECF0] border border-[#DFE1E6] text-[11px] text-[#172B4D] font-mono transition-colors"
                     >

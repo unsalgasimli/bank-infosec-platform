@@ -32,6 +32,19 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         </div>
       </div>
 
+      {(ticket.resolutionCode || ticket.resolutionSummary) && (
+        <div className="rounded-md border border-[#ABF5D1] bg-[#E3FCEF] p-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="h-4 w-4 text-[#216E4E]" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[#216E4E]">Resolution outcome</h3>
+          </div>
+          <div className="mt-2 text-xs text-[#172B4D]">
+            <strong>{ticket.resolutionCode?.replaceAll('_', ' ') || 'Resolved'}</strong>
+            {ticket.resolutionSummary && <p className="mt-1 whitespace-pre-line leading-relaxed">{ticket.resolutionSummary}</p>}
+          </div>
+        </div>
+      )}
+
       {/* Vulnerability Finding Specifics */}
       {finding && (
         <div className="bg-[#FFFFFF] border border-[#DFE1E6] rounded-md p-5 space-y-4 shadow-sm">
@@ -266,4 +279,3 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     </div>
   );
 };
-

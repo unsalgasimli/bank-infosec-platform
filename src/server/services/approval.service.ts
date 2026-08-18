@@ -15,17 +15,15 @@ export class ApprovalService {
     for (const chain of db.data.approvals) {
       if (chain.status !== 'PENDING') continue;
 
-      // In sequential chain, find the first pending step
-      const currentStep = chain.steps.find((s) => s.status === 'PENDING');
-      if (!currentStep) continue;
+      const pendingSteps = (chain.mode || 'SEQUENTIAL') === 'SEQUENTIAL'
+        ? chain.steps.filter((s) => s.status === 'PENDING').slice(0, 1)
+        : chain.steps.filter((s) => s.status === 'PENDING');
 
-      // Check if user is assigned or has required role
-      const isAssigned = currentStep.assignedApproverId === user.id;
-      const hasRole = currentStep.requiredRole && user.roles.includes(currentStep.requiredRole);
-      const isSuper = user.roles.includes('PLATFORM_ADMIN') || user.roles.includes('CISO');
-
-      if (isAssigned || hasRole || isSuper) {
-        results.push({ chain, step: currentStep });
+      for (const currentStep of pendingSteps) {
+        const isAssigned = currentStep.assignedApproverId === user.id;
+        const hasRole = currentStep.requiredRole && user.roles.includes(currentStep.requiredRole);
+        const isSuper = user.roles.includes('PLATFORM_ADMIN') || user.roles.includes('CISO');
+        if (isAssigned || hasRole || isSuper) results.push({ chain, step: currentStep });
       }
     }
 
@@ -50,6 +48,13 @@ export class ApprovalService {
 
     if (step.status !== 'PENDING') {
       return { success: false, error: 'This approval step has already been processed.' };
+    }
+
+    if ((chain.mode || 'SEQUENTIAL') === 'SEQUENTIAL') {
+      const currentStep = chain.steps.find((candidate) => candidate.status === 'PENDING');
+      if (currentStep?.id !== step.id) {
+        return { success: false, error: 'Approval stages must be completed in sequence.' };
+      }
     }
 
     // Role check
@@ -85,14 +90,24 @@ export class ApprovalService {
     }
 
     // Evaluate overall chain status
-    const anyRejected = chain.steps.some((s) => s.status === 'REJECTED');
-    const allApproved = chain.steps.every((s) => s.status === 'APPROVED');
+    const approvedCount = chain.steps.filter((candidate) => candidate.status === 'APPROVED').length;
+    const rejectedCount = chain.steps.filter((candidate) => candidate.status === 'REJECTED').length;
+    const pendingCount = chain.steps.filter((candidate) => candidate.status === 'PENDING').length;
+    const mode = chain.mode || 'SEQUENTIAL';
+    const majority = Math.floor(chain.steps.length / 2) + 1;
+    const isApproved = mode === 'ANY_ONE'
+      ? approvedCount >= 1
+      : mode === 'MAJORITY'
+        ? approvedCount >= majority
+        : approvedCount === chain.steps.length;
+    const isRejected = mode === 'ANY_ONE'
+      ? pendingCount === 0 && approvedCount === 0
+      : mode === 'MAJORITY'
+        ? rejectedCount >= majority || approvedCount + pendingCount < majority
+        : rejectedCount >= 1;
 
-    if (anyRejected) {
-      chain.status = 'REJECTED';
-      chain.completedAt = timestamp;
-    } else if (allApproved) {
-      chain.status = 'APPROVED';
+    if (isApproved || isRejected) {
+      chain.status = isApproved ? 'APPROVED' : 'REJECTED';
       chain.completedAt = timestamp;
     }
 

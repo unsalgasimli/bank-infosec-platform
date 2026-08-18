@@ -9,9 +9,10 @@ import { AutomationService } from '../services/automation.service.js';
 import { IdeaNode } from '../../shared/types/ideate.js';
 import { Ticket } from '../../shared/types/ticket.js';
 import { RequestFormDefinition, RequestFormSubmission } from '../../shared/types/request-forms.js';
-import { ProjectBlueprint } from '../../shared/types/blueprints.js';
 import { ProofingDocument } from '../../shared/types/proofing.js';
 import { BankUser } from '../../shared/types/auth.js';
+import { TicketLifecycleService } from '../services/ticket-lifecycle.service.js';
+import { WorkflowTemplateError, WorkflowTemplateService } from '../services/workflow-template.service.js';
 
 export class WrikeController {
   // ==========================================
@@ -367,7 +368,7 @@ export class WrikeController {
   public static async submitRequestForm(req: Request, res: Response): Promise<void> {
     try {
       const { id: formId } = req.params;
-      const { values } = req.body;
+      const { values: rawValues } = req.body;
 
       const form = (db.data.requestForms || []).find((f) => f.id === formId);
       if (!form) {
@@ -375,14 +376,29 @@ export class WrikeController {
         return;
       }
 
+      let values: Record<string, any>;
+      try {
+        values = TicketLifecycleService.validateRequestFormSubmission(form, rawValues);
+      } catch (validationError: any) {
+        res.status(400).json({ success: false, error: validationError.message || 'Request form validation failed.' });
+        return;
+      }
+
       const currentUser: BankUser = (req as any).user || db.data.users[0];
-      const count = db.data.tickets.length + 1;
-      const ticketKey = `SEC-2026-${String(count).padStart(4, '0')}`;
+      const year = new Date().getUTCFullYear();
+      const highestSequence = db.data.tickets.reduce((highest, ticket) => {
+        const match = ticket.key.match(new RegExp(`^SEC-${year}-(\\d+)$`));
+        return match ? Math.max(highest, Number(match[1])) : highest;
+      }, 0);
+      const ticketKey = `SEC-${year}-${String(highestSequence + 1).padStart(4, '0')}`;
       const ticketId = `tick-${uuidv4().substring(0, 8)}`;
       const now = new Date().toISOString();
 
       const workflow = db.data.workflows[0];
       const initialStatus = workflow.states.find((s) => s.isInitial) || workflow.states[0];
+      const technicalSeverity = (values?.urgency === 'EMERGENCY' ? 'CRITICAL' : form.defaultSeverity) as Ticket['technicalSeverity'];
+      const slaPolicyId = form.slaPolicyId || db.data.slaPolicies[0]?.id;
+      const slaDeadlines = TicketLifecycleService.calculateSlaDeadlines(slaPolicyId, technicalSeverity, now);
 
       const newTicket: Ticket = {
         id: ticketId,
@@ -390,6 +406,10 @@ export class WrikeController {
         projectCode: 'SEC',
         ticketTypeId: form.defaultTicketType as any,
         ticketTypeName: form.title,
+        type: form.defaultTicketType === 'INCIDENT' ? 'SECURITY_INCIDENT' : form.defaultTicketType === 'VULNERABILITY' ? 'VULNERABILITY' : 'SERVICE_REQUEST',
+        requestTypeId: form.id,
+        requestTypeName: form.title,
+        intakeChannel: 'PORTAL',
         category: form.defaultTicketType as any,
         securityDomain: form.category.includes('SOC') ? 'SOC' : form.category.includes('GRC') ? 'GRC' : 'APPSEC',
         title: values?.title || `[${form.title}] ${values?.targetSystem || 'Banking System'}`,
@@ -398,10 +418,11 @@ export class WrikeController {
         statusName: initialStatus.name,
         statusCategory: initialStatus.category,
         workflowId: workflow.id,
-        workflowVersion: 1,
-        technicalSeverity: (values?.urgency === 'EMERGENCY' ? 'CRITICAL' : form.defaultSeverity) as any,
+        workflowVersion: workflow.version,
+        technicalSeverity,
         businessPriority: (values?.urgency === 'EMERGENCY' ? 'P1_URGENT' : form.defaultPriority) as any,
         businessImpact: 'SIGNIFICANT',
+        urgency: values?.urgency === 'EMERGENCY' ? 'CRITICAL' : 'MEDIUM',
         inherentRisk: 'HIGH',
         residualRisk: 'MEDIUM',
         riskScore: 75,
@@ -409,7 +430,8 @@ export class WrikeController {
         restrictedUserIds: [],
         restrictedTeamIds: [],
         reporterId: currentUser.id,
-        assigneeId: currentUser.id,
+        requesterId: currentUser.id,
+        assignmentGroupId: form.defaultGroupId,
         securityOwnerId: currentUser.id,
         departmentId: currentUser.departmentId,
         watcherIds: [currentUser.id],
@@ -418,9 +440,9 @@ export class WrikeController {
         createdAt: now,
         updatedAt: now,
         detectedAt: now,
-        dueDate: new Date(Date.now() + 86400000 * 7).toISOString(),
-        remediationDeadline: new Date(Date.now() + 86400000 * 3).toISOString(),
-        slaPolicyId: 'sla-tier1-banking',
+        dueDate: slaDeadlines.resolutionDeadline,
+        remediationDeadline: slaDeadlines.remediationDeadline,
+        slaPolicyId,
         slaState: 'SAFE',
         version: 1,
       };
@@ -430,13 +452,14 @@ export class WrikeController {
       newTicket.slaRemainingMinutes = sla.remainingMinutes;
 
       db.data.tickets.unshift(newTicket);
+      TicketLifecycleService.initializeSlaMetrics(newTicket);
 
       const submission: RequestFormSubmission = {
         id: `sub-${Date.now()}`,
         formId: form.id,
         submittedByUserId: currentUser.id,
         submittedByUserName: currentUser.fullName,
-        values: values || {},
+        values,
         createdTicketId: ticketId,
         createdTicketKey: ticketKey,
         createdAt: now,
@@ -481,7 +504,7 @@ export class WrikeController {
 
   public static async listBlueprints(req: Request, res: Response): Promise<void> {
     try {
-      const blueprints = db.data.blueprints || [];
+      const blueprints = WorkflowTemplateService.list();
       res.json({ success: true, blueprints });
     } catch (err: any) {
       logger.error({ err }, 'Failed to list blueprints');
@@ -491,91 +514,42 @@ export class WrikeController {
 
   public static async launchBlueprint(req: Request, res: Response): Promise<void> {
     try {
-      const { id } = req.params;
-      const bp = (db.data.blueprints || []).find((b) => b.id === id);
-      if (!bp) {
-        res.status(404).json({ success: false, error: 'Blueprint not found' });
-        return;
-      }
-
-      const currentUser: BankUser = (req as any).user || db.data.users[0];
-      const createdTickets: Ticket[] = [];
-      const workflow = db.data.workflows[0];
-      const initialStatus = workflow.states.find((s) => s.isInitial) || workflow.states[0];
-      const now = new Date().toISOString();
-
-      for (let i = 0; i < bp.defaultTasks.length; i++) {
-        const taskDef = bp.defaultTasks[i];
-        const count = db.data.tickets.length + 1;
-        const ticketKey = `SEC-2026-${String(count).padStart(4, '0')}`;
-        const ticketId = `tick-${uuidv4().substring(0, 8)}`;
-
-        const newTicket: Ticket = {
-          id: ticketId,
-          key: ticketKey,
-          projectCode: 'SEC',
-          ticketTypeId: taskDef.category === 'INCIDENT' ? 'type-incident' : 'type-vuln',
-          ticketTypeName: taskDef.title,
-          category: taskDef.category,
-          securityDomain: taskDef.category === 'INCIDENT' ? 'SOC' : taskDef.category === 'SECURITY_REVIEW' ? 'GRC' : 'APPSEC',
-          title: taskDef.title,
-          description: `${taskDef.description}\n\n*Created from Wrike Project Blueprint: ${bp.title}*`,
-          statusId: initialStatus.id,
-          statusName: initialStatus.name,
-          statusCategory: initialStatus.category,
-          workflowId: workflow.id,
-          workflowVersion: 1,
-          technicalSeverity: taskDef.technicalSeverity,
-          businessPriority: taskDef.businessPriority,
-          businessImpact: 'SIGNIFICANT',
-          inherentRisk: 'HIGH',
-          residualRisk: 'LOW',
-          riskScore: 65,
-          confidentiality: 'RESTRICTED',
-          restrictedUserIds: [],
-          restrictedTeamIds: [],
-          reporterId: currentUser.id,
-          assigneeId: currentUser.id,
-          securityOwnerId: currentUser.id,
-          departmentId: currentUser.departmentId,
-          watcherIds: [currentUser.id],
-          tags: [...taskDef.tags, 'BLUEPRINT', bp.id.toUpperCase()],
-          customFields: [],
-          createdAt: now,
-          updatedAt: now,
-          detectedAt: now,
-          dueDate: new Date(Date.now() + 86400000 * taskDef.durationDays).toISOString(),
-          remediationDeadline: new Date(Date.now() + 86400000 * taskDef.durationDays).toISOString(),
-          slaPolicyId: 'sla-tier1-banking',
-          slaState: 'SAFE',
-          version: 1,
-        };
-
-        const sla = SLAService.calculateSLA(newTicket);
-        newTicket.slaState = sla.state;
-        newTicket.slaRemainingMinutes = sla.remainingMinutes;
-
-        db.data.tickets.unshift(newTicket);
-        createdTickets.push(newTicket);
-
-        AuditService.log({
-          actor: currentUser,
-          action: 'TICKET_CREATED',
-          entityType: 'TICKET',
-          entityId: ticketId,
-          entityKey: ticketKey,
-          metadata: { action: 'LAUNCHED_BLUEPRINT_TASK', blueprintTitle: bp.title, title: newTicket.title },
-        });
-
-        AutomationService.triggerEvent('TICKET_CREATED', newTicket, currentUser);
-      }
-
-      db.persist();
-
-      res.status(201).json({ success: true, blueprint: bp, createdTickets });
+      const result = WorkflowTemplateService.launchStored(String(req.params.id), req.body, (req as any).user);
+      res.status(result.replayed ? 200 : 201).json({ success: true, ...result, createdTickets: result.tickets });
     } catch (err: any) {
       logger.error({ err }, 'Failed to launch blueprint');
-      res.status(500).json({ success: false, error: err.message });
+      const status = err instanceof WorkflowTemplateError ? err.statusCode : err?.name === 'ZodError' ? 400 : 500;
+      res.status(status).json({ success: false, error: err.message, details: err.details || err.issues });
+    }
+  }
+
+  public static async getWorkflowTemplateMetadata(req: Request, res: Response): Promise<void> {
+    res.json({ success: true, metadata: WorkflowTemplateService.metadata() });
+  }
+
+  public static async listWorkflowRuns(req: Request, res: Response): Promise<void> {
+    res.json({ success: true, runs: WorkflowTemplateService.listRuns((req as any).user) });
+  }
+
+  public static async previewBlueprint(req: Request, res: Response): Promise<void> {
+    try {
+      const template = (db.data.blueprints || []).find((item) => item.id === String(req.params.id) && item.isActive !== false);
+      if (!template) throw new WorkflowTemplateError('Workflow template not found.', 404);
+      res.json({ success: true, preview: WorkflowTemplateService.preview(template) });
+    } catch (err: any) {
+      const status = err instanceof WorkflowTemplateError ? err.statusCode : 500;
+      res.status(status).json({ success: false, error: err.message, details: err.details });
+    }
+  }
+
+  public static async launchCustomWorkflow(req: Request, res: Response): Promise<void> {
+    try {
+      const result = WorkflowTemplateService.launchCustom(req.body, (req as any).user);
+      res.status(201).json({ success: true, ...result, createdTickets: result.tickets });
+    } catch (err: any) {
+      logger.error({ err }, 'Failed to launch custom workflow');
+      const status = err instanceof WorkflowTemplateError ? err.statusCode : err?.name === 'ZodError' ? 400 : 500;
+      res.status(status).json({ success: false, error: err.message, details: err.details || err.issues });
     }
   }
 

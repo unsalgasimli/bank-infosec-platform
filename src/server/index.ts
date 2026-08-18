@@ -75,6 +75,15 @@ app.get('/api/tickets/:id', TicketsController.getById);
 app.patch('/api/tickets/:id', TicketsController.update);
 app.post('/api/tickets/:id/transition', TicketsController.transition);
 app.post('/api/tickets/:id/comments', TicketsController.addComment);
+app.get('/api/tickets/:id/lifecycle', TicketsController.getLifecycle);
+app.post('/api/tickets/:id/relationships', TicketsController.addRelationship);
+app.post('/api/tickets/:id/merge', TicketsController.mergeDuplicate);
+app.post('/api/tickets/:id/tasks', TicketsController.addTask);
+app.patch('/api/tickets/:id/tasks/:taskId', TicketsController.updateTask);
+app.post('/api/tickets/:id/worklogs', TicketsController.addWorklog);
+app.post('/api/tickets/:id/satisfaction', TicketsController.submitSatisfaction);
+app.post('/api/tickets/:id/ai-analysis', TicketsController.analyze);
+app.post('/api/tickets/:id/ai-recommendations/:recommendationId/apply', TicketsController.applyRecommendation);
 
 // 7. Multi-Stage Approvals
 app.get('/api/approvals/pending', ApprovalsController.listPending);
@@ -103,6 +112,12 @@ app.post('/api/request-forms/:id/submit', WrikeController.submitRequestForm);
 
 app.get('/api/automations', WrikeController.listAutomations);
 app.get('/api/blueprints', WrikeController.listBlueprints);
+app.get('/api/workflow-templates', WrikeController.listBlueprints);
+app.get('/api/workflow-templates/metadata', WrikeController.getWorkflowTemplateMetadata);
+app.get('/api/workflow-runs', WrikeController.listWorkflowRuns);
+app.get('/api/workflow-templates/:id/preview', WrikeController.previewBlueprint);
+app.post('/api/workflow-templates/custom/launch', WrikeController.launchCustomWorkflow);
+app.post('/api/workflow-templates/:id/launch', WrikeController.launchBlueprint);
 app.post('/api/blueprints/:id/launch', WrikeController.launchBlueprint);
 
 app.get('/api/proofing', WrikeController.listProofingDocuments);
