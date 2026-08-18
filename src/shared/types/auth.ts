@@ -1,6 +1,11 @@
 export type BankRole =
   | 'PLATFORM_ADMIN'
+  | 'DEPARTMENT_ADMIN'
   | 'INFOSEC_ADMIN'
+  | 'IT_ADMIN'
+  | 'HR_ADMIN'
+  | 'CORE_BANK_ADMIN'
+  | 'LEGAL_ADMIN'
   | 'CISO'
   | 'INFOSEC_MANAGER'
   | 'TEAM_LEAD'
@@ -46,12 +51,43 @@ export interface BankDivision {
   code: string;
 }
 
+export interface DepartmentSettings {
+  defaultSlaHours?: number;
+  criticalSlaHours?: number;
+  autoAssignEnabled?: boolean;
+  defaultAssigneeId?: string;
+  requireDualApproval?: boolean;
+  allowedTicketCategories?: string[];
+  workingHours?: {
+    start: string; // e.g. "09:00"
+    end: string;   // e.g. "18:00"
+    timezone: string; // e.g. "Asia/Baku"
+  };
+  notifications?: {
+    emailAlerts: boolean;
+    slackWebhook?: string;
+    escalateAfterHours: number;
+  };
+}
+
 export interface BankDepartment {
   id: string;
   divisionId: string;
   name: string;
   code: string;
+  description?: string;
   managerId?: string;
+  adminUserIds?: string[];
+  color?: string;
+  icon?: string;
+  isActive?: boolean;
+  memberCount?: number;
+  connectionCount?: number;
+  templateCount?: number;
+  activeTaskCount?: number;
+  settings?: DepartmentSettings;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface BankTeam {
@@ -80,6 +116,45 @@ export interface BankUser {
   isActive: boolean;
   avatarUrl?: string;
   phone?: string;
+  // Active Directory / LDAP attributes
+  sAMAccountName?: string;
+  userPrincipalName?: string;
+  distinguishedName?: string;
+  ldapDomain?: string;
+  distributionGroups?: string[];
+  ldapBindStatus?: 'BOUND' | 'AUTHENTICATED';
+  lastLdapLoginAt?: string;
+}
+
+export interface LDAPLoginPayload {
+  usernameOrEmail: string;
+  password?: string;
+  ldapDomain?: string;
+  distributionGroup?: string;
+  rememberMe?: boolean;
+}
+
+export interface LDAPGroupInfo {
+  name: string;
+  distinguishedName: string;
+  description: string;
+  type: 'SECURITY_DISTRIBUTION_GROUP' | 'SECURITY_GROUP' | 'DISTRIBUTION_GROUP';
+  isInfosecGroup: boolean;
+  memberCount: number;
+}
+
+export interface AuthSessionResponse {
+  success: boolean;
+  token: string;
+  user: BankUser;
+  ldapInfo?: {
+    server: string;
+    bindDn: string;
+    distributionGroup: string;
+    authenticatedAt: string;
+    kerberosTicketIssued?: boolean;
+  };
+  message?: string;
 }
 
 export interface ABACContext {
@@ -88,3 +163,4 @@ export interface ABACContext {
   resourceType: 'TICKET' | 'COMMENT' | 'ATTACHMENT' | 'ASSET' | 'APP' | 'RISK' | 'EXCEPTION' | 'REPORT' | 'AUDIT';
   resource?: any;
 }
+

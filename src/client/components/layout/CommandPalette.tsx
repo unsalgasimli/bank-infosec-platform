@@ -56,28 +56,28 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 p-4">
-      <div className="fixed inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative w-full max-w-xl bg-bank-900 border border-slate-700 rounded-lg shadow-2xl overflow-hidden z-10">
-        <div className="flex items-center px-4 py-3 border-b border-slate-800 bg-bank-850">
-          <Search className="w-4 h-4 text-slate-400 mr-2.5" />
+      <div className="fixed inset-0 bg-black/65 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative w-full max-w-xl bg-[#FFFFFF] border border-[#DFE1E6] rounded-md shadow-2xl overflow-hidden z-10">
+        <div className="flex items-center px-4 py-3 border-b border-[#DFE1E6] bg-[#FFFFFF]">
+          <Search className="w-4 h-4 text-[#5E6C84] mr-2.5" />
           <input
             type="text"
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Type a command, ticket key (e.g. APPSEC-2026-0001), or persona name..."
-            className="w-full bg-transparent text-white placeholder-slate-400 focus:outline-none text-xs font-medium"
+            className="w-full bg-transparent text-[#172B4D] placeholder-[#5E6C84] focus:outline-none text-xs font-medium"
           />
-          <span className="text-[10px] font-mono bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">
+          <span className="text-[10px] font-mono bg-[#FFFFFF] text-[#5E6C84] px-1.5 py-0.5 rounded border border-[#DFE1E6]">
             ESC
           </span>
         </div>
 
-        <div className="max-h-96 overflow-y-auto p-2 space-y-3 text-xs">
+        <div className="max-h-96 overflow-y-auto p-2 space-y-3 text-xs custom-scrollbar">
           {/* Quick Views */}
           {quickViews.length > 0 && (
             <div>
-              <div className="px-2.5 py-1 font-bold uppercase tracking-wider text-slate-500 text-[10px]">
+              <div className="px-2.5 py-1 font-bold uppercase tracking-wider text-[#5E6C84] text-[10px]">
                 Navigation & Views
               </div>
               <div className="space-y-0.5">
@@ -90,13 +90,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         onNavigate(item.view);
                         onClose();
                       }}
-                      className="w-full flex items-center justify-between px-2.5 py-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                      className="w-full flex items-center justify-between px-2.5 py-1.5 rounded text-[#172B4D] hover:bg-[#EBECF0] transition-colors"
                     >
                       <div className="flex items-center gap-2">
-                        <Icon className="w-3.5 h-3.5 text-slate-400" />
+                        <Icon className="w-3.5 h-3.5 text-[#5E6C84]" />
                         <span className="font-medium">{item.label}</span>
                       </div>
-                      <ArrowRight className="w-3 h-3 text-slate-500" />
+                      <ArrowRight className="w-3 h-3 text-[#5E6C84]" />
                     </button>
                   );
                 })}
@@ -107,7 +107,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           {/* Matched Tickets */}
           {filteredTickets.length > 0 && (
             <div>
-              <div className="px-2.5 py-1 font-bold uppercase tracking-wider text-slate-500 text-[10px]">
+              <div className="px-2.5 py-1 font-bold uppercase tracking-wider text-[#5E6C84] text-[10px]">
                 Matching Tickets
               </div>
               <div className="space-y-0.5">
@@ -118,13 +118,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       onNavigate('tickets', t.id);
                       onClose();
                     }}
-                    className="w-full flex items-center justify-between px-2.5 py-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                    className="w-full flex items-center justify-between px-2.5 py-1.5 rounded text-[#172B4D] hover:bg-[#EBECF0] transition-colors"
                   >
                     <div className="flex items-center gap-2 truncate">
-                      <span className="font-mono font-semibold text-blue-400 text-xs">{t.key}</span>
-                      <span className="truncate text-slate-200">{t.title}</span>
+                      <span className="font-mono font-semibold text-[#0052CC] text-xs">{t.key}</span>
+                      <span className="truncate text-[#172B4D]">{t.title}</span>
                     </div>
-                    <span className="text-[10px] uppercase font-semibold text-slate-400 ml-2">{t.technicalSeverity}</span>
+                    <span className="text-[10px] uppercase font-semibold text-[#5E6C84] ml-2">{t.technicalSeverity}</span>
                   </button>
                 ))}
               </div>
@@ -134,7 +134,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           {/* Persona Switcher */}
           {matchedUsers.length > 0 && (
             <div>
-              <div className="px-2.5 py-1 font-bold uppercase tracking-wider text-slate-500 text-[10px]">
+              <div className="px-2.5 py-1 font-bold uppercase tracking-wider text-[#5E6C84] text-[10px]">
                 Switch Persona
               </div>
               <div className="space-y-0.5">
@@ -145,16 +145,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       switchUser(u.id);
                       onClose();
                     }}
-                    className="w-full flex items-center justify-between px-2.5 py-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                    className="w-full flex items-center justify-between px-2.5 py-1.5 rounded text-[#172B4D] hover:bg-[#EBECF0] transition-colors"
                   >
                     <div className="flex items-center gap-2">
-                      <User className="w-3.5 h-3.5 text-slate-400" />
+                      <User className="w-3.5 h-3.5 text-[#5E6C84]" />
                       <div className="text-left">
-                        <div className="font-semibold text-slate-100">{u.fullName}</div>
-                        <div className="text-[10px] text-slate-400">{u.title} ({u.roles[0]})</div>
+                        <div className="font-semibold text-[#172B4D]">{u.fullName}</div>
+                        <div className="text-[10px] text-[#5E6C84]">{u.title} ({u.roles[0]})</div>
                       </div>
                     </div>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#FFFFFF] text-[#172B4D] border border-[#DFE1E6] font-mono">
                       {u.securityClearance}
                     </span>
                   </button>

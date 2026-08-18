@@ -1,129 +1,322 @@
-import React from 'react';
 import {
-  LayoutDashboard,
-  ShieldAlert,
-  Flame,
-  Bug,
-  Lock,
+  Table as TableIcon,
   Layers,
-  FileCheck,
+  Calendar,
+  Lightbulb,
+  Users,
+  LayoutDashboard,
+  FileText,
+  Zap,
+  Flame,
+  Shield,
+  Lock,
   CheckCircle2,
-  Database,
+  AlertTriangle,
   Server,
   BookOpen,
   Settings,
-  Users,
-  Eye,
-  AlertOctagon,
-  Inbox,
-  BarChart3,
-  UserCheck,
+  Building2,
 } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext.js';
+import { Ticket } from '../../../shared/types/ticket.js';
 
 interface SidebarProps {
   activeView: string;
   onSelectView: (view: string) => void;
+  tickets: Ticket[];
+  applicationsCount?: number;
+  assetsCount?: number;
+  risksCount?: number;
+  kbCount?: number;
+  pendingApprovalsCount?: number;
+  departmentsCount?: number;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeView, onSelectView }) => {
-  const { currentUser } = useAuth();
+export const Sidebar: React.FC<SidebarProps> = ({
+  activeView,
+  onSelectView,
+  tickets,
+  applicationsCount = 0,
+  assetsCount = 0,
+  risksCount = 0,
+  kbCount = 0,
+  pendingApprovalsCount = 0,
+  departmentsCount = 5,
+}) => {
+  // Track if user has seen the new Ideate feature
+  const [hasVisitedIdeate, setHasVisitedIdeate] = useState<boolean>(() => {
+    return localStorage.getItem('wrike_seen_ideate') === 'true';
+  });
 
-  const sections = [
+  const handleItemClick = (viewId: string) => {
+    if (viewId === 'ideate' && !hasVisitedIdeate) {
+      setHasVisitedIdeate(true);
+      localStorage.setItem('wrike_seen_ideate', 'true');
+    }
+    onSelectView(viewId);
+  };
+
+  // 1. Core Views
+  const primaryViews = [
+    { id: 'table', label: 'Spreadsheet Table', icon: TableIcon, count: tickets.length },
+    { id: 'board', label: 'Kanban Board', icon: Layers },
+    { id: 'gantt', label: 'Gantt Timeline', icon: Calendar },
     {
-      title: 'COMMAND CENTERS',
-      items: [
-        { id: 'ciso-dash', label: 'CISO Executive GRC', icon: LayoutDashboard },
-        { id: 'lead-dash', label: 'Team Lead Operations', icon: BarChart3 },
-        { id: 'analyst-dash', label: 'My Security Workspace', icon: UserCheck },
-      ],
+      id: 'ideate',
+      label: 'Brainstorm Ideate',
+      icon: Lightbulb,
+      isNew: !hasVisitedIdeate,
+    },
+    { id: 'workload', label: 'Resource Capacity', icon: Users },
+    { id: 'ciso-dash', label: 'Executive Analytics', icon: LayoutDashboard },
+  ];
+
+  // 2. Multi-Department Governance (New Core Feature)
+  const departmentGovernanceViews = [
+    {
+      id: 'departments',
+      label: 'Bank Departments Hub',
+      icon: Building2,
+      count: departmentsCount,
+      highlight: true,
     },
     {
-      title: 'TICKETS & QUEUES',
-      items: [
-        { id: 'tickets', label: 'All Bank Tickets', icon: Layers },
-        { id: 'my-tickets', label: 'My Assigned Tickets', icon: Inbox },
-        { id: 'watched-tickets', label: 'Watched Tickets', icon: Eye },
-        { id: 'overdue-tickets', label: 'SLA At Risk & Breached', icon: AlertOctagon, alert: true },
-      ],
+      id: 'cross-tasks',
+      label: 'Cross-Dept Pipelines',
+      icon: Layers,
+      count: tickets.filter((t) => t.isCrossDepartmentParent || t.crossDepartmentId).length,
+    },
+  ];
+
+  // 3. Operations & Incident Management
+  const operationsViews = [
+    {
+      id: 'soc-incidents',
+      label: 'Incident Response (IR)',
+      icon: Flame,
+      count: tickets.filter((t) => t.category === 'INCIDENT').length,
     },
     {
-      title: 'SECURITY OPERATIONS',
-      items: [
-        { id: 'soc-incidents', label: 'SOC Incidents & SIEM', icon: Flame },
-        { id: 'vulnerabilities', label: 'Vulnerability Management', icon: Bug },
-        { id: 'dlp-investigations', label: 'DLP Forensics', icon: Lock },
-      ],
+      id: 'vulnerabilities',
+      label: 'AppSec & Hardening',
+      icon: Shield,
+      count: tickets.filter((t) => t.category === 'VULNERABILITY').length,
     },
     {
-      title: 'GOVERNANCE & RISK',
-      items: [
-        { id: 'risk-register', label: 'Enterprise Risk (5×5)', icon: ShieldAlert },
-        { id: 'security-exceptions', label: 'Security Exceptions', icon: CheckCircle2 },
-        { id: 'approvals', label: 'Approvals Inbox', icon: CheckCircle2 },
-      ],
+      id: 'security-exceptions',
+      label: 'Policy Exceptions',
+      icon: Lock,
+      count: tickets.filter((t) => t.category === 'SECURITY_EXCEPTION').length,
     },
     {
-      title: 'CMDB & ASSETS',
-      items: [
-        { id: 'applications', label: 'Banking Applications', icon: Server },
-        { id: 'assets', label: 'CMDB Infrastructure Assets', icon: Database },
-      ],
+      id: 'approvals',
+      label: 'Dual-Control Approvals',
+      icon: CheckCircle2,
+      count: pendingApprovalsCount,
+      highlight: pendingApprovalsCount > 0,
+    },
+  ];
+
+  // 4. CMDB, Governance & Tools
+  const cmdbAndTools = [
+    {
+      id: 'risk-register',
+      label: '5×5 Risk Register',
+      icon: AlertTriangle,
+      count: risksCount,
     },
     {
-      title: 'ASSURANCE & SYSTEM',
-      items: [
-        { id: 'knowledge-base', label: 'Security Playbooks (KB)', icon: BookOpen },
-        { id: 'admin-center', label: 'Admin & Audit Trail', icon: Settings },
-      ],
+      id: 'applications',
+      label: 'CMDB Asset Inventory',
+      icon: Server,
+      count: applicationsCount + assetsCount,
+    },
+    { id: 'request-forms', label: 'Dynamic Request Forms', icon: FileText },
+    { id: 'automations', label: 'Automation & Blueprints', icon: Zap },
+    {
+      id: 'knowledge-base',
+      label: 'SOPs & Knowledge Base',
+      icon: BookOpen,
+      count: kbCount,
     },
   ];
 
   return (
-    <aside className="w-60 bg-bank-900 border-r border-slate-800 flex flex-col h-[calc(100vh-3.25rem)] select-none">
-      <div className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
-        {sections.map((section, idx) => (
-          <div key={idx} className="space-y-0.5">
-            <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              {section.title}
-            </div>
-            {section.items.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeView === item.id;
+    <aside className="w-64 bg-[#FFFFFF] border-r border-[#E2E8F0] flex flex-col justify-between shrink-0 select-none shadow-sm">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-3.5 space-y-5">
+        {/* Section 1: Core Views */}
+        <div>
+          <div className="px-2.5 mb-1.5 text-xs font-bold uppercase tracking-wider text-[#5A6A85]">
+            Core Views
+          </div>
+          <div className="space-y-1">
+            {primaryViews.map((view) => {
+              const Icon = view.icon;
+              const isActive = activeView === view.id;
               return (
                 <button
-                  key={item.id}
-                  onClick={() => onSelectView(item.id)}
-                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  key={view.id}
+                  onClick={() => handleItemClick(view.id)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                     isActive
-                      ? 'bg-slate-800 text-white font-semibold border-l-2 border-blue-500 rounded-l-none'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+                      ? 'bg-[#E6F7EF] text-[#007860] font-bold border border-[#B8EAD1]'
+                      : 'text-[#2B3A57] hover:bg-[#F8FAFC] hover:text-[#162136]'
                   }`}
-                  id={`nav-${item.id}`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-blue-400' : 'text-slate-400'}`} />
-                    <span>{item.label}</span>
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-[#00B259]' : 'text-[#5A6A85]'}`} />
+                    <span>{view.label}</span>
                   </div>
-                  {item.alert && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+
+                  {/* Show NEW badge only if user has not visited ideate yet */}
+                  {view.isNew && (
+                    <span className="px-2 py-0.5 rounded-full bg-[#FAF5FF] text-[#722ED1] text-[10px] font-bold border border-[#EFDBFF]">
+                      NEW
+                    </span>
+                  )}
+
+                  {/* Show Count ONLY if count > 0 */}
+                  {view.count !== undefined && view.count > 0 && !view.isNew && (
+                    <span className="font-mono text-xs text-[#5A6A85] bg-[#F1F5F9] px-2 py-0.5 rounded-full border border-[#E2E8F0]">
+                      {view.count}
+                    </span>
                   )}
                 </button>
               );
             })}
           </div>
-        ))}
+        </div>
+
+        {/* Section 2: Banking Departments & Cross-Task Pipelines */}
+        <div>
+          <div className="px-2.5 mb-1.5 text-xs font-bold uppercase tracking-wider text-[#5A6A85]">
+            Bank Multi-Department
+          </div>
+          <div className="space-y-1">
+            {departmentGovernanceViews.map((view) => {
+              const Icon = view.icon;
+              const isActive = activeView === view.id || (view.id === 'departments' && activeView === 'dept-admin');
+              return (
+                <button
+                  key={view.id}
+                  onClick={() => handleItemClick(view.id)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    isActive
+                      ? 'bg-[#E6F7EF] text-[#007860] font-bold border border-[#B8EAD1]'
+                      : 'text-[#2B3A57] hover:bg-[#F8FAFC] hover:text-[#162136]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-[#00B259]' : 'text-[#5A6A85]'}`} />
+                    <span>{view.label}</span>
+                  </div>
+
+                  {view.count !== undefined && view.count > 0 && (
+                    <span
+                      className={`font-mono text-xs px-2 py-0.5 rounded-full border shrink-0 ${
+                        view.highlight
+                          ? 'bg-[#E6F7EF] text-[#007860] border-[#B8EAD1] font-bold'
+                          : 'text-[#5A6A85] bg-[#F1F5F9] border-[#E2E8F0]'
+                      }`}
+                    >
+                      {view.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Section 3: Security Operations */}
+        <div>
+          <div className="px-2.5 mb-1.5 text-xs font-bold uppercase tracking-wider text-[#5A6A85]">
+            Security Operations
+          </div>
+          <div className="space-y-1">
+            {operationsViews.map((view) => {
+              const Icon = view.icon;
+              const isActive = activeView === view.id;
+              return (
+                <button
+                  key={view.id}
+                  onClick={() => handleItemClick(view.id)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    isActive
+                      ? 'bg-[#E6F7EF] text-[#007860] font-bold border border-[#B8EAD1]'
+                      : 'text-[#2B3A57] hover:bg-[#F8FAFC] hover:text-[#162136]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#00B259]' : 'text-[#5A6A85]'}`} />
+                    <span className="truncate">{view.label}</span>
+                  </div>
+
+                  {/* Show Count ONLY if count > 0 */}
+                  {view.count !== undefined && view.count > 0 && (
+                    <span
+                      className={`font-mono text-xs px-2 py-0.5 rounded-full border shrink-0 ${
+                        view.highlight
+                          ? 'bg-[#FFF7E6] text-[#D46B08] border-[#FFE7BA] font-bold'
+                          : 'text-[#5A6A85] bg-[#F1F5F9] border-[#E2E8F0]'
+                      }`}
+                    >
+                      {view.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Section 3: CMDB, Governance & Tools */}
+        <div>
+          <div className="px-2.5 mb-1.5 text-xs font-bold uppercase tracking-wider text-[#5A6A85]">
+            Governance & Tools
+          </div>
+          <div className="space-y-1">
+            {cmdbAndTools.map((view) => {
+              const Icon = view.icon;
+              const isActive = activeView === view.id;
+              return (
+                <button
+                  key={view.id}
+                  onClick={() => handleItemClick(view.id)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    isActive
+                      ? 'bg-[#E6F7EF] text-[#007860] font-bold border border-[#B8EAD1]'
+                      : 'text-[#2B3A57] hover:bg-[#F8FAFC] hover:text-[#162136]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#00B259]' : 'text-[#5A6A85]'}`} />
+                    <span className="truncate">{view.label}</span>
+                  </div>
+
+                  {/* Show Count ONLY if count > 0 */}
+                  {view.count !== undefined && view.count > 0 && (
+                    <span className="font-mono text-xs text-[#5A6A85] bg-[#F1F5F9] px-2 py-0.5 rounded-full border border-[#E2E8F0] shrink-0">
+                      {view.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
-      {/* Footer System Status */}
-      <div className="p-3 border-t border-slate-800 bg-bank-950 flex items-center justify-between text-[11px] text-slate-400 font-mono">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-          <span>System Healthy</span>
-        </div>
-        <span className="text-slate-600">v1.0</span>
+      {/* Sidebar Footer */}
+      <div className="p-3.5 border-t border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-between text-xs text-[#5A6A85]">
+        <button
+          onClick={() => handleItemClick('admin-center')}
+          className="flex items-center gap-2 hover:text-[#162136] font-bold"
+        >
+          <Settings className="w-4 h-4 text-[#00B259]" />
+          <span>Space Settings</span>
+        </button>
+        <span className="text-xs font-mono font-bold text-[#007860]">v2026.4</span>
       </div>
     </aside>
   );
 };
-

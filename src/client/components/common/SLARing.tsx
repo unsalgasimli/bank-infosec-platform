@@ -34,37 +34,37 @@ export const SLARing: React.FC<SLARingProps> = ({
     switch (state) {
       case 'BREACHED':
         return {
-          color: 'text-red-300',
-          bg: 'bg-red-950/60 border-red-800',
+          color: 'text-[#DE350B]',
+          bg: 'bg-[#FFEBE6] border-[#FFBDAD]',
           icon: AlertOctagon,
           label: 'SLA BREACHED',
         };
       case 'AT_RISK':
         return {
-          color: 'text-amber-300',
-          bg: 'bg-amber-950/60 border-amber-700',
+          color: 'text-[#FF8B00]',
+          bg: 'bg-[#FFFAE6] border-[#FFE380]',
           icon: AlertTriangle,
           label: 'SLA AT RISK',
         };
       case 'PAUSED':
         return {
-          color: 'text-blue-300',
-          bg: 'bg-blue-950/60 border-blue-800',
+          color: 'text-[#0052CC]',
+          bg: 'bg-[#DEEBFF] border-[#B3D4FF]',
           icon: Pause,
           label: 'SLA PAUSED',
         };
       case 'MET':
         return {
-          color: 'text-slate-400',
-          bg: 'bg-slate-800/80 border-slate-700',
+          color: 'text-[#5E6C84]',
+          bg: 'bg-[#FFFFFF] border-[#DFE1E6]',
           icon: CheckCircle,
           label: 'COMPLETED',
         };
       case 'SAFE':
       default:
         return {
-          color: 'text-emerald-300',
-          bg: 'bg-emerald-950/50 border-emerald-800',
+          color: 'text-[#006644]',
+          bg: 'bg-[#E3FCEF] border-[#ABF5D1]',
           icon: Clock,
           label: 'SLA SAFE',
         };
@@ -84,9 +84,9 @@ export const SLARing: React.FC<SLARingProps> = ({
   }
 
   return (
-    <div className={`p-3.5 rounded-lg border flex items-center justify-between ${theme.bg}`}>
+    <div className={`p-3.5 rounded-md border flex items-center justify-between shadow-sm ${theme.bg}`}>
       <div className="flex items-center gap-3">
-        <div className={`p-2 rounded-md bg-bank-950 border border-slate-700/80 ${theme.color}`}>
+        <div className={`p-2 rounded bg-[#FFFFFF] border border-[#DFE1E6] ${theme.color}`}>
           <Icon className="w-4 h-4" />
         </div>
         <div>
@@ -95,20 +95,20 @@ export const SLARing: React.FC<SLARingProps> = ({
               {theme.label}
             </span>
             {pausedReason && (
-              <span className="text-[10px] text-blue-300 bg-blue-950 px-1.5 py-0.5 rounded border border-blue-800">
+              <span className="text-[10px] text-[#0052CC] bg-[#DEEBFF] px-1.5 py-0.5 rounded border border-[#B3D4FF]">
                 {pausedReason}
               </span>
             )}
           </div>
-          <div className="text-base font-mono font-bold text-white mt-0.5">
+          <div className="text-base font-mono font-bold text-[#172B4D] mt-0.5">
             {formatTime(remainingMinutes)}
           </div>
         </div>
       </div>
       {deadline && (
-        <div className="text-right text-xs text-slate-400">
+        <div className="text-right text-xs text-[#5E6C84]">
           <div className="text-[11px]">Deadline</div>
-          <div className="font-mono text-slate-200 text-xs font-semibold">{new Date(deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}</div>
+          <div className="font-mono text-[#172B4D] text-xs font-semibold">{new Date(deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}</div>
         </div>
       )}
     </div>

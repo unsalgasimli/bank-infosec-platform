@@ -22,9 +22,9 @@ export class AuditService {
     const event: AuditEvent = {
       id: `aud-${uuidv4()}`,
       timestamp: new Date().toISOString(),
-      actorId: params.actor.id,
-      actorName: params.actor.fullName,
-      actorRole: params.actor.roles[0] || 'USER',
+      actorId: params.actor?.id || 'usr-ciso',
+      actorName: params.actor?.fullName || 'Security Operator',
+      actorRole: (params.actor?.roles && params.actor.roles[0]) || 'PLATFORM_ADMIN',
       ipAddress: params.ipAddress || '10.140.12.8',
       userAgent: params.userAgent || 'AegisSec-Client/1.0',
       correlationId: params.correlationId || `req-${uuidv4().substring(0, 8)}`,
@@ -36,6 +36,9 @@ export class AuditService {
       metadata: params.metadata,
     };
 
+    if (!db.data.auditEvents) {
+      db.data.auditEvents = [];
+    }
     db.data.auditEvents.unshift(event);
     db.persist();
     return event;

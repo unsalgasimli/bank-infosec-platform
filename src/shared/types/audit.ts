@@ -26,7 +26,12 @@ export interface AuditEvent {
     | 'BULK_UPDATE'
     | 'FINDING_INGESTED'
     | 'RESTRICTED_ACCESS_VIEWED'
-    | 'ADMIN_CONFIG_CHANGED';
+    | 'ADMIN_CONFIG_CHANGED'
+    | 'USER_LOGIN'
+    | 'USER_LOGOUT'
+    | 'LDAP_AUTH_SUCCESS'
+    | 'LDAP_AUTH_FAILED';
+
 
   entityType: 'TICKET' | 'COMMENT' | 'ATTACHMENT' | 'APPROVAL' | 'USER' | 'WORKFLOW' | 'SLA_POLICY' | 'SECURITY_EXCEPTION';
   entityId: string;

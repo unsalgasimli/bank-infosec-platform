@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './context/AuthContext.js';
 import { AppLayout } from './components/layout/AppLayout.js';
-import { TicketListView } from './components/tickets/TicketListView.js';
+import { WrikeTableView } from './components/views/WrikeTableView.js';
+import { IdeateCanvasView } from './components/ideate/IdeateCanvasView.js';
+import { WrikeGanttView } from './components/views/WrikeGanttView.js';
+import { WrikeWorkloadView } from './components/views/WrikeWorkloadView.js';
+import { WrikeRequestFormsView } from './components/views/WrikeRequestFormsView.js';
+import { WrikeAutomationsView } from './components/views/WrikeAutomationsView.js';
+import { DocumentProofingModal } from './components/proofing/DocumentProofingModal.js';
 import { TicketSplitDetail } from './components/tickets/TicketSplitDetail.js';
 import { CISODashboard } from './components/dashboards/CISODashboard.js';
 import { LeadDashboard } from './components/dashboards/LeadDashboard.js';
@@ -16,6 +22,10 @@ import { ApplicationCMDBView } from './components/assets/ApplicationCMDBView.js'
 import { AssetInventoryView } from './components/assets/AssetInventoryView.js';
 import { KnowledgeBaseView } from './components/kb/KnowledgeBaseView.js';
 import { AdminCenterView } from './components/admin/AdminCenterView.js';
+import { TicketKanbanBoard } from './components/tickets/TicketKanbanBoard.js';
+import { DepartmentHubView } from './components/departments/DepartmentHubView.js';
+import { DepartmentAdminPortal } from './components/departments/DepartmentAdminPortal.js';
+import { CrossDepartmentHubView } from './components/departments/CrossDepartmentHubView.js';
 import { Ticket } from '../shared/types/ticket.js';
 import { BankApplication, BankAsset } from '../shared/types/asset.js';
 import { RiskRegisterItem } from '../shared/types/risk.js';
@@ -24,8 +34,12 @@ import { KBArticle } from '../shared/types/kb.js';
 export const App: React.FC = () => {
   const { currentUser, fetchWithAuth } = useAuth();
 
-  const [activeView, setActiveView] = useState<string>('ciso-dash');
+  const [activeView, setActiveView] = useState<string>('table');
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [isProofingOpen, setIsProofingOpen] = useState<boolean>(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
+  const [activeDepartmentId, setActiveDepartmentId] = useState<string | null>(null);
+  const [selectedAdminDeptId, setSelectedAdminDeptId] = useState<string | null>(null);
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [applications, setApplications] = useState<BankApplication[]>([]);
@@ -35,6 +49,7 @@ export const App: React.FC = () => {
   const [cisoMetrics, setCisoMetrics] = useState<any>(null);
   const [leadMetrics, setLeadMetrics] = useState<any>(null);
   const [analystWorkspace, setAnalystWorkspace] = useState<any>(null);
+  const [pendingApprovalsCount, setPendingApprovalsCount] = useState<number>(0);
 
   const [ticketDetailData, setTicketDetailData] = useState<any>(null);
   const [jqlQuery, setJqlQuery] = useState<string>('');
@@ -51,6 +66,16 @@ export const App: React.FC = () => {
         if (data.success) setTickets(data.tickets);
       })
       .catch((err) => console.error(err));
+
+    // Load Pending Approvals
+    fetchWithAuth('/api/approvals/pending')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.pendingApprovals) {
+          setPendingApprovalsCount(data.pendingApprovals.length);
+        }
+      })
+      .catch(() => {});
 
     // Load Applications & Assets
     fetchWithAuth('/api/applications')
@@ -145,7 +170,6 @@ export const App: React.FC = () => {
     const data = await res.json();
     if (data.success) {
       loadData();
-      // Reload ticket detail
       fetchWithAuth(`/api/tickets/${selectedTicketId}`)
         .then((r) => r.json())
         .then((d) => setTicketDetailData(d));
@@ -163,7 +187,6 @@ export const App: React.FC = () => {
     });
     const data = await res.json();
     if (data.success) {
-      // Reload ticket detail
       fetchWithAuth(`/api/tickets/${selectedTicketId}`)
         .then((r) => r.json())
         .then((d) => setTicketDetailData(d));
@@ -189,6 +212,28 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleCreateTaskFromIdea = async (idea: any) => {
+    const res = await fetchWithAuth('/api/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectCode: 'SEC',
+        ticketTypeId: idea.category || 'INCIDENT',
+        title: idea.title,
+        description: idea.description,
+        technicalSeverity: 'HIGH',
+        businessPriority: idea.priority || 'P2_HIGH',
+        businessImpact: 'SIGNIFICANT',
+        confidentiality: 'RESTRICTED',
+        tags: idea.tags || ['IDEATE'],
+      }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      loadData();
+    }
+  };
+
   return (
     <AppLayout
       activeView={activeView}
@@ -196,16 +241,44 @@ export const App: React.FC = () => {
         setActiveView(v);
         setSelectedTicketId(null);
       }}
-      tickets={tickets}
+      activeDepartmentId={activeDepartmentId}
+      onSelectDepartment={(dId) => {
+        setActiveDepartmentId(dId);
+        if (dId) {
+          setSelectedAdminDeptId(dId);
+        }
+      }}
+      tickets={
+        activeDepartmentId
+          ? tickets.filter(
+              (t) =>
+                t.departmentId === activeDepartmentId ||
+                t.targetDepartmentId === activeDepartmentId ||
+                t.participatingDepartmentIds?.includes(activeDepartmentId)
+            )
+          : tickets
+      }
       applications={applications}
       assets={assets}
+      risks={risks}
+      kbArticles={kbArticles}
+      pendingApprovalsCount={pendingApprovalsCount}
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
+      onRunJql={(jql) => {
+        setJqlQuery(jql);
+        setActiveView('table');
+      }}
       onTicketCreated={(t) => {
         loadData();
-        setSelectedTicketId(t.id);
+        if (t && t.id) {
+          setSelectedTicketId(t.id);
+        }
       }}
       onNavigate={handleNavigate}
+      isCreateOpen={isCreateModalOpen}
+      onOpenCreate={() => setIsCreateModalOpen(true)}
+      onCloseCreate={() => setIsCreateModalOpen(false)}
     >
       {/* If a ticket is open, show split detail */}
       {selectedTicketId && ticketDetailData?.ticket ? (
@@ -233,6 +306,98 @@ export const App: React.FC = () => {
         />
       ) : (
         <>
+          {/* Wrike Core Feature Views */}
+          {(activeView === 'table' || activeView === 'tickets') && (
+            <WrikeTableView
+              tickets={
+                activeDepartmentId
+                  ? tickets.filter(
+                      (t) =>
+                        t.departmentId === activeDepartmentId ||
+                        t.targetDepartmentId === activeDepartmentId ||
+                        t.participatingDepartmentIds?.includes(activeDepartmentId)
+                    )
+                  : tickets
+              }
+              applications={applications}
+              assets={assets}
+              onSelectTicket={handleSelectTicket}
+              onOpenCreate={() => setIsCreateModalOpen(true)}
+            />
+          )}
+
+          {/* Bank Multi-Department Hub & Admin Portal */}
+          {activeView === 'departments' && (
+            <DepartmentHubView
+              onSelectDepartment={(deptId) => {
+                setSelectedAdminDeptId(deptId);
+                setActiveView('dept-admin');
+              }}
+              onNavigate={handleNavigate}
+            />
+          )}
+
+          {activeView === 'dept-admin' && (
+            <DepartmentAdminPortal
+              departmentId={selectedAdminDeptId || currentUser?.departmentId || 'dept-secops'}
+              onBack={() => setActiveView('departments')}
+              onNavigate={handleNavigate}
+              onRefreshData={loadData}
+            />
+          )}
+
+          {/* Cross-Department Orchestration Pipelines */}
+          {activeView === 'cross-tasks' && (
+            <CrossDepartmentHubView
+              onSelectTicket={handleSelectTicket}
+              onNavigate={handleNavigate}
+              onRefreshTickets={loadData}
+            />
+          )}
+
+          {activeView === 'ideate' && (
+            <IdeateCanvasView
+              onNavigate={handleNavigate}
+              onRefreshTickets={loadData}
+            />
+          )}
+
+          {activeView === 'gantt' && (
+            <WrikeGanttView
+              tickets={tickets}
+              onSelectTicket={handleSelectTicket}
+              onOpenCreate={() => setIsCreateModalOpen(true)}
+            />
+          )}
+
+          {activeView === 'board' && (
+            <TicketKanbanBoard tickets={tickets} onSelectTicket={handleSelectTicket} />
+          )}
+
+          {activeView === 'workload' && (
+            <WrikeWorkloadView
+              tickets={tickets}
+              onSelectTicket={handleSelectTicket}
+              onRefreshTickets={loadData}
+            />
+          )}
+
+          {activeView === 'request-forms' && (
+            <WrikeRequestFormsView
+              onFormSubmitted={() => {
+                loadData();
+                setActiveView('table');
+              }}
+            />
+          )}
+
+          {activeView === 'automations' && (
+            <WrikeAutomationsView
+              onRefreshTickets={loadData}
+              onNavigate={handleNavigate}
+            />
+          )}
+
           {activeView === 'ciso-dash' && (
             <CISODashboard
               metrics={cisoMetrics}
@@ -241,47 +406,6 @@ export const App: React.FC = () => {
               applications={applications}
               onSelectTicket={handleSelectTicket}
               onNavigate={setActiveView}
-            />
-          )}
-
-          {activeView === 'lead-dash' && (
-            <LeadDashboard
-              workload={leadMetrics?.workload || []}
-              queues={leadMetrics?.queues || []}
-              onSelectQueue={(jql) => {
-                setJqlQuery(jql);
-                setActiveView('tickets');
-              }}
-            />
-          )}
-
-          {activeView === 'analyst-dash' && (
-            <AnalystDashboard
-              myTickets={analystWorkspace?.myTickets || []}
-              myApprovals={analystWorkspace?.myApprovals || []}
-              watchedTickets={analystWorkspace?.watchedTickets || []}
-              slaApproaching={analystWorkspace?.slaApproaching || []}
-              onSelectTicket={handleSelectTicket}
-            />
-          )}
-
-          {(activeView === 'tickets' || activeView === 'my-tickets' || activeView === 'watched-tickets' || activeView === 'overdue-tickets') && (
-            <TicketListView
-              tickets={
-                activeView === 'my-tickets'
-                  ? tickets.filter((t) => t.assigneeId === currentUser?.id)
-                  : activeView === 'watched-tickets'
-                  ? tickets.filter((t) => t.watcherIds.includes(currentUser?.id || ''))
-                  : activeView === 'overdue-tickets'
-                  ? tickets.filter((t) => t.slaState === 'AT_RISK' || t.slaState === 'BREACHED')
-                  : tickets
-              }
-              applications={applications}
-              assets={assets}
-              onSelectTicket={handleSelectTicket}
-              onRefresh={loadData}
-              jqlQuery={jqlQuery}
-              onJqlChange={setJqlQuery}
             />
           )}
 
@@ -337,6 +461,14 @@ export const App: React.FC = () => {
             <AdminCenterView />
           )}
         </>
+      )}
+
+      {/* Document Proofing Modal */}
+      {isProofingOpen && (
+        <DocumentProofingModal
+          isOpen={isProofingOpen}
+          onClose={() => setIsProofingOpen(false)}
+        />
       )}
     </AppLayout>
   );

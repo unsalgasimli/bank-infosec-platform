@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aegissec-app
+  namespace: bank-infosec
+  labels:
+    app.kubernetes.io/name: aegissec
+    app.kubernetes.io/component: backend-frontend
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: aegissec-app
+  template:
+    metadata:
+      labels:
+        app: aegissec-app
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: aegissec
+          image: registry.bank.apex.int/infosec/bank-infosec-platform:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: aegissec-config
+            - secretRef:
+                name: aegissec-secrets
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "1.5Gi"
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 4000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health/ready
+              port: 4000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aegissec-service
+  namespace: bank-infosec
+  labels:
+    app: aegissec-app
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 4000
+      name: http
+  selector:
+    app: aegissec-app

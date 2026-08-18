@@ -100,86 +100,98 @@ export class TicketsController {
   }
 
   public static create(req: AuthenticatedRequest, res: Response): void {
-    const user = req.user!;
-    const body = req.body;
+    try {
+      const user = req.user!;
+      const body = req.body;
 
-    const projectCode = body.projectCode || 'SEC';
-    const count = db.data.tickets.length + 1;
-    const key = `${projectCode}-2026-${String(count).padStart(4, '0')}`;
-    const now = new Date().toISOString();
+      const projectCode = body.projectCode || 'SEC';
+      const count = (db.data.tickets || []).length + 1;
+      const key = `${projectCode}-2026-${String(count).padStart(4, '0')}`;
+      const now = new Date().toISOString();
 
-    const newTicket: Ticket = {
-      id: `tick-${uuidv4().substring(0, 8)}`,
-      key,
-      projectCode,
-      ticketTypeId: body.ticketTypeId || 'type-vuln',
-      ticketTypeName: body.ticketTypeName || 'Security Ticket',
-      category: body.category || 'VULNERABILITY',
-      securityDomain: body.securityDomain || 'GENERAL_INFOSEC',
-      title: body.title,
-      description: body.description,
-      statusId: body.statusId || (body.category === 'INCIDENT' ? 'INC_NEW' : body.category === 'SECURITY_EXCEPTION' ? 'EXC_DRAFT' : 'VULN_OPEN'),
-      statusName: body.statusName || 'Open',
-      statusCategory: 'TO_DO',
-      workflowId: body.workflowId || (body.category === 'INCIDENT' ? 'wf-incident-std' : body.category === 'SECURITY_EXCEPTION' ? 'wf-exception-std' : 'wf-vuln-std'),
-      workflowVersion: 1,
-      technicalSeverity: body.technicalSeverity || 'MEDIUM',
-      businessPriority: body.businessPriority || 'P3_MEDIUM',
-      businessImpact: body.businessImpact || 'MODERATE',
-      inherentRisk: body.inherentRisk || 'MEDIUM',
-      residualRisk: body.residualRisk || 'LOW',
-      riskScore: body.riskScore || 50,
-      cvssScore: body.cvssScore,
-      cvssVector: body.cvssVector,
-      confidentiality: body.confidentiality || 'INTERNAL',
-      restrictedUserIds: body.restrictedUserIds || [],
-      restrictedTeamIds: body.restrictedTeamIds || [],
-      reporterId: user.id,
-      assigneeId: body.assigneeId,
-      securityOwnerId: body.securityOwnerId || user.id,
-      teamId: body.teamId,
-      departmentId: body.departmentId || user.departmentId,
-      applicationId: body.applicationId,
-      assetId: body.assetId,
-      riskOwnerId: body.riskOwnerId,
-      watcherIds: [user.id, ...(body.watcherIds || [])],
-      findingDetails: body.findingDetails,
-      incidentDetails: body.incidentDetails,
-      exceptionDetails: body.exceptionDetails,
-      customFields: body.customFields || [],
-      createdAt: now,
-      updatedAt: now,
-      detectedAt: body.detectedAt || now,
-      dueDate: body.dueDate || new Date(Date.now() + 86400000 * 7).toISOString(),
-      remediationDeadline: body.remediationDeadline || new Date(Date.now() + 86400000 * 3).toISOString(),
-      slaPolicyId: body.slaPolicyId || 'sla-tier1-banking',
-      slaState: 'SAFE',
-      version: 1,
-      tags: body.tags || [],
-    };
+      const defaultWorkflow = (db.data.workflows || [])[0];
+      const initialStatus = defaultWorkflow?.states?.[0] || { id: 'OPEN', name: 'Open', category: 'TO_DO' };
+      const defaultSlaPolicy = (db.data.slaPolicies || [])[0] || { id: 'sla-p1-emergency' };
 
-    // Calculate initial SLA
-    const sla = SLAService.calculateSLA(newTicket);
-    newTicket.slaState = sla.state;
-    newTicket.slaRemainingMinutes = sla.remainingMinutes;
+      const newTicket: Ticket = {
+        id: `tick-${uuidv4().substring(0, 8)}`,
+        key,
+        projectCode,
+        ticketTypeId: body.ticketTypeId || body.category || 'VULNERABILITY',
+        ticketTypeName: body.ticketTypeName || 'Security Ticket',
+        category: body.category || 'VULNERABILITY',
+        securityDomain: body.securityDomain || 'GENERAL_INFOSEC',
+        title: body.title || 'Untitled Security Task',
+        description: body.description || body.title || '',
+        statusId: body.statusId || initialStatus.id,
+        statusName: body.statusName || initialStatus.name,
+        statusCategory: (body.statusCategory || initialStatus.category || 'TO_DO') as any,
+        workflowId: body.workflowId || defaultWorkflow?.id || 'wf-secops-default',
+        workflowVersion: 1,
+        technicalSeverity: body.technicalSeverity || 'MEDIUM',
+        businessPriority: body.businessPriority || 'P3_MEDIUM',
+        businessImpact: body.businessImpact || 'MODERATE',
+        inherentRisk: body.inherentRisk || 'MEDIUM',
+        residualRisk: body.residualRisk || 'LOW',
+        riskScore: body.riskScore || 50,
+        cvssScore: body.cvssScore,
+        cvssVector: body.cvssVector,
+        confidentiality: body.confidentiality || 'INTERNAL',
+        restrictedUserIds: body.restrictedUserIds || [],
+        restrictedTeamIds: body.restrictedTeamIds || [],
+        reporterId: user.id,
+        assigneeId: body.assigneeId || user.id,
+        securityOwnerId: body.securityOwnerId || user.id,
+        teamId: body.teamId,
+        departmentId: body.departmentId || user.departmentId,
+        applicationId: body.applicationId || undefined,
+        assetId: body.assetId || undefined,
+        riskOwnerId: body.riskOwnerId,
+        watcherIds: [user.id, ...(body.watcherIds || [])],
+        findingDetails: body.findingDetails,
+        incidentDetails: body.incidentDetails,
+        exceptionDetails: body.exceptionDetails,
+        customFields: body.customFields || [],
+        createdAt: now,
+        updatedAt: now,
+        detectedAt: body.detectedAt || now,
+        dueDate: body.dueDate || new Date(Date.now() + 86400000 * 7).toISOString(),
+        remediationDeadline: body.remediationDeadline || new Date(Date.now() + 86400000 * 3).toISOString(),
+        slaPolicyId: body.slaPolicyId || defaultSlaPolicy.id,
+        slaState: 'SAFE',
+        version: 1,
+        tags: body.tags || [],
+      };
 
-    db.data.tickets.unshift(newTicket);
+      // Calculate initial SLA
+      const sla = SLAService.calculateSLA(newTicket);
+      newTicket.slaState = sla.state;
+      newTicket.slaRemainingMinutes = sla.remainingMinutes;
 
-    // Audit log
-    AuditService.log({
-      actor: user,
-      action: 'TICKET_CREATED',
-      entityType: 'TICKET',
-      entityId: newTicket.id,
-      entityKey: newTicket.key,
-      metadata: { title: newTicket.title, severity: newTicket.technicalSeverity },
-    });
+      if (!db.data.tickets) {
+        db.data.tickets = [];
+      }
+      db.data.tickets.unshift(newTicket);
 
-    // Run Automations
-    AutomationService.triggerEvent('TICKET_CREATED', newTicket, user);
+      // Audit log
+      AuditService.log({
+        actor: user,
+        action: 'TICKET_CREATED',
+        entityType: 'TICKET',
+        entityId: newTicket.id,
+        entityKey: newTicket.key,
+        metadata: { title: newTicket.title, severity: newTicket.technicalSeverity },
+      });
 
-    db.persist();
-    res.status(201).json({ success: true, ticket: newTicket });
+      // Run Automations
+      AutomationService.triggerEvent('TICKET_CREATED', newTicket, user);
+
+      db.persist();
+      res.status(201).json({ success: true, ticket: newTicket });
+    } catch (err: any) {
+      console.error('Failed to create ticket', err);
+      res.status(500).json({ success: false, error: err.message || 'Internal Server Error' });
+    }
   }
 
   public static update(req: AuthenticatedRequest, res: Response): void {
@@ -378,5 +390,131 @@ export class TicketsController {
 
     db.persist();
     res.json({ success: true, updatedCount });
+  }
+
+  /**
+   * Enterprise Multi-Department Workflow & Task Graph Fanout
+   */
+  public static createMultiTaskWorkflow(req: AuthenticatedRequest, res: Response): void {
+    const user = req.user!;
+    const { templateTitle, description, tasks } = req.body;
+
+    if (!templateTitle || !Array.isArray(tasks) || tasks.length === 0) {
+      res.status(400).json({ success: false, error: 'Workflow requires a title and at least 1 task.' });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const createdTickets: Ticket[] = [];
+    const createdDependencies: any[] = [];
+
+    // Ensure ganttDependencies array exists
+    if (!db.data.ganttDependencies) {
+      db.data.ganttDependencies = [];
+    }
+
+    // Create tasks sequentially
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i];
+      const seqNumber = db.data.tickets.length + 101 + i;
+      const category = t.category || 'SECURITY_REVIEW';
+      const severity = t.technicalSeverity || 'HIGH';
+      const priority = t.businessPriority || 'P2_HIGH';
+      const slaHours = Number(t.slaHours) || 24;
+
+      const newTicket: Ticket = {
+        id: `tick-wf-${uuidv4().substring(0, 8)}`,
+        key: `SEC-2026-${seqNumber}`,
+        projectCode: 'SEC',
+        ticketTypeId: category,
+        ticketTypeName: t.targetDepartment ? `[${t.targetDepartment}] ${category}` : category,
+        category,
+        securityDomain: (t.targetDepartment === 'HR_LEGAL' ? 'AUDIT_COMPLIANCE' : t.targetDepartment === 'SECOPS_SOC' ? 'SOC' : 'APPSEC') as any,
+        workflowId: 'wf-secops-default',
+        workflowVersion: 1,
+        statusId: 'OPEN',
+        statusName: 'Open',
+        statusCategory: 'TO_DO',
+        title: t.title,
+        description: t.description || `Generated part of workflow: ${templateTitle}`,
+        technicalSeverity: severity,
+        businessPriority: priority,
+        businessImpact: 'SIGNIFICANT',
+        inherentRisk: 'MEDIUM',
+        residualRisk: 'LOW',
+        riskScore: 6.5,
+        confidentiality: 'RESTRICTED',
+        restrictedUserIds: [],
+        restrictedTeamIds: [],
+        reporterId: user.id,
+        assigneeId: t.assigneeId || user.id,
+        watcherIds: [user.id],
+        customFields: [],
+        createdAt: now,
+        updatedAt: now,
+        detectedAt: now,
+        dueDate: new Date(Date.now() + (t.offsetDays || i * 2) * 86400000 + slaHours * 3600000).toISOString(),
+        remediationDeadline: new Date(Date.now() + (t.offsetDays || i * 2) * 86400000 + slaHours * 3600000).toISOString(),
+        slaPolicyId: 'sla-p1-emergency',
+        slaState: 'SAFE',
+        version: 1,
+        tags: ['MULTI_DEPT_WORKFLOW', t.targetDepartment || 'GENERAL', ...(t.tags || [])],
+      };
+
+      const sla = SLAService.calculateSLA(newTicket);
+      newTicket.slaState = sla.state;
+      newTicket.slaRemainingMinutes = sla.remainingMinutes;
+
+      db.data.tickets.unshift(newTicket);
+      createdTickets.push(newTicket);
+
+      // Create dependency if dependsOnPreviousIndex is specified
+      if (t.dependsOnIndex !== undefined && t.dependsOnIndex !== null && createdTickets[t.dependsOnIndex]) {
+        const fromTicket = createdTickets[t.dependsOnIndex];
+        const dep = {
+          id: `dep-${uuidv4().substring(0, 8)}`,
+          fromTaskId: fromTicket.id,
+          toTaskId: newTicket.id,
+          type: 'FINISH_TO_START' as const,
+        };
+        db.data.ganttDependencies.push(dep);
+        createdDependencies.push(dep);
+      }
+
+      // Create real notification for assignee
+      if (newTicket.assigneeId) {
+        if (!db.data.notifications) db.data.notifications = [];
+        db.data.notifications.unshift({
+          id: `notif-${uuidv4().substring(0, 8)}`,
+          userId: newTicket.assigneeId,
+          title: `New Assigned Task: ${newTicket.key}`,
+          message: `You were assigned [${t.targetDepartment || 'Workflow'}]: "${newTicket.title}" under ${templateTitle}.`,
+          type: 'ASSIGNMENT',
+          severity: severity === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
+          timestamp: now,
+          isRead: false,
+          ticketId: newTicket.id,
+          ticketKey: newTicket.key,
+        });
+      }
+
+      AuditService.log({
+        actor: user,
+        action: 'TICKET_CREATED',
+        entityType: 'TICKET',
+        entityId: newTicket.id,
+        entityKey: newTicket.key,
+        metadata: { title: newTicket.title, template: templateTitle, department: t.targetDepartment },
+      });
+    }
+
+    db.persist();
+
+    res.status(201).json({
+      success: true,
+      message: `Successfully instantiated workflow "${templateTitle}" with ${createdTickets.length} tasks across target departments.`,
+      tickets: createdTickets,
+      dependencies: createdDependencies,
+    });
   }
 }

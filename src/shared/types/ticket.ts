@@ -147,16 +147,25 @@ export interface Ticket {
   restrictedUserIds?: string[];
   restrictedTeamIds?: string[];
   
-  // Ownership
+  // Ownership & Department Context
   reporterId: string;
   assigneeId?: string;
   securityOwnerId?: string;
   teamId?: string;
   departmentId?: string;
+  targetDepartmentId?: string;
   applicationId?: string;
   assetId?: string;
   riskOwnerId?: string;
   watcherIds: string[];
+
+  // Cross-Department Orchestration
+  parentTaskId?: string;
+  crossDepartmentId?: string;
+  isCrossDepartmentParent?: boolean;
+  participatingDepartmentIds?: string[];
+  departmentStepIndex?: number;
+  dependsOnTaskId?: string;
   
   // Specialized details
   findingDetails?: SecurityFindingDetails;

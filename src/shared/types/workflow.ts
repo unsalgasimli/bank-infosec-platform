@@ -36,6 +36,8 @@ export interface Workflow {
   name: string;
   description: string;
   ticketTypeId: string;
+  departmentId?: string;
+  isCrossDepartment?: boolean;
   version: number;
   isActive: boolean;
   states: WorkflowState[];

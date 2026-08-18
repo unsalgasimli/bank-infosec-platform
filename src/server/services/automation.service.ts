@@ -11,16 +11,16 @@ export class AutomationService {
   public static triggerEvent(
     trigger: AutomationTrigger,
     ticket: Ticket,
-    actor: BankUser
+    actor?: BankUser
   ): { executedRules: string[] } {
     const executedRules: string[] = [];
 
-    const activeRules = db.data.automationRules.filter((r) => r.isActive && r.trigger === trigger);
+    const activeRules = (db.data.automationRules || []).filter((r) => r.isActive && r.trigger === trigger);
 
     for (const rule of activeRules) {
       if (AutomationService.evaluateConditions(rule, ticket)) {
-        AutomationService.executeActions(rule, ticket, actor);
-        rule.executionCount += 1;
+        AutomationService.executeActions(rule, ticket, actor || db.data.users[0]);
+        rule.executionCount = (rule.executionCount || 0) + 1;
         rule.lastExecutedAt = new Date().toISOString();
         executedRules.push(rule.name);
       }

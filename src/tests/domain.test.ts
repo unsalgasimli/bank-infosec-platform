@@ -6,20 +6,267 @@ import { SLAService } from '../server/services/sla.service.js';
 import { ApprovalService } from '../server/services/approval.service.js';
 import { DedupService } from '../server/services/dedup.service.js';
 import { SearchService } from '../server/services/search.service.js';
-import { db } from '../server/db/database.js';
-import { initialSeedData } from '../server/db/seed.js';
+import { db, DatabaseSchema } from '../server/db/database.js';
+import { BankUser } from '../shared/types/auth.js';
+import { Ticket } from '../shared/types/ticket.js';
 
 test('AegisSec BankSecOps Domain Logic & Security Test Suite', async (t) => {
-  // Ensure database is in fresh seed state
-  db.reset(initialSeedData);
+  const cisoUser: BankUser = {
+    id: 'usr-ciso',
+    username: 'ciso.officer',
+    email: 'ciso@bank.internal',
+    fullName: 'Chief Information Security Officer',
+    title: 'CISO',
+    divisionId: 'div-sec',
+    departmentId: 'dept-sec',
+    teamIds: ['team-sec'],
+    roles: ['CISO', 'PLATFORM_ADMIN'],
+    securityClearance: 'HIGHLY_RESTRICTED_HR_LEGAL',
+    ownedApplicationIds: [],
+    ownedAssetIds: [],
+    ownedRiskIds: [],
+    isActive: true,
+  };
 
-  const cisoUser = db.data.users.find((u) => u.id === 'usr-ciso')!;
-  const devLeadUser = db.data.users.find((u) => u.id === 'usr-dev-lead')!;
-  const dlpAnalystUser = db.data.users.find((u) => u.id === 'usr-dlp-analyst')!;
-  const appsecLeadUser = db.data.users.find((u) => u.id === 'usr-appsec-lead')!;
+  const devLeadUser: BankUser = {
+    id: 'usr-dev-lead',
+    username: 'dev.lead',
+    email: 'dev@bank.internal',
+    fullName: 'Lead Engineer',
+    title: 'Lead Software Engineer',
+    divisionId: 'div-dev',
+    departmentId: 'dept-dev',
+    teamIds: ['team-dev'],
+    roles: ['APPLICATION_OWNER', 'REQUESTER'],
+    securityClearance: 'INTERNAL',
+    ownedApplicationIds: ['app-loan'],
+    ownedAssetIds: [],
+    ownedRiskIds: [],
+    isActive: true,
+  };
 
-  const appsecTicket = db.data.tickets.find((t) => t.id === 'tick-appsec-001')!;
-  const dlpTicket = db.data.tickets.find((t) => t.id === 'tick-dlp-001')!;
+  const dlpAnalystUser: BankUser = {
+    id: 'usr-dlp-analyst',
+    username: 'dlp.analyst',
+    email: 'dlp@bank.internal',
+    fullName: 'DLP Senior Analyst',
+    title: 'DLP Analyst',
+    divisionId: 'div-sec',
+    departmentId: 'dept-dlp',
+    teamIds: ['team-dlp'],
+    roles: ['DLP_ANALYST', 'SECURITY_ANALYST'],
+    securityClearance: 'CONFIDENTIAL_SECURITY_ONLY',
+    ownedApplicationIds: [],
+    ownedAssetIds: [],
+    ownedRiskIds: [],
+    isActive: true,
+  };
+
+  const appsecLeadUser: BankUser = {
+    id: 'usr-appsec-lead',
+    username: 'appsec.lead',
+    email: 'appsec@bank.internal',
+    fullName: 'AppSec Lead Specialist',
+    title: 'AppSec Lead',
+    divisionId: 'div-sec',
+    departmentId: 'dept-appsec',
+    teamIds: ['team-appsec'],
+    roles: ['APPSEC_ANALYST', 'SECURITY_ANALYST', 'APPROVER'],
+    securityClearance: 'CONFIDENTIAL_SECURITY_ONLY',
+    ownedApplicationIds: [],
+    ownedAssetIds: [],
+    ownedRiskIds: [],
+    isActive: true,
+  };
+
+  const appsecTicket: Ticket = {
+    id: 'tick-appsec-001',
+    key: 'APPSEC-2026-0001',
+    projectCode: 'APPSEC',
+    ticketTypeId: 'tt-vuln',
+    ticketTypeName: 'Application Security Finding',
+    category: 'VULNERABILITY',
+    securityDomain: 'APPSEC',
+    title: 'SQL Injection in Mortgage Assessment Filter',
+    description: 'Dynamic SQL query construction in underwriting repository',
+    statusId: 'VULN_TRIAGE',
+    statusName: 'Triaged',
+    statusCategory: 'TO_DO',
+    workflowId: 'wf-vuln-lifecycle',
+    workflowVersion: 1,
+    technicalSeverity: 'HIGH',
+    businessPriority: 'P2_HIGH',
+    businessImpact: 'SIGNIFICANT',
+    inherentRisk: 'HIGH',
+    residualRisk: 'HIGH',
+    riskScore: 78,
+    confidentiality: 'INTERNAL',
+    reporterId: 'usr-appsec-lead',
+    assigneeId: 'usr-dev-lead',
+    applicationId: 'app-loan',
+    watcherIds: [],
+    tags: ['OWASP-A03', 'CWE-89'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    dueDate: new Date(Date.now() + 14 * 86400000).toISOString(),
+    remediationDeadline: new Date(Date.now() + 14 * 86400000).toISOString(),
+    slaState: 'SAFE',
+    slaRemainingMinutes: 20160,
+    version: 1,
+    findingDetails: {
+      vulnerabilityTitle: 'SQL Injection in Mortgage Assessment Filter',
+      cweId: 'CWE-89',
+      filePath: 'src/main/java/com/apexbank/loan/repository/UnderwritingRepository.java',
+      codeLine: 142,
+      endpoint: '/api/v2/underwriting/assessments/query',
+      httpParameter: 'applicantTaxId',
+      scannerSource: 'CHECKMARX',
+      findingFingerprint: DedupService.calculateFingerprint({
+        scannerSource: 'CHECKMARX',
+        applicationId: 'app-loan',
+        title: 'SQL Injection in Mortgage Assessment Filter',
+        description: 'Checkmarx SAST scan finding',
+        cweId: 'CWE-89',
+        filePath: 'src/main/java/com/apexbank/loan/repository/UnderwritingRepository.java',
+        codeLine: 142,
+        endpoint: '/api/v2/underwriting/assessments/query',
+        httpParameter: 'applicantTaxId',
+      }),
+      observationCount: 1,
+    },
+  };
+
+  const dlpTicket: Ticket = {
+    id: 'tick-dlp-001',
+    key: 'DLP-2026-0090',
+    projectCode: 'DLP',
+    ticketTypeId: 'tt-dlp',
+    ticketTypeName: 'DLP Data Exfiltration Alert',
+    category: 'INCIDENT',
+    securityDomain: 'DLP',
+    title: 'Unauthorized Customer PII Export via USB Mass Storage',
+    description: 'DLP Agent detected export of customer SSN/Tax IDs',
+    statusId: 'INC_INVESTIGATING',
+    statusName: 'Under Investigation',
+    statusCategory: 'IN_PROGRESS',
+    workflowId: 'wf-incident-response',
+    workflowVersion: 1,
+    technicalSeverity: 'CRITICAL',
+    businessPriority: 'P1_URGENT',
+    businessImpact: 'CATASTROPHIC',
+    inherentRisk: 'CRITICAL',
+    residualRisk: 'CRITICAL',
+    riskScore: 95,
+    confidentiality: 'CONFIDENTIAL_SECURITY_ONLY',
+    restrictedRoleIds: [],
+    restrictedUserIds: ['usr-ciso', 'usr-dlp-analyst'],
+    reporterId: 'usr-dlp-analyst',
+    assigneeId: 'usr-dlp-analyst',
+    watcherIds: [],
+    tags: ['PII', 'GDPR', 'INSIDER_THREAT'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    dueDate: new Date(Date.now() + 86400000).toISOString(),
+    remediationDeadline: new Date(Date.now() + 86400000).toISOString(),
+    slaState: 'SAFE',
+    slaRemainingMinutes: 1440,
+    version: 1,
+  };
+
+  const testSchema: DatabaseSchema = {
+    divisions: [],
+    departments: [],
+    teams: [],
+    users: [cisoUser, devLeadUser, dlpAnalystUser, appsecLeadUser],
+    workflows: [
+      {
+        id: 'wf-vuln-lifecycle',
+        name: 'Vulnerability Remediation Lifecycle',
+        description: 'Standard security vulnerability remediation workflow',
+        ticketTypeId: 'tt-vuln',
+        version: 1,
+        isActive: true,
+        states: [
+          { id: 'VULN_TRIAGE', name: 'Triaged', category: 'TO_DO', color: '#6366f1' },
+          { id: 'VULN_REMEDIATION', name: 'In Remediation', category: 'IN_PROGRESS', color: '#3b82f6' },
+          { id: 'VULN_CLOSED', name: 'Closed', category: 'DONE', color: '#10b981' },
+        ],
+        transitions: [
+          {
+            id: 'tr-v3',
+            name: 'Begin Remediation',
+            fromStateId: 'VULN_TRIAGE',
+            toStateId: 'VULN_REMEDIATION',
+            allowedRoles: ['APPLICATION_OWNER', 'ASSIGNEE', 'SECURITY_ANALYST', 'CISO'],
+            requireComment: false,
+          },
+          {
+            id: 'tr-v4',
+            name: 'Submit for Retest',
+            fromStateId: 'VULN_REMEDIATION',
+            toStateId: 'VULN_CLOSED',
+            allowedRoles: ['APPLICATION_OWNER', 'ASSIGNEE'],
+            requireEvidence: true,
+          },
+        ],
+      },
+    ],
+    slaPolicies: [
+      {
+        id: 'sla-default',
+        name: 'Standard Banking SLA Policy',
+        description: 'Default SLA thresholds',
+        isDefault: true,
+        businessHoursOnly: false,
+        businessStartTime: '09:00',
+        businessEndTime: '18:00',
+        timezone: 'UTC',
+        excludeWeekends: false,
+        excludeHolidays: false,
+        thresholds: {
+          CRITICAL: { acknowledgmentMinutes: 15, firstResponseMinutes: 30, remediationMinutes: 240, resolutionMinutes: 480 },
+          HIGH: { acknowledgmentMinutes: 60, firstResponseMinutes: 120, remediationMinutes: 20160, resolutionMinutes: 43200 },
+          MEDIUM: { acknowledgmentMinutes: 240, firstResponseMinutes: 480, remediationMinutes: 43200, resolutionMinutes: 86400 },
+          LOW: { acknowledgmentMinutes: 1440, firstResponseMinutes: 2880, remediationMinutes: 129600, resolutionMinutes: 259200 },
+          INFORMATIONAL: { acknowledgmentMinutes: 2880, firstResponseMinutes: 5760, remediationMinutes: 259200, resolutionMinutes: 518400 },
+        },
+      },
+    ],
+    tickets: [appsecTicket, dlpTicket],
+    approvals: [
+      {
+        id: 'appr-grc-001',
+        ticketId: 'tick-appsec-001',
+        title: 'Policy Exception Approval',
+        status: 'PENDING',
+        createdAt: new Date().toISOString(),
+        steps: [
+          {
+            id: 'step-3',
+            stepNumber: 1,
+            name: 'CISO Executive Authorization',
+            requiredRole: 'CISO',
+            assignedApproverId: 'usr-ciso',
+            status: 'PENDING',
+            isMandatory: true,
+          },
+        ],
+      },
+    ],
+    assets: [],
+    applications: [],
+    risks: [],
+    comments: [],
+    attachments: [],
+    auditEvents: [],
+    automationRules: [],
+    queues: [],
+    kbArticles: [],
+    savedFilters: [],
+  };
+
+  // Setup test database
+  db.reset(testSchema);
 
   await t.test('1. ABAC: Developer CAN access their own app ticket but CANNOT access restricted DLP case', () => {
     // Developer owns app-loan -> can access APPSEC-2026-0001
@@ -63,15 +310,15 @@ test('AegisSec BankSecOps Domain Logic & Security Test Suite', async (t) => {
     // Attempt invalid transition by unauthorized user
     const invalidTrans = WorkflowService.executeTransition({
       ticketId: appsecTicket.id,
-      transitionId: 'tr-v4', // Submit for security retest
-      user: dlpAnalystUser, // DLP analyst does not have role on this dev ticket
+      transitionId: 'tr-v4',
+      user: dlpAnalystUser,
     });
     assert.strictEqual(invalidTrans.success, false, 'Unauthorized role must be rejected');
 
-    // Valid transition by assignee with comment & evidence
+    // Valid transition by assignee
     const validTrans = WorkflowService.executeTransition({
       ticketId: appsecTicket.id,
-      transitionId: 'tr-v3', // Begin remediation
+      transitionId: 'tr-v3',
       user: devLeadUser,
       comment: 'Starting hotfix branch implementation',
     });
@@ -148,5 +395,27 @@ test('AegisSec BankSecOps Domain Logic & Security Test Suite', async (t) => {
 
     const results2 = SearchService.query(db.data.tickets, 'status != CLOSED', cisoUser);
     assert.ok(results2.every((t) => t.statusCategory !== 'DONE' || t.statusId !== 'VULN_CLOSED'));
+  });
+
+  // Teardown: restore clean empty database
+  db.reset({
+    divisions: [],
+    departments: [],
+    teams: [],
+    users: [],
+    workflows: [],
+    slaPolicies: [],
+    tickets: [],
+    approvals: [],
+    assets: [],
+    applications: [],
+    risks: [],
+    comments: [],
+    attachments: [],
+    auditEvents: [],
+    automationRules: [],
+    queues: [],
+    kbArticles: [],
+    savedFilters: [],
   });
 });

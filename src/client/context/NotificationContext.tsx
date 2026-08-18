@@ -1,78 +1,93 @@
-import React, { createContext, useContext, useState } from 'react';
-
-export interface AppNotification {
-  id: string;
-  title: string;
-  message: string;
-  type: 'ALERT' | 'APPROVAL' | 'ASSIGNMENT' | 'SLA_WARNING' | 'SYSTEM';
-  timestamp: string;
-  read: boolean;
-  ticketKey?: string;
-}
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useAuth } from './AuthContext.js';
+import { AppNotification } from '../../shared/types/notification.js';
 
 interface NotificationContextType {
   notifications: AppNotification[];
   unreadCount: number;
-  markAsRead: (id: string) => void;
-  markAllAsRead: () => void;
-  addNotification: (n: Omit<AppNotification, 'id' | 'timestamp' | 'read'>) => void;
+  isLoading: boolean;
+  markAsRead: (id: string) => Promise<void>;
+  markAllAsRead: () => Promise<void>;
+  refreshNotifications: () => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [notifications, setNotifications] = useState<AppNotification[]>([
-    {
-      id: 'notif-1',
-      title: 'SLA Warning: 2 Hours Remaining',
-      message: 'APPSEC-2026-0001 (SQL Injection) is approaching critical remediation deadline.',
-      type: 'SLA_WARNING',
-      timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-      read: false,
-      ticketKey: 'APPSEC-2026-0001',
-    },
-    {
-      id: 'notif-2',
-      title: 'Pending Executive Approval',
-      message: 'GRC-2026-0078 requires CISO sign-off on TLS 1.3 exception.',
-      type: 'APPROVAL',
-      timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-      read: false,
-      ticketKey: 'GRC-2026-0078',
-    },
-    {
-      id: 'notif-3',
-      title: 'SOC Incident Containment Triggered',
-      message: 'SOC-2026-0012: Palo Alto Edge WAF rate limiting activated for credential stuffing alert.',
-      type: 'ALERT',
-      timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-      read: true,
-      ticketKey: 'SOC-2026-0012',
-    },
-  ]);
+  const { fetchWithAuth, currentUser } = useAuth();
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const refreshNotifications = useCallback(async () => {
+    if (!currentUser) {
+      setNotifications([]);
+      setUnreadCount(0);
+      setIsLoading(false);
+      return;
+    }
 
-  const markAsRead = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    try {
+      const res = await fetchWithAuth('/api/notifications');
+      const data = await res.json();
+      if (data.success) {
+        setNotifications(data.notifications || []);
+        setUnreadCount(data.unreadCount || 0);
+      }
+    } catch (err) {
+      console.error('Failed to load real backend notifications', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [fetchWithAuth, currentUser]);
+
+  useEffect(() => {
+    refreshNotifications();
+    // Poll every 30 seconds for live notifications
+    const interval = setInterval(refreshNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [refreshNotifications]);
+
+  const markAsRead = async (id: string) => {
+    // Optimistic UI update
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+    );
+    setUnreadCount((prev) => Math.max(0, prev - 1));
+
+    try {
+      await fetchWithAuth(`/api/notifications/${id}/read`, {
+        method: 'PATCH',
+      });
+    } catch (err) {
+      console.error('Failed to mark notification as read on backend', err);
+    }
   };
 
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  };
+  const markAllAsRead = async () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    setUnreadCount(0);
 
-  const addNotification = (n: Omit<AppNotification, 'id' | 'timestamp' | 'read'>) => {
-    const newNotif: AppNotification = {
-      ...n,
-      id: `notif-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      read: false,
-    };
-    setNotifications((prev) => [newNotif, ...prev]);
+    try {
+      await fetchWithAuth('/api/notifications/read-all', {
+        method: 'POST',
+      });
+    } catch (err) {
+      console.error('Failed to mark all notifications as read on backend', err);
+    }
   };
 
   return (
-    <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, markAllAsRead, addNotification }}>
+    <NotificationContext.Provider
+      value={{
+        notifications,
+        unreadCount,
+        isLoading,
+        markAsRead,
+        markAllAsRead,
+        refreshNotifications,
+      }}
+    >
       {children}
     </NotificationContext.Provider>
   );
