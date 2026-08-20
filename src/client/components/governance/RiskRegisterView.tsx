@@ -312,7 +312,7 @@ export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSel
                   type="text"
                   value={treatmentPlan}
                   onChange={(e) => setTreatmentPlan(e.target.value)}
-                  placeholder="e.g. Enforce dual-factor authentication and upgrade ingress pods to v1.29"
+                  placeholder="Describe the risk treatment plan"
                   className="jira-input"
                 />
               </div>
@@ -339,4 +339,3 @@ export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSel
     </div>
   );
 };
-

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Shield, AlertCircle, FileText, CheckCircle2, User, Layers, ArrowRight } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext.js';
+import { Search, Shield, AlertCircle, FileText, CheckCircle2, Layers, ArrowRight } from 'lucide-react';
 import { Ticket } from '../../../shared/types/ticket.js';
 
 
@@ -18,8 +17,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   tickets,
 }) => {
   const [query, setQuery] = useState('');
-  const { allUsers, switchUser } = useAuth();
-
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -40,19 +37,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   ).slice(0, 6);
 
   const quickViews = [
-    { label: 'CISO Executive Dashboard', view: 'ciso-dash', icon: Shield },
-    { label: 'Security Operations (SOC Incidents)', view: 'soc-incidents', icon: AlertCircle },
-    { label: 'Vulnerability Management', view: 'vulnerabilities', icon: Layers },
-    { label: 'Enterprise Risk Register (5x5 Matrix)', view: 'risk-register', icon: FileText },
-    { label: 'Security Policy Exceptions', view: 'security-exceptions', icon: CheckCircle2 },
-    { label: 'Security Playbooks & Knowledge Base', view: 'knowledge-base', icon: FileText },
+    { label: 'My Work Overview', view: 'my-work-overview', icon: CheckCircle2 },
+    { label: 'Projects & Tasks (Spreadsheet / Kanban / Gantt)', view: 'projects-tasks', icon: Layers },
+    { label: 'Workflows & Orchestration Pipelines', view: 'workflows', icon: Layers },
+    { label: 'Risk Management (5×5 Matrix)', view: 'risk-management', icon: FileText },
+    { label: 'Audit & Regulatory Compliance', view: 'audit-compliance', icon: CheckCircle2 },
+    { label: 'CMDB Relationship Map', view: 'relationship-map', icon: Layers },
+    { label: 'Executive Analytics & CISO Dashboard', view: 'executive-analytics', icon: Shield },
+    { label: 'SOPs & Security Knowledge Base', view: 'knowledge-base', icon: FileText },
+    { label: 'Space Settings & Configuration', view: 'admin-settings', icon: FileText },
   ].filter((v) => v.label.toLowerCase().includes(query.toLowerCase()));
-
-  const matchedUsers = allUsers.filter(
-    (u) =>
-      u.fullName.toLowerCase().includes(query.toLowerCase()) ||
-      u.title.toLowerCase().includes(query.toLowerCase())
-  ).slice(0, 4);
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 p-4">
@@ -65,7 +59,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Type a command, ticket key (e.g. APPSEC-2026-0001), or persona name..."
+            placeholder="Type a command or ticket key (e.g. APPSEC-2026-0001)..."
             className="w-full bg-transparent text-[#172B4D] placeholder-[#5E6C84] focus:outline-none text-xs font-medium"
           />
           <span className="text-[10px] font-mono bg-[#FFFFFF] text-[#5E6C84] px-1.5 py-0.5 rounded border border-[#DFE1E6]">
@@ -131,40 +125,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             </div>
           )}
 
-          {/* Persona Switcher */}
-          {matchedUsers.length > 0 && (
-            <div>
-              <div className="px-2.5 py-1 font-bold uppercase tracking-wider text-[#5E6C84] text-[10px]">
-                Switch Persona
-              </div>
-              <div className="space-y-0.5">
-                {matchedUsers.map((u) => (
-                  <button
-                    key={u.id}
-                    onClick={() => {
-                      switchUser(u.id);
-                      onClose();
-                    }}
-                    className="w-full flex items-center justify-between px-2.5 py-1.5 rounded text-[#172B4D] hover:bg-[#EBECF0] transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <User className="w-3.5 h-3.5 text-[#5E6C84]" />
-                      <div className="text-left">
-                        <div className="font-semibold text-[#172B4D]">{u.fullName}</div>
-                        <div className="text-[10px] text-[#5E6C84]">{u.title} ({u.roles[0]})</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#FFFFFF] text-[#172B4D] border border-[#DFE1E6] font-mono">
-                      {u.securityClearance}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>
   );
 };
-

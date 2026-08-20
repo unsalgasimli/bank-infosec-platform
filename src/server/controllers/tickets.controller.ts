@@ -115,7 +115,10 @@ export class TicketsController {
         }).allowed;
       });
 
-    const attachments = db.data.attachments.filter((a) => a.ticketId === ticket.id);
+    // The object-store key is an internal capability, never ticket-detail data.
+    const attachments = db.data.attachments
+      .filter((attachment) => attachment.ticketId === ticket.id)
+      .map(({ storageKey: _storageKey, ...attachment }) => attachment);
     const auditEvents = AuditService.getEventsForEntity(ticket.id);
     const approvalChain = db.data.approvals.find((a) => a.ticketId === ticket.id);
     const transitions = WorkflowService.getAvailableTransitions(ticket, user);
@@ -153,7 +156,13 @@ export class TicketsController {
   public static create(req: AuthenticatedRequest, res: Response): void {
     try {
       const user = req.user!;
-      const body = TicketLifecycleService.validateAndNormalizeCreateInput(req.body, user);
+      const canAssign = user.roles.some((role) =>
+        ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'TEAM_LEAD', 'SECURITY_ANALYST', 'SOC_ANALYST', 'APPSEC_ANALYST', 'VULN_ANALYST', 'GRC_ANALYST', 'DLP_ANALYST'].includes(role)
+      );
+      const rawBody = canAssign
+        ? req.body
+        : { ...req.body, assigneeId: undefined, assignmentGroupId: undefined, targetDepartmentId: undefined };
+      const body = TicketLifecycleService.validateAndNormalizeCreateInput(rawBody, user);
 
       const projectCode = body.projectCode || 'SEC';
       const year = new Date().getUTCFullYear();
@@ -171,10 +180,8 @@ export class TicketsController {
       const technicalSeverity = body.technicalSeverity || 'MEDIUM';
       const slaDeadlines = TicketLifecycleService.calculateSlaDeadlines(slaPolicyId, technicalSeverity, now);
 
-      const canAssign = user.roles.some((role) =>
-        ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'TEAM_LEAD', 'SECURITY_ANALYST', 'SOC_ANALYST', 'APPSEC_ANALYST', 'VULN_ANALYST', 'GRC_ANALYST', 'DLP_ANALYST'].includes(role)
-      );
       const assigneeId = canAssign ? body.assigneeId : undefined;
+      const targetDepartmentId = canAssign ? body.targetDepartmentId : undefined;
 
       const newTicket: Ticket = {
         id: `tick-${uuidv4().substring(0, 8)}`,
@@ -216,6 +223,7 @@ export class TicketsController {
         securityOwnerId: body.securityOwnerId || user.id,
         teamId: body.teamId,
         departmentId: body.departmentId || user.departmentId,
+        targetDepartmentId,
         applicationId: body.applicationId || undefined,
         assetId: body.assetId || undefined,
         riskOwnerId: body.riskOwnerId,
@@ -276,6 +284,74 @@ export class TicketsController {
         details: validationError ? err.issues || err.message : undefined,
       });
     }
+  }
+
+  public static claim(req: AuthenticatedRequest, res: Response): void {
+    const user = req.user!;
+    const ticketId = req.params.id as string;
+    const ticket = db.data.tickets.find((candidate) => candidate.id === ticketId || candidate.key === ticketId);
+
+    if (!ticket) {
+      res.status(404).json({ success: false, error: 'Ticket not found' });
+      return;
+    }
+
+    const access = AuthService.canAccessResource({
+      user,
+      action: 'READ',
+      resourceType: 'TICKET',
+      resource: ticket,
+    });
+    if (!access.allowed) {
+      res.status(403).json({ success: false, error: access.reason });
+      return;
+    }
+
+    const isDepartmentMember = Boolean(ticket.targetDepartmentId && ticket.targetDepartmentId === user.departmentId);
+    const isTeamMember = Boolean(
+      !ticket.targetDepartmentId && ticket.assignmentGroupId && user.teamIds.includes(ticket.assignmentGroupId)
+    );
+    if (!isDepartmentMember && !isTeamMember) {
+      res.status(403).json({ success: false, error: 'Only a member of the assigned department or team can claim this ticket.' });
+      return;
+    }
+
+    if (ticket.statusCategory === 'DONE' || ticket.statusCategory === 'CANCELLED') {
+      res.status(409).json({ success: false, error: 'Completed or cancelled tickets cannot be claimed.' });
+      return;
+    }
+
+    if (ticket.assigneeId && ticket.assigneeId !== user.id) {
+      res.status(409).json({ success: false, error: 'This ticket has already been claimed by another employee.' });
+      return;
+    }
+
+    if (ticket.assigneeId === user.id) {
+      res.json({ success: true, ticket, alreadyClaimed: true });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    ticket.assigneeId = user.id;
+    ticket.assignedAt = now;
+    ticket.updatedAt = now;
+    ticket.version += 1;
+    ticket.participantIds = Array.from(new Set([...(ticket.participantIds || []), user.id]));
+    ticket.watcherIds = Array.from(new Set([...(ticket.watcherIds || []), user.id]));
+
+    AuditService.log({
+      actor: user,
+      action: 'ASSIGNMENT_CHANGED',
+      entityType: 'TICKET',
+      entityId: ticket.id,
+      entityKey: ticket.key,
+      fieldChanges: [{ field: 'assigneeId', oldValue: undefined, newValue: user.id }],
+      metadata: { source: 'DEPARTMENT_QUEUE_CLAIM', targetDepartmentId: ticket.targetDepartmentId },
+    });
+    AutomationService.triggerEvent('ASSIGNMENT_CHANGED', ticket, user);
+    db.persist();
+
+    res.json({ success: true, ticket });
   }
 
   public static update(req: AuthenticatedRequest, res: Response): void {
@@ -550,7 +626,7 @@ export class TicketsController {
       return;
     }
     try {
-      const satisfaction = TicketLifecycleService.submitSatisfaction(ticket, req.body, user);
+      const satisfaction = TicketLifecycleService.submitSatisfaction(ticket, Number(req.body?.score), req.body?.comment, user);
       res.status(201).json({ success: true, satisfaction });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });

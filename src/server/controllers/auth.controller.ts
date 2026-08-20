@@ -1,28 +1,78 @@
 import { Response } from 'express';
+import { z } from 'zod';
 import { AuthenticatedRequest } from '../middleware/auth.middleware.js';
 import { LDAPAuthService } from '../services/ldap.service.js';
+import { LDAPSchedulerService } from '../services/ldap-scheduler.service.js';
 import { AuthService } from '../services/auth.service.js';
 import { AuditService } from '../services/audit.service.js';
 import { db } from '../db/database.js';
+import { config } from '../config/index.js';
+import { SessionService } from '../services/session.service.js';
+
+const ldapLoginSchema = z.object({
+  usernameOrEmail: z.string().trim().min(1).max(256),
+  password: z.string().max(1024).optional().default(''),
+});
 
 export class AuthController {
   public static async ldapLogin(req: AuthenticatedRequest, res: Response): Promise<void> {
-    const payload = req.body;
-    const ipAddress = req.ip || (req.headers['x-forwarded-for'] as string) || '10.20.4.15';
-
-    const result = await LDAPAuthService.authenticateLDAP(payload, ipAddress);
-
-    if (!result.success) {
-      res.status(401).json(result);
+    if (config.REQUIRE_HTTPS_AUTH && !req.secure) {
+      res.status(400).json({
+        success: false,
+        message: 'Təhlükəsiz giriş üçün HTTPS tələb olunur. HTTP üzərindən parol göndərilmədi.',
+      });
       return;
     }
 
-    res.json(result);
+    const parsed = ldapLoginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, message: 'İstifadəçi adı tələb olunur.' });
+      return;
+    }
+
+    const ipAddress = req.ip || 'unknown';
+
+    try {
+      const result = await LDAPAuthService.authenticateLDAP(parsed.data, ipAddress);
+
+      if (!result.success) {
+        res.status(401).json({ success: false, message: result.message || 'Authentication failed' });
+        return;
+      }
+
+      SessionService.revoke(req.sessionToken);
+      const sessionToken = SessionService.create(result.user.id);
+      SessionService.setCookie(res, sessionToken);
+      res.json({ success: true, user: result.user });
+    } catch {
+      res.status(500).json({
+        success: false,
+        message: 'Autentifikasiya xidməti gözlənilməz xəta ilə dayandı. Yenidən cəhd edin.',
+      });
+    } finally {
+      if (req.body && typeof req.body === 'object' && 'password' in req.body) {
+        delete req.body.password;
+      }
+    }
   }
 
   public static listGroups(req: AuthenticatedRequest, res: Response): void {
     const groups = LDAPAuthService.getDistributionGroups();
     res.json({ success: true, groups });
+  }
+
+  public static getPublicDirectory(req: AuthenticatedRequest, res: Response): void {
+    try {
+      res.json({
+        success: true,
+        directoryAvailable: config.LDAP_ENABLED,
+        // A pre-auth route must not disclose employee identities, roles,
+        // groups, directory topology, or claimed connection health.
+        users: [],
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message || 'Failed to get public directory' });
+    }
   }
 
   public static getCurrentUser(req: AuthenticatedRequest, res: Response): void {
@@ -35,7 +85,11 @@ export class AuthController {
   }
 
   public static listUsers(req: AuthenticatedRequest, res: Response): void {
-    res.json({ success: true, users: db.data.users });
+    db.reload();
+    const users = db.data.users
+      .filter((user) => user.directorySource === 'ACTIVE_DIRECTORY')
+      .map(({ distinguishedName, ldapBindStatus, lastLdapLoginAt, ...user }) => user);
+    res.json({ success: true, users });
   }
 
   public static logout(req: AuthenticatedRequest, res: Response): void {
@@ -56,7 +110,61 @@ export class AuthController {
         ],
       });
     }
+    SessionService.revoke(req.sessionToken);
+    SessionService.clearCookie(res);
     res.json({ success: true, message: 'Logged out successfully' });
   }
-}
 
+  public static async triggerLdapSync(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const user = req.user;
+      const report = await LDAPSchedulerService.triggerManualSync(user);
+      res.json({ success: true, report, message: 'Active Directory / LDAP user synchronization completed successfully' });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message || 'Failed to execute LDAP sync' });
+    }
+  }
+
+  public static getLdapSyncStatus(req: AuthenticatedRequest, res: Response): void {
+    try {
+      const status = LDAPSchedulerService.getStatus();
+      res.json({ success: true, status });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message || 'Failed to retrieve LDAP status' });
+    }
+  }
+
+  public static getUsersByDepartment(req: AuthenticatedRequest, res: Response): void {
+    try {
+      const departments = db.data.departments || [];
+      const users = db.data.users || [];
+
+      const result = departments.map((dept) => {
+        const deptUsers = users.filter((u) => u.departmentId === dept.id);
+        return {
+          departmentId: dept.id,
+          departmentCode: dept.code,
+          departmentName: dept.name,
+          totalUsers: deptUsers.length,
+          activeUsers: deptUsers.filter((u) => u.isActive).length,
+          disabledUsers: deptUsers.filter((u) => !u.isActive).length,
+          users: deptUsers,
+        };
+      });
+
+      res.json({ success: true, departments: result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message || 'Failed to retrieve department users' });
+    }
+  }
+
+  public static async testActiveDirectoryConnection(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { LDAPSyncService } = await import('../services/ldap-sync.service.js');
+      const result = await LDAPSyncService.testActiveDirectoryConnection();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message || 'Failed to test Active Directory connection' });
+    }
+  }
+}

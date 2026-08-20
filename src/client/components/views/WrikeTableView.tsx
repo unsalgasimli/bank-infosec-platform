@@ -19,6 +19,7 @@ interface WrikeTableViewProps {
   assets: BankAsset[];
   onSelectTicket: (ticket: Ticket) => void;
   onOpenCreate: () => void;
+  hideHeader?: boolean;
 }
 
 export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
@@ -27,6 +28,7 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
   assets,
   onSelectTicket,
   onOpenCreate,
+  hideHeader = false,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('ALL');
@@ -71,6 +73,18 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
     }
   };
 
+  const toggleSelectOne = (id: string) => {
+    if (selectedTicketIds.includes(id)) {
+      setSelectedTicketIds(selectedTicketIds.filter((tId) => tId !== id));
+    } else {
+      setSelectedTicketIds([...selectedTicketIds, id]);
+    }
+  };
+
+  const getApplication = (appId?: string) => {
+    return applications.find((a) => a.id === appId);
+  };
+
   const getStatusPill = (ticket: Ticket) => {
     switch (ticket.statusCategory) {
       case 'DONE':
@@ -86,7 +100,7 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
   };
 
   const exportToCSV = () => {
-    const headers = ['Key', 'Title', 'Status', 'Severity', 'Priority', 'SLA State', 'Assignee', 'Created At'];
+    const headers = ['Key', 'Title', 'Status', 'Severity', 'Priority', 'SLA State', 'Assignee', 'Application', 'Created'];
     const rows = filteredTickets.map((t) => [
       t.key,
       `"${t.title.replace(/"/g, '""')}"`,
@@ -95,6 +109,7 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
       t.businessPriority,
       t.slaState || 'N/A',
       t.assigneeId || 'Unassigned',
+      getApplication(t.applicationId)?.name || 'N/A',
       t.createdAt,
     ]);
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
@@ -109,68 +124,70 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#FFFFFF] overflow-hidden select-none">
-      {/* Clean Single-Row View Header Toolbar */}
-      <div className="bg-[#FFFFFF] border-b border-[#E2E8F0] px-6 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0">
-        {/* Left: View Title, Counter & Segmented Status Filter */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold text-[#162136]">Spreadsheet Tasks</h2>
-            <span className="px-2.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#475569] font-mono text-xs font-bold border border-[#E2E8F0]">
-              {filteredTickets.length}
-            </span>
+      {/* Clean Single-Row View Header Toolbar (Hidden when wrapped in WorkManagementContainer) */}
+      {!hideHeader && (
+        <div className="bg-[#FFFFFF] border-b border-[#E2E8F0] px-6 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0">
+          {/* Left: View Title, Counter & Segmented Status Filter */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-[#162136]">Spreadsheet Tasks</h2>
+              <span className="px-2.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#475569] font-mono text-xs font-bold border border-[#E2E8F0]">
+                {filteredTickets.length}
+              </span>
+            </div>
+
+            <div className="h-4 w-[1px] bg-[#E2E8F0] mx-1 hidden sm:block" />
+
+            {/* Clean Segmented Filter */}
+            <div className="flex items-center bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-0.5 text-xs">
+              {['ALL', 'OPEN', 'RESOLVED'].map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setSelectedStatusFilter(st)}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+                    selectedStatusFilter === st
+                      ? 'bg-[#00B259] text-white shadow-xs'
+                      : 'text-[#5A6A85] hover:text-[#162136]'
+                  }`}
+                >
+                  {st === 'ALL' ? 'All Tasks' : st === 'OPEN' ? 'Active' : 'Completed'}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="h-4 w-[1px] bg-[#E2E8F0] mx-1 hidden sm:block" />
+          {/* Right: Search Filter + CSV Export + Primary CTA */}
+          <div className="flex items-center gap-2.5">
+            <div className="relative flex items-center">
+              <Search className="w-4 h-4 absolute left-3 text-[#8D99AE] pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Filter this view..."
+                className="bg-[#FFFFFF] border border-[#E2E8F0] focus:border-[#00B259] focus:ring-2 focus:ring-[#00B259]/15 rounded-lg pl-9 pr-3 py-1.5 text-xs text-[#162136] outline-none w-56 transition-all"
+              />
+            </div>
 
-          {/* Clean Segmented Filter */}
-          <div className="flex items-center bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-0.5 text-xs">
-            {['ALL', 'OPEN', 'RESOLVED'].map((st) => (
-              <button
-                key={st}
-                onClick={() => setSelectedStatusFilter(st)}
-                className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
-                  selectedStatusFilter === st
-                    ? 'bg-[#00B259] text-white shadow-xs'
-                    : 'text-[#5A6A85] hover:text-[#162136]'
-                }`}
-              >
-                {st === 'ALL' ? 'All Tasks' : st === 'OPEN' ? 'Active' : 'Completed'}
-              </button>
-            ))}
+            <button
+              onClick={exportToCSV}
+              className="wrike-btn-secondary text-xs py-1.5 px-3"
+              title="Export spreadsheet to CSV"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export</span>
+            </button>
+
+            <button
+              onClick={onOpenCreate}
+              className="wrike-btn-primary text-xs py-1.5 px-3.5 shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              <span>New Task</span>
+            </button>
           </div>
         </div>
-
-        {/* Right: Search Filter + CSV Export + Primary CTA */}
-        <div className="flex items-center gap-2.5">
-          <div className="relative flex items-center">
-            <Search className="w-4 h-4 absolute left-3 text-[#8D99AE] pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Filter this view..."
-              className="bg-[#FFFFFF] border border-[#E2E8F0] focus:border-[#00B259] focus:ring-2 focus:ring-[#00B259]/15 rounded-lg pl-9 pr-3 py-1.5 text-xs text-[#162136] outline-none w-56 transition-all"
-            />
-          </div>
-
-          <button
-            onClick={exportToCSV}
-            className="wrike-btn-secondary text-xs py-1.5 px-3"
-            title="Export spreadsheet to CSV"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export</span>
-          </button>
-
-          <button
-            onClick={onOpenCreate}
-            className="wrike-btn-primary text-xs py-1.5 px-3.5 shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            <span>New Task</span>
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* Floating Bulk Action Bar */}
       {selectedTicketIds.length > 0 && (

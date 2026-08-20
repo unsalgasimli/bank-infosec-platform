@@ -1,5 +1,5 @@
 import { ConfidentialityTier, SecurityDomain } from './auth.js';
-import type { EnterpriseTicketType, TicketIntakeChannel, TicketResolutionCode, TicketUrgency } from './itsm.js';
+import type { ChecklistItem, EnterpriseTicketType, RecurringTaskConfig, TicketIntakeChannel, TicketResolutionCode, TicketUrgency } from './itsm.js';
 
 export type TicketProjectCode =
   | 'SEC'
@@ -178,20 +178,28 @@ export interface Ticket {
   affectedAssetIds?: string[];
   parentTicketId?: string;
   duplicateOfTicketId?: string;
+  subtaskIds?: string[];
 
-  // Cross-Department Orchestration
+  // Cross-Department Orchestration & Graph Context
   parentTaskId?: string;
   crossDepartmentId?: string;
   isCrossDepartmentParent?: boolean;
   participatingDepartmentIds?: string[];
   departmentStepIndex?: number;
   dependsOnTaskId?: string;
+  graphNodeId?: string;
+  workflowRunId?: string;
   
-  // Specialized details
+  // Specialized details & Enterprise Extensions
   findingDetails?: SecurityFindingDetails;
   incidentDetails?: IncidentDetails;
   exceptionDetails?: SecurityExceptionDetails;
   customFields?: CustomFieldValue[];
+  checklists?: ChecklistItem[];
+  acceptanceCriteria?: string;
+  recurringConfig?: RecurringTaskConfig;
+  estimatedHours?: number;
+  storyPoints?: number;
   
   // Dates & SLA
   detectedAt?: string;
@@ -200,6 +208,7 @@ export interface Ticket {
   assignedAt?: string;
   acknowledgedAt?: string;
   firstResponseAt?: string;
+  startDate?: string;
   dueDate: string;
   remediationDeadline: string;
   resolvedAt?: string;
@@ -217,3 +226,31 @@ export interface Ticket {
   version: number;
   tags: string[];
 }
+
+/**
+ * Deterministic calculation matrix: Business Impact + Urgency -> Business Priority
+ */
+export const calculatePriorityFromImpactUrgency = (
+  impact: BusinessImpact,
+  urgency: TicketUrgency
+): BusinessPriority => {
+  const impactWeights: Record<BusinessImpact, number> = {
+    CATASTROPHIC: 4,
+    SIGNIFICANT: 3,
+    MODERATE: 2,
+    MINOR: 1,
+    NEGLIGIBLE: 1,
+  };
+  const urgencyWeights: Record<TicketUrgency, number> = {
+    CRITICAL: 4,
+    HIGH: 3,
+    MEDIUM: 2,
+    LOW: 1,
+  };
+
+  const score = impactWeights[impact] + urgencyWeights[urgency];
+  if (score >= 7) return 'P1_URGENT';
+  if (score >= 5) return 'P2_HIGH';
+  if (score >= 3) return 'P3_MEDIUM';
+  return 'P4_LOW';
+};

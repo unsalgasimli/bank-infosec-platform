@@ -1,13 +1,28 @@
 import { BusinessPriority, Ticket, TicketCategory } from './ticket.js';
 
 export type EnterpriseTicketType =
-  | 'INCIDENT'
+  | 'NORMAL_TASK'
+  | 'PROJECT_WORK'
   | 'SERVICE_REQUEST'
+  | 'INCIDENT'
+  | 'MAJOR_INCIDENT'
   | 'PROBLEM'
   | 'CHANGE'
-  | 'SECURITY_INCIDENT'
   | 'ACCESS_REQUEST'
+  | 'PRIVILEGED_ACCESS'
   | 'VULNERABILITY'
+  | 'SECURITY_EXCEPTION'
+  | 'RISK_ACCEPTANCE'
+  | 'EMPLOYEE_ONBOARDING'
+  | 'EMPLOYEE_OFFBOARDING'
+  | 'PROVISIONING'
+  | 'PROCUREMENT_APPROVAL'
+  | 'COMPLIANCE_REMEDIATION'
+  | 'RELEASE_DEPLOYMENT'
+  | 'HR_FINANCE_APPROVAL'
+  | 'RECURRING_TASK'
+  | 'CROSS_DEPARTMENT'
+  | 'SECURITY_INCIDENT'
   | 'CUSTOM';
 
 export type TicketResolutionCode =
@@ -59,6 +74,50 @@ export interface TicketRelationship {
 }
 
 export type TicketTaskStatus = 'TO_DO' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE' | 'CANCELLED';
+
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  isCompleted: boolean;
+  completedAt?: string;
+  completedByUserId?: string;
+  assigneeId?: string;
+  dueAt?: string;
+}
+
+export interface RecurringTaskConfig {
+  frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM_CRON';
+  interval?: number;
+  daysOfWeek?: number[];
+  cronExpression?: string;
+  nextRunAt: string;
+  endDate?: string;
+  lastRunAt?: string;
+  isActive: boolean;
+}
+
+export interface BusinessCalendarConfig {
+  id: string;
+  name: string;
+  timezone: string;
+  workdays: number[]; // 0 = Sunday, 1 = Monday, ...
+  startHour: number; // 9 = 09:00
+  endHour: number; // 18 = 18:00
+  holidays: string[]; // YYYY-MM-DD
+  is24x7: boolean;
+}
+
+export type RoutingStrategy =
+  | 'DIRECT_USER'
+  | 'TEAM_QUEUE'
+  | 'DEPT_MANAGER'
+  | 'REQUESTER_MANAGER'
+  | 'SERVICE_OWNER'
+  | 'ASSET_OWNER'
+  | 'ROLE_DISPATCH'
+  | 'ROUND_ROBIN'
+  | 'WORKLOAD_BALANCED'
+  | 'ON_CALL_GROUP';
 
 export interface TicketTask {
   id: string;

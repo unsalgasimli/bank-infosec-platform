@@ -1,12 +1,4 @@
-# ==============================================================================
-# Multi-Stage Enterprise Production Dockerfile
-# Platform: Apex Bank International - InfoSec & GRC Platform
-# Security Standards: Non-Root Execution, Minimal Attack Surface, OCI Compliant
-# ==============================================================================
 
-# ------------------------------------------------------------------------------
-# Stage 1: Build & Compilation
-# ------------------------------------------------------------------------------
 FROM node:22-alpine AS builder
 
 WORKDIR /app

@@ -45,6 +45,8 @@ export type ConfidentialityTier =
   | 'CONFIDENTIAL_SECURITY_ONLY'
   | 'HIGHLY_RESTRICTED_HR_LEGAL';
 
+export type SecurityClearanceLevel = ConfidentialityTier;
+
 export interface BankDivision {
   id: string;
   name: string;
@@ -88,6 +90,8 @@ export interface BankDepartment {
   settings?: DepartmentSettings;
   createdAt?: string;
   updatedAt?: string;
+  /** Set only after this record is confirmed by a successful live AD sync. */
+  directorySource?: 'ACTIVE_DIRECTORY';
 }
 
 export interface BankTeam {
@@ -110,6 +114,7 @@ export interface BankUser {
   teamIds: string[];
   roles: BankRole[];
   securityClearance: ConfidentialityTier;
+  managerId?: string;
   ownedApplicationIds: string[];
   ownedAssetIds: string[];
   ownedRiskIds: string[];
@@ -124,14 +129,13 @@ export interface BankUser {
   distributionGroups?: string[];
   ldapBindStatus?: 'BOUND' | 'AUTHENTICATED';
   lastLdapLoginAt?: string;
+  /** Set only after this profile is confirmed by a successful live AD bind/sync. */
+  directorySource?: 'ACTIVE_DIRECTORY';
 }
 
 export interface LDAPLoginPayload {
   usernameOrEmail: string;
   password?: string;
-  ldapDomain?: string;
-  distributionGroup?: string;
-  rememberMe?: boolean;
 }
 
 export interface LDAPGroupInfo {
@@ -145,7 +149,6 @@ export interface LDAPGroupInfo {
 
 export interface AuthSessionResponse {
   success: boolean;
-  token: string;
   user: BankUser;
   ldapInfo?: {
     server: string;
@@ -163,4 +166,3 @@ export interface ABACContext {
   resourceType: 'TICKET' | 'COMMENT' | 'ATTACHMENT' | 'ASSET' | 'APP' | 'RISK' | 'EXCEPTION' | 'REPORT' | 'AUDIT';
   resource?: any;
 }
-

@@ -3,7 +3,10 @@ import { z } from 'zod';
 import { BankUser } from '../../shared/types/auth.js';
 import { BusinessImpact, BusinessPriority, TechnicalSeverity, Ticket, TicketCategory } from '../../shared/types/ticket.js';
 import {
+  ChecklistItem,
   EnterpriseTicketType,
+  RecurringTaskConfig,
+  RoutingStrategy,
   TicketAIRecommendation,
   TicketLifecycleBundle,
   TicketRelationship,
@@ -26,7 +29,31 @@ const createTicketSchema = z
     projectCode: z.enum(['SEC', 'SOC', 'VM', 'APPSEC', 'GRC', 'DLP', 'IAM', 'ARCH', 'AUDIT', 'TPRM']).optional(),
     category: z.enum(['VULNERABILITY', 'INCIDENT', 'SECURITY_EXCEPTION', 'RISK_ACCEPTANCE', 'AUDIT_FINDING', 'SECURITY_REVIEW', 'IAM_REQUEST', 'DLP_ALERT', 'THIRD_PARTY_ASSESSMENT', 'GENERAL_REQUEST']).optional(),
     securityDomain: z.enum(['GENERAL_INFOSEC', 'SOC', 'VULNERABILITY_MGMT', 'APPSEC', 'GRC', 'DLP', 'IAM_PAM', 'SEC_ARCHITECTURE', 'AUDIT_COMPLIANCE', 'THIRD_PARTY_RISK']).optional(),
-    type: z.enum(['INCIDENT', 'SERVICE_REQUEST', 'PROBLEM', 'CHANGE', 'SECURITY_INCIDENT', 'ACCESS_REQUEST', 'VULNERABILITY', 'CUSTOM']).optional(),
+    type: z.enum([
+      'NORMAL_TASK',
+      'PROJECT_WORK',
+      'SERVICE_REQUEST',
+      'INCIDENT',
+      'MAJOR_INCIDENT',
+      'PROBLEM',
+      'CHANGE',
+      'ACCESS_REQUEST',
+      'PRIVILEGED_ACCESS',
+      'VULNERABILITY',
+      'SECURITY_EXCEPTION',
+      'RISK_ACCEPTANCE',
+      'EMPLOYEE_ONBOARDING',
+      'EMPLOYEE_OFFBOARDING',
+      'PROVISIONING',
+      'PROCUREMENT_APPROVAL',
+      'COMPLIANCE_REMEDIATION',
+      'RELEASE_DEPLOYMENT',
+      'HR_FINANCE_APPROVAL',
+      'RECURRING_TASK',
+      'CROSS_DEPARTMENT',
+      'SECURITY_INCIDENT',
+      'CUSTOM',
+    ]).optional(),
     title: z.string().trim().min(3).max(300),
     description: z.string().trim().min(1).max(100_000).optional(),
     technicalSeverity: z.enum(['INFORMATIONAL', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
@@ -37,7 +64,33 @@ const createTicketSchema = z
       .enum(['PORTAL', 'EMAIL', 'AGENT', 'API', 'WEBHOOK', 'CHAT', 'MONITORING_SIEM', 'SECURITY_TOOL', 'AUTOMATION', 'ANOTHER_TICKET', 'SCHEDULED_TASK'])
       .optional(),
     requesterId: z.string().min(1).optional(),
+    reporterId: z.string().min(1).optional(),
     onBehalfOfUserId: z.string().min(1).optional(),
+    assigneeId: z.string().min(1).optional(),
+    assignmentGroupId: z.string().min(1).optional(),
+    departmentId: z.string().min(1).optional(),
+    targetDepartmentId: z.string().min(1).optional(),
+    acceptanceCriteria: z.string().max(20000).optional(),
+    checklists: z.array(z.object({
+      id: z.string().optional(),
+      text: z.string().min(1),
+      isCompleted: z.boolean().default(false),
+      assigneeId: z.string().optional(),
+      dueAt: z.string().optional(),
+    })).optional(),
+    recurringConfig: z.object({
+      frequency: z.enum(['DAILY', 'WEEKLY', 'MONTHLY', 'CUSTOM_CRON']),
+      interval: z.number().int().min(1).optional(),
+      daysOfWeek: z.array(z.number().int().min(0).max(6)).optional(),
+      cronExpression: z.string().optional(),
+      nextRunAt: z.string(),
+      endDate: z.string().optional(),
+      isActive: z.boolean().default(true),
+    }).optional(),
+    estimatedHours: z.number().min(0).max(10000).optional(),
+    storyPoints: z.number().min(0).max(100).optional(),
+    startDate: z.string().optional(),
+    routingStrategy: z.enum(['DIRECT_USER', 'TEAM_QUEUE', 'DEPT_MANAGER', 'REQUESTER_MANAGER', 'SERVICE_OWNER', 'ASSET_OWNER', 'ROLE_DISPATCH', 'ROUND_ROBIN', 'WORKLOAD_BALANCED', 'ON_CALL_GROUP']).optional(),
   })
   .passthrough();
 
@@ -71,6 +124,12 @@ const ticketUpdateSchema = z.object({
   participantIds: z.array(z.string()).max(500).optional(),
   dueDate: z.string().datetime().optional(),
   remediationDeadline: z.string().datetime().optional(),
+  startDate: z.string().optional(),
+  acceptanceCriteria: z.string().max(20000).optional(),
+  checklists: z.array(z.any()).max(100).optional(),
+  recurringConfig: z.any().optional(),
+  estimatedHours: z.number().min(0).max(10000).optional(),
+  storyPoints: z.number().min(0).max(100).optional(),
   tags: z.array(z.string().min(1).max(64)).max(100).optional(),
   customFields: z.array(z.any()).max(500).optional(),
 }).passthrough();
@@ -91,7 +150,16 @@ const TASK_STATUSES: TicketTaskStatus[] = ['TO_DO', 'IN_PROGRESS', 'BLOCKED', 'D
 
 export class TicketLifecycleService {
   public static validateAndNormalizeCreateInput(raw: unknown, actor: BankUser): Record<string, any> {
-    const body: any = createTicketSchema.parse(raw);
+    const sanitized =
+      typeof raw === 'object' && raw !== null
+        ? Object.fromEntries(
+            Object.entries(raw as Record<string, any>).map(([k, v]) => [
+              k,
+              typeof v === 'string' && v.trim() === '' ? undefined : v,
+            ])
+          )
+        : raw;
+    const body: any = createTicketSchema.parse(sanitized);
     const requesterId = body.requesterId || body.onBehalfOfUserId || actor.id;
     if (!db.data.users.some((user) => user.id === requesterId && user.isActive)) {
       throw new Error('Requester does not exist or is inactive.');
@@ -99,16 +167,48 @@ export class TicketLifecycleService {
     if (body.onBehalfOfUserId && !db.data.users.some((user) => user.id === body.onBehalfOfUserId && user.isActive)) {
       throw new Error('On-behalf-of user does not exist or is inactive.');
     }
+    if (body.assigneeId && !db.data.users.some((user) => user.id === body.assigneeId && user.isActive)) {
+      throw new Error('Assignee does not exist or is inactive.');
+    }
+    if (body.targetDepartmentId && !db.data.departments.some((department) =>
+      department.id === body.targetDepartmentId && department.isActive !== false
+    )) {
+      throw new Error('Target department does not exist or is inactive.');
+    }
+    if (body.assigneeId && body.targetDepartmentId) {
+      throw new Error('Choose either a named assignee or a department queue, not both.');
+    }
 
     const impact = (body.businessImpact || 'MODERATE') as BusinessImpact;
     const urgency = (body.urgency || TicketLifecycleService.deriveUrgency(body.technicalSeverity)) as TicketUrgency;
     const ticketType = (body.type || TicketLifecycleService.mapCategoryToType(body.category)) as EnterpriseTicketType;
     const priority = body.businessPriority || TicketLifecycleService.calculatePriority(impact, urgency);
 
+    // Dynamic Routing Strategy
+    let dynamicAssigneeId = body.assigneeId;
+    let dynamicGroupId = body.assignmentGroupId;
+
+    if (body.routingStrategy && !dynamicAssigneeId) {
+      const requester = db.data.users.find((u) => u.id === requesterId);
+      const dept = db.data.departments.find((d) => d.id === (body.departmentId || requester?.departmentId));
+      if (body.routingStrategy === 'REQUESTER_MANAGER' && requester?.managerId) {
+        dynamicAssigneeId = requester.managerId;
+      } else if (body.routingStrategy === 'DEPT_MANAGER' && dept?.managerId) {
+        dynamicAssigneeId = dept.managerId;
+      } else if (body.routingStrategy === 'SERVICE_OWNER' && body.applicationId) {
+        const app = db.data.applications.find((a) => a.id === body.applicationId);
+        if (app?.ownerId) dynamicAssigneeId = app.ownerId;
+      } else if (body.routingStrategy === 'ASSET_OWNER' && body.assetId) {
+        const asset = db.data.assets.find((a) => a.id === body.assetId);
+        if (asset?.ownerId) dynamicAssigneeId = asset.ownerId;
+      }
+    }
+
     return {
       ...body,
       description: body.description || body.title,
       requesterId,
+      reporterId: body.reporterId || actor.id,
       businessImpact: impact,
       urgency,
       type: ticketType,
@@ -116,9 +216,24 @@ export class TicketLifecycleService {
       requestTypeName: body.requestTypeName || body.ticketTypeName || TicketLifecycleService.titleCase(ticketType),
       intakeChannel: body.intakeChannel || 'PORTAL',
       businessPriority: priority,
-      assignmentGroupId: body.assignmentGroupId || TicketLifecycleService.suggestAssignmentGroup(body.securityDomain, body.category),
-      participantIds: Array.from(new Set([requesterId, ...(body.participantIds || [])])),
+      assigneeId: dynamicAssigneeId,
+      assignmentGroupId: body.targetDepartmentId
+        ? dynamicGroupId
+        : dynamicGroupId || TicketLifecycleService.suggestAssignmentGroup(body.securityDomain, body.category),
+      participantIds: Array.from(new Set([requesterId, actor.id, ...(body.participantIds || [])])),
       affectedAssetIds: Array.from(new Set([...(body.affectedAssetIds || []), ...(body.assetId ? [body.assetId] : [])])),
+      checklists: (body.checklists || []).map((item: any, idx: number) => ({
+        id: item.id || `chk-${idx + 1}`,
+        text: item.text,
+        isCompleted: Boolean(item.isCompleted),
+        assigneeId: item.assigneeId,
+        dueAt: item.dueAt,
+      })),
+      acceptanceCriteria: body.acceptanceCriteria,
+      recurringConfig: body.recurringConfig,
+      estimatedHours: body.estimatedHours,
+      storyPoints: body.storyPoints,
+      startDate: body.startDate,
     };
   }
 
@@ -131,7 +246,16 @@ export class TicketLifecycleService {
   }
 
   public static validateTicketUpdates(raw: unknown): void {
-    const updates = ticketUpdateSchema.parse(raw);
+    const sanitized =
+      typeof raw === 'object' && raw !== null
+        ? Object.fromEntries(
+            Object.entries(raw as Record<string, any>).map(([k, v]) => [
+              k,
+              typeof v === 'string' && v.trim() === '' ? undefined : v,
+            ])
+          )
+        : raw;
+    const updates = ticketUpdateSchema.parse(sanitized);
     const references: Array<[string, unknown, Array<{ id: string }>]> = [
       ['assigneeId', updates.assigneeId, db.data.users],
       ['ownerId', updates.ownerId, db.data.users],
@@ -448,51 +572,51 @@ export class TicketLifecycleService {
       durationMinutes,
       description,
       billable: Boolean(input.billable),
-      activityType: input.activityType || 'INVESTIGATION',
+      activityType: input.activityType || 'ANALYSIS',
       createdAt: new Date().toISOString(),
     };
     db.data.ticketWorklogs.push(worklog);
-    TicketLifecycleService.audit(actor, ticket, 'WORKLOG_ADDED', { worklogId: worklog.id, durationMinutes });
+    TicketLifecycleService.audit(actor, ticket, 'WORKLOG_ADDED', { worklogId: worklog.id, durationMinutes, activityType: worklog.activityType });
     db.persist();
     return worklog;
   }
 
-  public static submitSatisfaction(ticket: Ticket, input: Partial<TicketSatisfaction>, actor: BankUser): TicketSatisfaction {
-    if (ticket.statusCategory !== 'DONE' && ticket.statusId !== 'RESOLVED' && ticket.statusId !== 'CLOSED') {
-      throw new Error('CSAT can only be submitted for a resolved or closed ticket.');
+  public static submitSatisfaction(ticket: Ticket, score: number, comment: string | undefined, actor: BankUser): TicketSatisfaction {
+    if (![1, 2, 3, 4, 5].includes(score)) throw new Error('Satisfaction score must be between 1 and 5.');
+    const requesterId = ticket.requesterId || ticket.reporterId;
+    if (actor.id !== requesterId && !actor.roles.includes('PLATFORM_ADMIN') && !actor.roles.includes('CISO')) {
+      throw new Error('Only the ticket requester may submit satisfaction ratings.');
     }
-    if (db.data.ticketSatisfaction.some((survey) => survey.ticketId === ticket.id)) {
-      throw new Error('Satisfaction feedback has already been submitted for this ticket.');
-    }
-    const score = Number(input.score);
-    if (![1, 2, 3, 4, 5].includes(score)) throw new Error('CSAT score must be between 1 and 5.');
     const satisfaction: TicketSatisfaction = {
       id: `csat-${uuidv4().slice(0, 8)}`,
       ticketId: ticket.id,
       requesterId: actor.id,
-      score: score as TicketSatisfaction['score'],
-      comment: input.comment,
-      agentRating: input.agentRating,
-      resolutionQuality: input.resolutionQuality,
-      speedRating: input.speedRating,
+      score: score as 1 | 2 | 3 | 4 | 5,
+      comment: comment?.trim() || undefined,
       submittedAt: new Date().toISOString(),
     };
+    db.data.ticketSatisfaction = db.data.ticketSatisfaction.filter((item) => item.ticketId !== ticket.id);
     db.data.ticketSatisfaction.push(satisfaction);
-    TicketLifecycleService.audit(actor, ticket, 'CSAT_SUBMITTED', { score });
+    TicketLifecycleService.audit(actor, ticket, 'SATISFACTION_SUBMITTED', { satisfactionId: satisfaction.id, score });
     db.persist();
     return satisfaction;
   }
 
   public static analyze(ticket: Ticket): TicketAIRecommendation {
+    return TicketLifecycleService.analyzeTicket(ticket);
+  }
+
+  public static analyzeTicket(ticket: Ticket): TicketAIRecommendation {
     const text = `${ticket.title} ${ticket.description}`.toLowerCase();
-    let category: TicketCategory = ticket.category;
-    let ticketType: EnterpriseTicketType = ticket.type || TicketLifecycleService.mapCategoryToType(ticket.category);
-    let assignmentGroupId = ticket.assignmentGroupId;
-    const tags = new Set(ticket.tags);
+    const tags = new Set<string>(ticket.tags || []);
     const evidence: string[] = [];
     const riskSignals: string[] = [];
 
-    if (/phish|suspicious sender|malicious email/.test(text)) {
+    let category = ticket.category;
+    let ticketType = ticket.type || TicketLifecycleService.mapCategoryToType(ticket.category);
+    let assignmentGroupId = ticket.assignmentGroupId;
+
+    if (/phish|suspicious email|credential harvest|spoof/.test(text)) {
       category = 'INCIDENT';
       ticketType = 'SECURITY_INCIDENT';
       assignmentGroupId = 'team-soc';
@@ -521,7 +645,7 @@ export class TicketLifecycleService {
     const missingFields = [
       !ticket.affectedServiceId && !ticket.applicationId ? 'affectedService' : '',
       !ticket.assignmentGroupId ? 'assignmentGroup' : '',
-      ticket.type === 'SECURITY_INCIDENT' && !ticket.incidentDetails ? 'incidentDetails' : '',
+      ticket.type === 'INCIDENT' && !ticket.incidentDetails ? 'incidentDetails' : '',
     ].filter(Boolean);
     const priority = riskSignals.length > 0
       ? TicketLifecycleService.calculatePriority(ticket.businessImpact, ticket.urgency || 'HIGH')
@@ -589,6 +713,8 @@ export class TicketLifecycleService {
     if (category === 'INCIDENT' || category === 'DLP_ALERT') return 'SECURITY_INCIDENT';
     if (category === 'VULNERABILITY') return 'VULNERABILITY';
     if (category === 'IAM_REQUEST') return 'ACCESS_REQUEST';
+    if (category === 'SECURITY_EXCEPTION') return 'SECURITY_EXCEPTION';
+    if (category === 'RISK_ACCEPTANCE') return 'RISK_ACCEPTANCE';
     if (category === 'GENERAL_REQUEST' || category === 'SECURITY_REVIEW' || category === 'THIRD_PARTY_ASSESSMENT') return 'SERVICE_REQUEST';
     return 'CUSTOM';
   }

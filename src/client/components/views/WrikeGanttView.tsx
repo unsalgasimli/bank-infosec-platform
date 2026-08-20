@@ -23,12 +23,14 @@ interface WrikeGanttViewProps {
   tickets: Ticket[];
   onSelectTicket: (ticket: Ticket) => void;
   onOpenCreate: () => void;
+  dataScope?: 'authorized' | 'assigned' | 'reported';
 }
 
 export const WrikeGanttView: React.FC<WrikeGanttViewProps> = ({
   tickets,
   onSelectTicket,
   onOpenCreate,
+  dataScope = 'authorized',
 }) => {
   const { fetchWithAuth } = useAuth();
   const [timeZoom, setTimeZoom] = useState<'DAYS' | 'WEEKS' | 'MONTHS'>('WEEKS');
@@ -42,15 +44,30 @@ export const WrikeGanttView: React.FC<WrikeGanttViewProps> = ({
   const loadGanttData = async () => {
     try {
       setIsLoading(true);
-      const res = await fetchWithAuth('/api/gantt');
+      // The API applies this scope against the authenticated server session.
+      // It is not a client-side authorization decision.
+      const res = await fetchWithAuth(`/api/gantt?scope=${dataScope}`);
       const data = await res.json();
       if (data.success) {
-        setGanttTasks(data.tasks || []);
-        setDependencies(data.dependencies || []);
-        setCriticalPathIds(data.criticalPathTaskIds || []);
+        // Keep the visualization aligned with the enclosing work view even if a
+        // future API regression returns an out-of-scope item.
+        const allowedTicketIds = new Set(tickets.map((ticket) => ticket.id));
+        const visibleTasks = (data.tasks || []).filter((task: GanttTaskSchedule) => allowedTicketIds.has(task.id));
+        setGanttTasks(visibleTasks);
+        setDependencies((data.dependencies || []).filter((dependency: GanttDependency) =>
+          allowedTicketIds.has(dependency.fromTaskId) && allowedTicketIds.has(dependency.toTaskId)
+        ));
+        setCriticalPathIds((data.criticalPathTaskIds || []).filter((taskId: string) => allowedTicketIds.has(taskId)));
+      } else {
+        setGanttTasks([]);
+        setDependencies([]);
+        setCriticalPathIds([]);
       }
     } catch (err) {
       console.error('Failed to load gantt data', err);
+      setGanttTasks([]);
+      setDependencies([]);
+      setCriticalPathIds([]);
     } finally {
       setIsLoading(false);
     }
@@ -58,7 +75,7 @@ export const WrikeGanttView: React.FC<WrikeGanttViewProps> = ({
 
   useEffect(() => {
     loadGanttData();
-  }, [tickets]);
+  }, [tickets, dataScope]);
 
   // Generate timeline days for the current sprint
   const timelineDays = Array.from({ length: 28 }, (_, i) => {

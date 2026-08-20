@@ -1,5 +1,5 @@
 -- ============================================================================
--- Apex Bank International - Enterprise InfoSec & GRC Platform Database Schema
+-- Fiuu Database Schema
 -- Standard: PostgreSQL 14+ / PostgreSQL 16
 -- Compliance: SOC2 Type II, ISO 27001, PCI-DSS v4.0, GDPR, Tier-1 Banking Regs
 -- ============================================================================
@@ -517,3 +517,470 @@ CREATE TABLE IF NOT EXISTS workflow_runs (
 CREATE INDEX IF NOT EXISTS idx_workflow_templates_active ON workflow_templates(is_active, domain);
 CREATE INDEX IF NOT EXISTS idx_workflow_runs_template ON workflow_runs(template_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_workflow_runs_actor ON workflow_runs(created_by_user_id, created_at DESC);
+
+-- ----------------------------------------------------------------------------
+-- 13. Universal Enterprise Work Orchestration (normalized design + runtime)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS orchestration_workflow_definitions (
+    id VARCHAR(64) PRIMARY KEY,
+    workflow_key VARCHAR(128) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    domain VARCHAR(64) NOT NULL,
+    default_work_type VARCHAR(64) NOT NULL,
+    lifecycle VARCHAR(24) NOT NULL CHECK (lifecycle IN ('DRAFT', 'REVIEW', 'PUBLISHED', 'DEPRECATED', 'ARCHIVED')),
+    scope VARCHAR(24) NOT NULL CHECK (scope IN ('COMPANY', 'DEPARTMENT', 'PERSONAL')),
+    owner_id VARCHAR(64) NOT NULL REFERENCES bank_users(id) ON DELETE RESTRICT,
+    maintainer_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    latest_version INTEGER NOT NULL DEFAULT 0,
+    tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+    icon_name VARCHAR(64) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_policy_sets (
+    id VARCHAR(64) NOT NULL,
+    version INTEGER NOT NULL,
+    policy_key VARCHAR(128) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    domain VARCHAR(64) NOT NULL,
+    status VARCHAR(16) NOT NULL CHECK (status IN ('DRAFT', 'PUBLISHED', 'RETIRED')),
+    business_calendar_id VARCHAR(64) NOT NULL,
+    priority_mechanism VARCHAR(32) NOT NULL,
+    sla_policy_id VARCHAR(64) REFERENCES sla_policies(id) ON DELETE SET NULL,
+    routing_rule_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    priority_rules JSONB NOT NULL DEFAULT '[]'::jsonb,
+    escalation_policy JSONB,
+    permission_policy JSONB,
+    PRIMARY KEY (id, version)
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_form_definitions (
+    id VARCHAR(64) PRIMARY KEY,
+    form_key VARCHAR(128) NOT NULL UNIQUE,
+    title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    domain VARCHAR(64) NOT NULL,
+    lifecycle VARCHAR(24) NOT NULL,
+    latest_version INTEGER NOT NULL,
+    owner_id VARCHAR(64) NOT NULL REFERENCES bank_users(id) ON DELETE RESTRICT,
+    maintainer_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_form_versions (
+    id VARCHAR(80) PRIMARY KEY,
+    form_definition_id VARCHAR(64) NOT NULL REFERENCES orchestration_form_definitions(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    status VARCHAR(16) NOT NULL CHECK (status IN ('DRAFT', 'PUBLISHED', 'RETIRED')),
+    change_log TEXT NOT NULL,
+    snapshot JSONB NOT NULL,
+    created_by_user_id VARCHAR(64) NOT NULL REFERENCES bank_users(id) ON DELETE RESTRICT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (form_definition_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_form_field_groups (
+    id VARCHAR(64) NOT NULL,
+    version INTEGER NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    status VARCHAR(16) NOT NULL CHECK (status IN ('DRAFT', 'PUBLISHED', 'RETIRED')),
+    fields JSONB NOT NULL,
+    PRIMARY KEY (id, version)
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_workflow_versions (
+    id VARCHAR(80) PRIMARY KEY,
+    workflow_definition_id VARCHAR(64) NOT NULL REFERENCES orchestration_workflow_definitions(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    status VARCHAR(16) NOT NULL CHECK (status IN ('DRAFT', 'REVIEW', 'PUBLISHED', 'RETIRED')),
+    policy_set_id VARCHAR(64) NOT NULL,
+    policy_set_version INTEGER NOT NULL,
+    form_definition_id VARCHAR(64) REFERENCES orchestration_form_definitions(id) ON DELETE SET NULL,
+    form_version INTEGER,
+    change_log TEXT NOT NULL,
+    checksum VARCHAR(80) NOT NULL,
+    immutable_snapshot JSONB NOT NULL,
+    created_by_user_id VARCHAR(64) NOT NULL REFERENCES bank_users(id) ON DELETE RESTRICT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    published_at TIMESTAMPTZ,
+    UNIQUE (workflow_definition_id, version),
+    FOREIGN KEY (policy_set_id, policy_set_version) REFERENCES orchestration_policy_sets(id, version) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_workflow_stages (
+    id VARCHAR(80) NOT NULL,
+    workflow_version_id VARCHAR(80) NOT NULL REFERENCES orchestration_workflow_versions(id) ON DELETE CASCADE,
+    stage_key VARCHAR(128) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    stage_order INTEGER NOT NULL,
+    trigger_type VARCHAR(32) NOT NULL,
+    trigger_expression TEXT,
+    target_policy_id VARCHAR(64),
+    PRIMARY KEY (workflow_version_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_workflow_nodes (
+    id VARCHAR(80) NOT NULL,
+    workflow_version_id VARCHAR(80) NOT NULL REFERENCES orchestration_workflow_versions(id) ON DELETE CASCADE,
+    node_key VARCHAR(128) NOT NULL,
+    node_type VARCHAR(40) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    stage_id VARCHAR(80),
+    position_x NUMERIC NOT NULL,
+    position_y NUMERIC NOT NULL,
+    assignment_config JSONB,
+    approval_config JSONB,
+    condition_config JSONB,
+    join_config JSONB,
+    timer_config JSONB,
+    action_config JSONB,
+    retry_policy JSONB,
+    compensation_config JSONB,
+    permission_config JSONB,
+    PRIMARY KEY (workflow_version_id, id),
+    UNIQUE (workflow_version_id, node_key)
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_workflow_edges (
+    id VARCHAR(128) NOT NULL,
+    workflow_version_id VARCHAR(80) NOT NULL REFERENCES orchestration_workflow_versions(id) ON DELETE CASCADE,
+    source_node_id VARCHAR(80) NOT NULL,
+    destination_node_id VARCHAR(80) NOT NULL,
+    outcome VARCHAR(64),
+    branch_label VARCHAR(128),
+    dependency_type VARCHAR(32) NOT NULL DEFAULT 'FINISH_TO_START',
+    delay_minutes INTEGER NOT NULL DEFAULT 0,
+    condition_config JSONB,
+    PRIMARY KEY (workflow_version_id, id),
+    FOREIGN KEY (workflow_version_id, source_node_id) REFERENCES orchestration_workflow_nodes(workflow_version_id, id) ON DELETE CASCADE,
+    FOREIGN KEY (workflow_version_id, destination_node_id) REFERENCES orchestration_workflow_nodes(workflow_version_id, id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_workflow_triggers (
+    id VARCHAR(80) NOT NULL,
+    workflow_version_id VARCHAR(80) NOT NULL REFERENCES orchestration_workflow_versions(id) ON DELETE CASCADE,
+    trigger_type VARCHAR(32) NOT NULL,
+    event_name VARCHAR(128),
+    record_type VARCHAR(128),
+    schedule_expression VARCHAR(128),
+    date_expression TEXT,
+    condition_config JSONB,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    PRIMARY KEY (workflow_version_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_workflow_variables (
+    workflow_version_id VARCHAR(80) NOT NULL REFERENCES orchestration_workflow_versions(id) ON DELETE CASCADE,
+    variable_key VARCHAR(160) NOT NULL,
+    variable_type VARCHAR(32) NOT NULL,
+    required BOOLEAN NOT NULL DEFAULT FALSE,
+    sensitive BOOLEAN NOT NULL DEFAULT FALSE,
+    description TEXT,
+    default_value JSONB,
+    PRIMARY KEY (workflow_version_id, variable_key)
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_request_types (
+    id VARCHAR(64) PRIMARY KEY,
+    request_key VARCHAR(128) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    domain VARCHAR(64) NOT NULL,
+    work_type VARCHAR(64) NOT NULL,
+    category VARCHAR(128) NOT NULL,
+    form_definition_id VARCHAR(64) NOT NULL REFERENCES orchestration_form_definitions(id) ON DELETE RESTRICT,
+    form_version INTEGER NOT NULL,
+    workflow_definition_id VARCHAR(64) NOT NULL REFERENCES orchestration_workflow_definitions(id) ON DELETE RESTRICT,
+    workflow_version INTEGER,
+    policy_set_id VARCHAR(64) NOT NULL,
+    visibility VARCHAR(24) NOT NULL,
+    supported_channels JSONB NOT NULL DEFAULT '[]'::jsonb,
+    tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_catalog_templates (
+    id VARCHAR(64) PRIMARY KEY,
+    workflow_definition_id VARCHAR(64) NOT NULL REFERENCES orchestration_workflow_definitions(id) ON DELETE RESTRICT,
+    published_workflow_version INTEGER NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    purpose TEXT NOT NULL,
+    domain VARCHAR(64) NOT NULL,
+    category VARCHAR(128) NOT NULL,
+    scope VARCHAR(24) NOT NULL,
+    owner_id VARCHAR(64) NOT NULL REFERENCES bank_users(id) ON DELETE RESTRICT,
+    maintainers JSONB NOT NULL DEFAULT '[]'::jsonb,
+    tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+    icon_name VARCHAR(64) NOT NULL,
+    estimated_duration_minutes INTEGER NOT NULL,
+    stage_count INTEGER NOT NULL,
+    department_count INTEGER NOT NULL,
+    approval_count INTEGER NOT NULL,
+    automation_count INTEGER NOT NULL,
+    run_count INTEGER NOT NULL DEFAULT 0,
+    success_rate NUMERIC(5,2) NOT NULL DEFAULT 0,
+    favorite_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    last_used_at TIMESTAMPTZ,
+    lifecycle VARCHAR(24) NOT NULL,
+    change_log TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_business_calendars (
+    id VARCHAR(64) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    timezone VARCHAR(64) NOT NULL,
+    workdays JSONB NOT NULL,
+    business_start TIME NOT NULL,
+    business_end TIME NOT NULL,
+    holidays JSONB NOT NULL DEFAULT '[]'::jsonb,
+    is_24x7 BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_assignment_rules (
+    id VARCHAR(64) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    rule_priority INTEGER NOT NULL,
+    condition_config JSONB,
+    assignment_config JSONB NOT NULL,
+    explanation TEXT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_connectors (
+    id VARCHAR(64) PRIMARY KEY,
+    connector_key VARCHAR(128) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    category VARCHAR(40) NOT NULL,
+    status VARCHAR(24) NOT NULL,
+    action_keys JSONB NOT NULL DEFAULT '[]'::jsonb,
+    credential_reference_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    supports_dry_run BOOLEAN NOT NULL DEFAULT FALSE,
+    owner_id VARCHAR(64) NOT NULL REFERENCES bank_users(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_notification_policies (
+    id VARCHAR(64) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    event_types JSONB NOT NULL,
+    recipient_resolvers JSONB NOT NULL,
+    channels JSONB NOT NULL,
+    template_key VARCHAR(128) NOT NULL,
+    deduplication_window_minutes INTEGER NOT NULL DEFAULT 30,
+    digest_window_minutes INTEGER,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_instances (
+    id VARCHAR(64) PRIMARY KEY,
+    instance_key VARCHAR(64) NOT NULL UNIQUE,
+    title VARCHAR(255) NOT NULL,
+    workflow_definition_id VARCHAR(64) NOT NULL REFERENCES orchestration_workflow_definitions(id) ON DELETE RESTRICT,
+    workflow_version INTEGER NOT NULL,
+    form_definition_id VARCHAR(64) REFERENCES orchestration_form_definitions(id) ON DELETE RESTRICT,
+    form_version INTEGER,
+    policy_set_id VARCHAR(64) NOT NULL,
+    policy_set_version INTEGER NOT NULL,
+    request_type_id VARCHAR(64) REFERENCES orchestration_request_types(id) ON DELETE SET NULL,
+    work_type VARCHAR(64) NOT NULL,
+    domain VARCHAR(64) NOT NULL,
+    trigger_type VARCHAR(32) NOT NULL,
+    trigger_event_id VARCHAR(160),
+    parent_workflow_instance_id VARCHAR(64) REFERENCES orchestration_instances(id) ON DELETE SET NULL,
+    status VARCHAR(24) NOT NULL,
+    current_stage_id VARCHAR(80),
+    context JSONB NOT NULL,
+    node_outputs JSONB NOT NULL DEFAULT '{}'::jsonb,
+    requester_id VARCHAR(64) NOT NULL REFERENCES bank_users(id) ON DELETE RESTRICT,
+    owner_id VARCHAR(64) NOT NULL REFERENCES bank_users(id) ON DELETE RESTRICT,
+    allowed_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    allowed_role_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    allowed_department_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    confidentiality VARCHAR(40) NOT NULL,
+    idempotency_key VARCHAR(160),
+    optimistic_version INTEGER NOT NULL DEFAULT 1,
+    started_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+    failure_reason TEXT,
+    UNIQUE (requester_id, idempotency_key)
+);
+
+ALTER TABLE orchestration_instances ADD COLUMN IF NOT EXISTS parent_workflow_instance_id VARCHAR(64) REFERENCES orchestration_instances(id) ON DELETE SET NULL;
+
+CREATE TABLE IF NOT EXISTS orchestration_node_instances (
+    id VARCHAR(64) PRIMARY KEY,
+    workflow_instance_id VARCHAR(64) NOT NULL REFERENCES orchestration_instances(id) ON DELETE CASCADE,
+    node_id VARCHAR(80) NOT NULL,
+    node_key VARCHAR(128) NOT NULL,
+    node_type VARCHAR(40) NOT NULL,
+    stage_id VARCHAR(80),
+    status VARCHAR(24) NOT NULL,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    logical_completion_key VARCHAR(180) NOT NULL UNIQUE,
+    activated_at TIMESTAMPTZ,
+    started_at TIMESTAMPTZ,
+    waiting_until TIMESTAMPTZ,
+    next_reminder_at TIMESTAMPTZ,
+    next_attempt_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    outcome VARCHAR(64),
+    output JSONB,
+    error TEXT,
+    assignment_group_id VARCHAR(64) REFERENCES bank_teams(id) ON DELETE SET NULL,
+    assignee_id VARCHAR(64) REFERENCES bank_users(id) ON DELETE SET NULL,
+    routing_explanation TEXT,
+    work_item_id VARCHAR(64),
+    approval_chain_id VARCHAR(64),
+    child_workflow_instance_id VARCHAR(64) REFERENCES orchestration_instances(id) ON DELETE SET NULL,
+    optimistic_version INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (workflow_instance_id, node_id)
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_node_attempts (
+    id VARCHAR(64) PRIMARY KEY,
+    workflow_instance_id VARCHAR(64) NOT NULL REFERENCES orchestration_instances(id) ON DELETE CASCADE,
+    node_instance_id VARCHAR(64) NOT NULL REFERENCES orchestration_node_instances(id) ON DELETE CASCADE,
+    attempt INTEGER NOT NULL,
+    idempotency_key VARCHAR(180) NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    dry_run BOOLEAN NOT NULL DEFAULT FALSE,
+    input JSONB NOT NULL DEFAULT '{}'::jsonb,
+    output JSONB,
+    error TEXT,
+    started_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+    UNIQUE (node_instance_id, attempt)
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_dead_letters (
+    id VARCHAR(64) PRIMARY KEY,
+    workflow_instance_id VARCHAR(64) NOT NULL REFERENCES orchestration_instances(id) ON DELETE CASCADE,
+    node_instance_id VARCHAR(64) NOT NULL REFERENCES orchestration_node_instances(id) ON DELETE CASCADE,
+    node_attempt_id VARCHAR(64) NOT NULL REFERENCES orchestration_node_attempts(id) ON DELETE CASCADE,
+    action_key VARCHAR(160) NOT NULL,
+    idempotency_key VARCHAR(180) NOT NULL,
+    error TEXT NOT NULL,
+    status VARCHAR(16) NOT NULL CHECK (status IN ('OPEN', 'REQUEUED', 'RESOLVED')),
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    failed_at TIMESTAMPTZ NOT NULL,
+    last_retried_at TIMESTAMPTZ,
+    resolved_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_orchestration_dead_letters_open
+    ON orchestration_dead_letters (workflow_instance_id, status, failed_at DESC);
+
+CREATE TABLE IF NOT EXISTS orchestration_work_items (
+    id VARCHAR(64) PRIMARY KEY,
+    work_item_key VARCHAR(64) NOT NULL UNIQUE,
+    workflow_instance_id VARCHAR(64) NOT NULL REFERENCES orchestration_instances(id) ON DELETE CASCADE,
+    node_instance_id VARCHAR(64) NOT NULL UNIQUE REFERENCES orchestration_node_instances(id) ON DELETE CASCADE,
+    parent_work_item_id VARCHAR(64) REFERENCES orchestration_work_items(id) ON DELETE SET NULL,
+    work_type VARCHAR(64) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    instructions TEXT,
+    acceptance_criteria JSONB NOT NULL DEFAULT '[]'::jsonb,
+    checklist JSONB NOT NULL DEFAULT '[]'::jsonb,
+    status VARCHAR(24) NOT NULL,
+    assignment_group_id VARCHAR(64) REFERENCES bank_teams(id) ON DELETE SET NULL,
+    assignee_id VARCHAR(64) REFERENCES bank_users(id) ON DELETE SET NULL,
+    requester_id VARCHAR(64) NOT NULL REFERENCES bank_users(id) ON DELETE RESTRICT,
+    due_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_execution_events (
+    id UUID PRIMARY KEY,
+    sequence BIGINT NOT NULL,
+    workflow_instance_id VARCHAR(64) NOT NULL REFERENCES orchestration_instances(id) ON DELETE CASCADE,
+    node_instance_id VARCHAR(64) REFERENCES orchestration_node_instances(id) ON DELETE SET NULL,
+    event_type VARCHAR(48) NOT NULL,
+    actor_id VARCHAR(64) NOT NULL REFERENCES bank_users(id) ON DELETE RESTRICT,
+    actor_name VARCHAR(255) NOT NULL,
+    event_timestamp TIMESTAMPTZ NOT NULL,
+    event_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    previous_hash VARCHAR(80),
+    event_hash VARCHAR(80) NOT NULL,
+    UNIQUE (workflow_instance_id, sequence)
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_work_relations (
+    id VARCHAR(64) PRIMARY KEY,
+    source_type VARCHAR(32) NOT NULL,
+    source_id VARCHAR(128) NOT NULL,
+    target_type VARCHAR(32) NOT NULL,
+    target_id VARCHAR(128) NOT NULL,
+    relation_type VARCHAR(32) NOT NULL,
+    created_by_user_id VARCHAR(64) NOT NULL REFERENCES bank_users(id) ON DELETE RESTRICT,
+    created_at TIMESTAMPTZ NOT NULL,
+    metadata JSONB,
+    UNIQUE (source_type, source_id, target_type, target_id, relation_type)
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_sla_clocks (
+    id VARCHAR(64) PRIMARY KEY,
+    workflow_instance_id VARCHAR(64) NOT NULL REFERENCES orchestration_instances(id) ON DELETE CASCADE,
+    clock_type VARCHAR(32) NOT NULL,
+    label VARCHAR(255) NOT NULL,
+    business_calendar_id VARCHAR(64) NOT NULL REFERENCES orchestration_business_calendars(id) ON DELETE RESTRICT,
+    target_at TIMESTAMPTZ NOT NULL,
+    status VARCHAR(24) NOT NULL,
+    elapsed_minutes INTEGER NOT NULL DEFAULT 0,
+    target_minutes INTEGER NOT NULL,
+    paused_at TIMESTAMPTZ,
+    total_paused_minutes INTEGER NOT NULL DEFAULT 0,
+    completed_at TIMESTAMPTZ,
+    warning_at TIMESTAMPTZ,
+    escalation_at TIMESTAMPTZ,
+    UNIQUE (workflow_instance_id, clock_type, label)
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_notification_deliveries (
+    id VARCHAR(64) PRIMARY KEY,
+    workflow_instance_id VARCHAR(64) NOT NULL REFERENCES orchestration_instances(id) ON DELETE CASCADE,
+    node_instance_id VARCHAR(64) REFERENCES orchestration_node_instances(id) ON DELETE SET NULL,
+    policy_id VARCHAR(64) REFERENCES orchestration_notification_policies(id) ON DELETE SET NULL,
+    event_type VARCHAR(64) NOT NULL,
+    recipient_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    recipient_group_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    channels JSONB NOT NULL DEFAULT '[]'::jsonb,
+    deduplication_key VARCHAR(512) NOT NULL,
+    status VARCHAR(24) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    sent_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS orchestration_trigger_receipts (
+    id VARCHAR(64) PRIMARY KEY,
+    idempotency_key VARCHAR(200) NOT NULL,
+    trigger_type VARCHAR(32) NOT NULL,
+    event_name VARCHAR(200) NOT NULL,
+    record_type VARCHAR(100),
+    source VARCHAR(100) NOT NULL,
+    context JSONB NOT NULL,
+    received_at TIMESTAMPTZ NOT NULL,
+    processed_at TIMESTAMPTZ,
+    launched_workflow_instance_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    UNIQUE (source, idempotency_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_orch_catalog_category ON orchestration_catalog_templates(category, lifecycle);
+CREATE INDEX IF NOT EXISTS idx_orch_instances_status ON orchestration_instances(status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orch_instances_requester ON orchestration_instances(requester_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orch_node_ready ON orchestration_node_instances(status, next_attempt_at, waiting_until);
+CREATE INDEX IF NOT EXISTS idx_orch_work_items_queue ON orchestration_work_items(assignment_group_id, status, due_at);
+CREATE INDEX IF NOT EXISTS idx_orch_events_instance ON orchestration_execution_events(workflow_instance_id, sequence);
+CREATE INDEX IF NOT EXISTS idx_orch_relations_source ON orchestration_work_relations(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_orch_relations_target ON orchestration_work_relations(target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_orch_sla_status ON orchestration_sla_clocks(status, target_at);
+CREATE INDEX IF NOT EXISTS idx_orch_notifications_dedupe ON orchestration_notification_deliveries(deduplication_key, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orch_trigger_receipts ON orchestration_trigger_receipts(trigger_type, event_name, received_at DESC);

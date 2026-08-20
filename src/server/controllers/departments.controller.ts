@@ -364,7 +364,8 @@ export class DepartmentsController {
     }
   }
 
-  // 7. Department Connections CRUD & Real-Time Test Simulation
+  // 7. Department Connections CRUD. Connectivity must be verified by the
+  // connector implementation; this API never fabricates a successful probe.
   public static listConnections(req: AuthenticatedRequest, res: Response): void {
     try {
       const deptId = req.params.id;
@@ -388,21 +389,23 @@ export class DepartmentsController {
       }
 
       const body = req.body;
+      if (!String(body.name || '').trim() || !String(body.provider || '').trim() || !String(body.endpointUrl || '').trim() || !body.type || !body.authType) {
+        res.status(400).json({ success: false, error: 'Name, provider, endpoint, connection type and authentication type are required.' });
+        return;
+      }
       const newConn: DepartmentConnection = {
         id: `conn-${dept.code.toLowerCase()}-${uuidv4().substring(0, 6)}`,
         departmentId: dept.id,
-        name: body.name || 'New Integration Connection',
-        type: body.type || 'COMMUNICATION',
-        provider: body.provider || 'Enterprise Connector',
-        endpointUrl: body.endpointUrl || 'https://api.internal.apexbank.az',
-        authType: body.authType || 'API_KEY',
-        status: 'CONNECTED',
-        lastSyncAt: new Date().toISOString(),
-        latencyMs: Math.floor(Math.random() * 25) + 5,
-        healthScore: 98,
-        syncFrequencyMinutes: Number(body.syncFrequencyMinutes) || 15,
-        description: body.description || 'Department integrated system',
-        configSummary: body.configSummary || { status: 'INITIALIZED' },
+        name: String(body.name || '').trim(),
+        type: body.type,
+        provider: String(body.provider || '').trim(),
+        endpointUrl: String(body.endpointUrl || '').trim(),
+        authType: body.authType,
+        status: 'DISCONNECTED',
+        lastSyncAt: '',
+        syncFrequencyMinutes: Number(body.syncFrequencyMinutes) || 0,
+        description: String(body.description || '').trim(),
+        configSummary: body.configSummary || {},
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -436,31 +439,13 @@ export class DepartmentsController {
         return;
       }
 
-      // Simulate live network handshake & TLS cipher verification
-      const latencyMs = Math.floor(Math.random() * 20) + 4;
-      const now = new Date().toISOString();
-
-      connection.status = 'CONNECTED';
-      connection.lastSyncAt = now;
-      connection.latencyMs = latencyMs;
-      connection.healthScore = Math.min(100, Math.max(90, 100 - Math.floor(latencyMs / 5)));
-      connection.updatedAt = now;
-
       const testResult: ConnectionTestResult = {
-        success: true,
-        message: `Successfully verified MTLS handshake and bi-directional API connectivity with ${connection.name} (${connection.provider}) in ${latencyMs}ms.`,
-        latencyMs,
-        timestamp: now,
-        details: {
-          authenticatedUser: 'svc_bank_integration@apexbank.internal',
-          serverVersion: 'v2026.4.2 Enterprise Secure Node',
-          tlsCipher: 'TLS_AES_256_GCM_SHA384 (TLS 1.3 Certified)',
-          syncRecordsCount: Math.floor(Math.random() * 500) + 50,
-        },
+        success: false,
+        message: 'No connector health-check implementation is configured for this connection. No network probe was performed.',
+        latencyMs: 0,
+        timestamp: new Date().toISOString(),
       };
-
-      db.persist();
-      res.json({ success: true, testResult, connection });
+      res.status(501).json({ success: false, testResult, connection });
     } catch (err: any) {
       logger.error({ err }, 'Failed to test connection');
       res.status(500).json({ success: false, error: err.message });

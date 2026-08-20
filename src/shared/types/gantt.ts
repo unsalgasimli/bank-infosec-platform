@@ -1,8 +1,11 @@
+import { DependencyEdgeType } from './blueprints.js';
+
 export interface GanttDependency {
   id: string;
   fromTaskId: string;
   toTaskId: string;
-  type: 'FINISH_TO_START' | 'START_TO_START';
+  type: DependencyEdgeType;
+  lagDays?: number;
 }
 
 export interface GanttTaskSchedule {

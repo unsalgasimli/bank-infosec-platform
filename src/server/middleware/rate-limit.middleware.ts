@@ -12,13 +12,9 @@ function createRateLimiter(options: { windowMs: number; max: number; message: st
     standardHeaders: true,
     legacyHeaders: false,
     skipSuccessfulRequests: options.skipSuccessfulRequests || false,
-    keyGenerator: (req) => {
-      const forwarded = req.headers['x-forwarded-for'];
-      if (typeof forwarded === 'string') {
-        return forwarded.split(',')[0].trim();
-      }
-      return req.ip || '127.0.0.1';
-    },
+    // Express resolves req.ip through the loopback-only trusted proxy policy.
+    // Reading X-Forwarded-For directly would let LAN clients bypass throttling.
+    keyGenerator: (req) => req.ip || '127.0.0.1',
     store:
       config.REDIS_ENABLED && redisClient
         ? new RedisStore({

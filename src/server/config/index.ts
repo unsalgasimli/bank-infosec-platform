@@ -16,8 +16,8 @@ const configSchema = z.object({
   DB_TYPE: z.enum(['postgres', 'memory']).default('memory'),
   DB_HOST: z.string().default('localhost'),
   DB_PORT: z.coerce.number().default(5432),
-  DB_USER: z.string().default('postgres'),
-  DB_PASSWORD: z.string().default('postgres'),
+  DB_USER: z.string().optional(),
+  DB_PASSWORD: z.string().optional(),
   DB_NAME: z.string().default('bank_infosec_db'),
   DB_POOL_MIN: z.coerce.number().default(2),
   DB_POOL_MAX: z.coerce.number().default(20),
@@ -42,9 +42,13 @@ const configSchema = z.object({
   MAX_UPLOAD_SIZE_BYTES: z.coerce.number().default(25 * 1024 * 1024), // 25 MB
   
   // Security & Cryptography
-  JWT_SECRET: z.string().default('aegissec-super-secret-bank-enterprise-key-2026-replace-in-prod'),
+  JWT_SECRET: z.string().min(32, 'JWT_SECRET must be supplied through the environment.'),
   JWT_EXPIRES_IN: z.string().default('8h'),
   SESSION_TIMEOUT_MINUTES: z.coerce.number().default(30),
+  SESSION_ABSOLUTE_TIMEOUT_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(168),
+  // Never enable outside an explicitly marked local-development environment.
+  DEV_EMPTY_PASSWORD_LOGIN_ENABLED: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(false),
+  REQUIRE_HTTPS_AUTH: z.preprocess((val) => val !== 'false' && val !== false, z.boolean()).default(true),
   CORS_ORIGIN: z.string().default('*'),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(15 * 60 * 1000), // 15 mins
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().default(2000),
@@ -52,9 +56,17 @@ const configSchema = z.object({
 
   // Bank LDAP / Active Directory Integration
   LDAP_ENABLED: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(false),
-  LDAP_URL: z.string().default('ldaps://DC01.Expressbank.az:636'),
-  LDAP_BASE_DN: z.string().default('DC=Expressbank,DC=az'),
-  LDAP_DOMAIN: z.string().default('EXPRESSBANK.AZ'),
+  LDAP_URL: z.string().default(''),
+  LDAP_BASE_DN: z.string().default(''),
+  LDAP_USER_SEARCH_BASE: z.string().default(''),
+  LDAP_DOMAIN: z.string().default(''),
+  LDAP_BIND_USER: z.string().optional(),
+  LDAP_BIND_PASSWORD: z.string().optional(),
+  LDAP_TLS_REJECT_UNAUTHORIZED: z.preprocess((val) => val === 'true' || val === true || val === undefined, z.boolean()).default(true),
+  LDAP_CA_CERT_PATH: z.string().optional(),
+  LDAP_SYNC_TIME_GMT4: z.string().default('13:30'),
+  LDAP_SYNC_TIMEZONE: z.string().default('Asia/Baku'),
+  LDAP_SYNC_AUTO_ENABLED: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(true),
   
   // Logging & Observability
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),

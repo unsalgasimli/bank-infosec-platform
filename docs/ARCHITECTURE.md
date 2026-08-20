@@ -1,7 +1,7 @@
-# Apex Bank International - Enterprise InfoSec & GRC Architecture Blueprint
+# Fiuuu Architecture Blueprint
 
 ## 1. System Overview
-The **AegisSec Banking InfoSec & GRC Platform** is an enterprise-grade SecOps and Governance, Risk, and Compliance (GRC) platform engineered for regulated financial institutions (Tier-1 Banks). It provides unified ticketing, vulnerability remediation workflows, security incident management, cryptographic multi-stage approvals, automated scanner ingestion/deduplication, Active Directory/LDAP integration, and strict Attribute-Based Access Control (ABAC).
+The Fiuuuu is an enterprise-grade SecOps and Governance, Risk, and Compliance (GRC) platform engineered for regulated financial institutions (Tier-1 Banks). It provides unified ticketing, vulnerability remediation workflows, security incident management, cryptographic multi-stage approvals, automated scanner ingestion/deduplication, Active Directory/LDAP integration, and strict Attribute-Based Access Control (ABAC).
 
 ```mermaid
 flowchart TD

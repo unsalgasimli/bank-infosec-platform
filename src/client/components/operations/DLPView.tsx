@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Ticket } from '../../../shared/types/ticket.js';
 import { Badge } from '../common/Badge.js';
 import { SLARing } from '../common/SLARing.js';
-import { Lock, ShieldAlert, FileText, UserX, UserCheck, Search, Filter, HardDrive, Cloud, Mail, Bot, Plus, X, CheckCircle2 } from 'lucide-react';
+import { Lock, ShieldAlert, FileText, UserX, Search, Filter, HardDrive, Cloud, Mail, Bot, Plus, X, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
 
 interface DLPViewProps {
@@ -11,7 +11,7 @@ interface DLPViewProps {
 }
 
 export const DLPView: React.FC<DLPViewProps> = ({ tickets, onSelectTicket }) => {
-  const { currentUser, switchUser, allUsers, fetchWithAuth } = useAuth();
+  const { currentUser, fetchWithAuth } = useAuth();
   const [vectorFilter, setVectorFilter] = useState<string>('ALL');
   const [search, setSearch] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -26,8 +26,6 @@ export const DLPView: React.FC<DLPViewProps> = ({ tickets, onSelectTicket }) => 
   const canViewDLP = currentUser?.roles.some((r) =>
     ['CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'DLP_ANALYST'].includes(r)
   );
-
-  const dlpAnalystUser = allUsers.find((u) => u.roles.includes('DLP_ANALYST')) || allUsers.find((u) => u.roles.includes('CISO'));
 
   const handleCreateCase = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,15 +103,9 @@ export const DLPView: React.FC<DLPViewProps> = ({ tickets, onSelectTicket }) => 
             </p>
           </div>
 
-          {dlpAnalystUser && (
-            <button
-              onClick={() => switchUser(dlpAnalystUser.id)}
-              className="jira-btn-primary mx-auto"
-            >
-              <UserCheck className="w-4 h-4" />
-              <span>Switch to {dlpAnalystUser.fullName} ({dlpAnalystUser.roles[0]})</span>
-            </button>
-          )}
+          <p className="text-xs text-[#5E6C84]">
+            Giriş yalnız öz Active Directory hesabınızla mümkündür. Lazımi rolu bank administratorundan tələb edin.
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -292,5 +284,4 @@ export const DLPView: React.FC<DLPViewProps> = ({ tickets, onSelectTicket }) => 
     </div>
   );
 };
-
 

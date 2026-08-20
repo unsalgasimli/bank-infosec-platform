@@ -1,128 +1,118 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { BankUser, LDAPLoginPayload, AuthSessionResponse } from '../../shared/types/auth.js';
 
 interface AuthContextType {
   currentUser: BankUser | null;
   allUsers: BankUser[];
   isAuthenticated: boolean;
-  authToken: string | null;
-  ldapSession: AuthSessionResponse['ldapInfo'] | null;
   isLoading: boolean;
   ldapLogin: (payload: LDAPLoginPayload) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
-  switchUser: (userId: string) => void;
+  refreshUsers: () => Promise<void>;
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const clearLegacyClientAuth = () => {
+  localStorage.removeItem('aegis_user_id');
+  localStorage.removeItem('aegis_auth_token');
+  localStorage.removeItem('aegis_ldap_session');
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [allUsers, setAllUsers] = useState<BankUser[]>([]);
   const [currentUser, setCurrentUser] = useState<BankUser | null>(null);
-  const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem('aegis_auth_token'));
-  const [ldapSession, setLdapSession] = useState<AuthSessionResponse['ldapInfo'] | null>(() => {
-    try {
-      const saved = localStorage.getItem('aegis_ldap_session');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const savedUserId = localStorage.getItem('aegis_user_id');
-    fetch('/api/auth/users')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.users.length > 0) {
-          setAllUsers(data.users);
-          const matched =
-            data.users.find((u: BankUser) => u.id === savedUserId) ||
-            data.users[0] ||
-            null;
-          setCurrentUser(matched);
-        } else {
-          setAllUsers([]);
-          setCurrentUser(null);
-        }
-      })
-      .catch((err) => console.error('Failed to load bank users', err))
-      .finally(() => setIsLoading(false));
+  const refreshUsers = useCallback(async (): Promise<void> => {
+    const res = await fetch('/api/auth/users', { credentials: 'include' });
+    if (!res.ok) {
+      if (res.status === 401) {
+        setCurrentUser(null);
+        setAllUsers([]);
+      }
+      return;
+    }
+
+    const data = await res.json();
+    setAllUsers(data.success && Array.isArray(data.users) ? data.users : []);
   }, []);
 
+  useEffect(() => {
+    clearLegacyClientAuth();
+
+    const restoreServerSession = async () => {
+      try {
+        const res = await fetch('/api/auth/me', { credentials: 'include' });
+        if (!res.ok) return;
+
+        const data = await res.json();
+        if (data.success && data.user) {
+          setCurrentUser(data.user);
+          await refreshUsers();
+        }
+      } catch (err) {
+        console.error('Failed to restore the authenticated session', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void restoreServerSession();
+  }, [refreshUsers]);
+
   const ldapLogin = async (payload: LDAPLoginPayload): Promise<{ success: boolean; message?: string }> => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
     try {
       const res = await fetch('/api/auth/ldap-login', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        signal: controller.signal,
+        body: JSON.stringify({
+          usernameOrEmail: payload.usernameOrEmail,
+          password: payload.password,
+        }),
       });
       const data: AuthSessionResponse = await res.json();
 
-      if (data.success && data.user) {
-        setCurrentUser(data.user);
-        setAuthToken(data.token);
-        setLdapSession(data.ldapInfo || null);
-        localStorage.setItem('aegis_user_id', data.user.id);
-        localStorage.setItem('aegis_auth_token', data.token);
-        if (data.ldapInfo) {
-          localStorage.setItem('aegis_ldap_session', JSON.stringify(data.ldapInfo));
-        }
-        return { success: true };
-      } else {
+      if (!res.ok || !data.success || !data.user) {
         return { success: false, message: data.message || 'Authentication failed' };
       }
+
+      setCurrentUser(data.user);
+      await refreshUsers();
+      return { success: true };
     } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        return { success: false, message: 'Giriş sorğusu 12 saniyə ərzində cavab vermədi. API bağlantısını yoxlayın.' };
+      }
       return { success: false, message: err.message || 'Unable to connect to authentication server' };
+    } finally {
+      window.clearTimeout(timeout);
     }
   };
 
   const logout = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-    } catch (err) {
-      console.error(err);
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     } finally {
-      setAuthToken(null);
-      setLdapSession(null);
-      localStorage.removeItem('aegis_auth_token');
-      localStorage.removeItem('aegis_ldap_session');
+      setCurrentUser(null);
+      setAllUsers([]);
+      clearLegacyClientAuth();
     }
   };
 
-  const switchUser = (userId: string) => {
-    const target = allUsers.find((u) => u.id === userId);
-    if (target) {
-      setCurrentUser(target);
-      localStorage.setItem('aegis_user_id', target.id);
-      if (target.distinguishedName || target.ldapDomain) {
-        const sessionInfo: AuthSessionResponse['ldapInfo'] = {
-          server: target.ldapDomain ? `ldaps://${target.ldapDomain}:636` : 'Direct Active Directory Session',
-          bindDn: target.distinguishedName || target.email,
-          distributionGroup: target.distributionGroups?.[0] || 'Enterprise User',
-          authenticatedAt: new Date().toISOString(),
-          kerberosTicketIssued: true,
-        };
-        setLdapSession(sessionInfo);
-        localStorage.setItem('aegis_ldap_session', JSON.stringify(sessionInfo));
-      } else {
-        setLdapSession(null);
-        localStorage.removeItem('aegis_ldap_session');
-      }
+  const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}) => {
+    const response = await fetch(url, { ...options, credentials: 'include' });
+    if (response.status === 401) {
+      setCurrentUser(null);
+      setAllUsers([]);
     }
-  };
-
-  const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
-    const headers = new Headers(options.headers || {});
-    if (authToken) {
-      headers.set('Authorization', `Bearer ${authToken}`);
-    }
-    if (currentUser) {
-      headers.set('x-user-id', currentUser.id);
-    }
-    return fetch(url, { ...options, headers });
-  };
+    return response;
+  }, []);
 
   return (
     <AuthContext.Provider
@@ -130,12 +120,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentUser,
         allUsers,
         isAuthenticated: Boolean(currentUser),
-        authToken,
-        ldapSession,
         isLoading,
         ldapLogin,
         logout,
-        switchUser,
+        refreshUsers,
         fetchWithAuth,
       }}
     >
@@ -149,4 +137,3 @@ export const useAuth = () => {
   if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };
-

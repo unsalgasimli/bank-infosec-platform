@@ -19,12 +19,14 @@ interface WrikeWorkloadViewProps {
   tickets: Ticket[];
   onSelectTicket: (ticket: Ticket) => void;
   onRefreshTickets?: () => void;
+  dataScope?: 'authorized' | 'assigned' | 'reported';
 }
 
 export const WrikeWorkloadView: React.FC<WrikeWorkloadViewProps> = ({
   tickets,
   onSelectTicket,
   onRefreshTickets,
+  dataScope = 'authorized',
 }) => {
   const { fetchWithAuth } = useAuth();
   const [members, setMembers] = useState<TeamWorkloadMember[]>([]);
@@ -38,7 +40,7 @@ export const WrikeWorkloadView: React.FC<WrikeWorkloadViewProps> = ({
   const loadWorkload = async () => {
     try {
       setIsLoading(true);
-      const res = await fetchWithAuth('/api/workload');
+      const res = await fetchWithAuth(`/api/workload?scope=${dataScope}`);
       const data = await res.json();
       if (data.success) {
         setMembers(data.members || []);
@@ -56,7 +58,7 @@ export const WrikeWorkloadView: React.FC<WrikeWorkloadViewProps> = ({
 
   useEffect(() => {
     loadWorkload();
-  }, [tickets]);
+  }, [tickets, dataScope]);
 
   const handleAutoBalance = async () => {
     const overAllocatedMember = members.find((m) => m.isOverAllocated);

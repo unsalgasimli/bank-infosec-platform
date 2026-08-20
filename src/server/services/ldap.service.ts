@@ -1,37 +1,33 @@
-import { Client } from 'ldapts';
+import { StrictReadOnlyLdapClient } from '../utils/readonly-ldap-client.js';
 import { BankUser, LDAPLoginPayload, AuthSessionResponse, LDAPGroupInfo } from '../../shared/types/auth.js';
 import { db } from '../db/database.js';
 import { AuditService } from './audit.service.js';
+import { LDAPSyncService } from './ldap-sync.service.js';
+import { isAccountDisabled } from './ldap-directory.data.js';
 import { config } from '../config/index.js';
 import { logger } from './logger.service.js';
 
-function parseActiveDirectoryError(errorMessage: string): string {
-  const match = errorMessage.match(/data\s+([0-9a-fA-F]{3,4})/i);
-  if (!match) return errorMessage;
+function parseActiveDirectoryError(_errorMessage: string): string {
+  return 'İstifadəçi adı və ya şifrə yanlışdır, yaxud hesab giriş üçün əlçatan deyil.';
+}
 
-  const code = match[1].toLowerCase();
-  switch (code) {
-    case '52e':
-      return 'Daxil edilmiş Active Directory istifadəçi adı və ya şifrə yanlışdır (Invalid Credentials / Bad Password).';
-    case '525':
-      return 'Active Directory-də belə bir istifadəçi hesabı mövcud deyil (User not found).';
-    case '530':
-      return 'Bu saatda Active Directory-yə daxil olmağa icazə verilmir (Not permitted to log on at this time).';
-    case '531':
-      return 'Bu iş stansiyasından daxil olmağa icazə verilmir (Not permitted to log on from this workstation).';
-    case '532':
-      return 'İstifadəçi şifrəsinin istifadə müddəti bitib (Password Expired). Şifrənizi yeniləyin.';
-    case '533':
-      return 'İstifadəçi hesabı Active Directory tərəfindən deaktiv edilib (Account Disabled).';
-    case '701':
-      return 'İstifadəçi hesabının aktivlik müddəti bitib (Account Expired).';
-    case '773':
-      return 'İstifadəçi ilk girişdə şifrəsini dəyişməlidir (User must reset password).';
-    case '775':
-      return 'Hesab çoxsaylı yanlış cəhdlərə görə bloklanıb (Account Locked Out). Domain Administrator ilə əlaqə saxlayın.';
-    default:
-      return `Active Directory Authentication Error (Code: ${code}): ${errorMessage}`;
-  }
+function isValidSamAccountName(value: string): boolean {
+  return /^[a-zA-Z0-9._-]{1,64}$/.test(value);
+}
+
+function escapeLdapFilterValue(value: string): string {
+  return value
+    .replace(/\\/g, '\\5c')
+    .replace(/\*/g, '\\2a')
+    .replace(/\(/g, '\\28')
+    .replace(/\)/g, '\\29')
+    .replace(/\0/g, '\\00');
+}
+
+function normalizedDirectoryValue(value: unknown): string {
+  if (Array.isArray(value)) return normalizedDirectoryValue(value[0]);
+  if (Buffer.isBuffer(value)) return value.toString('utf8').trim().toLowerCase();
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
 export class LDAPAuthService {
@@ -41,27 +37,7 @@ export class LDAPAuthService {
   public static getDistributionGroups(): LDAPGroupInfo[] {
     const groupMap = new Map<string, LDAPGroupInfo>();
 
-    // Add default security groups
-    const defaultGroups = [
-      'İnformasiya Təhlükəsizliyi DG',
-      'SOC_Incident_Responders',
-      'AppSec_Reviewers',
-      'Enterprise_Security_Admins',
-      'IT_Operations_Admins',
-    ];
-
-    for (const name of defaultGroups) {
-      groupMap.set(name, {
-        name,
-        distinguishedName: `CN=${name},OU=Distribution Groups,${config.LDAP_BASE_DN}`,
-        description: `${name} Corporate Access Group`,
-        type: 'SECURITY_DISTRIBUTION_GROUP',
-        isInfosecGroup: true,
-        memberCount: 0,
-      });
-    }
-
-    for (const user of db.data.users) {
+    for (const user of db.data.users.filter((item) => item.directorySource === 'ACTIVE_DIRECTORY')) {
       for (const groupName of user.distributionGroups || []) {
         if (!groupMap.has(groupName)) {
           groupMap.set(groupName, {
@@ -77,7 +53,7 @@ export class LDAPAuthService {
           });
         } else {
           const g = groupMap.get(groupName)!;
-          g.memberCount += 1;
+          g.memberCount = (g.memberCount || 0) + 1;
         }
       }
     }
@@ -93,14 +69,13 @@ export class LDAPAuthService {
     ipAddress = '10.20.4.15'
   ): Promise<AuthSessionResponse> {
     const rawInput = (payload.usernameOrEmail || '').trim();
-    const password = payload.password || '';
+    const password = (payload.password || '').trim();
 
-    if (!rawInput || !password) {
+    if (!rawInput) {
       return {
         success: false,
-        token: '',
         user: null as any,
-        message: 'Active Directory username and password are required.',
+        message: 'İstifadəçi adı daxil edilməlidir.',
       };
     }
 
@@ -112,8 +87,82 @@ export class LDAPAuthService {
       sAMAccountName = rawInput.split('@')[0];
     }
 
+    if (!isValidSamAccountName(sAMAccountName)) {
+      return {
+        success: false,
+        user: null as any,
+        message: 'İstifadəçi adı formatı etibarsızdır.',
+      };
+    }
+
     const domainNetbios = config.LDAP_DOMAIN.split('.')[0].toUpperCase();
     const domainDns = config.LDAP_DOMAIN.toLowerCase();
+
+    // A passwordless login is only a deliberately enabled development shortcut.
+    // It never creates users and never applies in test, staging, or production.
+    if (!password) {
+      const allowDevelopmentBypass =
+        config.NODE_ENV === 'development' && config.DEV_EMPTY_PASSWORD_LOGIN_ENABLED;
+      // sync:ad runs in a separate process; pick up its current directory
+      // projection immediately instead of requiring an API restart.
+      if (allowDevelopmentBypass) db.reload();
+      const usernameKey = sAMAccountName.toLowerCase();
+      const rawInputKey = rawInput.toLowerCase();
+      const developmentUser = db.data.users.find(
+        (user) =>
+          user.isActive &&
+          (user.directorySource === 'ACTIVE_DIRECTORY' ||
+            Boolean(user.sAMAccountName && user.ldapDomain && user.distinguishedName)) &&
+          (normalizedDirectoryValue(user.username) === usernameKey ||
+            normalizedDirectoryValue(user.sAMAccountName) === usernameKey ||
+            normalizedDirectoryValue(user.email) === rawInputKey ||
+            normalizedDirectoryValue(user.userPrincipalName) === rawInputKey)
+      );
+
+      if (!allowDevelopmentBypass) {
+        return { success: false, user: null as any, message: 'Active Directory password is required.' };
+      }
+
+      if (!developmentUser) {
+        return {
+          success: false,
+          user: null as any,
+          message: 'Development bypass üçün istifadəçi əvvəlcə aktiv Active Directory directory məlumatında mövcud olmalıdır.',
+        };
+      }
+
+      developmentUser.ldapBindStatus = 'AUTHENTICATED';
+      developmentUser.lastLdapLoginAt = new Date().toISOString();
+      db.persist();
+      AuditService.log({
+        actor: developmentUser,
+        action: 'USER_LOGIN',
+        entityType: 'USER',
+        entityId: developmentUser.id,
+        ipAddress,
+        userAgent: 'Development empty-password LDAP directory bypass',
+      });
+
+      return {
+        success: true,
+        user: developmentUser,
+        ldapInfo: {
+          server: 'Development directory verification',
+          bindDn: developmentUser.distinguishedName || developmentUser.username,
+          distributionGroup: developmentUser.distributionGroups?.[0] || 'No directory group recorded',
+          authenticatedAt: developmentUser.lastLdapLoginAt,
+          kerberosTicketIssued: false,
+        },
+      };
+    }
+
+    if (!config.LDAP_ENABLED || !config.LDAP_URL.startsWith('ldaps://') || !config.LDAP_BASE_DN || !config.LDAP_DOMAIN) {
+      return {
+        success: false,
+        user: null as any,
+        message: 'Active Directory authentication is unavailable. Complete the server-side LDAPS configuration.',
+      };
+    }
 
     // Prepare list of potential bind formats to try with Active Directory
     const bindCandidates: string[] = [];
@@ -131,27 +180,25 @@ export class LDAPAuthService {
     // 1. Attempt Real Active Directory LDAP Bind if LDAP_ENABLED
     if (config.LDAP_ENABLED) {
       let lastLdapError: any = null;
-      let authenticatedClient: Client | null = null;
-      let successfulBindUser: string = '';
-
+      let authenticatedClient: StrictReadOnlyLdapClient | null = null;
       for (const candidate of uniqueCandidates) {
-        const client = new Client({
+        const client = new StrictReadOnlyLdapClient({
           url: config.LDAP_URL,
-          timeout: 5000,
-          connectTimeout: 5000,
-          tlsOptions: { rejectUnauthorized: false }, // Allow internal enterprise Root CAs
+          timeout: 6000,
+          connectTimeout: 6000,
+          tlsRejectUnauthorized: config.LDAP_TLS_REJECT_UNAUTHORIZED !== false,
+          caCertPath: config.LDAP_CA_CERT_PATH,
         });
 
         try {
-          logger.info({ candidate, url: config.LDAP_URL }, 'Attempting Active Directory LDAP Bind...');
+          logger.info({ url: config.LDAP_URL }, 'Attempting Active Directory LDAP bind');
           await client.bind(candidate, password);
           authenticatedClient = client;
-          successfulBindUser = candidate;
-          logger.info({ candidate }, '✅ Active Directory LDAP Bind Successful!');
+          logger.info('Active Directory LDAP bind succeeded');
           break;
         } catch (bindErr: any) {
           lastLdapError = bindErr;
-          logger.debug({ candidate, err: bindErr.message }, 'Candidate bind failed, trying next format...');
+          logger.debug({ err: bindErr.message }, 'LDAP bind candidate failed');
           try {
             await client.unbind();
           } catch {}
@@ -165,7 +212,6 @@ export class LDAPAuthService {
 
         return {
           success: false,
-          token: '',
           user: null as any,
           message: userFriendlyMsg,
         };
@@ -173,21 +219,37 @@ export class LDAPAuthService {
 
       try {
         // Search user in Active Directory for memberOf and profile details
-        let adDisplayName = sAMAccountName;
-        let adMail = `${sAMAccountName}@${domainDns}`;
-        let adGroups: string[] = ['İnformasiya Təhlükəsizliyi DG'];
-        let adTitle = 'Information Security Specialist';
-        let adDepartment = 'İnformasiya Təhlükəsizliyi';
+        let adDisplayName = '';
+        let adMail = '';
+        let adGroups: string[] = [];
+        let adTitle = '';
+        let adDepartment = '';
 
         try {
+          const escapedSamAccountName = escapeLdapFilterValue(sAMAccountName);
+          const escapedUpn = escapeLdapFilterValue(`${sAMAccountName}@${domainDns}`);
+          const escapedMail = escapeLdapFilterValue(
+            rawInput.includes('@') ? rawInput.toLowerCase() : `${sAMAccountName}@${domainDns}`
+          );
           const searchRes = await authenticatedClient.search(config.LDAP_BASE_DN, {
             scope: 'sub',
-            filter: `(|(sAMAccountName=${sAMAccountName})(mail=${sAMAccountName}@*)(userPrincipalName=${sAMAccountName}@*))`,
-            attributes: ['displayName', 'mail', 'memberOf', 'title', 'department', 'distinguishedName'],
+            filter: `(|(sAMAccountName=${escapedSamAccountName})(mail=${escapedMail})(userPrincipalName=${escapedUpn}))`,
+            paged: { pageSize: 100 },
+            attributes: ['displayName', 'mail', 'memberOf', 'title', 'department', 'distinguishedName', 'userAccountControl', 'accountExpires'],
           });
 
-          if (searchRes.searchEntries.length > 0) {
-            const entry = searchRes.searchEntries[0];
+          if (searchRes.searchEntries.length === 1) {
+            const entry: any = searchRes.searchEntries[0];
+
+            // Check if disabled or expired
+            if (isAccountDisabled(entry)) {
+              return {
+                success: false,
+                user: null as any,
+                message: 'İstifadəçi hesabı Active Directory tərəfindən deaktiv edilib və ya müddəti bitib (Account Disabled / Expired).',
+              };
+            }
+
             adDisplayName = (entry.displayName as string) || adDisplayName;
             adMail = (entry.mail as string) || adMail;
             adTitle = (entry.title as string) || adTitle;
@@ -205,54 +267,72 @@ export class LDAPAuthService {
             if (parsedGroups.length > 0) {
               adGroups = parsedGroups;
             }
+          } else {
+            return { success: false, user: null as any, message: 'Authenticated account could not be uniquely resolved in Active Directory.' };
           }
         } catch (searchErr) {
-          logger.warn({ err: searchErr }, 'Active Directory user search warning after successful bind');
+          logger.warn({ err: searchErr }, 'Active Directory user search failed after successful bind');
+          return { success: false, user: null as any, message: 'Active Directory profile lookup failed.' };
         }
 
-        // Just-in-time provisioning in local database
+        if (!adDisplayName || !adMail) {
+          return { success: false, user: null as any, message: 'Active Directory profile is missing required display name or email attributes.' };
+        }
+
+        // Just-in-time provisioning in local database with intelligent department & group mapping
         let user = db.data.users.find(
           (u) =>
             u.username.toLowerCase() === sAMAccountName.toLowerCase() ||
+            (u.sAMAccountName && u.sAMAccountName.toLowerCase() === sAMAccountName.toLowerCase()) ||
             u.email.toLowerCase() === adMail.toLowerCase()
         );
 
+        const deptMapping = LDAPSyncService.mapDepartment(adDepartment, adTitle, adGroups);
+
         if (!user) {
+          const id = `usr-${sAMAccountName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
           user = {
-            id: `usr-${sAMAccountName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+            id,
             username: sAMAccountName.toLowerCase(),
+            sAMAccountName: sAMAccountName.toLowerCase(),
             email: adMail,
             fullName: adDisplayName,
             title: adTitle,
-            divisionId: 'div-infosec',
-            departmentId: 'dept-infosec',
-            teamIds: ['team-infosec'],
-            roles: ['PLATFORM_ADMIN', 'CISO', 'SECURITY_ANALYST', 'APPROVER', 'REQUESTER'],
-            securityClearance: 'HIGHLY_RESTRICTED_HR_LEGAL',
+            divisionId: deptMapping.divisionId,
+            departmentId: deptMapping.departmentId,
+            teamIds: deptMapping.teamIds,
+            roles: deptMapping.roles,
+            securityClearance: deptMapping.securityClearance,
             ownedApplicationIds: [],
             ownedAssetIds: [],
             ownedRiskIds: [],
             isActive: true,
-            sAMAccountName: sAMAccountName.toLowerCase(),
             userPrincipalName: `${sAMAccountName}@${domainDns}`,
             distinguishedName: `CN=${adDisplayName},${config.LDAP_BASE_DN}`,
             ldapDomain: config.LDAP_DOMAIN,
             distributionGroups: adGroups,
             ldapBindStatus: 'AUTHENTICATED',
             lastLdapLoginAt: new Date().toISOString(),
+            directorySource: 'ACTIVE_DIRECTORY',
           };
           db.data.users.push(user);
         } else {
           user.fullName = adDisplayName;
           user.email = adMail;
-          user.distributionGroups = Array.from(new Set([...(user.distributionGroups || []), ...adGroups]));
+          user.title = adTitle;
+          user.departmentId = deptMapping.departmentId;
+          user.divisionId = deptMapping.divisionId;
+          user.teamIds = deptMapping.teamIds;
+          user.roles = deptMapping.roles;
+          user.securityClearance = deptMapping.securityClearance;
+          user.distributionGroups = adGroups;
+          user.isActive = true;
           user.ldapBindStatus = 'AUTHENTICATED';
           user.lastLdapLoginAt = new Date().toISOString();
+          user.directorySource = 'ACTIVE_DIRECTORY';
         }
 
         db.persist();
-
-        const token = `aegis_jwt_${user.id}_${Buffer.from(`${user.username}:${Date.now()}`).toString('base64')}`;
 
         AuditService.log({
           actor: user,
@@ -261,23 +341,15 @@ export class LDAPAuthService {
           entityId: user.id,
           ipAddress,
           userAgent: 'Active Directory LDAPS Live Authentication',
-          fieldChanges: [
-            {
-              field: 'ldapAuthStatus',
-              oldValue: 'UNBOUND',
-              newValue: 'BOUND_SUCCESS',
-            },
-          ],
         });
 
         return {
           success: true,
-          token,
           user,
           ldapInfo: {
             server: `${config.LDAP_URL} (Active Directory Domain Controller)`,
             bindDn: user.distinguishedName || `CN=${user.fullName},${config.LDAP_BASE_DN}`,
-            distributionGroup: user.distributionGroups?.[0] || 'İnformasiya Təhlükəsizliyi DG',
+            distributionGroup: user.distributionGroups?.[0] || 'No Active Directory group returned',
             authenticatedAt: new Date().toISOString(),
             kerberosTicketIssued: true,
           },
@@ -289,38 +361,11 @@ export class LDAPAuthService {
       }
     }
 
-    // 2. Fallback to local DB authentication when LDAP_ENABLED=false
-    const user = db.data.users.find(
-      (u) =>
-        u.username.toLowerCase() === sAMAccountName.toLowerCase() ||
-        u.email.toLowerCase() === rawInput.toLowerCase()
-    );
-
-    if (!user || !user.isActive) {
-      return {
-        success: false,
-        token: '',
-        user: null as any,
-        message: `Authentication error: No registered user found for '${rawInput}'.`,
-      };
-    }
-
-    const token = `aegis_jwt_${user.id}_${Buffer.from(`${user.username}:${Date.now()}`).toString('base64')}`;
-    user.ldapBindStatus = 'AUTHENTICATED';
-    user.lastLdapLoginAt = new Date().toISOString();
-    db.persist();
-
+    // Never accept a password against the local directory when AD is unavailable.
     return {
-      success: true,
-      token,
-      user,
-      ldapInfo: {
-        server: `${config.LDAP_URL} (Local Directory Auth)`,
-        bindDn: user.distinguishedName || `CN=${user.fullName},${config.LDAP_BASE_DN}`,
-        distributionGroup: user.distributionGroups?.[0] || 'İnformasiya Təhlükəsizliyi DG',
-        authenticatedAt: new Date().toISOString(),
-        kerberosTicketIssued: true,
-      },
+      success: false,
+      user: null as any,
+      message: 'Active Directory authentication is unavailable. LDAP must be enabled; local password fallback is prohibited.',
     };
   }
 }

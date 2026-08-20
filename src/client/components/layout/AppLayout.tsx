@@ -101,10 +101,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
       {/* Main App Container */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Space & Folder Tree Sidebar */}
+        {/* Left Enterprise Navigation Sidebar */}
         <Sidebar
-          activeView={activeView}
-          onSelectView={onSelectView}
+          activeDestination={activeView}
+          onSelectDestination={onSelectView}
           tickets={tickets}
           applicationsCount={applications.length}
           assetsCount={assets.length}

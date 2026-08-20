@@ -8,7 +8,7 @@ export class ApprovalsController {
   public static listPending(req: AuthenticatedRequest, res: Response): void {
     const user = req.user!;
     const pending = ApprovalService.getPendingApprovalsForUser(user);
-    res.json({ success: true, pending });
+    res.json({ success: true, pending, pendingApprovals: pending });
   }
 
   public static submitDecision(req: AuthenticatedRequest, res: Response): void {

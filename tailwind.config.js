@@ -33,6 +33,17 @@ export default {
           purpleLight: '#F9F0FF',  // Purple pill / lozenge
         },
       },
+      fontSize: {
+        '2xs': ['0.75rem', { lineHeight: '1.05rem' }],       // 12px
+        'xs': ['0.84rem', { lineHeight: '1.25rem' }],        // ~13.5px
+        'sm': ['0.95rem', { lineHeight: '1.4rem' }],         // ~15.2px
+        'base': ['1.05rem', { lineHeight: '1.55rem' }],      // ~16.8px
+        'md': ['1.125rem', { lineHeight: '1.65rem' }],       // 18px
+        'lg': ['1.25rem', { lineHeight: '1.75rem' }],        // 20px
+        'xl': ['1.4rem', { lineHeight: '1.9rem' }],          // 22.4px
+        '2xl': ['1.7rem', { lineHeight: '2.2rem' }],         // 27.2px
+        '3xl': ['2.1rem', { lineHeight: '2.6rem' }],         // 33.6px
+      },
       fontFamily: {
         sans: ['"Plus Jakarta Sans"', '"Inter"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
         mono: ['"JetBrains Mono"', '"SFMono-Regular"', 'Menlo', 'Monaco', 'Consolas', 'monospace'],

@@ -29,11 +29,15 @@ export interface AuditEvent {
     | 'ADMIN_CONFIG_CHANGED'
     | 'USER_LOGIN'
     | 'USER_LOGOUT'
+    | 'USER_CREATE'
+    | 'USER_UPDATE'
+    | 'USER_DELETE'
+    | 'USER_SYNC'
     | 'LDAP_AUTH_SUCCESS'
     | 'LDAP_AUTH_FAILED';
 
 
-  entityType: 'TICKET' | 'COMMENT' | 'ATTACHMENT' | 'APPROVAL' | 'USER' | 'WORKFLOW' | 'SLA_POLICY' | 'SECURITY_EXCEPTION';
+  entityType: 'TICKET' | 'COMMENT' | 'ATTACHMENT' | 'APPROVAL' | 'USER' | 'WORKFLOW' | 'SLA_POLICY' | 'SECURITY_EXCEPTION' | 'USER_DIRECTORY' | 'DEPARTMENT';
   entityId: string;
   entityKey?: string;
   

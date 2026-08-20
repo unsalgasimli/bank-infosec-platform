@@ -39,3 +39,24 @@ export function complianceHeadersMiddleware(req: Request, res: Response, next: N
   res.setHeader('Expires', '0');
   next();
 }
+
+export function sameOriginMutationMiddleware(req: Request, res: Response, next: NextFunction): void {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    next();
+    return;
+  }
+
+  const origin = req.get('origin');
+  const forwardedHost = req.get('x-forwarded-host')?.split(',')[0].trim();
+  const host = forwardedHost || req.get('host');
+  const forwardedProtocol = req.get('x-forwarded-proto')?.split(',')[0].trim();
+  const protocol = forwardedProtocol || req.protocol;
+  const expectedOrigin = host ? `${protocol}://${host}` : undefined;
+
+  if (!origin || !expectedOrigin || origin !== expectedOrigin) {
+    res.status(403).json({ success: false, error: 'Cross-origin state-changing request rejected' });
+    return;
+  }
+
+  next();
+}

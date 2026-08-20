@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth.middleware.js';
 import { db } from '../db/database.js';
 import { AuditService } from '../services/audit.service.js';
+import { v4 as uuidv4 } from 'uuid';
 
 export class AssetsController {
   public static listAssets(req: AuthenticatedRequest, res: Response): void {
@@ -12,21 +13,25 @@ export class AssetsController {
     const user = req.user!;
     const body = req.body;
     const now = new Date().toISOString();
+    if (!String(body.name || '').trim()) {
+      res.status(400).json({ success: false, error: 'Asset name is required.' });
+      return;
+    }
 
     const newAsset = {
-      id: `asset-${Date.now()}`,
-      cmdbId: body.cmdbId || `CMDB-${Math.floor(1000 + Math.random() * 9000)}`,
-      name: body.name,
+      id: `asset-${uuidv4()}`,
+      cmdbId: body.cmdbId?.trim() || undefined,
+      name: body.name.trim(),
       assetType: body.assetType || 'VIRTUAL_MACHINE',
       criticality: body.criticality || 'HIGH',
       environment: body.environment || 'PROD',
-      ipAddress: body.ipAddress || '10.240.10.15',
-      hostname: body.hostname || `${body.name.toLowerCase().replace(/\s+/g, '-')}.apexbank.internal`,
+      ipAddress: body.ipAddress?.trim() || undefined,
+      hostname: body.hostname?.trim() || undefined,
       ownerId: body.ownerId || user.id,
       ownerName: body.ownerName || user.fullName,
       departmentId: body.departmentId || user.departmentId,
-      cloudProvider: body.cloudProvider || 'AZURE',
-      cloudRegion: body.cloudRegion || 'westeurope',
+      cloudProvider: body.cloudProvider?.trim() || undefined,
+      cloudRegion: body.cloudRegion?.trim() || undefined,
       criticalFindingCount: 0,
       highFindingCount: 0,
       lastScannedAt: now,
@@ -55,11 +60,15 @@ export class AssetsController {
     const user = req.user!;
     const body = req.body;
     const now = new Date().toISOString();
+    if (!String(body.name || '').trim() || !String(body.code || '').trim()) {
+      res.status(400).json({ success: false, error: 'Application name and code are required.' });
+      return;
+    }
 
     const newApp = {
-      id: `app-${Date.now()}`,
-      code: body.code || `APP-${body.name.substring(0, 4).toUpperCase()}`,
-      name: body.name,
+      id: `app-${uuidv4()}`,
+      code: body.code.trim(),
+      name: body.name.trim(),
       description: body.description || '',
       criticality: body.criticality || 'TIER_1_CRITICAL',
       dataClassification: body.dataClassification || 'RESTRICTED',
@@ -68,9 +77,9 @@ export class AssetsController {
       technicalOwnerId: body.technicalOwnerId || user.id,
       technicalOwnerName: body.technicalOwnerName || user.fullName,
       departmentId: body.departmentId || user.departmentId,
-      techStack: Array.isArray(body.techStack) ? body.techStack : (body.techStack ? body.techStack.split(',').map((s: string) => s.trim()) : ['Java 21', 'Spring Boot']),
-      gitRepositories: Array.isArray(body.gitRepositories) ? body.gitRepositories : (body.gitRepositories ? [body.gitRepositories] : ['https://gitlab.apexbank.internal/core/service']),
-      connectedDatabases: Array.isArray(body.connectedDatabases) ? body.connectedDatabases : (body.connectedDatabases ? body.connectedDatabases.split(',').map((s: string) => s.trim()) : ['Oracle RAC PROD']),
+      techStack: Array.isArray(body.techStack) ? body.techStack : (body.techStack ? body.techStack.split(',').map((s: string) => s.trim()) : []),
+      gitRepositories: Array.isArray(body.gitRepositories) ? body.gitRepositories : (body.gitRepositories ? [body.gitRepositories] : []),
+      connectedDatabases: Array.isArray(body.connectedDatabases) ? body.connectedDatabases : (body.connectedDatabases ? body.connectedDatabases.split(',').map((s: string) => s.trim()) : []),
       internetExposed: body.internetExposed ?? false,
       openVulnerabilitiesCount: 0,
       criticalVulnerabilitiesCount: 0,
@@ -223,114 +232,16 @@ export class KBController {
   }
 }
 
-export class IncidentsSimulatorController {
-  public static simulateIncident(req: AuthenticatedRequest, res: Response): void {
-    const user = req.user!;
-    const { scenario } = req.body;
-    const now = new Date().toISOString();
-    const count = db.data.tickets.length + 1;
-
-    let title = 'Suspicious Privilege Escalation on Domain Controller';
-    let description = 'Microsoft Defender for Identity detected LSASS memory injection and abnormal Kerberos ticket requests originating from Admin Bastion 02.';
-    let mitre = [{ techniqueId: 'T1003.001', techniqueName: 'OS Credential Dumping: LSASS Memory' }, { techniqueId: 'T1078', techniqueName: 'Valid Accounts' }];
-    let technicalSeverity: any = 'CRITICAL';
-    let businessPriority: any = 'P1_BLOCKER';
-
-    if (scenario === 'SWIFT_ANOMALY') {
-      title = 'SWIFT Payment Gateway Out-of-Hours Batch Execution Anomaly';
-      description = 'SIEM correlation rule SIEM-FIN-09 triggered: SWIFT Alliance Access server initiated MT103 wire transfers exceeding 500,000 AZN outside banking clearing hours.';
-      mitre = [{ techniqueId: 'T1565.002', techniqueName: 'Data Manipulation: Transmitted Data' }, { techniqueId: 'T1071.001', techniqueName: 'Application Layer Protocol: Web Protocols' }];
-      technicalSeverity = 'CRITICAL';
-      businessPriority = 'P1_BLOCKER';
-    } else if (scenario === 'RANSOMWARE_CANARY') {
-      title = 'Ransomware Canary File Modification Detected on Core File Server';
-      description = 'File Integrity Monitoring (FIM) detected rapid rename and encrypted header write on honeypot shares /shares/finance/canary_audit.xlsx.';
-      mitre = [{ techniqueId: 'T1486', techniqueName: 'Data Encrypted for Impact' }];
-      technicalSeverity = 'CRITICAL';
-      businessPriority = 'P1_BLOCKER';
-    } else if (scenario === 'DLP_EXFILTRATION') {
-      title = 'High Volume Cardholder PAN Data Export to Personal Cloud';
-      description = 'Symantec DLP Agent intercepted unencrypted zip archive containing 14,200 VISA/MasterCard PAN records uploaded to Google Drive.';
-      mitre = [{ techniqueId: 'T1567.002', techniqueName: 'Exfiltration to Cloud Storage' }];
-      technicalSeverity = 'HIGH';
-      businessPriority = 'P2_HIGH';
-    }
-
-    const key = `SOC-2026-${String(count).padStart(4, '0')}`;
-    const newIncident: any = {
-      id: `tick-${Date.now()}`,
-      key,
-      projectCode: 'SOC',
-      ticketTypeId: 'type-incident',
-      ticketTypeName: 'Security Incident',
-      category: scenario === 'DLP_EXFILTRATION' ? 'DLP_ALERT' : 'INCIDENT',
-      securityDomain: scenario === 'DLP_EXFILTRATION' ? 'DLP' : 'SOC',
-      title,
-      description,
-      statusId: 'INC_NEW',
-      statusName: 'New Triage',
-      statusCategory: 'TO_DO',
-      workflowId: 'wf-incident-std',
-      workflowVersion: 1,
-      technicalSeverity,
-      businessPriority,
-      businessImpact: 'SEVERE',
-      inherentRisk: 'CRITICAL',
-      residualRisk: 'HIGH',
-      riskScore: 90,
-      confidentiality: scenario === 'DLP_EXFILTRATION' ? 'HIGHLY_RESTRICTED_HR_LEGAL' : 'CONFIDENTIAL_SECURITY_ONLY',
-      restrictedUserIds: [],
-      restrictedTeamIds: [],
-      reporterId: user.id,
-      securityOwnerId: user.id,
-      assigneeId: user.id,
-      teamId: 'team-soc',
-      departmentId: 'dept-soc',
-      applicationId: 'app-core-bank',
-      assetId: 'asset-bastion-prod',
-      watcherIds: [user.id],
-      incidentDetails: {
-        incidentPhase: 'TRIAGE',
-        affectedHostnames: ['srv-bastion-02.apexbank.internal', 'dc01.apexbank.internal'],
-        affectedIpAddresses: ['10.240.0.12', '10.240.1.5'],
-        mitreAttack: mitre,
-        regulatoryNotificationRequired: true,
-        notificationDeadline: new Date(Date.now() + 86400000 * 3).toISOString(),
-      },
-      createdAt: now,
-      updatedAt: now,
-      detectedAt: now,
-      dueDate: new Date(Date.now() + 86400000 * 2).toISOString(),
-      remediationDeadline: new Date(Date.now() + 86400000 * 1).toISOString(),
-      slaPolicyId: 'sla-tier1-banking',
-      slaState: 'AT_RISK',
-      slaRemainingMinutes: 45,
-      version: 1,
-      tags: ['siem-alert', 'simulated', 'p1-incident'],
-    };
-
-    db.data.tickets.unshift(newIncident);
-    AuditService.log({
-      actor: user,
-      action: 'TICKET_CREATED',
-      entityType: 'TICKET',
-      entityId: newIncident.id,
-      entityKey: newIncident.key,
-      metadata: { scenario, title },
-    });
-
-    db.persist();
-    res.status(201).json({ success: true, ticket: newIncident });
-  }
-}
-
 export class AdminController {
   public static getMetadata(req: AuthenticatedRequest, res: Response): void {
+    db.reload();
+    const directoryUsers = db.data.users.filter((user) => user.directorySource === 'ACTIVE_DIRECTORY');
+    const activeDirectoryDepartmentIds = new Set(directoryUsers.map((user) => user.departmentId));
     res.json({
       success: true,
-      users: db.data.users,
+      users: directoryUsers,
       divisions: db.data.divisions,
-      departments: db.data.departments,
+      departments: db.data.departments.filter((department) => activeDirectoryDepartmentIds.has(department.id)),
       teams: db.data.teams,
       workflows: db.data.workflows,
       slaPolicies: db.data.slaPolicies,
@@ -344,4 +255,3 @@ export class AdminController {
     res.json({ success: true, events: AuditService.getAllEvents(limit) });
   }
 }
-

@@ -46,6 +46,7 @@ export interface BankApplication {
   name: string;
   description: string;
   criticality: CriticalityTier;
+  ownerId?: string;
   businessOwnerId: string;
   technicalOwnerId: string;
   securityLeadId: string;

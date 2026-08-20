@@ -3,7 +3,7 @@ export type NotificationSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'INFO';
 
 export interface AppNotification {
   id: string;
-  userId: string; // Target recipient user ID (e.g. usr-ciso-001 or 'ALL')
+  userId: string; // Target recipient user ID or 'ALL'
   title: string;
   message: string;
   type: NotificationType;

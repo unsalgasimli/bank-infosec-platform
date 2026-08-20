@@ -12,6 +12,18 @@ import { SearchService } from '../server/services/search.service.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
+const mockResponse = () => {
+  let statusCode = 200;
+  let payload: any;
+  const response: any = {
+    status(code: number) { statusCode = code; return response; },
+    json(value: any) { payload = value; return response; },
+    getStatus: () => statusCode,
+    getPayload: () => payload,
+  };
+  return response;
+};
+
 test('Enterprise ITSM lifecycle invariants', async (t) => {
   const originalDatabase = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'data/database.json'), 'utf8'));
   t.after(() => {
@@ -46,6 +58,70 @@ test('Enterprise ITSM lifecycle invariants', async (t) => {
     assert.strictEqual(input.type, 'SECURITY_INCIDENT');
     assert.strictEqual(input.assignmentGroupId, 'team-soc');
     assert.strictEqual(input.businessPriority, 'P2_HIGH');
+  });
+
+  await t.test('a ticket can be routed to a department queue and claimed only by one of its members', () => {
+    const targetDepartment = db.data.departments.find((department) => department.id !== actor.departmentId)!;
+    const queueMember: BankUser = {
+      ...actor,
+      id: 'usr-department-queue-member',
+      username: 'department.queue.member',
+      email: 'department.queue.member@bank.internal',
+      fullName: 'Department Queue Member',
+      roles: ['REQUESTER'],
+      departmentId: targetDepartment.id,
+      teamIds: [],
+    };
+    const otherDepartmentMember: BankUser = {
+      ...queueMember,
+      id: 'usr-other-department-member',
+      username: 'other.department.member',
+      email: 'other.department.member@bank.internal',
+      fullName: 'Other Department Member',
+      departmentId: actor.departmentId,
+    };
+    db.data.users.push(queueMember, otherDepartmentMember);
+
+    const createResponse = mockResponse();
+    TicketsController.create({
+      body: {
+        title: 'Department queue claim test',
+        description: 'Route this work to a department instead of a named employee.',
+        category: 'GENERAL_REQUEST',
+        requesterId: actor.id,
+        targetDepartmentId: targetDepartment.id,
+        routingStrategy: 'TEAM_QUEUE',
+      },
+      user: actor,
+    } as any, createResponse);
+
+    assert.strictEqual(createResponse.getStatus(), 201);
+    const queueTicket = createResponse.getPayload().ticket as Ticket;
+    assert.strictEqual(queueTicket.targetDepartmentId, targetDepartment.id);
+    assert.strictEqual(queueTicket.assigneeId, undefined);
+    assert.strictEqual(queueTicket.assignmentGroupId, undefined);
+
+    const rejectedClaim = mockResponse();
+    TicketsController.claim({ params: { id: queueTicket.id }, user: otherDepartmentMember } as any, rejectedClaim);
+    assert.strictEqual(rejectedClaim.getStatus(), 403);
+
+    const acceptedClaim = mockResponse();
+    TicketsController.claim({ params: { id: queueTicket.id }, user: queueMember } as any, acceptedClaim);
+    assert.strictEqual(acceptedClaim.getStatus(), 200);
+    assert.strictEqual(queueTicket.assigneeId, queueMember.id);
+    assert.ok(queueTicket.assignedAt);
+
+    const competingMember: BankUser = {
+      ...queueMember,
+      id: 'usr-competing-queue-member',
+      username: 'competing.queue.member',
+      email: 'competing.queue.member@bank.internal',
+      fullName: 'Competing Queue Member',
+    };
+    db.data.users.push(competingMember);
+    const competingClaim = mockResponse();
+    TicketsController.claim({ params: { id: queueTicket.id }, user: competingMember } as any, competingClaim);
+    assert.strictEqual(competingClaim.getStatus(), 409);
   });
 
   await t.test('a ticket receives multiple independent SLA clocks', () => {
@@ -144,17 +220,6 @@ test('Enterprise ITSM lifecycle invariants', async (t) => {
       version: 1,
     };
     db.data.tickets.push(ticket);
-    const mockResponse = () => {
-      let statusCode = 200;
-      let payload: any;
-      const response: any = {
-        status(code: number) { statusCode = code; return response; },
-        json(value: any) { payload = value; return response; },
-        getStatus: () => statusCode,
-        getPayload: () => payload,
-      };
-      return response;
-    };
     const updateResponse = mockResponse();
     TicketsController.update({ params: { id: ticket.id }, body: { confidentiality: 'CONFIDENTIAL_SECURITY_ONLY', version: 1 }, user: requester } as any, updateResponse);
     assert.strictEqual(updateResponse.getStatus(), 403);

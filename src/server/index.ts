@@ -6,11 +6,11 @@ import fs from 'fs';
 import { config } from './config/index.js';
 import { logger } from './services/logger.service.js';
 import { db } from './db/database.js';
-import { initialSeedData } from './db/seed.js';
 import { pgClient } from './db/postgres/client.js';
 import { cacheService } from './services/cache.service.js';
-import { authMiddleware } from './middleware/auth.middleware.js';
-import { securityHeadersMiddleware, complianceHeadersMiddleware } from './middleware/security.middleware.js';
+import { authMiddleware, requireAuthentication } from './middleware/auth.middleware.js';
+import { requireAdmin, requireSecOps } from './middleware/rbac.middleware.js';
+import { securityHeadersMiddleware, complianceHeadersMiddleware, sameOriginMutationMiddleware } from './middleware/security.middleware.js';
 import { generalRateLimiter, authRateLimiter } from './middleware/rate-limit.middleware.js';
 import { requestTracingMiddleware } from './middleware/logging.middleware.js';
 import { errorHandlerMiddleware } from './middleware/error.middleware.js';
@@ -18,19 +18,23 @@ import { errorHandlerMiddleware } from './middleware/error.middleware.js';
 import { TicketsController } from './controllers/tickets.controller.js';
 import { ApprovalsController, FindingsController } from './controllers/approvals.controller.js';
 import { DashboardsController } from './controllers/dashboards.controller.js';
-import { AssetsController, RisksController, KBController, AdminController, IncidentsSimulatorController } from './controllers/assets.controller.js';
+import { AssetsController, RisksController, KBController, AdminController } from './controllers/assets.controller.js';
 import { AuthController } from './controllers/auth.controller.js';
 import { HealthController } from './controllers/health.controller.js';
 import { StorageController } from './controllers/storage.controller.js';
 import { WrikeController } from './controllers/wrike.controller.js';
 import { NotificationsController } from './controllers/notifications.controller.js';
 import { DepartmentsController } from './controllers/departments.controller.js';
+import { OrchestrationController } from './controllers/orchestration.controller.js';
+import { LDAPSchedulerService } from './services/ldap-scheduler.service.js';
+import { WorkflowRuntimeService } from './services/workflow-runtime.service.js';
+import { WorkflowTriggerService } from './services/workflow-trigger.service.js';
 
 
 const app = express();
 
 // Trust reverse proxy (Nginx / Ingress / Load Balancer) for accurate client IP tracking
-app.set('trust proxy', 1);
+app.set('trust proxy', 'loopback');
 
 // 1. Core Security & Observability Middlewares
 app.use(requestTracingMiddleware);
@@ -39,14 +43,19 @@ app.use(complianceHeadersMiddleware);
 app.use(compression());
 app.use(
   cors({
-    origin: config.CORS_ORIGIN === '*' ? true : config.CORS_ORIGIN.split(','),
+    // The browser UI and API are served from the same origin. A wildcard must
+    // not turn credentialed cross-origin requests into an authentication path.
+    origin: config.CORS_ORIGIN === '*' ? false : config.CORS_ORIGIN.split(',').map((origin) => origin.trim()),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id', 'X-User-Id'],
+    allowedHeaders: ['Content-Type', 'X-Request-Id'],
   })
 );
-app.use(express.json({ limit: '15mb' }));
-app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+// Base64 evidence payloads expand by roughly one third; keep the transport
+// ceiling aligned with the 25 MiB storage policy rather than rejecting valid uploads.
+app.use(express.json({ limit: '36mb' }));
+app.use(express.urlencoded({ extended: true, limit: '36mb' }));
+app.use('/api', sameOriginMutationMiddleware);
 
 // 2. Health & Observability Endpoints (No auth / rate limiting on health checks)
 app.get('/api/health', HealthController.getLiveness);
@@ -59,12 +68,21 @@ app.use('/api', generalRateLimiter);
 // 4. Authentication Middleware
 app.use(authMiddleware);
 
-// 5. Bank Active Directory / LDAP Authentication & Directory
+// 5. Bank Active Directory / LDAP Authentication, Directory & Daily Check
 app.post('/api/auth/ldap-login', authRateLimiter, AuthController.ldapLogin);
-app.get('/api/auth/ldap/groups', AuthController.listGroups);
 app.post('/api/auth/logout', AuthController.logout);
-app.get('/api/auth/users', AuthController.listUsers);
 app.get('/api/auth/me', AuthController.getCurrentUser);
+app.get('/api/auth/public-directory', AuthController.getPublicDirectory);
+
+// Every route below this point requires a server-validated session cookie.
+app.use('/api', requireAuthentication);
+
+app.get('/api/auth/ldap/groups', AuthController.listGroups);
+app.get('/api/auth/users', AuthController.listUsers);
+app.post('/api/admin/ldap/sync', requireAdmin, AuthController.triggerLdapSync);
+app.get('/api/admin/ldap/sync-status', requireAdmin, AuthController.getLdapSyncStatus);
+app.get('/api/admin/ldap/departments', requireAdmin, AuthController.getUsersByDepartment);
+app.post('/api/admin/ldap/test-connection', requireAdmin, AuthController.testActiveDirectoryConnection);
 
 // 6. Tickets
 app.get('/api/tickets', TicketsController.list);
@@ -73,6 +91,7 @@ app.post('/api/tickets/multi-task-workflow', TicketsController.createMultiTaskWo
 app.post('/api/tickets/bulk', TicketsController.bulkUpdate);
 app.get('/api/tickets/:id', TicketsController.getById);
 app.patch('/api/tickets/:id', TicketsController.update);
+app.post('/api/tickets/:id/claim', TicketsController.claim);
 app.post('/api/tickets/:id/transition', TicketsController.transition);
 app.post('/api/tickets/:id/comments', TicketsController.addComment);
 app.get('/api/tickets/:id/lifecycle', TicketsController.getLifecycle);
@@ -112,13 +131,47 @@ app.post('/api/request-forms/:id/submit', WrikeController.submitRequestForm);
 
 app.get('/api/automations', WrikeController.listAutomations);
 app.get('/api/blueprints', WrikeController.listBlueprints);
+app.post('/api/blueprints', WrikeController.createBlueprint);
 app.get('/api/workflow-templates', WrikeController.listBlueprints);
+app.post('/api/workflow-templates', WrikeController.createBlueprint);
 app.get('/api/workflow-templates/metadata', WrikeController.getWorkflowTemplateMetadata);
 app.get('/api/workflow-runs', WrikeController.listWorkflowRuns);
 app.get('/api/workflow-templates/:id/preview', WrikeController.previewBlueprint);
+app.post('/api/workflow-templates/graph/validate', WrikeController.validateGraph);
+app.post('/api/workflow-templates/:id/clone', WrikeController.cloneBlueprint);
 app.post('/api/workflow-templates/custom/launch', WrikeController.launchCustomWorkflow);
 app.post('/api/workflow-templates/:id/launch', WrikeController.launchBlueprint);
 app.post('/api/blueprints/:id/launch', WrikeController.launchBlueprint);
+
+// Universal Enterprise Work Orchestration API. Catalog, Builder and Quick Work
+// are three clients of these same versioned definition/runtime endpoints.
+app.get('/api/orchestration/catalog', OrchestrationController.catalog);
+app.get('/api/orchestration/catalog/:id', OrchestrationController.template);
+app.post('/api/orchestration/catalog/:id/launch', OrchestrationController.launchTemplate);
+app.get('/api/orchestration/request-types', OrchestrationController.requestTypes);
+app.get('/api/orchestration/governance', requireAdmin, OrchestrationController.governanceMetadata);
+app.get('/api/orchestration/request-types/:id/form', OrchestrationController.requestForm);
+app.post('/api/orchestration/request-types/:id/validate', OrchestrationController.validateForm);
+app.post('/api/orchestration/quick-work', OrchestrationController.quickWork);
+app.get('/api/orchestration/instances', OrchestrationController.instances);
+app.get('/api/orchestration/instances/:id', OrchestrationController.execution);
+app.post('/api/orchestration/instances/:id/advance', OrchestrationController.advance);
+app.post('/api/orchestration/instances/:id/cancel', OrchestrationController.cancel);
+app.post('/api/orchestration/instances/:id/migrate', requireAdmin, OrchestrationController.migrate);
+app.post('/api/orchestration/instances/:id/relations', OrchestrationController.addRelation);
+app.post('/api/orchestration/instances/:id/dead-letters/:deadLetterId/requeue', OrchestrationController.requeueDeadLetter);
+app.post('/api/orchestration/instances/:id/work-items/:workItemId/complete', OrchestrationController.completeWorkItem);
+app.post('/api/orchestration/instances/:id/approvals/:chainId/decision', OrchestrationController.decideApproval);
+app.post('/api/orchestration/definitions/drafts', requireAdmin, OrchestrationController.saveDraft);
+app.get('/api/orchestration/definitions/:id/preflight', OrchestrationController.preflight);
+app.post('/api/orchestration/definitions/:id/preflight', OrchestrationController.preflight);
+app.post('/api/orchestration/definitions/:id/simulate', OrchestrationController.simulate);
+app.post('/api/orchestration/definitions/:id/versions/:version/publish', requireAdmin, OrchestrationController.publish);
+app.get('/api/orchestration/definitions/:id/compare', requireAdmin, OrchestrationController.compareVersions);
+app.post('/api/orchestration/definitions/:id/lifecycle', requireAdmin, OrchestrationController.lifecycle);
+app.post('/api/orchestration/catalog/:id/clone', requireAdmin, OrchestrationController.cloneTemplate);
+app.post('/api/orchestration/triggers/events', OrchestrationController.emitTrigger);
+app.get('/api/orchestration/analytics', OrchestrationController.analytics);
 
 app.get('/api/proofing', WrikeController.listProofingDocuments);
 app.post('/api/proofing/:id/annotations', WrikeController.addProofingAnnotation);
@@ -130,9 +183,8 @@ app.patch('/api/notifications/:id/read', NotificationsController.markAsRead);
 app.post('/api/notifications/read-all', NotificationsController.markAllAsRead);
 app.delete('/api/notifications/:id', NotificationsController.delete);
 
-// 10. Scanner Finding Ingestion & Deduplication & Incident Simulation
+// 10. Scanner Finding Ingestion & Deduplication
 app.post('/api/findings/ingest', FindingsController.ingest);
-app.post('/api/incidents/simulate', IncidentsSimulatorController.simulateIncident);
 
 // 10. Assets & Applications (CMDB)
 app.get('/api/assets', AssetsController.listAssets);
@@ -150,15 +202,15 @@ app.post('/api/kb', KBController.createArticle);
 app.get('/api/kb/:slug', KBController.getArticleBySlug);
 
 // 13. Admin & Audit
-app.get('/api/admin/metadata', AdminController.getMetadata);
-app.get('/api/admin/audit', AdminController.getAuditTrail);
+app.get('/api/admin/metadata', requireAdmin, AdminController.getMetadata);
+app.get('/api/admin/audit', requireAdmin, AdminController.getAuditTrail);
 
 // 14. Enterprise Multi-Department Architecture & Cross-Tasks
 app.get('/api/departments', DepartmentsController.listDepartments);
-app.post('/api/departments', DepartmentsController.createDepartment);
+app.post('/api/departments', requireAdmin, DepartmentsController.createDepartment);
 app.get('/api/departments/:id', DepartmentsController.getDepartmentById);
-app.patch('/api/departments/:id', DepartmentsController.updateDepartment);
-app.patch('/api/departments/:id/settings', DepartmentsController.updateSettings);
+app.patch('/api/departments/:id', requireAdmin, DepartmentsController.updateDepartment);
+app.patch('/api/departments/:id/settings', requireAdmin, DepartmentsController.updateSettings);
 app.post('/api/departments/:id/members', DepartmentsController.addOrUpdateMember);
 app.get('/api/departments/:id/connections', DepartmentsController.listConnections);
 app.post('/api/departments/:id/connections', DepartmentsController.createConnection);
@@ -170,7 +222,7 @@ app.post('/api/cross-tasks/launch', DepartmentsController.launchCrossTaskWorkflo
 // 15. Object Storage & Evidence Artifacts
 app.post('/api/storage/upload', StorageController.uploadArtifact);
 app.get('/api/storage/attachments/:attachmentId/url', StorageController.getDownloadUrl);
-app.get('/api/storage/download', StorageController.downloadDirect);
+app.get('/api/storage/attachments/:attachmentId/download', StorageController.downloadAttachment);
 
 // 15. Serve Static Production Frontend (if built)
 const clientDistPath = path.resolve(process.cwd(), 'dist');
@@ -200,11 +252,23 @@ const server = app.listen(config.PORT, config.HOST, () => {
     },
     `🛡️ AegisSec Banking GRC & SecOps Production API running on http://${config.HOST}:${config.PORT}`
   );
+
+  // Initialize and start Daily LDAP Synchronization Scheduler at 13:30 GMT+4
+  if (config.LDAP_SYNC_AUTO_ENABLED) {
+    LDAPSchedulerService.startScheduler();
+  }
+  WorkflowRuntimeService.startWorker();
+  WorkflowTriggerService.startWorker();
 });
 
 // Graceful Shutdown
 async function handleGracefulShutdown(signal: string) {
   logger.info({ signal }, 'Received shutdown signal, terminating server gracefully...');
+
+  // Stop background scheduler timers
+  LDAPSchedulerService.stopScheduler();
+  WorkflowRuntimeService.stopWorker();
+  WorkflowTriggerService.stopWorker();
 
   server.close(async () => {
     logger.info('HTTP server closed, draining database and cache connections...');

@@ -1,8 +1,81 @@
 import { Ticket, TechnicalSeverity } from '../../shared/types/ticket.js';
 import { SLAPolicy, SLACalculationResult } from '../../shared/types/sla.js';
+import { BusinessCalendarConfig, TicketSLAInstance } from '../../shared/types/itsm.js';
 import { db } from '../db/database.js';
+import { AutomationService } from './automation.service.js';
 
 export class SLAService {
+  /**
+   * Default Banking 8x5 Business Calendar
+   */
+  public static defaultBusinessCalendar: BusinessCalendarConfig = {
+    id: 'cal-bank-8x5',
+    name: 'Banking Core Working Hours (8x5)',
+    timezone: 'UTC',
+    workdays: [1, 2, 3, 4, 5], // Monday - Friday
+    startHour: 9, // 09:00
+    endHour: 18, // 18:00
+    holidays: ['2026-01-01', '2026-12-25'],
+    is24x7: false,
+  };
+
+  /**
+   * Calculate future deadline taking business hours into account (or 24x7 for emergency).
+   */
+  public static calculateBusinessDeadline(
+    start: Date,
+    durationMinutes: number,
+    calendar: BusinessCalendarConfig = SLAService.defaultBusinessCalendar
+  ): Date {
+    if (calendar.is24x7) {
+      return new Date(start.getTime() + durationMinutes * 60000);
+    }
+
+    let remainingMinutes = durationMinutes;
+    let current = new Date(start);
+
+    while (remainingMinutes > 0) {
+      const dayOfWeek = current.getUTCDay();
+      const isWorkday = calendar.workdays.includes(dayOfWeek);
+      const dateStr = current.toISOString().slice(0, 10);
+      const isHoliday = calendar.holidays.includes(dateStr);
+
+      if (!isWorkday || isHoliday) {
+        // Advance to next day 09:00 UTC
+        current.setUTCDate(current.getUTCDate() + 1);
+        current.setUTCHours(calendar.startHour, 0, 0, 0);
+        continue;
+      }
+
+      const currentHour = current.getUTCHours();
+      const currentMinute = current.getUTCMinutes();
+
+      if (currentHour < calendar.startHour) {
+        current.setUTCHours(calendar.startHour, 0, 0, 0);
+        continue;
+      }
+
+      if (currentHour >= calendar.endHour) {
+        current.setUTCDate(current.getUTCDate() + 1);
+        current.setUTCHours(calendar.startHour, 0, 0, 0);
+        continue;
+      }
+
+      // Minutes left in today's business window
+      const minutesLeftToday = (calendar.endHour - currentHour) * 60 - currentMinute;
+      if (remainingMinutes <= minutesLeftToday) {
+        current.setUTCMinutes(current.getUTCMinutes() + remainingMinutes);
+        remainingMinutes = 0;
+      } else {
+        remainingMinutes -= minutesLeftToday;
+        current.setUTCDate(current.getUTCDate() + 1);
+        current.setUTCHours(calendar.startHour, 0, 0, 0);
+      }
+    }
+
+    return current;
+  }
+
   /**
    * Recalculate SLA countdown, elapsed minutes, and state for a ticket.
    */
@@ -69,6 +142,14 @@ export class SLAService {
       state = 'AT_RISK';
     } else {
       state = 'SAFE';
+    }
+
+    // Check warning threshold triggers (e.g. 50%, 75%, 90% consumption)
+    const consumptionPercent = Math.min(100, Math.round((elapsedMinutes / totalAllowedMinutes) * 100));
+    if (consumptionPercent >= 75 && state === 'AT_RISK') {
+      AutomationService.triggerEvent('SLA_WARNING_THRESHOLD', ticket);
+    } else if (state === 'BREACHED') {
+      AutomationService.triggerEvent('SLA_BREACHED', ticket);
     }
 
     return {

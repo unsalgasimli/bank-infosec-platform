@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './context/AuthContext.js';
 import { AppLayout } from './components/layout/AppLayout.js';
-import { WrikeTableView } from './components/views/WrikeTableView.js';
+import { WorkManagementContainer } from './components/views/WorkManagementContainer.js';
+import { MyWorkOverviewView } from './components/views/MyWorkOverviewView.js';
+import { ServiceCatalogView } from './components/views/ServiceCatalogView.js';
+import { CMDBRelationshipMapView } from './components/assets/CMDBRelationshipMapView.js';
+import { BusinessServicesView } from './components/assets/BusinessServicesView.js';
+import { AuditComplianceView } from './components/governance/AuditComplianceView.js';
 import { IdeateCanvasView } from './components/ideate/IdeateCanvasView.js';
-import { WrikeGanttView } from './components/views/WrikeGanttView.js';
-import { WrikeWorkloadView } from './components/views/WrikeWorkloadView.js';
 import { WrikeRequestFormsView } from './components/views/WrikeRequestFormsView.js';
 import { WrikeAutomationsView } from './components/views/WrikeAutomationsView.js';
 import { DocumentProofingModal } from './components/proofing/DocumentProofingModal.js';
@@ -22,20 +25,38 @@ import { ApplicationCMDBView } from './components/assets/ApplicationCMDBView.js'
 import { AssetInventoryView } from './components/assets/AssetInventoryView.js';
 import { KnowledgeBaseView } from './components/kb/KnowledgeBaseView.js';
 import { AdminCenterView } from './components/admin/AdminCenterView.js';
-import { TicketKanbanBoard } from './components/tickets/TicketKanbanBoard.js';
 import { DepartmentHubView } from './components/departments/DepartmentHubView.js';
 import { DepartmentAdminPortal } from './components/departments/DepartmentAdminPortal.js';
-import { CrossDepartmentHubView } from './components/departments/CrossDepartmentHubView.js';
+import { UniversalWorkflowWorkspace } from './components/workflows/UniversalWorkflowWorkspace.js';
+import { AccessDeniedView } from './components/common/AccessDeniedView.js';
+import { LDAPSignInModal } from './components/auth/LDAPSignInModal.js';
+import { BankAuthPortal } from './components/auth/BankAuthPortal.js';
 import { Ticket } from '../shared/types/ticket.js';
 import { BankApplication, BankAsset } from '../shared/types/asset.js';
 import { RiskRegisterItem } from '../shared/types/risk.js';
 import { KBArticle } from '../shared/types/kb.js';
+import {
+  DestinationId,
+  ViewMode,
+  resolveLegacyRoute,
+  canUserAccessDestination,
+} from '../shared/types/navigation.js';
+import {
+  parseCurrentUrl,
+  pushNavigationState,
+} from './utils/urlRouter.js';
 
 export const App: React.FC = () => {
-  const { currentUser, fetchWithAuth } = useAuth();
+  const { currentUser, isLoading, fetchWithAuth } = useAuth();
 
-  const [activeView, setActiveView] = useState<string>('table');
-  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  // Initialize navigation and view mode state from the current browser URL
+  const initialRoute = parseCurrentUrl();
+  const [activeDestination, setActiveDestination] = useState<DestinationId | string>(
+    initialRoute.destinationId || 'my-work-overview'
+  );
+  const [activeViewMode, setActiveViewMode] = useState<ViewMode>(initialRoute.viewMode || 'spreadsheet');
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(initialRoute.ticketIdOrKey);
+
   const [isProofingOpen, setIsProofingOpen] = useState<boolean>(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
   const [activeDepartmentId, setActiveDepartmentId] = useState<string | null>(null);
@@ -49,13 +70,29 @@ export const App: React.FC = () => {
   const [cisoMetrics, setCisoMetrics] = useState<any>(null);
   const [leadMetrics, setLeadMetrics] = useState<any>(null);
   const [analystWorkspace, setAnalystWorkspace] = useState<any>(null);
+  const [pendingApprovalsList, setPendingApprovalsList] = useState<any[]>([]);
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState<number>(0);
 
   const [ticketDetailData, setTicketDetailData] = useState<any>(null);
   const [jqlQuery, setJqlQuery] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
+  // Handle browser popstate (Back/Forward navigation)
+  useEffect(() => {
+    const handlePopState = () => {
+      const parsed = parseCurrentUrl();
+      setActiveDestination(parsed.destinationId);
+      setActiveViewMode(parsed.viewMode);
+      setSelectedTicketId(parsed.ticketIdOrKey);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const loadData = () => {
+    if (!currentUser) return;
+
     // Load Tickets
     const jqlParam = jqlQuery || (searchQuery ? `text ~ "${searchQuery}"` : '');
     const url = jqlParam ? `/api/tickets?jql=${encodeURIComponent(jqlParam)}` : '/api/tickets';
@@ -71,8 +108,10 @@ export const App: React.FC = () => {
     fetchWithAuth('/api/approvals/pending')
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && data.pendingApprovals) {
-          setPendingApprovalsCount(data.pendingApprovals.length);
+        if (data.success && (data.pendingApprovals || data.pending)) {
+          const list = data.pendingApprovals || data.pending || [];
+          setPendingApprovalsList(list);
+          setPendingApprovalsCount(list.length);
         }
       })
       .catch(() => {});
@@ -131,7 +170,10 @@ export const App: React.FC = () => {
   // Load ticket detail when selected
   useEffect(() => {
     if (selectedTicketId) {
-      fetchWithAuth(`/api/tickets/${selectedTicketId}`)
+      // Resolve either by id or key
+      const resolvedId = tickets.find((t) => t.key === selectedTicketId || t.id === selectedTicketId)?.id || selectedTicketId;
+
+      fetchWithAuth(`/api/tickets/${resolvedId}`)
         .then((res) => res.json())
         .then((data) => {
           if (data.success) {
@@ -139,25 +181,36 @@ export const App: React.FC = () => {
           } else {
             alert(`Access Denied: ${data.error}`);
             setSelectedTicketId(null);
+            pushNavigationState(activeDestination, activeViewMode, null);
           }
         })
         .catch((err) => console.error(err));
     } else {
       setTicketDetailData(null);
     }
-  }, [selectedTicketId, currentUser]);
+  }, [selectedTicketId, currentUser, tickets]);
 
   const handleSelectTicket = (ticket: Ticket) => {
     setSelectedTicketId(ticket.id);
+    pushNavigationState(activeDestination, activeViewMode, ticket.key || ticket.id);
   };
 
-  const handleNavigate = (view: string, ticketId?: string) => {
-    setActiveView(view);
-    if (ticketId) {
-      setSelectedTicketId(ticketId);
-    } else {
-      setSelectedTicketId(null);
+  // Unified navigation handler with URL history synchronization
+  const handleNavigate = (route: string, ticketId?: string) => {
+    const { destinationId, viewMode } = resolveLegacyRoute(route);
+    const newViewMode = viewMode || activeViewMode;
+    setActiveDestination(destinationId);
+    if (viewMode) {
+      setActiveViewMode(viewMode);
     }
+    const nextTicketId = ticketId || null;
+    setSelectedTicketId(nextTicketId);
+    pushNavigationState(destinationId, newViewMode, nextTicketId);
+  };
+
+  const handleSelectViewMode = (mode: ViewMode) => {
+    setActiveViewMode(mode);
+    pushNavigationState(activeDestination, mode, selectedTicketId);
   };
 
   const handleTransition = async (transitionId: string, comment?: string, requiredFieldUpdates?: Record<string, any>) => {
@@ -190,6 +243,8 @@ export const App: React.FC = () => {
       fetchWithAuth(`/api/tickets/${selectedTicketId}`)
         .then((r) => r.json())
         .then((d) => setTicketDetailData(d));
+    } else {
+      throw new Error(data.error || 'Comment could not be posted.');
     }
   };
 
@@ -208,38 +263,72 @@ export const App: React.FC = () => {
         .then((r) => r.json())
         .then((d) => setTicketDetailData(d));
     } else {
-      alert(`Approval Failed: ${data.error}`);
+      throw new Error(data.error || 'Approval decision could not be submitted.');
     }
   };
 
-  const handleCreateTaskFromIdea = async (idea: any) => {
-    const res = await fetchWithAuth('/api/tickets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        projectCode: 'SEC',
-        ticketTypeId: idea.category || 'INCIDENT',
-        title: idea.title,
-        description: idea.description,
-        technicalSeverity: 'HIGH',
-        businessPriority: idea.priority || 'P2_HIGH',
-        businessImpact: 'SIGNIFICANT',
-        confidentiality: 'RESTRICTED',
-        tags: idea.tags || ['IDEATE'],
-      }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      loadData();
+  // Synchronize active department to user's assigned department
+  useEffect(() => {
+    if (currentUser?.departmentId) {
+      setActiveDepartmentId(currentUser.departmentId);
     }
-  };
+  }, [currentUser]);
+
+  // Department & specific task scoped tickets: each user only sees their own dept/sobe and specific tasks for them
+  const isGlobalAdmin =
+    currentUser?.roles?.includes('PLATFORM_ADMIN') || currentUser?.roles?.includes('CISO');
+  const userDeptId = currentUser?.departmentId;
+  const effectiveDeptId = userDeptId || activeDepartmentId;
+
+  const scopedTickets = isGlobalAdmin && !activeDepartmentId
+    ? tickets
+    : tickets.filter((t) => {
+        const isDirect =
+          t.assigneeId === currentUser?.id ||
+          t.reporterId === currentUser?.id ||
+          t.watcherIds?.includes(currentUser?.id || '') ||
+          t.participantIds?.includes(currentUser?.id || '');
+        const isDeptTask = Boolean(
+          effectiveDeptId &&
+            (t.departmentId === effectiveDeptId ||
+              t.targetDepartmentId === effectiveDeptId ||
+              t.participatingDepartmentIds?.includes(effectiveDeptId))
+        );
+        return isDirect || isDeptTask;
+      });
+
+  // Check RBAC permission for the active destination
+  const isAuthorized = canUserAccessDestination(currentUser, activeDestination);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#070D1B] flex flex-col items-center justify-center text-slate-300">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#00B259] to-[#0073D3] p-0.5 shadow-xl shadow-[#00B259]/20 animate-pulse">
+            <div className="w-full h-full bg-[#070D1B] rounded-[14px] flex items-center justify-center">
+              <span className="text-xl">🛡️</span>
+            </div>
+          </div>
+          <div className="text-sm font-semibold tracking-wide text-slate-200">
+            Təhlükəsiz Bank Sessiyası Yoxlanılır...
+          </div>
+          <div className="text-xs text-slate-400 font-mono">
+            Active Directory LDAPS • Tier-1 PKI
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return <BankAuthPortal onLoginSuccess={loadData} />;
+  }
 
   return (
     <AppLayout
-      activeView={activeView}
+      activeView={activeDestination}
       onSelectView={(v) => {
-        setActiveView(v);
-        setSelectedTicketId(null);
+        handleNavigate(v);
       }}
       activeDepartmentId={activeDepartmentId}
       onSelectDepartment={(dId) => {
@@ -248,16 +337,7 @@ export const App: React.FC = () => {
           setSelectedAdminDeptId(dId);
         }
       }}
-      tickets={
-        activeDepartmentId
-          ? tickets.filter(
-              (t) =>
-                t.departmentId === activeDepartmentId ||
-                t.targetDepartmentId === activeDepartmentId ||
-                t.participatingDepartmentIds?.includes(activeDepartmentId)
-            )
-          : tickets
-      }
+      tickets={scopedTickets}
       applications={applications}
       assets={assets}
       risks={risks}
@@ -267,12 +347,12 @@ export const App: React.FC = () => {
       onSearchChange={setSearchQuery}
       onRunJql={(jql) => {
         setJqlQuery(jql);
-        setActiveView('table');
+        handleNavigate('projects-tasks');
       }}
       onTicketCreated={(t) => {
         loadData();
         if (t && t.id) {
-          setSelectedTicketId(t.id);
+          handleSelectTicket(t);
         }
       }}
       onNavigate={handleNavigate}
@@ -292,7 +372,10 @@ export const App: React.FC = () => {
           application={ticketDetailData.application}
           asset={ticketDetailData.asset}
           lifecycle={ticketDetailData.lifecycle}
-          onBack={() => setSelectedTicketId(null)}
+          onBack={() => {
+            setSelectedTicketId(null);
+            pushNavigationState(activeDestination, activeViewMode, null);
+          }}
           onTransition={handleTransition}
           onAddComment={handleAddComment}
           onApprovalDecision={handleApprovalDecision}
@@ -311,116 +394,190 @@ export const App: React.FC = () => {
             if (detail.success) setTicketDetailData(detail);
           }}
         />
+      ) : !isAuthorized ? (
+        /* RBAC 403 Forbidden Shield */
+        <AccessDeniedView
+          destinationId={activeDestination}
+          onReturnToSafeView={() => handleNavigate('my-work-overview')}
+        />
       ) : (
         <>
-          {/* Wrike Core Feature Views */}
-          {(activeView === 'table' || activeView === 'tickets') && (
-            <WrikeTableView
-              tickets={
-                activeDepartmentId
-                  ? tickets.filter(
-                      (t) =>
-                        t.departmentId === activeDepartmentId ||
-                        t.targetDepartmentId === activeDepartmentId ||
-                        t.participatingDepartmentIds?.includes(activeDepartmentId)
-                    )
-                  : tickets
-              }
+          {/* ========================================================================= */}
+          {/* 1. MY WORK MODULE                                                         */}
+          {/* ========================================================================= */}
+          {activeDestination === 'my-work-overview' && (
+            <MyWorkOverviewView
+              tickets={tickets}
+              pendingApprovalsCount={pendingApprovalsCount}
+              onSelectTicket={handleSelectTicket}
+              onNavigate={handleNavigate}
+              onOpenCreate={() => setIsCreateModalOpen(true)}
+            />
+          )}
+
+          {activeDestination === 'my-tasks' && (
+            <WorkManagementContainer
+              title="My Assigned Tasks"
+              description="Tasks, remediation actions, and requests assigned directly to you."
+              tickets={tickets.filter(
+                (t) => t.assigneeId === currentUser?.id
+              )}
               applications={applications}
               assets={assets}
+              activeViewMode={activeViewMode}
+              onSelectViewMode={handleSelectViewMode}
               onSelectTicket={handleSelectTicket}
               onOpenCreate={() => setIsCreateModalOpen(true)}
-            />
-          )}
-
-          {/* Bank Multi-Department Hub & Admin Portal */}
-          {activeView === 'departments' && (
-            <DepartmentHubView
-              onSelectDepartment={(deptId) => {
-                setSelectedAdminDeptId(deptId);
-                setActiveView('dept-admin');
-              }}
-              onNavigate={handleNavigate}
-            />
-          )}
-
-          {activeView === 'dept-admin' && (
-            <DepartmentAdminPortal
-              departmentId={selectedAdminDeptId || currentUser?.departmentId || 'dept-secops'}
-              onBack={() => setActiveView('departments')}
-              onNavigate={handleNavigate}
-              onRefreshData={loadData}
-            />
-          )}
-
-          {/* Cross-Department Orchestration Pipelines */}
-          {activeView === 'cross-tasks' && (
-            <CrossDepartmentHubView
-              onSelectTicket={handleSelectTicket}
-              onNavigate={handleNavigate}
               onRefreshTickets={loadData}
+              createButtonLabel="New Task"
+              dataScope="assigned"
             />
           )}
 
-          {activeView === 'ideate' && (
-            <IdeateCanvasView
-              onNavigate={handleNavigate}
-              onRefreshTickets={loadData}
-            />
-          )}
-
-          {activeView === 'gantt' && (
-            <WrikeGanttView
-              tickets={tickets}
-              onSelectTicket={handleSelectTicket}
-              onOpenCreate={() => setIsCreateModalOpen(true)}
-            />
-          )}
-
-          {activeView === 'board' && (
-            <TicketKanbanBoard tickets={tickets} onSelectTicket={handleSelectTicket} />
-          )}
-
-          {activeView === 'workload' && (
-            <WrikeWorkloadView
-              tickets={tickets}
-              onSelectTicket={handleSelectTicket}
-              onRefreshTickets={loadData}
-            />
-          )}
-
-          {activeView === 'request-forms' && (
-            <WrikeRequestFormsView
-              onFormSubmitted={() => {
-                loadData();
-                setActiveView('table');
-              }}
-            />
-          )}
-
-          {activeView === 'automations' && (
-            <WrikeAutomationsView
-              onRefreshTickets={loadData}
-              onNavigate={handleNavigate}
-            />
-          )}
-
-          {activeView === 'ciso-dash' && (
-            <CISODashboard
-              metrics={cisoMetrics}
-              risks={risks}
-              tickets={tickets}
+          {activeDestination === 'my-requests' && (
+            <WorkManagementContainer
+              title="My Submitted Requests"
+              description="Service tickets, access requests, and change orders submitted by you."
+              tickets={tickets.filter(
+                (t) => t.reporterId === currentUser?.id
+              )}
               applications={applications}
+              assets={assets}
+              activeViewMode={activeViewMode}
+              onSelectViewMode={handleSelectViewMode}
               onSelectTicket={handleSelectTicket}
-              onNavigate={setActiveView}
+              onOpenCreate={() => setIsCreateModalOpen(true)}
+              onRefreshTickets={loadData}
+              createButtonLabel="New Request"
+              dataScope="reported"
             />
           )}
 
-          {activeView === 'soc-incidents' && (
-            <IncidentCaseView tickets={tickets} onSelectTicket={handleSelectTicket} />
+          {activeDestination === 'approvals' && (
+            <ApprovalsView
+              pendingApprovals={pendingApprovalsList}
+              onOpenTicket={(id) => handleNavigate(activeDestination, id)}
+              onRefresh={loadData}
+            />
           )}
 
-          {activeView === 'vulnerabilities' && (
+          {/* ========================================================================= */}
+          {/* 2. WORK MANAGEMENT MODULE                                                 */}
+          {/* ========================================================================= */}
+          {activeDestination === 'projects-tasks' && (
+            <WorkManagementContainer
+              title="Projects & Tasks"
+              description="Cross-department task spreadsheet, Kanban board, Gantt schedule, calendar, and capacity view."
+              tickets={scopedTickets}
+              applications={applications}
+              assets={assets}
+              activeViewMode={activeViewMode}
+              onSelectViewMode={handleSelectViewMode}
+              onSelectTicket={handleSelectTicket}
+              onOpenCreate={() => setIsCreateModalOpen(true)}
+              onRefreshTickets={loadData}
+              createButtonLabel="New Task"
+            />
+          )}
+
+          {activeDestination === 'workflows' && (
+            <UniversalWorkflowWorkspace onRefreshTickets={loadData} />
+          )}
+
+          {/* ========================================================================= */}
+          {/* 3. SERVICE MANAGEMENT MODULE                                              */}
+          {/* ========================================================================= */}
+          {activeDestination === 'service-incidents' && (
+            <WorkManagementContainer
+              title="Service Incidents"
+              description="Live service outage tickets, SLA countdown timers, and resolution tracking."
+              tickets={scopedTickets.filter((t) => t.category === 'INCIDENT' || t.ticketTypeId === 'INCIDENT')}
+              applications={applications}
+              assets={assets}
+              activeViewMode={activeViewMode}
+              onSelectViewMode={handleSelectViewMode}
+              onSelectTicket={handleSelectTicket}
+              onOpenCreate={() => setIsCreateModalOpen(true)}
+              onRefreshTickets={loadData}
+              createButtonLabel="Report Incident"
+            />
+          )}
+
+          {activeDestination === 'service-requests' && (
+            <WorkManagementContainer
+              title="Service Requests"
+              description="General IT, SecOps, and access fulfillment tickets."
+              tickets={scopedTickets.filter(
+                (t) =>
+                  t.category === 'GENERAL_REQUEST' ||
+                  t.category === 'IAM_REQUEST' ||
+                  t.ticketTypeName?.includes('Request') ||
+                  Boolean(t.tags?.includes('REQUEST'))
+              )}
+              applications={applications}
+              assets={assets}
+              activeViewMode={activeViewMode}
+              onSelectViewMode={handleSelectViewMode}
+              onSelectTicket={handleSelectTicket}
+              onOpenCreate={() => setIsCreateModalOpen(true)}
+              onRefreshTickets={loadData}
+              createButtonLabel="New Request"
+            />
+          )}
+
+          {activeDestination === 'service-changes' && (
+            <WorkManagementContainer
+              title="Change Management (CAB)"
+              description="Production change authorizations, release windows, and rollback plans."
+              tickets={scopedTickets.filter(
+                (t) =>
+                  Boolean(t.tags?.includes('CAB')) ||
+                  Boolean(t.tags?.includes('CHANGE')) ||
+                  Boolean(t.ticketTypeName?.includes('Change'))
+              )}
+              applications={applications}
+              assets={assets}
+              activeViewMode={activeViewMode}
+              onSelectViewMode={handleSelectViewMode}
+              onSelectTicket={handleSelectTicket}
+              onOpenCreate={() => setIsCreateModalOpen(true)}
+              onRefreshTickets={loadData}
+              createButtonLabel="Request Change"
+            />
+          )}
+
+          {activeDestination === 'service-problems' && (
+            <WorkManagementContainer
+              title="Problem Management & RCA"
+              description="Root Cause Analysis (RCA) records and Known Error Database (KEDB)."
+              tickets={scopedTickets.filter(
+                (t) =>
+                  Boolean(t.tags?.includes('RCA')) ||
+                  Boolean(t.tags?.includes('PROBLEM')) ||
+                  Boolean(t.ticketTypeName?.includes('Problem'))
+              )}
+              applications={applications}
+              assets={assets}
+              activeViewMode={activeViewMode}
+              onSelectViewMode={handleSelectViewMode}
+              onSelectTicket={handleSelectTicket}
+              onOpenCreate={() => setIsCreateModalOpen(true)}
+              onRefreshTickets={loadData}
+              createButtonLabel="Log Problem"
+            />
+          )}
+
+          {activeDestination === 'service-catalog' && (
+            <ServiceCatalogView
+              onOpenCreate={() => setIsCreateModalOpen(true)}
+              onNavigate={handleNavigate}
+            />
+          )}
+
+          {/* ========================================================================= */}
+          {/* 4. SECURITY & GRC MODULE                                                  */}
+          {/* ========================================================================= */}
+          {activeDestination === 'vulnerabilities' && (
             <VulnerabilityManagementView
               tickets={tickets}
               onSelectTicket={handleSelectTicket}
@@ -428,44 +585,153 @@ export const App: React.FC = () => {
             />
           )}
 
-          {activeView === 'dlp-investigations' && (
-            <DLPView tickets={tickets} onSelectTicket={handleSelectTicket} />
+          {activeDestination === 'security-incidents' && (
+            <IncidentCaseView tickets={tickets} onSelectTicket={handleSelectTicket} />
           )}
 
-          {activeView === 'risk-register' && (
-            <RiskRegisterView risks={risks} />
-          )}
-
-          {activeView === 'security-exceptions' && (
+          {activeDestination === 'policy-exceptions' && (
             <SecurityExceptionsView tickets={tickets} onSelectTicket={handleSelectTicket} />
           )}
 
-          {activeView === 'approvals' && (
-            <ApprovalsView
-              pendingApprovals={
-                analystWorkspace?.myApprovals?.map((chain: any) => ({
-                  chain,
-                  step: chain.steps.find((s: any) => s.status === 'PENDING'),
-                })) || []
-              }
-              onOpenTicket={(id) => setSelectedTicketId(id)}
-            />
+          {activeDestination === 'risk-management' && (
+            <RiskRegisterView risks={risks} />
           )}
 
-          {activeView === 'applications' && (
-            <ApplicationCMDBView applications={applications} />
+          {activeDestination === 'audit-compliance' && (
+            <AuditComplianceView />
           )}
 
-          {activeView === 'assets' && (
+          {/* ========================================================================= */}
+          {/* 5. ASSETS & CMDB MODULE                                                   */}
+          {/* ========================================================================= */}
+          {activeDestination === 'asset-inventory' && (
             <AssetInventoryView assets={assets} />
           )}
 
-          {activeView === 'knowledge-base' && (
+          {activeDestination === 'configuration-items' && (
+            <AssetInventoryView assets={assets} />
+          )}
+
+          {activeDestination === 'business-services' && (
+            <BusinessServicesView
+              applications={applications}
+              tickets={tickets}
+              onSelectTicket={handleSelectTicket}
+            />
+          )}
+
+          {activeDestination === 'applications' && (
+            <ApplicationCMDBView applications={applications} />
+          )}
+
+          {activeDestination === 'relationship-map' && (
+            <CMDBRelationshipMapView
+              applications={applications}
+              assets={assets}
+              tickets={tickets}
+              onSelectTicket={handleSelectTicket}
+            />
+          )}
+
+          {/* ========================================================================= */}
+          {/* 6. KNOWLEDGE MODULE                                                       */}
+          {/* ========================================================================= */}
+          {activeDestination === 'knowledge-base' && (
             <KnowledgeBaseView articles={kbArticles} />
           )}
 
-          {activeView === 'admin-center' && (
-            <AdminCenterView />
+          {/* ========================================================================= */}
+          {/* 7. ANALYTICS MODULE                                                       */}
+          {/* ========================================================================= */}
+          {activeDestination === 'operational-analytics' && (
+            <AnalystDashboard
+              myTickets={analystWorkspace?.myTickets || tickets.filter((t) => t.assigneeId === currentUser?.id)}
+              myApprovals={analystWorkspace?.myApprovals || []}
+              watchedTickets={analystWorkspace?.watchedTickets || []}
+              slaApproaching={analystWorkspace?.slaApproaching || []}
+              onSelectTicket={handleSelectTicket}
+            />
+          )}
+
+          {activeDestination === 'executive-analytics' && (
+            <CISODashboard
+              metrics={cisoMetrics}
+              risks={risks}
+              tickets={tickets}
+              applications={applications}
+              onSelectTicket={handleSelectTicket}
+              onNavigate={(v) => handleNavigate(v)}
+            />
+          )}
+
+          {/* ========================================================================= */}
+          {/* 8. ADMINISTRATION MODULE                                                  */}
+          {/* ========================================================================= */}
+          {activeDestination === 'admin-request-forms' && (
+            <WrikeRequestFormsView
+              onFormSubmitted={() => {
+                loadData();
+                handleNavigate('projects-tasks');
+              }}
+            />
+          )}
+
+          {activeDestination === 'admin-workflow-templates' && (
+            <AdminCenterView initialTab="WORKFLOWS" onNavigate={handleNavigate} />
+          )}
+
+          {activeDestination === 'admin-automations' && (
+            <WrikeAutomationsView
+              onRefreshTickets={loadData}
+              onNavigate={handleNavigate}
+            />
+          )}
+
+          {activeDestination === 'admin-sla-policies' && (
+            <AdminCenterView initialTab="SLA" onNavigate={handleNavigate} />
+          )}
+
+          {activeDestination === 'admin-departments' && (
+            <DepartmentHubView
+              onSelectDepartment={(deptId) => {
+                setSelectedAdminDeptId(deptId);
+                handleNavigate('dept-admin');
+              }}
+              onNavigate={handleNavigate}
+            />
+          )}
+
+          {activeDestination === 'dept-admin' && (
+            <DepartmentAdminPortal
+              departmentId={selectedAdminDeptId || currentUser?.departmentId || 'dept-secops'}
+              onBack={() => handleNavigate('admin-departments')}
+              onNavigate={handleNavigate}
+              onRefreshData={loadData}
+            />
+          )}
+
+          {activeDestination === 'admin-taxonomy' && (
+            <AdminCenterView initialTab="TAXONOMY" onNavigate={handleNavigate} />
+          )}
+
+          {activeDestination === 'admin-integrations' && (
+            <AdminCenterView initialTab="INTEGRATIONS" onNavigate={handleNavigate} />
+          )}
+
+          {activeDestination === 'admin-settings' && (
+            <AdminCenterView initialTab="SETTINGS" onNavigate={handleNavigate} />
+          )}
+
+          {/* Legacy / Special Handlers */}
+          {activeDestination === 'dlp-investigations' && (
+            <DLPView tickets={tickets} onSelectTicket={handleSelectTicket} />
+          )}
+
+          {activeDestination === 'ideate' && (
+            <IdeateCanvasView
+              onNavigate={handleNavigate}
+              onRefreshTickets={loadData}
+            />
           )}
         </>
       )}

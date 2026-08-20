@@ -19,12 +19,13 @@ export class AuditService {
     fieldChanges?: AuditEvent['fieldChanges'];
     metadata?: Record<string, any>;
   }): AuditEvent {
+    const fallbackUser = db.data.users?.find((u) => u.roles?.includes('CISO')) || db.data.users?.[0];
     const event: AuditEvent = {
       id: `aud-${uuidv4()}`,
       timestamp: new Date().toISOString(),
-      actorId: params.actor?.id || 'usr-ciso',
-      actorName: params.actor?.fullName || 'Security Operator',
-      actorRole: (params.actor?.roles && params.actor.roles[0]) || 'PLATFORM_ADMIN',
+      actorId: params.actor?.id || fallbackUser?.id || 'usr-system-admin',
+      actorName: params.actor?.fullName || fallbackUser?.fullName || 'System Administrator',
+      actorRole: (params.actor?.roles && params.actor.roles[0]) || fallbackUser?.roles?.[0] || 'PLATFORM_ADMIN',
       ipAddress: params.ipAddress || '10.140.12.8',
       userAgent: params.userAgent || 'AegisSec-Client/1.0',
       correlationId: params.correlationId || `req-${uuidv4().substring(0, 8)}`,

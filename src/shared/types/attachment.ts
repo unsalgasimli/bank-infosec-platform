@@ -29,4 +29,9 @@ export interface TicketAttachment {
   isImmutableEvidence: boolean;
   retentionUntil: string;
   downloadCount: number;
+  /**
+   * Opaque object-store locator. This is never returned to the client and must
+   * only be resolved after ticket-level authorization succeeds.
+   */
+  storageKey?: string;
 }

@@ -53,7 +53,7 @@ test('🛡️ WRIKE PRODUCTION BACKEND COMPREHENSIVE E2E VERIFICATION', async (t
     await Promise.all([pgClient.close(), cacheService.close()]);
   });
   const cisoUser = db.data.users.find((u) => u.roles.includes('CISO')) || db.data.users[0];
-  const socLead = db.data.users.find((u) => u.roles.includes('TEAM_LEAD')) || db.data.users[1];
+  const socLead = db.data.users.find((u) => u.roles.includes('TEAM_LEAD')) || db.data.users[1] || cisoUser;
 
   // ----------------------------------------------------
   // 1. Health & Observability

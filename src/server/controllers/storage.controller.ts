@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { AuthenticatedRequest } from '../middleware/auth.middleware.js';
-import { storageService, ALLOWED_MIME_TYPES } from '../services/storage.service.js';
+import { storageService } from '../services/storage.service.js';
 import { db } from '../db/database.js';
 import { AuditService } from '../services/audit.service.js';
 import { AuthService } from '../services/auth.service.js';
@@ -15,7 +15,7 @@ export class StorageController {
     const user = req.user!;
     const { ticketId, fileName, fileBase64, mimeType, evidenceType, isForensicArtifact } = req.body;
 
-    if (!ticketId || !fileName || !fileBase64) {
+    if (!ticketId || !fileName || !fileBase64 || typeof fileBase64 !== 'string') {
       res.status(400).json({ success: false, error: 'ticketId, fileName, and fileBase64 are required.' });
       return;
     }
@@ -40,7 +40,16 @@ export class StorageController {
     }
 
     try {
-      const buffer = Buffer.from(fileBase64, 'base64');
+      const normalizedBase64 = fileBase64.replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
+      if (!normalizedBase64 || !/^[A-Za-z0-9+/]*={0,2}$/.test(normalizedBase64) || normalizedBase64.length % 4 !== 0) {
+        res.status(400).json({ success: false, error: 'Evidence payload must be valid base64.' });
+        return;
+      }
+      const buffer = Buffer.from(normalizedBase64, 'base64');
+      if (buffer.length === 0) {
+        res.status(400).json({ success: false, error: 'Evidence file cannot be empty.' });
+        return;
+      }
       const resolvedMime = mimeType || 'application/octet-stream';
 
       const uploadResult = await storageService.upload(fileName, buffer, resolvedMime);
@@ -62,6 +71,7 @@ export class StorageController {
         isImmutableEvidence: Boolean(isForensicArtifact),
         retentionUntil: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
         downloadCount: 0,
+        storageKey: uploadResult.storageKey,
       };
 
       db.data.attachments.push(attachment);
@@ -119,50 +129,55 @@ export class StorageController {
     }
 
     try {
-      const storageKey = `bank-artifacts/${attachment.id}-${attachment.fileName}`;
-      const downloadUrl = await storageService.getDownloadUrl(storageKey);
-
-      attachment.downloadCount = (attachment.downloadCount || 0) + 1;
-      db.persist();
-
-      AuditService.log({
-        actor: user,
-        action: 'ATTACHMENT_DOWNLOADED',
-        entityType: 'ATTACHMENT',
-        entityId: attachment.id,
-        entityKey: ticket?.key,
-        metadata: {
-          fileName: attachment.fileName,
-          sha256Checksum: attachment.sha256Checksum,
-        },
-      });
+      if (!attachment.storageKey) {
+        res.status(410).json({ success: false, error: 'The stored file is unavailable for this legacy attachment.' });
+        return;
+      }
 
       res.json({
         success: true,
-        downloadUrl,
+        downloadUrl: `${'/api'}/storage/attachments/${encodeURIComponent(attachment.id)}/download`,
         fileName: attachment.fileName,
         sha256Checksum: attachment.sha256Checksum,
-        expiresInSeconds: 900,
       });
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message });
     }
   }
 
-  /**
-   * Direct download endpoint for local storage
-   */
-  public static async downloadDirect(req: AuthenticatedRequest, res: Response): Promise<void> {
-    const storageKey = req.query.key as string;
-    if (!storageKey) {
-      res.status(400).send('Missing storage key parameter');
+  /** Streams an attachment only after the caller passes ticket-level ABAC. */
+  public static async downloadAttachment(req: AuthenticatedRequest, res: Response): Promise<void> {
+    const user = req.user!;
+    const attachment = db.data.attachments.find((candidate) => candidate.id === req.params.attachmentId);
+    if (!attachment || !attachment.storageKey) {
+      res.status(404).json({ success: false, error: 'Stored attachment not found.' });
+      return;
+    }
+    const ticket = db.data.tickets.find((candidate) => candidate.id === attachment.ticketId);
+    if (!ticket) {
+      res.status(404).json({ success: false, error: 'Attachment ticket not found.' });
+      return;
+    }
+    const check = AuthService.canAccessResource({ user, action: 'READ', resourceType: 'TICKET', resource: ticket });
+    if (!check.allowed) {
+      res.status(403).json({ success: false, error: check.reason || 'Not authorized to download this attachment.' });
       return;
     }
 
     try {
-      const { buffer, mimeType } = await storageService.getFileBuffer(storageKey);
+      const { buffer, mimeType } = await storageService.getFileBuffer(attachment.storageKey);
       res.setHeader('Content-Type', mimeType);
-      res.setHeader('Content-Disposition', `attachment; filename="${storageKey.split('-').slice(1).join('-') || 'artifact'}"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${attachment.fileName.replace(/[\r\n"]/g, '_')}"`);
+      attachment.downloadCount = (attachment.downloadCount || 0) + 1;
+      db.persist();
+      AuditService.log({
+        actor: user,
+        action: 'ATTACHMENT_DOWNLOADED',
+        entityType: 'ATTACHMENT',
+        entityId: attachment.id,
+        entityKey: ticket.key,
+        metadata: { fileName: attachment.fileName, sha256Checksum: attachment.sha256Checksum },
+      });
       res.send(buffer);
     } catch (error: any) {
       res.status(404).send(error.message || 'File not found');

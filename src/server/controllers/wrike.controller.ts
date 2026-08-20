@@ -13,8 +13,54 @@ import { ProofingDocument } from '../../shared/types/proofing.js';
 import { BankUser } from '../../shared/types/auth.js';
 import { TicketLifecycleService } from '../services/ticket-lifecycle.service.js';
 import { WorkflowTemplateError, WorkflowTemplateService } from '../services/workflow-template.service.js';
+import { GraphOrchestratorService } from '../services/graph-orchestrator.service.js';
+import { AuthenticatedRequest } from '../middleware/auth.middleware.js';
+import { AuthService } from '../services/auth.service.js';
+
+type WorkDataScope = 'authorized' | 'assigned' | 'reported';
 
 export class WrikeController {
+  /**
+   * Work views must never treat a client-side list as an authorization boundary.
+   * Start with ABAC-filtered tickets, then permit a view to narrow that list to
+   * work assigned to, or reported by, the authenticated user.
+   */
+  private static getVisibleWorkTickets(req: AuthenticatedRequest): Ticket[] {
+    const user = req.user;
+    if (!user) return [];
+
+    const authorizedTickets = AuthService.filterAuthorizedTickets(db.data.tickets || [], user);
+    const requestedScope = String(req.query.scope || 'authorized').toLowerCase();
+    const scope: WorkDataScope = requestedScope === 'assigned' || requestedScope === 'reported'
+      ? requestedScope
+      : 'authorized';
+
+    if (scope === 'assigned') {
+      return authorizedTickets.filter((ticket) => ticket.assigneeId === user.id);
+    }
+
+    if (scope === 'reported') {
+      return authorizedTickets.filter((ticket) => ticket.reporterId === user.id);
+    }
+
+    return authorizedTickets;
+  }
+
+  private static canManageWorkload(user: BankUser, ticket: Ticket, targetUser: BankUser): boolean {
+    if (user.roles.some((role) => ['PLATFORM_ADMIN', 'CISO'].includes(role))) return true;
+
+    const isWorkManager = user.roles.some((role) =>
+      ['INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'DEPARTMENT_ADMIN', 'TEAM_LEAD'].includes(role)
+    );
+
+    return Boolean(
+      isWorkManager &&
+      user.departmentId &&
+      ticket.departmentId === user.departmentId &&
+      targetUser.departmentId === user.departmentId
+    );
+  }
+
   // ==========================================
   // 1. WRIKE IDEATE & BRAINSTORMING CANVAS API
   // ==========================================
@@ -207,10 +253,15 @@ export class WrikeController {
   // 2. WRIKE GANTT CHART & SCHEDULE API
   // ==========================================
 
-  public static async getGanttSchedule(req: Request, res: Response): Promise<void> {
+  public static async getGanttSchedule(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const tickets = db.data.tickets || [];
-      const dependencies = db.data.ganttDependencies || [];
+      const tickets = WrikeController.getVisibleWorkTickets(req);
+      const visibleTicketIds = new Set(tickets.map((ticket) => ticket.id));
+      // A dependency is sensitive too: do not expose an ID or a relationship
+      // to a task that is outside the caller's authorized scope.
+      const dependencies = (db.data.ganttDependencies || []).filter(
+        (dependency) => visibleTicketIds.has(dependency.fromTaskId) && visibleTicketIds.has(dependency.toTaskId)
+      );
 
       const tasks = tickets.map((t, idx) => {
         const startDate = new Date(Date.now() - (7 - (idx % 5)) * 86400000).toISOString();
@@ -244,11 +295,33 @@ export class WrikeController {
     }
   }
 
-  public static async addGanttDependency(req: Request, res: Response): Promise<void> {
+  public static async addGanttDependency(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { fromTaskId, toTaskId, type } = req.body;
       if (!fromTaskId || !toTaskId) {
         res.status(400).json({ success: false, error: 'fromTaskId and toTaskId are required' });
+        return;
+      }
+
+      if (fromTaskId === toTaskId) {
+        res.status(400).json({ success: false, error: 'A task cannot depend on itself' });
+        return;
+      }
+
+      const user = req.user!;
+      const fromTask = (db.data.tickets || []).find((ticket) => ticket.id === fromTaskId);
+      const toTask = (db.data.tickets || []).find((ticket) => ticket.id === toTaskId);
+      if (!fromTask || !toTask) {
+        res.status(404).json({ success: false, error: 'One or both tasks were not found' });
+        return;
+      }
+
+      const canWriteBothTasks = [fromTask, toTask].every((ticket) =>
+        AuthService.canAccessResource({ user, action: 'WRITE', resourceType: 'TICKET', resource: ticket }).allowed
+      );
+      if (!canWriteBothTasks) {
+        // Do not reveal which side of a cross-scope relationship was denied.
+        res.status(403).json({ success: false, error: 'Not authorized to link one or both tasks' });
         return;
       }
 
@@ -274,10 +347,14 @@ export class WrikeController {
   // 3. WRIKE WORKLOAD & CAPACITY MANAGEMENT API
   // ==========================================
 
-  public static async getWorkload(req: Request, res: Response): Promise<void> {
+  public static async getWorkload(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const users = db.data.users || [];
-      const tickets = db.data.tickets || [];
+      const currentUser = req.user!;
+      const tickets = WrikeController.getVisibleWorkTickets(req);
+      const visibleAssigneeIds = new Set(tickets.map((ticket) => ticket.assigneeId).filter(Boolean));
+      visibleAssigneeIds.add(currentUser.id);
+      // Never enumerate people who have no work visible to this caller.
+      const users = (db.data.users || []).filter((user) => visibleAssigneeIds.has(user.id));
 
       const members = users.map((u) => {
         const assignedTickets = tickets.filter((t) => t.assigneeId === u.id && t.statusCategory !== 'DONE');
@@ -321,13 +398,35 @@ export class WrikeController {
     }
   }
 
-  public static async rebalanceWorkload(req: Request, res: Response): Promise<void> {
+  public static async rebalanceWorkload(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { fromUserId, toUserId, ticketId } = req.body;
-      const currentUser: BankUser = (req as any).user || db.data.users[0];
+      const currentUser = req.user!;
       const ticket = (db.data.tickets || []).find((t) => t.id === ticketId);
       if (!ticket) {
         res.status(404).json({ success: false, error: 'Ticket not found' });
+        return;
+      }
+
+      const targetUser = (db.data.users || []).find((user) => user.id === toUserId && user.isActive);
+      if (!targetUser) {
+        res.status(400).json({ success: false, error: 'Target assignee does not exist or is inactive' });
+        return;
+      }
+
+      if (ticket.assigneeId !== fromUserId) {
+        res.status(409).json({ success: false, error: 'Task assignee changed; refresh and try again' });
+        return;
+      }
+
+      const ticketAccess = AuthService.canAccessResource({
+        user: currentUser,
+        action: 'WRITE',
+        resourceType: 'TICKET',
+        resource: ticket,
+      });
+      if (!ticketAccess.allowed || !WrikeController.canManageWorkload(currentUser, ticket, targetUser)) {
+        res.status(403).json({ success: false, error: 'Not authorized to rebalance this task' });
         return;
       }
 
@@ -504,11 +603,24 @@ export class WrikeController {
 
   public static async listBlueprints(req: Request, res: Response): Promise<void> {
     try {
-      const blueprints = WorkflowTemplateService.list();
+      const actor = (req as any).user;
+      const blueprints = WorkflowTemplateService.list(actor);
       res.json({ success: true, blueprints });
     } catch (err: any) {
       logger.error({ err }, 'Failed to list blueprints');
       res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async createBlueprint(req: Request, res: Response): Promise<void> {
+    try {
+      const actor = (req as any).user || db.data.users[0];
+      const blueprint = WorkflowTemplateService.create(req.body, actor);
+      res.status(201).json({ success: true, blueprint });
+    } catch (err: any) {
+      logger.error({ err }, 'Failed to create blueprint');
+      const status = err instanceof WorkflowTemplateError ? err.statusCode : err?.name === 'ZodError' ? 400 : 500;
+      res.status(status).json({ success: false, error: err.message, details: err.details || err.issues });
     }
   }
 
@@ -539,6 +651,29 @@ export class WrikeController {
     } catch (err: any) {
       const status = err instanceof WorkflowTemplateError ? err.statusCode : 500;
       res.status(status).json({ success: false, error: err.message, details: err.details });
+    }
+  }
+
+  public static async validateGraph(req: Request, res: Response): Promise<void> {
+    try {
+      const { nodes = [], edges = [] } = req.body;
+      const result = GraphOrchestratorService.validateGraph(nodes, edges, (req as any).user);
+      res.json({ success: true, validation: result });
+    } catch (err: any) {
+      logger.error({ err }, 'Failed to validate workflow graph');
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static async cloneBlueprint(req: Request, res: Response): Promise<void> {
+    try {
+      const actor = (req as any).user || db.data.users[0];
+      const blueprint = WorkflowTemplateService.clone(String(req.params.id), actor);
+      res.status(201).json({ success: true, blueprint });
+    } catch (err: any) {
+      logger.error({ err }, 'Failed to clone blueprint');
+      const status = err instanceof WorkflowTemplateError ? err.statusCode : 500;
+      res.status(status).json({ success: false, error: err.message });
     }
   }
 

@@ -1,7 +1,12 @@
 node_modules
 dist
 dist-ssr
+.env
+.env.*
+!.env.example
+!.env.production.example
 *.local
+.certs/
 .vscode
 .idea
 *.log

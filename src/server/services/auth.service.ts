@@ -127,15 +127,19 @@ export class AuthService {
         return { allowed: true };
       }
 
-      // If user is just an employee/requester in the bank
-      if (action === 'READ') {
-        // Can only read PUBLIC or INTERNAL tickets in their department
-        if (ticket.confidentiality === 'PUBLIC' || (ticket.confidentiality === 'INTERNAL' && ticket.departmentId === user.departmentId)) {
-          return { allowed: true };
-        }
+      // Department scoping: Users can only access tickets belonging to their own department/şöbə
+      const belongsToUserDepartment = Boolean(
+        user.departmentId &&
+          (ticket.departmentId === user.departmentId ||
+            ticket.targetDepartmentId === user.departmentId ||
+            ticket.participatingDepartmentIds?.includes(user.departmentId))
+      );
+
+      if (belongsToUserDepartment) {
+        return { allowed: true };
       }
 
-      return { allowed: false, reason: 'User does not have authorization to view or edit this ticket.' };
+      return { allowed: false, reason: 'User does not have authorization to view tickets outside their assigned department.' };
     }
 
     if (resourceType === 'COMMENT') {

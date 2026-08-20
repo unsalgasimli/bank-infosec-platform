@@ -17,13 +17,9 @@ export const DEFAULT_SIDEBAR_CONFIG: SidebarConfigItem[] = [
   // Space Items
   { id: 'tickets-queues', label: 'Queues (All Open)', section: 'space', visible: true },
   { id: 'board', label: 'Kanban Board', section: 'space', visible: true },
-  { id: 'soc-incidents', label: 'Incidents (SOC)', section: 'space', visible: true },
-  { id: 'vulnerabilities', label: 'Vulnerabilities (AppSec)', section: 'space', visible: true },
-  { id: 'dlp-investigations', label: 'DLP Forensics', section: 'space', visible: true },
-  { id: 'overdue-tickets', label: 'SLA Breached & At Risk', section: 'space', visible: true },
   { id: 'approvals', label: 'Approvals (Dual Control)', section: 'space', visible: true },
-  { id: 'risk-register', label: 'Risk Register (5×5)', section: 'space', visible: true },
-  { id: 'security-exceptions', label: 'Security Exceptions', section: 'space', visible: true },
+  { id: 'risk-register', label: 'Risk Management (5×5)', section: 'space', visible: true },
+  { id: 'audit-compliance', label: 'Audit & Compliance', section: 'space', visible: true },
 
   // Assets & Goals
   { id: 'applications', label: 'Banking Applications (CMDB)', section: 'assets', visible: true },

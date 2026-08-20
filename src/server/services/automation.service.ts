@@ -1,33 +1,49 @@
 import { Ticket } from '../../shared/types/ticket.js';
-import { AutomationTrigger, AutomationRule } from '../../shared/types/automation.js';
+import { AutomationTrigger, AutomationRule, AutomationAction } from '../../shared/types/automation.js';
 import { BankUser } from '../../shared/types/auth.js';
 import { db } from '../db/database.js';
 import { AuditService } from './audit.service.js';
 
 export class AutomationService {
+  private static recursionDepthMap = new Map<string, number>();
+
   /**
    * Evaluates active automation rules against a triggered event and applies matching actions.
+   * Enforces loop prevention and logs execution results.
    */
   public static triggerEvent(
     trigger: AutomationTrigger,
     ticket: Ticket,
     actor?: BankUser
   ): { executedRules: string[] } {
-    const executedRules: string[] = [];
+    const depthKey = `${ticket.id}:${trigger}`;
+    const currentDepth = this.recursionDepthMap.get(depthKey) || 0;
 
-    const activeRules = (db.data.automationRules || []).filter((r) => r.isActive && r.trigger === trigger);
-
-    for (const rule of activeRules) {
-      if (AutomationService.evaluateConditions(rule, ticket)) {
-        AutomationService.executeActions(rule, ticket, actor || db.data.users[0]);
-        rule.executionCount = (rule.executionCount || 0) + 1;
-        rule.lastExecutedAt = new Date().toISOString();
-        executedRules.push(rule.name);
-      }
+    if (currentDepth >= 5) {
+      console.warn(`[Automation Engine] Loop prevention tripped: max recursion depth reached for ${depthKey}`);
+      return { executedRules: [] };
     }
 
-    if (executedRules.length > 0) {
-      db.persist();
+    this.recursionDepthMap.set(depthKey, currentDepth + 1);
+
+    const executedRules: string[] = [];
+    const activeRules = (db.data.automationRules || []).filter((r) => r.isActive && r.trigger === trigger);
+
+    try {
+      for (const rule of activeRules) {
+        if (AutomationService.evaluateConditions(rule, ticket)) {
+          AutomationService.executeActions(rule, ticket, actor || db.data.users[0]);
+          rule.executionCount = (rule.executionCount || 0) + 1;
+          rule.lastExecutedAt = new Date().toISOString();
+          executedRules.push(rule.name);
+        }
+      }
+
+      if (executedRules.length > 0) {
+        db.persist();
+      }
+    } finally {
+      this.recursionDepthMap.set(depthKey, Math.max(0, (this.recursionDepthMap.get(depthKey) || 1) - 1));
     }
 
     return { executedRules };
@@ -36,19 +52,28 @@ export class AutomationService {
   private static evaluateConditions(rule: AutomationRule, ticket: Ticket): boolean {
     return rule.conditions.every((cond) => {
       const actualValue = (ticket as any)[cond.field];
-      if (actualValue === undefined) return false;
 
       switch (cond.operator) {
         case 'EQUALS':
-          return String(actualValue).toLowerCase() === String(cond.value).toLowerCase();
+          return String(actualValue ?? '').toLowerCase() === String(cond.value ?? '').toLowerCase();
         case 'NOT_EQUALS':
-          return String(actualValue).toLowerCase() !== String(cond.value).toLowerCase();
+          return String(actualValue ?? '').toLowerCase() !== String(cond.value ?? '').toLowerCase();
         case 'IN':
           return Array.isArray(cond.value) && cond.value.includes(actualValue);
         case 'NOT_IN':
           return Array.isArray(cond.value) && !cond.value.includes(actualValue);
         case 'CONTAINS':
-          return String(actualValue).toLowerCase().includes(String(cond.value).toLowerCase());
+          return String(actualValue ?? '').toLowerCase().includes(String(cond.value ?? '').toLowerCase());
+        case 'STARTS_WITH':
+          return String(actualValue ?? '').toLowerCase().startsWith(String(cond.value ?? '').toLowerCase());
+        case 'GREATER_THAN':
+          return Number(actualValue) > Number(cond.value);
+        case 'LESS_THAN':
+          return Number(actualValue) < Number(cond.value);
+        case 'IS_EMPTY':
+          return actualValue === undefined || actualValue === null || String(actualValue).trim() === '';
+        case 'IS_NOT_EMPTY':
+          return actualValue !== undefined && actualValue !== null && String(actualValue).trim() !== '';
         default:
           return true;
       }
@@ -63,9 +88,12 @@ export class AutomationService {
             ticket.businessPriority = action.payload.priority;
           }
           break;
+        case 'SET_SEVERITY':
+          if (action.payload.severity) {
+            ticket.technicalSeverity = action.payload.severity;
+          }
+          break;
         case 'ASSIGN_USER':
-          // Assignment rules fill an unassigned queue item. A workflow template's
-          // explicit routing is authoritative and must not be silently replaced.
           if (action.payload.userId && !ticket.assigneeId) {
             ticket.assigneeId = action.payload.userId;
             ticket.assignedAt = new Date().toISOString();
@@ -74,6 +102,7 @@ export class AutomationService {
         case 'ASSIGN_TEAM':
           if (action.payload.teamId) {
             ticket.teamId = action.payload.teamId;
+            ticket.assignmentGroupId = action.payload.teamId;
           }
           break;
         case 'ADD_TAG':
@@ -81,12 +110,19 @@ export class AutomationService {
             ticket.tags.push(action.payload.tag);
           }
           break;
-        case 'ESCALATE_TO_CISO':
-          if (!ticket.watcherIds.includes('usr-ciso')) {
-            ticket.watcherIds.push('usr-ciso');
+        case 'ADD_WATCHER':
+          if (action.payload.userId && !ticket.watcherIds.includes(action.payload.userId)) {
+            ticket.watcherIds.push(action.payload.userId);
+          }
+          break;
+        case 'ESCALATE_TO_CISO': {
+          const cisoUser = db.data.users?.find((u) => u.roles?.includes('CISO'));
+          if (cisoUser && !ticket.watcherIds.includes(cisoUser.id)) {
+            ticket.watcherIds.push(cisoUser.id);
           }
           ticket.businessPriority = 'P1_URGENT';
           break;
+        }
         case 'ADD_INTERNAL_NOTE':
           if (action.payload.note) {
             db.data.comments.unshift({
@@ -103,6 +139,31 @@ export class AutomationService {
               isEdited: false,
               reactions: [],
             });
+          }
+          break;
+        case 'CREATE_SUBTASK':
+          if (action.payload.title) {
+            db.data.ticketTasks.push({
+              id: `task-${Date.now()}`,
+              ticketId: ticket.id,
+              title: action.payload.title,
+              description: action.payload.description,
+              status: 'TO_DO',
+              dependencyTaskIds: [],
+              createdByUserId: actor.id,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+          }
+          break;
+        case 'PAUSE_SLA':
+          ticket.slaState = 'PAUSED';
+          ticket.slaPausedReason = action.payload.reason || 'Paused by automation rule';
+          break;
+        case 'RESUME_SLA':
+          if (ticket.slaState === 'PAUSED') {
+            ticket.slaState = 'SAFE';
+            ticket.slaPausedReason = undefined;
           }
           break;
       }
