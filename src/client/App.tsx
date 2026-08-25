@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from './context/AuthContext.js';
 import { AppLayout } from './components/layout/AppLayout.js';
 import { WorkManagementContainer } from './components/views/WorkManagementContainer.js';
+import { ProjectOperationsWorkspace } from './components/projects/ProjectOperationsWorkspace.js';
 import { MyWorkOverviewView } from './components/views/MyWorkOverviewView.js';
 import { ServiceCatalogView } from './components/views/ServiceCatalogView.js';
 import { CMDBRelationshipMapView } from './components/assets/CMDBRelationshipMapView.js';
-import { BusinessServicesView } from './components/assets/BusinessServicesView.js';
+import { CMDBExplorerView } from './components/assets/CMDBExplorerView.js';
 import { AuditComplianceView } from './components/governance/AuditComplianceView.js';
 import { IdeateCanvasView } from './components/ideate/IdeateCanvasView.js';
 import { WrikeRequestFormsView } from './components/views/WrikeRequestFormsView.js';
@@ -21,8 +22,6 @@ import { DLPView } from './components/operations/DLPView.js';
 import { RiskRegisterView } from './components/governance/RiskRegisterView.js';
 import { SecurityExceptionsView } from './components/governance/SecurityExceptionsView.js';
 import { ApprovalsView } from './components/governance/ApprovalsView.js';
-import { ApplicationCMDBView } from './components/assets/ApplicationCMDBView.js';
-import { AssetInventoryView } from './components/assets/AssetInventoryView.js';
 import { KnowledgeBaseView } from './components/kb/KnowledgeBaseView.js';
 import { AdminCenterView } from './components/admin/AdminCenterView.js';
 import { DepartmentHubView } from './components/departments/DepartmentHubView.js';
@@ -33,6 +32,7 @@ import { LDAPSignInModal } from './components/auth/LDAPSignInModal.js';
 import { BankAuthPortal } from './components/auth/BankAuthPortal.js';
 import { Ticket } from '../shared/types/ticket.js';
 import { BankApplication, BankAsset } from '../shared/types/asset.js';
+import { BankDepartment } from '../shared/types/auth.js';
 import { RiskRegisterItem } from '../shared/types/risk.js';
 import { KBArticle } from '../shared/types/kb.js';
 import {
@@ -45,6 +45,11 @@ import {
   parseCurrentUrl,
   pushNavigationState,
 } from './utils/urlRouter.js';
+
+const apiErrorMessage = (data: any, fallback: string): string => {
+  const message = data?.error || data?.detail || data?.message || data?.title;
+  return typeof message === 'string' && message.trim() ? message : fallback;
+};
 
 export const App: React.FC = () => {
   const { currentUser, isLoading, fetchWithAuth } = useAuth();
@@ -63,6 +68,7 @@ export const App: React.FC = () => {
   const [selectedAdminDeptId, setSelectedAdminDeptId] = useState<string | null>(null);
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [departments, setDepartments] = useState<BankDepartment[]>([]);
   const [applications, setApplications] = useState<BankApplication[]>([]);
   const [assets, setAssets] = useState<BankAsset[]>([]);
   const [risks, setRisks] = useState<RiskRegisterItem[]>([]);
@@ -74,6 +80,7 @@ export const App: React.FC = () => {
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState<number>(0);
 
   const [ticketDetailData, setTicketDetailData] = useState<any>(null);
+  const [cmdbFocusCiId, setCmdbFocusCiId] = useState('');
   const [jqlQuery, setJqlQuery] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -143,6 +150,14 @@ export const App: React.FC = () => {
         if (data.success) setKbArticles(data.articles);
       });
 
+    // Load Departments
+    fetchWithAuth('/api/departments')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.departments)) setDepartments(data.departments);
+      })
+      .catch(() => {});
+
     // Load Dashboards
     fetchWithAuth('/api/dashboards/ciso')
       .then((res) => res.json())
@@ -174,17 +189,23 @@ export const App: React.FC = () => {
       const resolvedId = tickets.find((t) => t.key === selectedTicketId || t.id === selectedTicketId)?.id || selectedTicketId;
 
       fetchWithAuth(`/api/tickets/${resolvedId}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) {
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.success) {
             setTicketDetailData(data);
-          } else {
-            alert(`Access Denied: ${data.error}`);
-            setSelectedTicketId(null);
-            pushNavigationState(activeDestination, activeViewMode, null);
+            return;
           }
+
+          const fallback = res.status === 403
+            ? 'Bu iş üçün giriş icazəniz yoxdur.'
+            : `İş məlumatı yüklənmədi (${res.status || 'naməlum xəta'}).`;
+          const message = apiErrorMessage(data, fallback);
+          alert(res.status === 403 ? `Giriş qadağandır: ${message}` : `İş açıla bilmədi: ${message}`);
+          setTicketDetailData(null);
+          setSelectedTicketId(null);
+          pushNavigationState(activeDestination, activeViewMode, null);
         })
-        .catch((err) => console.error(err));
+        .catch((err) => console.error('Ticket detail request failed', err));
     } else {
       setTicketDetailData(null);
     }
@@ -227,7 +248,7 @@ export const App: React.FC = () => {
         .then((r) => r.json())
         .then((d) => setTicketDetailData(d));
     } else {
-      alert(`Transition Failed: ${data.error}`);
+      alert(`Transition Failed: ${apiErrorMessage(data, 'Əməliyyat icra edilə bilmədi.')}`);
     }
   };
 
@@ -302,15 +323,15 @@ export const App: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#070D1B] flex flex-col items-center justify-center text-slate-300">
+      <div className="min-h-screen bg-semantic-auth-loading flex flex-col items-center justify-center text-slate-300">
         <div className="flex flex-col items-center gap-4">
-          <div className="relative flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#00B259] to-[#0073D3] p-0.5 shadow-xl shadow-[#00B259]/20 animate-pulse">
-            <div className="w-full h-full bg-[#070D1B] rounded-[14px] flex items-center justify-center">
+          <div className="relative flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-semantic-brand to-semantic-info p-0.5 shadow-brand-glow animate-pulse">
+            <div className="w-full h-full bg-semantic-auth-loading rounded-[14px] flex items-center justify-center">
               <span className="text-xl">🛡️</span>
             </div>
           </div>
           <div className="text-sm font-semibold tracking-wide text-slate-200">
-            Təhlükəsiz Bank Sessiyası Yoxlanılır...
+            Verifying Secure Bank Session...
           </div>
           <div className="text-xs text-slate-400 font-mono">
             Active Directory LDAPS • Tier-1 PKI
@@ -371,6 +392,7 @@ export const App: React.FC = () => {
           approvalChain={ticketDetailData.approvalChain}
           application={ticketDetailData.application}
           asset={ticketDetailData.asset}
+          cmdb={ticketDetailData.cmdb || []}
           lifecycle={ticketDetailData.lifecycle}
           onBack={() => {
             setSelectedTicketId(null);
@@ -392,6 +414,9 @@ export const App: React.FC = () => {
             const response = await fetchWithAuth(`/api/tickets/${selectedTicketId}`);
             const detail = await response.json();
             if (detail.success) setTicketDetailData(detail);
+          }}
+          onNavigateToTicket={(ticketId) => {
+            setSelectedTicketId(ticketId);
           }}
         />
       ) : !isAuthorized ? (
@@ -420,10 +445,18 @@ export const App: React.FC = () => {
               title="My Assigned Tasks"
               description="Tasks, remediation actions, and requests assigned directly to you."
               tickets={tickets.filter(
-                (t) => t.assigneeId === currentUser?.id
+                (t) =>
+                  t.assigneeId === currentUser?.id ||
+                  (!t.assigneeId && (
+                    (t.targetDepartmentId && t.targetDepartmentId === currentUser?.departmentId) ||
+                    (t.departmentId && t.departmentId === currentUser?.departmentId) ||
+                    (t.assignmentGroupId && currentUser?.teamIds?.includes(t.assignmentGroupId)) ||
+                    t.participatingDepartmentIds?.includes(currentUser?.departmentId || '')
+                  ))
               )}
               applications={applications}
               assets={assets}
+              departments={departments}
               activeViewMode={activeViewMode}
               onSelectViewMode={handleSelectViewMode}
               onSelectTicket={handleSelectTicket}
@@ -443,6 +476,7 @@ export const App: React.FC = () => {
               )}
               applications={applications}
               assets={assets}
+              departments={departments}
               activeViewMode={activeViewMode}
               onSelectViewMode={handleSelectViewMode}
               onSelectTicket={handleSelectTicket}
@@ -465,19 +499,7 @@ export const App: React.FC = () => {
           {/* 2. WORK MANAGEMENT MODULE                                                 */}
           {/* ========================================================================= */}
           {activeDestination === 'projects-tasks' && (
-            <WorkManagementContainer
-              title="Projects & Tasks"
-              description="Cross-department task spreadsheet, Kanban board, Gantt schedule, calendar, and capacity view."
-              tickets={scopedTickets}
-              applications={applications}
-              assets={assets}
-              activeViewMode={activeViewMode}
-              onSelectViewMode={handleSelectViewMode}
-              onSelectTicket={handleSelectTicket}
-              onOpenCreate={() => setIsCreateModalOpen(true)}
-              onRefreshTickets={loadData}
-              createButtonLabel="New Task"
-            />
+            <ProjectOperationsWorkspace />
           )}
 
           {activeDestination === 'workflows' && (
@@ -494,6 +516,7 @@ export const App: React.FC = () => {
               tickets={scopedTickets.filter((t) => t.category === 'INCIDENT' || t.ticketTypeId === 'INCIDENT')}
               applications={applications}
               assets={assets}
+              departments={departments}
               activeViewMode={activeViewMode}
               onSelectViewMode={handleSelectViewMode}
               onSelectTicket={handleSelectTicket}
@@ -516,6 +539,7 @@ export const App: React.FC = () => {
               )}
               applications={applications}
               assets={assets}
+              departments={departments}
               activeViewMode={activeViewMode}
               onSelectViewMode={handleSelectViewMode}
               onSelectTicket={handleSelectTicket}
@@ -537,6 +561,7 @@ export const App: React.FC = () => {
               )}
               applications={applications}
               assets={assets}
+              departments={departments}
               activeViewMode={activeViewMode}
               onSelectViewMode={handleSelectViewMode}
               onSelectTicket={handleSelectTicket}
@@ -558,6 +583,7 @@ export const App: React.FC = () => {
               )}
               applications={applications}
               assets={assets}
+              departments={departments}
               activeViewMode={activeViewMode}
               onSelectViewMode={handleSelectViewMode}
               onSelectTicket={handleSelectTicket}
@@ -605,32 +631,23 @@ export const App: React.FC = () => {
           {/* 5. ASSETS & CMDB MODULE                                                   */}
           {/* ========================================================================= */}
           {activeDestination === 'asset-inventory' && (
-            <AssetInventoryView assets={assets} />
+            <CMDBExplorerView mode="assets" />
           )}
 
           {activeDestination === 'configuration-items' && (
-            <AssetInventoryView assets={assets} />
+            <CMDBExplorerView mode="all" initialCiId={cmdbFocusCiId} />
           )}
 
           {activeDestination === 'business-services' && (
-            <BusinessServicesView
-              applications={applications}
-              tickets={tickets}
-              onSelectTicket={handleSelectTicket}
-            />
+            <CMDBExplorerView mode="business-services" />
           )}
 
           {activeDestination === 'applications' && (
-            <ApplicationCMDBView applications={applications} />
+            <CMDBExplorerView mode="applications" />
           )}
 
           {activeDestination === 'relationship-map' && (
-            <CMDBRelationshipMapView
-              applications={applications}
-              assets={assets}
-              tickets={tickets}
-              onSelectTicket={handleSelectTicket}
-            />
+            <CMDBRelationshipMapView onOpenDetails={(ciId) => { setCmdbFocusCiId(ciId); handleNavigate('configuration-items'); }} />
           )}
 
           {/* ========================================================================= */}

@@ -12,7 +12,7 @@ flowchart TD
     end
 
     subgraph Edge["Edge / Ingress Layer"]
-        Nginx["Nginx Reverse Proxy / Ingress Controller\n(TLS Termination, Rate Limiting, CSP/HSTS)"]
+        Nginx["Nginx HTTP Reverse Proxy / Ingress Controller\n(Rate Limiting, CSP)"]
     end
 
     subgraph App["Application Tier (Node.js 22 LTS)"]
@@ -27,7 +27,7 @@ flowchart TD
         S3[("AWS S3 / Cloud Object Storage\n(Encrypted Evidence & Artifacts)")]
     end
 
-    Browser -->|HTTPS| Nginx
+    Browser -->|HTTP| Nginx
     Scanner -->|API Key / Token| Nginx
     SIEM -->|Signed Webhook| Nginx
 

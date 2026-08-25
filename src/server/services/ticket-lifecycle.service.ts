@@ -27,7 +27,30 @@ import { isIP } from 'node:net';
 const createTicketSchema = z
   .object({
     projectCode: z.enum(['SEC', 'SOC', 'VM', 'APPSEC', 'GRC', 'DLP', 'IAM', 'ARCH', 'AUDIT', 'TPRM']).optional(),
-    category: z.enum(['VULNERABILITY', 'INCIDENT', 'SECURITY_EXCEPTION', 'RISK_ACCEPTANCE', 'AUDIT_FINDING', 'SECURITY_REVIEW', 'IAM_REQUEST', 'DLP_ALERT', 'THIRD_PARTY_ASSESSMENT', 'GENERAL_REQUEST']).optional(),
+    category: z.enum([
+      'GENERAL_REQUEST',
+      'GENERAL_TASK',
+      'IT_SUPPORT',
+      'ACCESS_REQUEST',
+      'HARDWARE_SOFTWARE',
+      'NETWORK_INFRASTRUCTURE',
+      'CHANGE_REQUEST',
+      'INCIDENT_MANAGEMENT',
+      'PROJECT_DELIVERY',
+      'FINANCE_PROCUREMENT',
+      'HR_OPERATIONS',
+      'COMPLIANCE_LEGAL',
+      'BUSINESS_OPERATIONS',
+      'SECURITY_REVIEW',
+      'VULNERABILITY',
+      'INCIDENT',
+      'SECURITY_EXCEPTION',
+      'RISK_ACCEPTANCE',
+      'AUDIT_FINDING',
+      'IAM_REQUEST',
+      'DLP_ALERT',
+      'THIRD_PARTY_ASSESSMENT',
+    ]).optional(),
     securityDomain: z.enum(['GENERAL_INFOSEC', 'SOC', 'VULNERABILITY_MGMT', 'APPSEC', 'GRC', 'DLP', 'IAM_PAM', 'SEC_ARCHITECTURE', 'AUDIT_COMPLIANCE', 'THIRD_PARTY_RISK']).optional(),
     type: z.enum([
       'NORMAL_TASK',
@@ -56,6 +79,7 @@ const createTicketSchema = z
     ]).optional(),
     title: z.string().trim().min(3).max(300),
     description: z.string().trim().min(1).max(100_000).optional(),
+    slaPolicyId: z.string().min(1).optional(),
     technicalSeverity: z.enum(['INFORMATIONAL', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
     businessPriority: z.enum(['P1_URGENT', 'P2_HIGH', 'P3_MEDIUM', 'P4_LOW']).optional(),
     businessImpact: z.enum(['CATASTROPHIC', 'SIGNIFICANT', 'MODERATE', 'MINOR', 'NEGLIGIBLE']).optional(),
@@ -167,16 +191,25 @@ export class TicketLifecycleService {
     if (body.onBehalfOfUserId && !db.data.users.some((user) => user.id === body.onBehalfOfUserId && user.isActive)) {
       throw new Error('On-behalf-of user does not exist or is inactive.');
     }
-    if (body.assigneeId && !db.data.users.some((user) => user.id === body.assigneeId && user.isActive)) {
+    const assigneeId = body.assigneeId;
+    if (assigneeId && !db.data.users.some((user) => user.id === assigneeId && user.isActive)) {
       throw new Error('Assignee does not exist or is inactive.');
     }
-    if (body.targetDepartmentId && !db.data.departments.some((department) =>
-      department.id === body.targetDepartmentId && department.isActive !== false
-    )) {
-      throw new Error('Target department does not exist or is inactive.');
+    const targetDepartment = body.targetDepartmentId
+      ? db.data.departments.find((department) => department.id === body.targetDepartmentId && department.isActive !== false)
+      : undefined;
+    const targetTeam = body.targetDepartmentId
+      ? db.data.teams.find((team) => team.id === body.targetDepartmentId)
+      : undefined;
+    if (body.targetDepartmentId && !targetDepartment && !targetTeam) {
+      throw new Error('Target department or team does not exist or is inactive.');
     }
-    if (body.assigneeId && body.targetDepartmentId) {
-      throw new Error('Choose either a named assignee or a department queue, not both.');
+    const resolvedTargetDepartmentId = targetTeam?.departmentId || targetDepartment?.id;
+    if (targetTeam && !db.data.departments.some((department) => department.id === targetTeam.departmentId && department.isActive !== false)) {
+      throw new Error('Target team does not belong to an active department.');
+    }
+    if (body.slaPolicyId && !db.data.slaPolicies.some((policy) => policy.id === body.slaPolicyId)) {
+      throw new Error('SLA policy does not exist.');
     }
 
     const impact = (body.businessImpact || 'MODERATE') as BusinessImpact;
@@ -186,11 +219,13 @@ export class TicketLifecycleService {
 
     // Dynamic Routing Strategy
     let dynamicAssigneeId = body.assigneeId;
-    let dynamicGroupId = body.assignmentGroupId;
+    // Intake callers may select a target unit, never an arbitrary group ID.
+    // Queue identity is derived below from that server-validated target.
+    let dynamicGroupId: string | undefined;
 
     if (body.routingStrategy && !dynamicAssigneeId) {
       const requester = db.data.users.find((u) => u.id === requesterId);
-      const dept = db.data.departments.find((d) => d.id === (body.departmentId || requester?.departmentId));
+      const dept = db.data.departments.find((d) => d.id === (resolvedTargetDepartmentId || body.departmentId || requester?.departmentId));
       if (body.routingStrategy === 'REQUESTER_MANAGER' && requester?.managerId) {
         dynamicAssigneeId = requester.managerId;
       } else if (body.routingStrategy === 'DEPT_MANAGER' && dept?.managerId) {
@@ -204,6 +239,12 @@ export class TicketLifecycleService {
       }
     }
 
+    if (dynamicAssigneeId && resolvedTargetDepartmentId) {
+      const assignee = db.data.users.find((user) => user.id === dynamicAssigneeId);
+      const isInTarget = assignee?.departmentId === resolvedTargetDepartmentId || Boolean(targetTeam && assignee?.teamIds?.includes(targetTeam.id));
+      if (!isInTarget) throw new Error('Assignee does not belong to the selected department or team.');
+    }
+
     return {
       ...body,
       description: body.description || body.title,
@@ -212,14 +253,21 @@ export class TicketLifecycleService {
       businessImpact: impact,
       urgency,
       type: ticketType,
+      ticketTypeId: ticketType,
+      businessPriority: priority,
+      departmentId: resolvedTargetDepartmentId || body.departmentId || actor.departmentId,
+      targetDepartmentId: resolvedTargetDepartmentId,
+      // A ticket is routed to a named person OR to a queue, never both. Client
+      // supplied group IDs are ignored whenever a target unit has been chosen.
+      assignmentGroupId: dynamicAssigneeId
+        ? undefined
+        : resolvedTargetDepartmentId
+          ? targetTeam?.id
+          : (dynamicGroupId || TicketLifecycleService.suggestAssignmentGroup(body.securityDomain, body.category)),
+      assigneeId: dynamicAssigneeId,
       requestTypeId: body.requestTypeId || body.ticketTypeId || body.category || ticketType,
       requestTypeName: body.requestTypeName || body.ticketTypeName || TicketLifecycleService.titleCase(ticketType),
       intakeChannel: body.intakeChannel || 'PORTAL',
-      businessPriority: priority,
-      assigneeId: dynamicAssigneeId,
-      assignmentGroupId: body.targetDepartmentId
-        ? dynamicGroupId
-        : dynamicGroupId || TicketLifecycleService.suggestAssignmentGroup(body.securityDomain, body.category),
       participantIds: Array.from(new Set([requesterId, actor.id, ...(body.participantIds || [])])),
       affectedAssetIds: Array.from(new Set([...(body.affectedAssetIds || []), ...(body.assetId ? [body.assetId] : [])])),
       checklists: (body.checklists || []).map((item: any, idx: number) => ({
@@ -377,7 +425,7 @@ export class TicketLifecycleService {
   public static refreshSlaMetrics(ticket: Ticket): TicketSLAInstance[] {
     const metrics = db.data.ticketSlaInstances.filter((metric) => metric.ticketId === ticket.id);
     const workflow = db.data.workflows.find((item) => item.id === ticket.workflowId);
-    const state = workflow?.states.find((item) => item.id === ticket.statusId);
+    const state = workflow?.states?.find((item) => item.id === ticket.statusId);
     const shouldPause = Boolean(state?.isPausedSLA);
     const now = Date.now();
 
@@ -420,7 +468,7 @@ export class TicketLifecycleService {
   }
 
   public static getBundle(ticket: Ticket, user?: BankUser): TicketLifecycleBundle {
-    const relationships = db.data.ticketRelationships
+    const relationships = (db.data.ticketRelationships || [])
       .filter((relationship) => relationship.sourceTicketId === ticket.id || relationship.targetTicketId === ticket.id)
       .map((relationship) => {
         const relatedId = relationship.sourceTicketId === ticket.id ? relationship.targetTicketId : relationship.sourceTicketId;
@@ -429,17 +477,62 @@ export class TicketLifecycleService {
         return {
           ...relationship,
           relatedTicket: canSeeRelated && related
-            ? { id: related.id, key: related.key, title: related.title, statusName: related.statusName }
+            ? {
+                id: related.id,
+                key: related.key,
+                title: related.title,
+                statusName: related.statusName,
+                statusCategory: related.statusCategory,
+                assigneeId: related.assigneeId,
+                technicalSeverity: related.technicalSeverity,
+                businessPriority: related.businessPriority,
+              }
             : undefined,
         };
       });
+
+    const subTickets = (db.data.tickets || [])
+      .filter((t) => t.parentTicketId === ticket.id)
+      .map((t) => ({
+        id: t.id,
+        key: t.key,
+        title: t.title,
+        statusName: t.statusName,
+        statusCategory: t.statusCategory,
+        assigneeId: t.assigneeId,
+        departmentId: t.departmentId,
+        targetDepartmentId: t.targetDepartmentId,
+        technicalSeverity: t.technicalSeverity,
+        businessPriority: t.businessPriority,
+        createdAt: t.createdAt,
+      }));
+
+    let parentTicket: any = undefined;
+    if (ticket.parentTicketId) {
+      const p = (db.data.tickets || []).find((t) => t.id === ticket.parentTicketId);
+      if (p) {
+        parentTicket = {
+          id: p.id,
+          key: p.key,
+          title: p.title,
+          statusName: p.statusName,
+          statusCategory: p.statusCategory,
+          assigneeId: p.assigneeId,
+          requesterId: p.requesterId,
+          departmentId: p.departmentId,
+        };
+      }
+    }
+
     return {
       relationships,
-      tasks: db.data.ticketTasks.filter((task) => task.ticketId === ticket.id),
-      worklogs: db.data.ticketWorklogs.filter((worklog) => worklog.ticketId === ticket.id),
+      tasks: (db.data.ticketTasks || []).filter((task) => task.ticketId === ticket.id),
+      subTickets,
+      parentTicket,
+      worklogs: (db.data.ticketWorklogs || []).filter((worklog) => worklog.ticketId === ticket.id),
       slaMetrics: TicketLifecycleService.initializeSlaMetrics(ticket),
-      satisfaction: db.data.ticketSatisfaction.find((survey) => survey.ticketId === ticket.id),
-      aiRecommendations: db.data.ticketAiRecommendations
+      satisfaction: (db.data.ticketSatisfaction || []).find((survey) => survey.ticketId === ticket.id),
+      aiRecommendations: (db.data.ticketAiRecommendations || [])
         .filter((recommendation) => recommendation.ticketId === ticket.id)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     };
@@ -506,10 +599,10 @@ export class TicketLifecycleService {
     return { primary, duplicate, relationship };
   }
 
-  public static addTask(ticket: Ticket, input: Partial<TicketTask>, actor: BankUser): TicketTask {
+  public static addTask(ticket: Ticket, input: Partial<TicketTask> & { updateNote?: string }, actor: BankUser): TicketTask {
     TicketLifecycleService.requireAgent(actor, 'create ticket tasks');
     const title = String(input.title || '').trim();
-    if (title.length < 3) throw new Error('Task title must contain at least 3 characters.');
+    if (title.length < 2) throw new Error('Task title must contain at least 2 characters.');
     const dependencyTaskIds = Array.from(new Set(input.dependencyTaskIds || []));
     if (dependencyTaskIds.some((id) => !db.data.ticketTasks.some((task) => task.id === id && task.ticketId === ticket.id))) {
       throw new Error('Every dependency must be a task on the same ticket.');
@@ -519,10 +612,10 @@ export class TicketLifecycleService {
       id: `task-${uuidv4().slice(0, 8)}`,
       ticketId: ticket.id,
       title,
-      description: input.description,
-      ownerId: input.ownerId,
+      description: input.description || input.updateNote || '',
+      ownerId: input.ownerId || actor.id,
       groupId: input.groupId,
-      status: 'TO_DO',
+      status: (input.status as TicketTaskStatus) || 'TO_DO',
       dueAt: input.dueAt,
       dependencyTaskIds,
       completionCondition: input.completionCondition,
@@ -531,29 +624,209 @@ export class TicketLifecycleService {
       updatedAt: now,
     };
     db.data.ticketTasks.push(task);
-    TicketLifecycleService.audit(actor, ticket, 'TASK_ADDED', { taskId: task.id, title: task.title });
+    TicketLifecycleService.audit(actor, ticket, 'TASK_ADDED', { taskId: task.id, title: task.title, description: task.description });
     db.persist();
     return task;
   }
 
-  public static updateTask(ticket: Ticket, taskId: string, status: TicketTaskStatus, actor: BankUser): TicketTask {
+  public static updateTask(
+    ticket: Ticket,
+    taskId: string,
+    updatesOrStatus: TicketTaskStatus | { status?: TicketTaskStatus; title?: string; description?: string; updateNote?: string },
+    actor: BankUser
+  ): TicketTask {
     TicketLifecycleService.requireAgent(actor, 'update ticket tasks');
-    if (!TASK_STATUSES.includes(status)) throw new Error('Unsupported task status.');
+    const updates = typeof updatesOrStatus === 'string' ? { status: updatesOrStatus } : updatesOrStatus;
     const task = db.data.ticketTasks.find((candidate) => candidate.id === taskId && candidate.ticketId === ticket.id);
     if (!task) throw new Error('Ticket task not found.');
-    if (status === 'DONE') {
-      const blockedBy = task.dependencyTaskIds
-        .map((id) => db.data.ticketTasks.find((candidate) => candidate.id === id))
-        .filter((dependency) => dependency && !TERMINAL_TASK_STATES.includes(dependency.status));
-      if (blockedBy.length > 0) throw new Error('Task dependencies must be completed first.');
-    }
     const oldStatus = task.status;
-    task.status = status;
+    if (updates.status && TASK_STATUSES.includes(updates.status)) {
+      if (updates.status === 'DONE') {
+        const blockedBy = task.dependencyTaskIds
+          .map((id) => db.data.ticketTasks.find((candidate) => candidate.id === id))
+          .filter((dependency) => dependency && !TERMINAL_TASK_STATES.includes(dependency.status));
+        if (blockedBy.length > 0) throw new Error('Task dependencies must be completed first.');
+      }
+      task.status = updates.status;
+      task.completedAt = updates.status === 'DONE' ? new Date().toISOString() : undefined;
+    }
+    if (updates.title) task.title = updates.title.trim();
+    if (updates.description !== undefined) task.description = updates.description.trim();
+    if (updates.updateNote) {
+      task.description = task.description
+        ? `${task.description}\n[${new Date().toLocaleTimeString()} ${actor.fullName}]: ${updates.updateNote.trim()}`
+        : updates.updateNote.trim();
+    }
     task.updatedAt = new Date().toISOString();
-    task.completedAt = status === 'DONE' ? task.updatedAt : undefined;
-    TicketLifecycleService.audit(actor, ticket, 'TASK_STATUS_CHANGED', { taskId, oldStatus, newStatus: status });
+    TicketLifecycleService.audit(actor, ticket, 'TASK_STATUS_CHANGED', { taskId, oldStatus, newStatus: task.status, description: task.description });
     db.persist();
     return task;
+  }
+
+  public static createSubTicket(
+    parentTicket: Ticket,
+    input: {
+      title: string;
+      description?: string;
+      targetDepartmentId?: string;
+      assigneeId?: string;
+      category?: TicketCategory;
+      technicalSeverity?: TechnicalSeverity;
+      businessImpact?: BusinessImpact;
+      urgency?: TicketUrgency;
+      businessPriority?: BusinessPriority;
+      slaPolicyId?: string;
+    },
+    actor: BankUser
+  ): { subTicket: Ticket; relationship: TicketRelationship } {
+    TicketLifecycleService.requireAgent(actor, 'create sub-tickets');
+    const title = String(input.title || '').trim();
+    if (title.length < 3) throw new Error('Sub-ticket title must contain at least 3 characters.');
+
+    const projectCode = parentTicket.projectCode || 'SEC';
+    const year = new Date().getUTCFullYear();
+    const highestSequence = (db.data.tickets || []).reduce((highest, ticket) => {
+      const match = ticket.key.match(new RegExp(`^${projectCode}-${year}-(\\d+)$`));
+      return match ? Math.max(highest, Number(match[1])) : highest;
+    }, 0);
+    const key = `${projectCode}-${year}-${String(highestSequence + 1).padStart(4, '0')}`;
+    const now = new Date().toISOString();
+
+    const defaultWorkflow = (db.data.workflows || [])[0];
+    const initialStatus = defaultWorkflow?.states?.[0] || { id: 'OPEN', name: 'Open', category: 'TO_DO' };
+    const defaultSlaPolicy = (db.data.slaPolicies || [])[0] || { id: 'sla-standard-business' };
+    const slaPolicyId = input.slaPolicyId || defaultSlaPolicy.id;
+    const technicalSeverity = input.technicalSeverity || parentTicket.technicalSeverity || 'MEDIUM';
+    const slaDeadlines = TicketLifecycleService.calculateSlaDeadlines(slaPolicyId, technicalSeverity, now);
+
+    const target = input.targetDepartmentId || undefined;
+    const targetDepartment = target
+      ? db.data.departments.find((department) => department.id === target && department.isActive !== false && department.directorySource === 'ACTIVE_DIRECTORY')
+      : undefined;
+    const targetTeam = target
+      ? db.data.teams.find((team) => team.id === target)
+      : undefined;
+    if (target && !targetDepartment && !targetTeam) {
+      throw new Error('Target department or team does not exist, is inactive, or is not AD-confirmed.');
+    }
+    if (targetTeam && !db.data.departments.some((department) => department.id === targetTeam.departmentId && department.isActive !== false && department.directorySource === 'ACTIVE_DIRECTORY')) {
+      throw new Error('Target team does not belong to an active AD-confirmed department.');
+    }
+
+    const assignee = input.assigneeId
+      ? db.data.users.find((user) => user.id === input.assigneeId && user.isActive && user.directorySource === 'ACTIVE_DIRECTORY')
+      : undefined;
+    if (input.assigneeId && !assignee) {
+      throw new Error('Assignee does not exist, is inactive, or is not AD-confirmed.');
+    }
+    const canAssignDirect = actor.roles.some((role) =>
+      ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'TEAM_LEAD', 'SECURITY_ANALYST', 'SOC_ANALYST', 'APPSEC_ANALYST', 'VULN_ANALYST', 'GRC_ANALYST', 'DLP_ANALYST'].includes(role)
+    );
+    if (assignee && !canAssignDirect && assignee.id !== actor.id) {
+      throw new Error('You are not allowed to assign this sub-ticket to another user.');
+    }
+
+    const resolvedTargetDepartmentId = targetTeam?.departmentId || targetDepartment?.id;
+    if (assignee && resolvedTargetDepartmentId) {
+      const isInTarget = assignee.departmentId === resolvedTargetDepartmentId || Boolean(targetTeam && assignee.teamIds?.includes(targetTeam.id));
+      if (!isInTarget) throw new Error('Assignee does not belong to the selected department or team.');
+    }
+    if (input.slaPolicyId && !db.data.slaPolicies.some((policy) => policy.id === input.slaPolicyId)) {
+      throw new Error('SLA policy does not exist.');
+    }
+
+    const targetDeptId = resolvedTargetDepartmentId || undefined;
+    const departmentId = targetDeptId || parentTicket.departmentId || actor.departmentId;
+    const assigneeId = assignee?.id;
+
+    // Participant sync: ensures A (requester), B (creator), C (assignee) are all linked
+    const participantIds = Array.from(
+      new Set([
+        parentTicket.requesterId,
+        parentTicket.assigneeId,
+        actor.id,
+        assigneeId,
+        ...(parentTicket.participantIds || []),
+      ].filter(Boolean) as string[])
+    );
+
+    const subTicket: Ticket = {
+      id: `tick-${uuidv4().substring(0, 8)}`,
+      key,
+      projectCode,
+      parentTicketId: parentTicket.id,
+      ticketTypeId: input.category || parentTicket.ticketTypeId || 'GENERAL_TASK',
+      ticketTypeName: parentTicket.ticketTypeName || 'Sub-Task',
+      type: 'NORMAL_TASK',
+      category: input.category || parentTicket.category || 'GENERAL_REQUEST',
+      securityDomain: parentTicket.securityDomain || 'GENERAL_INFOSEC',
+      title,
+      description: input.description || title,
+      statusId: initialStatus.id,
+      statusName: initialStatus.name,
+      statusCategory: initialStatus.category as any,
+      workflowId: defaultWorkflow?.id || parentTicket.workflowId || 'wf-secops-default',
+      workflowVersion: 1,
+      technicalSeverity,
+      businessPriority: input.businessPriority || parentTicket.businessPriority || 'P3_MEDIUM',
+      businessImpact: input.businessImpact || parentTicket.businessImpact || 'MODERATE',
+      urgency: input.urgency || parentTicket.urgency || 'MEDIUM',
+      inherentRisk: parentTicket.inherentRisk || 'MEDIUM',
+      residualRisk: parentTicket.residualRisk || 'LOW',
+      riskScore: parentTicket.riskScore || 50,
+      confidentiality: parentTicket.confidentiality || 'INTERNAL',
+      restrictedUserIds: parentTicket.restrictedUserIds || [],
+      restrictedTeamIds: parentTicket.restrictedTeamIds || [],
+      reporterId: actor.id,
+      requesterId: actor.id,
+      assigneeId,
+      assignmentGroupId: targetTeam && !assigneeId ? targetTeam.id : undefined,
+      ownerId: actor.id,
+      securityOwnerId: parentTicket.securityOwnerId || actor.id,
+      departmentId,
+      targetDepartmentId: targetDeptId,
+      participantIds,
+      watcherIds: Array.from(new Set([parentTicket.requesterId, actor.id, ...(parentTicket.watcherIds || [])].filter(Boolean) as string[])),
+      createdAt: now,
+      updatedAt: now,
+      detectedAt: now,
+      assignedAt: assigneeId ? now : undefined,
+      dueDate: slaDeadlines.resolutionDeadline,
+      remediationDeadline: slaDeadlines.remediationDeadline,
+      slaState: 'SAFE',
+      slaRemainingMinutes: 480,
+      slaPolicyId,
+      version: 1,
+      tags: [...(parentTicket.tags || []), 'sub-ticket'],
+      acceptanceCriteria: parentTicket.acceptanceCriteria,
+      customFields: [],
+    };
+
+    db.data.tickets.unshift(subTicket);
+
+    // Update parent ticket with child participant IDs
+    parentTicket.participantIds = participantIds;
+    parentTicket.watcherIds = Array.from(new Set([...(parentTicket.watcherIds || []), ...(assigneeId ? [assigneeId] : [])]));
+    parentTicket.updatedAt = now;
+    parentTicket.version += 1;
+
+    // Create bidirectional relationship
+    const relationship: TicketRelationship = {
+      id: `rel-${uuidv4().slice(0, 8)}`,
+      sourceTicketId: parentTicket.id,
+      targetTicketId: subTicket.id,
+      type: 'PARENT_OF',
+      createdByUserId: actor.id,
+      createdAt: now,
+      note: `Delegated sub-ticket: ${subTicket.key}`,
+    };
+    db.data.ticketRelationships.push(relationship);
+
+    TicketLifecycleService.audit(actor, parentTicket, 'SUB_TICKET_CREATED', { subTicketId: subTicket.id, subTicketKey: subTicket.key });
+    TicketLifecycleService.audit(actor, subTicket, 'CREATED_AS_SUB_TICKET', { parentTicketId: parentTicket.id, parentTicketKey: parentTicket.key });
+
+    db.persist();
+    return { subTicket, relationship };
   }
 
   public static addWorklog(ticket: Ticket, input: Partial<TicketWorklog>, actor: BankUser): TicketWorklog {
@@ -710,12 +983,17 @@ export class TicketLifecycleService {
   }
 
   private static mapCategoryToType(category?: TicketCategory): EnterpriseTicketType {
-    if (category === 'INCIDENT' || category === 'DLP_ALERT') return 'SECURITY_INCIDENT';
+    if (category === 'INCIDENT' || category === 'DLP_ALERT' || category === 'INCIDENT_MANAGEMENT') return 'SECURITY_INCIDENT';
     if (category === 'VULNERABILITY') return 'VULNERABILITY';
-    if (category === 'IAM_REQUEST') return 'ACCESS_REQUEST';
+    if (category === 'IAM_REQUEST' || category === 'ACCESS_REQUEST') return 'ACCESS_REQUEST';
     if (category === 'SECURITY_EXCEPTION') return 'SECURITY_EXCEPTION';
     if (category === 'RISK_ACCEPTANCE') return 'RISK_ACCEPTANCE';
-    if (category === 'GENERAL_REQUEST' || category === 'SECURITY_REVIEW' || category === 'THIRD_PARTY_ASSESSMENT') return 'SERVICE_REQUEST';
+    if (category === 'IT_SUPPORT' || category === 'HARDWARE_SOFTWARE') return 'SERVICE_REQUEST';
+    if (category === 'CHANGE_REQUEST' || category === 'NETWORK_INFRASTRUCTURE') return 'CHANGE';
+    if (category === 'PROJECT_DELIVERY') return 'PROJECT_WORK';
+    if (category === 'HR_OPERATIONS') return 'EMPLOYEE_ONBOARDING';
+    if (category === 'GENERAL_TASK') return 'NORMAL_TASK';
+    if (category === 'GENERAL_REQUEST' || category === 'SECURITY_REVIEW' || category === 'THIRD_PARTY_ASSESSMENT' || category === 'BUSINESS_OPERATIONS' || category === 'COMPLIANCE_LEGAL' || category === 'FINANCE_PROCUREMENT') return 'SERVICE_REQUEST';
     return 'CUSTOM';
   }
 
@@ -728,9 +1006,10 @@ export class TicketLifecycleService {
 
   private static suggestAssignmentGroup(domain?: string, category?: TicketCategory): string | undefined {
     if (domain === 'APPSEC') return 'team-appsec';
-    if (domain === 'GRC' || category === 'SECURITY_EXCEPTION' || category === 'RISK_ACCEPTANCE') return 'team-grc';
-    if (domain === 'IAM_PAM' || category === 'IAM_REQUEST') return 'team-it-infra';
-    if (domain === 'SOC' || domain === 'DLP' || category === 'INCIDENT' || category === 'DLP_ALERT') return 'team-soc';
+    if (domain === 'GRC' || category === 'SECURITY_EXCEPTION' || category === 'RISK_ACCEPTANCE' || category === 'COMPLIANCE_LEGAL') return 'team-grc';
+    if (domain === 'IAM_PAM' || category === 'IAM_REQUEST' || category === 'ACCESS_REQUEST' || category === 'IT_SUPPORT' || category === 'HARDWARE_SOFTWARE' || category === 'NETWORK_INFRASTRUCTURE') return 'team-it-infra';
+    if (domain === 'SOC' || domain === 'DLP' || category === 'INCIDENT' || category === 'DLP_ALERT' || category === 'INCIDENT_MANAGEMENT') return 'team-soc';
+    if (category === 'HR_OPERATIONS') return 'team-hr-ops';
     return undefined;
   }
 
@@ -759,7 +1038,7 @@ export class TicketLifecycleService {
 
   private static requireAgent(actor: BankUser, operation: string): void {
     const allowed = actor.roles.some((role) =>
-      ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'TEAM_LEAD', 'SECURITY_ANALYST', 'SOC_ANALYST', 'APPSEC_ANALYST', 'VULN_ANALYST', 'GRC_ANALYST', 'DLP_ANALYST'].includes(role)
+      ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'TEAM_LEAD', 'SECURITY_ANALYST', 'SOC_ANALYST', 'APPSEC_ANALYST', 'VULN_ANALYST', 'GRC_ANALYST', 'DLP_ANALYST', 'ASSIGNEE', 'DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'REQUESTER', 'APPROVER', 'OPERATOR', 'BRANCH_EMPLOYEE'].includes(role)
     );
     if (!allowed) throw new Error(`An agent role is required to ${operation}.`);
   }

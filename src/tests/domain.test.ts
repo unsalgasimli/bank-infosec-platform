@@ -6,14 +6,14 @@ import { SLAService } from '../server/services/sla.service.js';
 import { ApprovalService } from '../server/services/approval.service.js';
 import { DedupService } from '../server/services/dedup.service.js';
 import { SearchService } from '../server/services/search.service.js';
-import { db, DatabaseSchema } from '../server/db/database.js';
+import { db } from '../server/db/database.js';
+import type { DatabaseSchema } from '../server/db/database.js';
+import { initialSeedData } from '../server/db/seed.js';
 import { BankUser } from '../shared/types/auth.js';
 import { Ticket } from '../shared/types/ticket.js';
-import fs from 'node:fs';
-import path from 'node:path';
 
 test('AegisSec BankSecOps Domain Logic & Security Test Suite', async (t) => {
-  const originalDatabase = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'data/database.json'), 'utf8')) as DatabaseSchema;
+  const originalDatabase = structuredClone(db.data) as DatabaseSchema;
   t.after(() => {
     db.data = originalDatabase;
     db.persist();

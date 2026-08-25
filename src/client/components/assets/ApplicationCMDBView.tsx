@@ -75,25 +75,25 @@ export const ApplicationCMDBView: React.FC<ApplicationCMDBViewProps> = ({ applic
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-[#F4F5F7] custom-scrollbar">
+    <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-semantic-jira-surface custom-scrollbar">
       {/* Header */}
-      <div className="bg-[#FFFFFF] border border-[#DFE1E6] rounded-md p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+      <div className="bg-semantic-panel border border-semantic-jira-border rounded-md p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded bg-[#DEEBFF] text-[#0052CC] border border-[#B3D4FF]">
+          <div className="p-2.5 rounded bg-semantic-jira-brand-surface text-semantic-jira-brand border border-semantic-jira-info-border">
             <Server className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-[#172B4D] tracking-tight">
+            <h1 className="text-xl font-bold text-semantic-jira-primary tracking-tight">
               Application & Service Inventory (CMDB)
             </h1>
-            <p className="text-xs text-[#5E6C84] mt-0.5">
+            <p className="text-xs text-semantic-jira-muted mt-0.5">
               Banking switches, mobile APIs, payment gateways, git repositories, and active vulnerability postures.
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2.5">
-          <span className="px-3 py-1 bg-[#DEEBFF] text-[#0052CC] border border-[#B3D4FF] rounded font-mono text-xs font-bold">
+          <span className="px-3 py-1 bg-semantic-jira-brand-surface text-semantic-jira-brand border border-semantic-jira-info-border rounded font-mono text-xs font-bold">
             {applications.length} Applications
           </span>
           <button
@@ -107,7 +107,7 @@ export const ApplicationCMDBView: React.FC<ApplicationCMDBViewProps> = ({ applic
       </div>
 
       {/* Filter Tabs & Search */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#DFE1E6] pb-2 text-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-semantic-jira-border pb-2 text-xs">
         <div className="flex items-center gap-1">
           {[
             { id: 'ALL', label: 'All Applications' },
@@ -120,8 +120,8 @@ export const ApplicationCMDBView: React.FC<ApplicationCMDBViewProps> = ({ applic
               onClick={() => setCriticalityFilter(tab.id)}
               className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
                 criticalityFilter === tab.id
-                  ? 'bg-[#0052CC] text-white font-semibold shadow-sm'
-                  : 'bg-[#FFFFFF] text-[#5E6C84] hover:text-[#172B4D] border border-[#DFE1E6]'
+                  ? 'bg-semantic-jira-brand text-white font-semibold shadow-sm'
+                  : 'bg-semantic-panel text-semantic-jira-muted hover:text-semantic-jira-primary border border-semantic-jira-border'
               }`}
             >
               {tab.label}
@@ -130,7 +130,7 @@ export const ApplicationCMDBView: React.FC<ApplicationCMDBViewProps> = ({ applic
         </div>
 
         <div className="relative w-full sm:w-64">
-          <Search className="w-3.5 h-3.5 text-[#5E6C84] absolute left-2.5 top-2" />
+          <Search className="w-3.5 h-3.5 text-semantic-jira-muted absolute left-2.5 top-2" />
           <input
             type="text"
             value={search}
@@ -144,51 +144,51 @@ export const ApplicationCMDBView: React.FC<ApplicationCMDBViewProps> = ({ applic
       {/* Application Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
         {filteredApps.length === 0 ? (
-          <div className="col-span-2 py-16 text-center text-[#5E6C84] text-xs italic bg-[#FFFFFF] rounded-md border border-[#DFE1E6]">
+          <div className="col-span-2 py-16 text-center text-semantic-jira-muted text-xs italic bg-semantic-panel rounded-md border border-semantic-jira-border">
             No banking applications found matching this filter.
           </div>
         ) : (
           filteredApps.map((app) => (
             <div
               key={app.id}
-              className="p-5 bg-[#FFFFFF] border border-[#DFE1E6] rounded-md space-y-3 hover:border-[#0052CC] transition-colors shadow-sm group"
+              className="p-5 bg-semantic-panel border border-semantic-jira-border rounded-md space-y-3 hover:border-semantic-jira-brand transition-colors shadow-sm group"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono font-bold text-[#0052CC] text-xs group-hover:underline">{app.code}</span>
-                  <span className="px-2 py-0.5 rounded bg-[#FFFFFF] text-[#5E6C84] border border-[#DFE1E6] text-[10px] font-mono font-semibold">
+                  <span className="font-mono font-bold text-semantic-jira-brand text-xs group-hover:underline">{app.code}</span>
+                  <span className="px-2 py-0.5 rounded bg-semantic-panel text-semantic-jira-muted border border-semantic-jira-border text-caption font-mono font-semibold">
                     {app.criticality.replace(/_/g, ' ')}
                   </span>
                 </div>
                 <Badge type="CONFIDENTIALITY" value={app.dataClassification} size="sm" />
               </div>
 
-              <h3 className="text-sm font-bold text-[#172B4D] group-hover:text-[#0052CC]">{app.name}</h3>
-              <p className="text-xs text-[#5E6C84] leading-relaxed line-clamp-2">{app.description}</p>
+              <h3 className="text-sm font-bold text-semantic-jira-primary group-hover:text-semantic-jira-brand">{app.name}</h3>
+              <p className="text-xs text-semantic-jira-muted leading-relaxed line-clamp-2">{app.description}</p>
 
-              <div className="p-3 bg-[#FFFFFF] rounded border border-[#DFE1E6] space-y-1.5 text-xs">
+              <div className="p-3 bg-semantic-panel rounded border border-semantic-jira-border space-y-1.5 text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="text-[#5E6C84] text-[11px] font-medium">Tech Stack:</span>
-                  <span className="font-mono text-[#172B4D] text-[11px] truncate">{app.techStack.join(', ')}</span>
+                  <span className="text-semantic-jira-muted text-label font-medium">Tech Stack:</span>
+                  <span className="font-mono text-semantic-jira-primary text-label truncate">{app.techStack.join(', ')}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[#5E6C84] text-[11px] font-medium">Databases:</span>
-                  <span className="font-mono text-[#172B4D] text-[11px] truncate">{app.connectedDatabases.join(', ')}</span>
+                  <span className="text-semantic-jira-muted text-label font-medium">Databases:</span>
+                  <span className="font-mono text-semantic-jira-primary text-label truncate">{app.connectedDatabases.join(', ')}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[#5E6C84] text-[11px] font-medium">Git Repos:</span>
-                  <span className="font-mono text-[#0052CC] text-[11px] truncate">{app.gitRepositories.join(', ')}</span>
+                  <span className="text-semantic-jira-muted text-label font-medium">Git Repos:</span>
+                  <span className="font-mono text-semantic-jira-brand text-label truncate">{app.gitRepositories.join(', ')}</span>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-[#DFE1E6] text-xs text-[#5E6C84]">
+              <div className="flex items-center justify-between pt-2 border-t border-semantic-jira-border text-xs text-semantic-jira-muted">
                 <span className="flex items-center gap-1.5">
-                  <Bug className="w-3.5 h-3.5 text-[#DE350B]" />
-                  <span>Open Findings: <strong className="text-[#172B4D] font-mono">{app.openVulnerabilitiesCount}</strong></span>
+                  <Bug className="w-3.5 h-3.5 text-semantic-danger-strong" />
+                  <span>Open Findings: <strong className="text-semantic-jira-primary font-mono">{app.openVulnerabilitiesCount}</strong></span>
                 </span>
                 <span className="flex items-center gap-1">
-                  <Globe className="w-3.5 h-3.5 text-[#5E6C84]" />
-                  <span>Internet Exposed: <strong className={app.internetExposed ? 'text-[#FF8B00]' : 'text-[#172B4D]'}>{app.internetExposed ? 'YES (DMZ Ingress)' : 'NO (Internal Only)'}</strong></span>
+                  <Globe className="w-3.5 h-3.5 text-semantic-jira-muted" />
+                  <span>Internet Exposed: <strong className={app.internetExposed ? 'text-semantic-warning-bright' : 'text-semantic-jira-primary'}>{app.internetExposed ? 'YES (DMZ Ingress)' : 'NO (Internal Only)'}</strong></span>
                 </span>
               </div>
             </div>
@@ -198,14 +198,14 @@ export const ApplicationCMDBView: React.FC<ApplicationCMDBViewProps> = ({ applic
 
       {/* Register App Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-[2px] p-4">
-          <div className="bg-[#FFFFFF] border border-[#DFE1E6] rounded-md max-w-lg w-full p-5 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#DFE1E6] pb-3">
+        <div className="fixed inset-0 z-dsOverlay flex items-center justify-center bg-black/65 backdrop-blur-[2px] p-4">
+          <div className="bg-semantic-panel border border-semantic-jira-border rounded-md max-w-lg w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-semantic-jira-border pb-3">
               <div className="flex items-center gap-2">
-                <Server className="w-4 h-4 text-[#0052CC]" />
-                <h3 className="text-sm font-bold text-[#172B4D]">Register Banking Application</h3>
+                <Server className="w-4 h-4 text-semantic-jira-brand" />
+                <h3 className="text-sm font-bold text-semantic-jira-primary">Register Banking Application</h3>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="text-[#5E6C84] hover:text-[#172B4D]">
+              <button onClick={() => setIsModalOpen(false)} className="text-semantic-jira-muted hover:text-semantic-jira-primary">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -213,7 +213,7 @@ export const ApplicationCMDBView: React.FC<ApplicationCMDBViewProps> = ({ applic
             <form onSubmit={handleCreateApp} className="space-y-3 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#5E6C84] mb-1">Application Name:</label>
+                  <label className="block text-semantic-jira-muted mb-1">Application Name:</label>
                   <input
                     type="text"
                     value={name}
@@ -224,7 +224,7 @@ export const ApplicationCMDBView: React.FC<ApplicationCMDBViewProps> = ({ applic
                   />
                 </div>
                 <div>
-                  <label className="block text-[#5E6C84] mb-1">Application Code:</label>
+                  <label className="block text-semantic-jira-muted mb-1">Application Code:</label>
                   <input
                     type="text"
                     value={code}
@@ -237,7 +237,7 @@ export const ApplicationCMDBView: React.FC<ApplicationCMDBViewProps> = ({ applic
               </div>
 
               <div>
-                <label className="block text-[#5E6C84] mb-1">Description & Business Purpose:</label>
+                <label className="block text-semantic-jira-muted mb-1">Description & Business Purpose:</label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -249,7 +249,7 @@ export const ApplicationCMDBView: React.FC<ApplicationCMDBViewProps> = ({ applic
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#5E6C84] mb-1">Tier Criticality:</label>
+                  <label className="block text-semantic-jira-muted mb-1">Tier Criticality:</label>
                   <select
                     value={criticality}
                     onChange={(e) => setCriticality(e.target.value as any)}
@@ -261,7 +261,7 @@ export const ApplicationCMDBView: React.FC<ApplicationCMDBViewProps> = ({ applic
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[#5E6C84] mb-1">Data Classification:</label>
+                  <label className="block text-semantic-jira-muted mb-1">Data Classification:</label>
                   <select
                     value={dataClassification}
                     onChange={(e) => setDataClassification(e.target.value as any)}
@@ -276,7 +276,7 @@ export const ApplicationCMDBView: React.FC<ApplicationCMDBViewProps> = ({ applic
               </div>
 
               <div>
-                <label className="block text-[#5E6C84] mb-1">Tech Stack (comma separated):</label>
+                <label className="block text-semantic-jira-muted mb-1">Tech Stack (comma separated):</label>
                 <input
                   type="text"
                   value={techStack}
@@ -286,7 +286,7 @@ export const ApplicationCMDBView: React.FC<ApplicationCMDBViewProps> = ({ applic
               </div>
 
               <div>
-                <label className="block text-[#5E6C84] mb-1">Databases (comma separated):</label>
+                <label className="block text-semantic-jira-muted mb-1">Databases (comma separated):</label>
                 <input
                   type="text"
                   value={databases}
@@ -301,14 +301,14 @@ export const ApplicationCMDBView: React.FC<ApplicationCMDBViewProps> = ({ applic
                   id="internetExposed"
                   checked={internetExposed}
                   onChange={(e) => setInternetExposed(e.target.checked)}
-                  className="rounded border-[#DFE1E6] bg-[#FFFFFF] text-[#0052CC] focus:ring-0"
+                  className="rounded border-semantic-jira-border bg-semantic-panel text-semantic-jira-brand focus:ring-0"
                 />
-                <label htmlFor="internetExposed" className="text-[#172B4D] font-medium">
+                <label htmlFor="internetExposed" className="text-semantic-jira-primary font-medium">
                   Internet Exposed (Accessible from Public DMZ / Internet)
                 </label>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#DFE1E6]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-semantic-jira-border">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}

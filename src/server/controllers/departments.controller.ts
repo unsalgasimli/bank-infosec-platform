@@ -5,21 +5,39 @@ import { db } from '../db/database.js';
 import { logger } from '../services/logger.service.js';
 import { AuditService } from '../services/audit.service.js';
 import { SLAService } from '../services/sla.service.js';
-import { BankDepartment, BankUser } from '../../shared/types/auth.js';
+import { BankDepartment, BankDepartmentSection, BankUser } from '../../shared/types/auth.js';
 import { DepartmentConnection, ConnectionTestResult } from '../../shared/types/connections.js';
 import { ProjectBlueprint } from '../../shared/types/blueprints.js';
 import { Ticket } from '../../shared/types/ticket.js';
+import { config } from '../config/index.js';
+import { DepartmentsRepository, DepartmentRepositoryError } from '../db/postgres/departments-repository.js';
+import { isGenuineEmployeeOrIntern } from '../services/ldap-directory.data.js';
+
+const isUnitTestProcess = () => process.env.NODE_ENV === 'test' || process.argv.some((argument) => argument === '--test' || argument.includes('.test.ts') || argument.includes('test-concurrency'));
+const useRelationalDepartmentStore = () => config.DB_TYPE === 'postgres' && !isUnitTestProcess();
 
 export class DepartmentsController {
+  private static handleRepositoryError(res: Response, error: unknown): void {
+    const repositoryError = error instanceof DepartmentRepositoryError ? error : undefined;
+    const status = repositoryError?.statusCode || 500;
+    logger.error({ err: error }, 'Department relational repository request failed');
+    res.status(status).json({ success: false, error: repositoryError?.message || 'Department operation failed.' });
+  }
+
   // 1. List all departments with computed metrics
   public static listDepartments(req: AuthenticatedRequest, res: Response): void {
+    if (useRelationalDepartmentStore()) {
+      void DepartmentsRepository.list().then((departments) => res.json({ success: true, departments, total: departments.length })).catch((error) => DepartmentsController.handleRepositoryError(res, error));
+      return;
+    }
     try {
       const user = req.user!;
-      const departments = db.data.departments || [];
-      const users = db.data.users || [];
+      const departments = (db.data.departments || []).filter((department) => department.isActive !== false);
+      const users = (db.data.users || []).filter((user) => isGenuineEmployeeOrIntern(user, user.distributionGroups || [], user.sAMAccountName || user.username));
       const connections = db.data.connections || [];
       const blueprints = db.data.blueprints || [];
       const tickets = db.data.tickets || [];
+      const sections = db.data.departmentSections || [];
 
       const enriched = departments.map((dept) => {
         const memberCount = users.filter((u) => u.departmentId === dept.id).length;
@@ -37,6 +55,7 @@ export class DepartmentsController {
           (user.departmentId === dept.id && user.roles.includes('DEPARTMENT_ADMIN'));
 
         const manager = users.find((u) => u.id === dept.managerId);
+        const childSections = sections.filter((section) => section.departmentId === dept.id && section.isActive !== false);
 
         return {
           ...dept,
@@ -44,6 +63,8 @@ export class DepartmentsController {
           connectionCount: connectionCount || dept.connectionCount || 0,
           templateCount: templateCount || dept.templateCount || 0,
           activeTaskCount,
+          sections: childSections,
+          sectionCount: childSections.length,
           managerName: manager?.fullName,
           managerEmail: manager?.email,
           isDeptAdmin,
@@ -64,6 +85,29 @@ export class DepartmentsController {
 
   // 2. Get single department by ID with deep resources
   public static getDepartmentById(req: AuthenticatedRequest, res: Response): void {
+    if (useRelationalDepartmentStore()) {
+      void DepartmentsRepository.get(String(req.params.id || ''), req.user!).then(({ department, members, leadership, connections }) => {
+        const sections = department.sections || [];
+        const membersWithSections = members.map((member) => ({
+          ...member,
+          section: sections.find((section: BankDepartmentSection) => section.id === member.sectionId),
+        }));
+        // Leadership is loaded from the same active AD projection as members.
+        // Do not render a stale/deactivated JSON identity merely because its id
+        // remains in adminUserIds after an organizational change.
+        const leadersById = new Map(leadership.map((member) => [member.id, member]));
+        const activeManager = department.managerId ? leadersById.get(department.managerId) : undefined;
+        const admins = (department.adminUserIds || [])
+          .map((id) => leadersById.get(id))
+          .filter((admin): admin is BankUser => Boolean(admin))
+          .map((admin) => ({ id: admin.id, fullName: admin.fullName, email: admin.email, role: admin.roles.includes('DEPARTMENT_ADMIN') ? 'DEPARTMENT_ADMIN' : admin.roles[0] || 'DIRECTORY_USER' }));
+        const activeTickets = (db.data.tickets || []).filter((ticket) => ticket.departmentId === department.id || ticket.targetDepartmentId === department.id);
+        const isSuperAdmin = req.user!.roles.includes('PLATFORM_ADMIN') || req.user!.roles.includes('CISO');
+        const isDeptAdmin = isSuperAdmin || department.adminUserIds?.includes(req.user!.id) || department.managerId === req.user!.id || (req.user!.departmentId === department.id && req.user!.roles.includes('DEPARTMENT_ADMIN'));
+        res.json({ success: true, department: { ...department, managerName: activeManager?.fullName, managerEmail: activeManager?.email, admins, sections, sectionCount: sections.length, isDeptAdmin, isSuperAdmin }, members: membersWithSections, connections, templates: (db.data.blueprints || []).filter((blueprint) => blueprint.departmentId === department.id || blueprint.participatingDepartments?.includes(department.id)), workflows: (db.data.workflows || []).filter((workflow) => !workflow.departmentId || workflow.departmentId === department.id), activeTickets: activeTickets.slice(0, 20), stats: { totalMembers: members.length, totalConnections: connections.length, totalTemplates: (db.data.blueprints || []).filter((blueprint) => blueprint.departmentId === department.id).length, openTasksCount: activeTickets.filter((ticket) => ticket.statusCategory !== 'DONE').length, slaBreachedCount: activeTickets.filter((ticket) => ticket.slaState === 'BREACHED').length } });
+      }).catch((error) => DepartmentsController.handleRepositoryError(res, error));
+      return;
+    }
     try {
       const user = req.user!;
       const deptId = String(req.params.id || '');
@@ -83,7 +127,13 @@ export class DepartmentsController {
         dept.managerId === user.id ||
         (user.departmentId === dept.id && user.roles.includes('DEPARTMENT_ADMIN'));
 
-      const members = (db.data.users || []).filter((u) => u.departmentId === dept.id);
+      const members = (db.data.users || [])
+        .filter((u) => u.departmentId === dept.id && isGenuineEmployeeOrIntern(u, u.distributionGroups || [], u.sAMAccountName || u.username))
+        .map((member) => ({
+          ...member,
+          section: (db.data.departmentSections || []).find((section) => section.id === member.sectionId),
+        }));
+      const sections = (db.data.departmentSections || []).filter((section) => section.departmentId === dept.id && section.isActive !== false);
       const connections = (db.data.connections || []).filter((c) => c.departmentId === dept.id);
       const templates = (db.data.blueprints || []).filter((b) => b.departmentId === dept.id || b.participatingDepartments?.includes(dept.id));
       const workflows = (db.data.workflows || []).filter((w) => !w.departmentId || w.departmentId === dept.id);
@@ -103,6 +153,7 @@ export class DepartmentsController {
           admins: admins.map((a) => ({ id: a.id, fullName: a.fullName, email: a.email, role: a.roles[0] })),
           isDeptAdmin,
           isSuperAdmin,
+          sections,
         },
         members,
         connections,
@@ -125,6 +176,10 @@ export class DepartmentsController {
 
   // 3. Create new department (Super Admin / Platform Admin)
   public static createDepartment(req: AuthenticatedRequest, res: Response): void {
+    if (useRelationalDepartmentStore()) {
+      void DepartmentsRepository.create(req.body, req.user!).then((department) => res.status(201).json({ success: true, department })).catch((error) => DepartmentsController.handleRepositoryError(res, error));
+      return;
+    }
     try {
       const user = req.user!;
       const isSuperAdmin = user.roles.includes('PLATFORM_ADMIN') || user.roles.includes('CISO');
@@ -192,6 +247,10 @@ export class DepartmentsController {
 
   // 4. Update department metadata
   public static updateDepartment(req: AuthenticatedRequest, res: Response): void {
+    if (useRelationalDepartmentStore()) {
+      void DepartmentsRepository.update(String(req.params.id || ''), req.body, req.user!).then((department) => res.json({ success: true, department })).catch((error) => DepartmentsController.handleRepositoryError(res, error));
+      return;
+    }
     try {
       const user = req.user!;
       const deptId = req.params.id;
@@ -243,6 +302,10 @@ export class DepartmentsController {
 
   // 5. Update department internal settings & SLAs (Department Admin & Super Admin)
   public static updateSettings(req: AuthenticatedRequest, res: Response): void {
+    if (useRelationalDepartmentStore()) {
+      void DepartmentsRepository.updateSettings(String(req.params.id || ''), req.body, req.user!).then((settings) => res.json({ success: true, settings })).catch((error) => DepartmentsController.handleRepositoryError(res, error));
+      return;
+    }
     try {
       const user = req.user!;
       const deptId = req.params.id;
@@ -289,6 +352,10 @@ export class DepartmentsController {
 
   // 6. Manage department members & internal RBAC roles
   public static addOrUpdateMember(req: AuthenticatedRequest, res: Response): void {
+    if (useRelationalDepartmentStore()) {
+      void DepartmentsRepository.addMember(String(req.params.id || ''), req.body, req.user!).then((user) => res.json({ success: true, user })).catch((error) => DepartmentsController.handleRepositoryError(res, error));
+      return;
+    }
     try {
       const user = req.user!;
       const deptId = req.params.id;
@@ -367,6 +434,10 @@ export class DepartmentsController {
   // 7. Department Connections CRUD. Connectivity must be verified by the
   // connector implementation; this API never fabricates a successful probe.
   public static listConnections(req: AuthenticatedRequest, res: Response): void {
+    if (useRelationalDepartmentStore()) {
+      void DepartmentsRepository.listConnections(String(req.params.id || '')).then((connections) => res.json({ success: true, connections })).catch((error) => DepartmentsController.handleRepositoryError(res, error));
+      return;
+    }
     try {
       const deptId = req.params.id;
       const connections = (db.data.connections || []).filter((c) => c.departmentId === deptId);
@@ -378,6 +449,10 @@ export class DepartmentsController {
   }
 
   public static createConnection(req: AuthenticatedRequest, res: Response): void {
+    if (useRelationalDepartmentStore()) {
+      void DepartmentsRepository.createConnection(String(req.params.id || ''), req.body, req.user!).then((connection) => res.status(201).json({ success: true, connection })).catch((error) => DepartmentsController.handleRepositoryError(res, error));
+      return;
+    }
     try {
       const user = req.user!;
       const deptId = req.params.id;
@@ -430,6 +505,18 @@ export class DepartmentsController {
   }
 
   public static testConnection(req: AuthenticatedRequest, res: Response): void {
+    if (useRelationalDepartmentStore()) {
+      void DepartmentsRepository.listConnections(String(req.params.id || '')).then((connections) => {
+        const connection = connections.find((item) => item.id === req.params.connId);
+        if (!connection) {
+          res.status(404).json({ success: false, error: 'Connection not found in department' });
+          return;
+        }
+        const testResult: ConnectionTestResult = { success: false, message: 'No connector health-check implementation is configured. No network probe was performed.', latencyMs: 0, timestamp: new Date().toISOString() };
+        res.status(501).json({ success: false, testResult, connection });
+      }).catch((error) => DepartmentsController.handleRepositoryError(res, error));
+      return;
+    }
     try {
       const { id, connId } = req.params;
       const connection = (db.data.connections || []).find((c) => c.id === connId && c.departmentId === id);
@@ -453,6 +540,10 @@ export class DepartmentsController {
   }
 
   public static deleteConnection(req: AuthenticatedRequest, res: Response): void {
+    if (useRelationalDepartmentStore()) {
+      void DepartmentsRepository.deleteConnection(String(req.params.id || ''), String(req.params.connId || ''), req.user!).then(() => res.json({ success: true, message: 'Connection deleted successfully' })).catch((error) => DepartmentsController.handleRepositoryError(res, error));
+      return;
+    }
     try {
       const { id, connId } = req.params;
       db.data.connections = (db.data.connections || []).filter((c) => !(c.id === connId && c.departmentId === id));
@@ -664,6 +755,27 @@ export class DepartmentsController {
       });
     } catch (err: any) {
       logger.error({ err }, 'Failed to launch cross-department workflow');
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  public static listTeams(req: AuthenticatedRequest, res: Response): void {
+    try {
+      const standardTeams = [
+        { id: 'team-soc', name: 'SOC & Incident Response', code: 'SOC', departmentId: 'dept-secops', description: '24/7 Security Operations Center and Threat Monitoring' },
+        { id: 'team-appsec', name: 'Application Security', code: 'APPSEC', departmentId: 'dept-secops', description: 'Code review, SAST/DAST, and secure SDLC governance' },
+        { id: 'team-grc', name: 'GRC & Compliance', code: 'GRC', departmentId: 'dept-secops', description: 'Governance, Risk Management, Regulatory and Audit compliance' },
+        { id: 'team-it-infra', name: 'IT Infrastructure & Systems', code: 'IT_INFRA', departmentId: 'dept-sistem-inzibatciligi-bolmesi', description: 'Core banking systems, servers, networks and directory services' },
+        { id: 'team-devsecops', name: 'DevSecOps & Platform Engineering', code: 'DEVSECOPS', departmentId: 'dept-secops', description: 'CI/CD pipeline security, cloud infrastructure and automation' },
+        { id: 'team-hr-ops', name: 'HR Operations', code: 'HR_OPS', departmentId: 'dept-hr', description: 'Personnel onboarding, offboarding, and identity access validation' },
+        { id: 'team-swift-eng', name: 'Core Banking & SWIFT', code: 'SWIFT', departmentId: 'dept-banking', description: 'Payment systems, SWIFT transactions, and banking ledger operations' },
+      ];
+      const existingTeams = db.data.teams || [];
+      const teamMap = new Map<string, any>(standardTeams.map((t) => [t.id, t]));
+      for (const t of existingTeams) teamMap.set(t.id, { ...t, ...teamMap.get(t.id) });
+      const teams = Array.from(teamMap.values());
+      res.json({ success: true, teams });
+    } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
   }

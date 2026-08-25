@@ -62,6 +62,16 @@ export const requireAdmin = requireRoles([
   'LEGAL_ADMIN',
 ]);
 
+// Every authenticated employee may build personal workflows. The service
+// separately enforces company and department publication scope.
+export const requireWorkflowDesigner = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+  if (!req.user?.isActive) {
+    res.status(401).json({ success: false, error: 'Authentication required. Active bank user session not found.' });
+    return;
+  }
+  next();
+};
+
 export const requireSecOps = requireRoles([
   'PLATFORM_ADMIN',
   'CISO',

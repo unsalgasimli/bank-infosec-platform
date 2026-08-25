@@ -14,16 +14,47 @@ export type TicketProjectCode =
   | 'TPRM';
 
 export type TicketCategory =
+  | 'GENERAL_REQUEST'
+  | 'GENERAL_TASK'
+  | 'IT_SUPPORT'
+  | 'ACCESS_REQUEST'
+  | 'HARDWARE_SOFTWARE'
+  | 'NETWORK_INFRASTRUCTURE'
+  | 'CHANGE_REQUEST'
+  | 'INCIDENT_MANAGEMENT'
+  | 'PROJECT_DELIVERY'
+  | 'FINANCE_PROCUREMENT'
+  | 'HR_OPERATIONS'
+  | 'COMPLIANCE_LEGAL'
+  | 'BUSINESS_OPERATIONS'
+  | 'SECURITY_REVIEW'
   | 'VULNERABILITY'
   | 'INCIDENT'
   | 'SECURITY_EXCEPTION'
   | 'RISK_ACCEPTANCE'
   | 'AUDIT_FINDING'
-  | 'SECURITY_REVIEW'
   | 'IAM_REQUEST'
   | 'DLP_ALERT'
-  | 'THIRD_PARTY_ASSESSMENT'
-  | 'GENERAL_REQUEST';
+  | 'THIRD_PARTY_ASSESSMENT';
+
+export interface TicketCategoryOption {
+  code: TicketCategory;
+  label: string;
+  description?: string;
+}
+
+/**
+ * The new-ticket intake also exposes catalog-backed Help Desk tasks. These
+ * options are intentionally separate from TicketCategory so the persisted
+ * generic-ticket contract remains a finite, validated union.
+ */
+export interface TicketIntakeCategoryOption extends Omit<TicketCategoryOption, 'code'> {
+  code: string;
+  kind?: 'CATEGORY' | 'BASIC_TICKET';
+  requestTypeId?: string;
+  catalogGroup?: string;
+  targetDepartmentId?: string;
+}
 
 export type TechnicalSeverity = 'INFORMATIONAL' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type BusinessPriority = 'P1_URGENT' | 'P2_HIGH' | 'P3_MEDIUM' | 'P4_LOW';
@@ -74,6 +105,8 @@ export interface IncidentDetails {
   detectionSource: 'SIEM_CORRELATION' | 'EDR_ALERT' | 'USER_REPORT' | 'FIREWALL_ALERT' | 'DLP_SENSOR' | 'THREAT_INTEL' | 'AUDITOR';
   affectedUserIds?: string[];
   affectedAssetIds?: string[];
+  /** Canonical generic CMDB associations. assetId/applicationId are legacy compatibility pointers. */
+  affectedCiIds?: string[];
   affectedApplicationIds?: string[];
   iocs: {
     ipAddresses?: string[];
@@ -225,6 +258,18 @@ export interface Ticket {
   // Concurrency Version
   version: number;
   tags: string[];
+
+  // Project workspace fields. Tickets remain the canonical Task entity, and
+  // become project-scoped work only when projectId is present.
+  projectId?: string;
+  milestoneId?: string;
+  projectTaskNumber?: number;
+  projectTaskStatus?: import('./project.js').ProjectTaskStatus;
+  actualHours?: number;
+  taskWeight?: number;
+  blockedReason?: string;
+  blockerTaskId?: string;
+  blockerExpectedResolutionDate?: string;
 }
 
 /**

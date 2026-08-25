@@ -29,6 +29,21 @@ CREATE TABLE IF NOT EXISTS bank_departments (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS bank_department_sections (
+    id VARCHAR(128) PRIMARY KEY,
+    department_id VARCHAR(64) NOT NULL REFERENCES bank_departments(id) ON DELETE CASCADE,
+    code VARCHAR(64) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    manager_id VARCHAR(64),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    source_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (department_id, code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_department_sections_department ON bank_department_sections(department_id);
+
 CREATE TABLE IF NOT EXISTS bank_teams (
     id VARCHAR(64) PRIMARY KEY,
     department_id VARCHAR(64) NOT NULL REFERENCES bank_departments(id) ON DELETE RESTRICT,
@@ -47,6 +62,7 @@ CREATE TABLE IF NOT EXISTS bank_users (
     last_name VARCHAR(128) NOT NULL,
     title VARCHAR(255) NOT NULL,
     department_id VARCHAR(64) REFERENCES bank_departments(id) ON DELETE SET NULL,
+    section_id VARCHAR(128) REFERENCES bank_department_sections(id) ON DELETE SET NULL,
     division_id VARCHAR(64) REFERENCES bank_divisions(id) ON DELETE SET NULL,
     security_clearance VARCHAR(64) NOT NULL DEFAULT 'INTERNAL',
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -59,9 +75,12 @@ CREATE TABLE IF NOT EXISTS bank_users (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS section_id VARCHAR(128) REFERENCES bank_department_sections(id) ON DELETE SET NULL;
+
 CREATE INDEX IF NOT EXISTS idx_users_username ON bank_users(username);
 CREATE INDEX IF NOT EXISTS idx_users_email ON bank_users(email);
 CREATE INDEX IF NOT EXISTS idx_users_dept ON bank_users(department_id);
+CREATE INDEX IF NOT EXISTS idx_users_section ON bank_users(section_id);
 CREATE INDEX IF NOT EXISTS idx_users_clearance ON bank_users(security_clearance);
 
 -- ----------------------------------------------------------------------------
@@ -99,6 +118,58 @@ CREATE TABLE IF NOT EXISTS bank_applications (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- ----------------------------------------------------------------------------
+-- 2b. Canonical CMDB. Assets, applications and business services are views of
+-- configuration_items, never separate copies of the same managed object.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS cmdb_ci_types (
+    id VARCHAR(64) PRIMARY KEY,
+    name VARCHAR(128) NOT NULL UNIQUE,
+    parent_type_id VARCHAR(64) REFERENCES cmdb_ci_types(id) ON DELETE RESTRICT,
+    icon VARCHAR(64) NOT NULL DEFAULT 'Box',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    required_attributes JSONB NOT NULL DEFAULT '[]'::jsonb,
+    optional_attributes JSONB NOT NULL DEFAULT '[]'::jsonb,
+    validation_rules JSONB NOT NULL DEFAULT '{}'::jsonb,
+    allowed_relationship_type_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), source_payload JSONB
+);
+CREATE TABLE IF NOT EXISTS cmdb_relationship_types (
+    id VARCHAR(64) PRIMARY KEY, name VARCHAR(64) NOT NULL UNIQUE, inverse_name VARCHAR(64) NOT NULL,
+    is_dependency BOOLEAN NOT NULL DEFAULT FALSE, prevents_cycles BOOLEAN NOT NULL DEFAULT FALSE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), source_payload JSONB
+);
+CREATE TABLE IF NOT EXISTS configuration_items (
+    id VARCHAR(64) PRIMARY KEY, ci_number VARCHAR(64) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL, display_name VARCHAR(255),
+    type_id VARCHAR(64) NOT NULL REFERENCES cmdb_ci_types(id) ON DELETE RESTRICT,
+    status VARCHAR(32) NOT NULL CHECK (status IN ('ACTIVE','INACTIVE','RETIRED','ARCHIVED')),
+    lifecycle_status VARCHAR(32) NOT NULL CHECK (lifecycle_status IN ('REQUESTED','PROCURED','RECEIVED','IN_STOCK','ASSIGNED','IN_USE','MAINTENANCE','RETURNED','RETIRED','DISPOSED','LOST')),
+    environment VARCHAR(32) NOT NULL, criticality VARCHAR(32) NOT NULL, business_criticality VARCHAR(32), description TEXT,
+    owner_user_id VARCHAR(64) REFERENCES bank_users(id) ON DELETE SET NULL, technical_owner_user_id VARCHAR(64) REFERENCES bank_users(id) ON DELETE SET NULL,
+    business_owner_user_id VARCHAR(64) REFERENCES bank_users(id) ON DELETE SET NULL, support_group_id VARCHAR(128), department_id VARCHAR(128) REFERENCES bank_departments(id) ON DELETE SET NULL,
+    location_id VARCHAR(128), vendor VARCHAR(255), manufacturer VARCHAR(255), model VARCHAR(255), serial_number VARCHAR(128), asset_tag VARCHAR(128),
+    hostname VARCHAR(255), fqdn VARCHAR(255), ip_address VARCHAR(64), mac_address VARCHAR(64), operating_system VARCHAR(255), os_version VARCHAR(128), external_reference VARCHAR(255),
+    source VARCHAR(32) NOT NULL, source_system VARCHAR(128), source_record_id VARCHAR(255), discovery_status VARCHAR(32) NOT NULL, last_discovered_at TIMESTAMPTZ, last_verified_at TIMESTAMPTZ, last_seen_at TIMESTAMPTZ, last_sync_at TIMESTAMPTZ, sync_status VARCHAR(32),
+    details JSONB NOT NULL DEFAULT '{}'::jsonb, version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), created_by VARCHAR(64) REFERENCES bank_users(id) ON DELETE SET NULL, updated_by VARCHAR(64) REFERENCES bank_users(id) ON DELETE SET NULL, archived_at TIMESTAMPTZ, source_payload JSONB
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ci_active_asset_tag ON configuration_items(lower(asset_tag)) WHERE asset_tag IS NOT NULL AND archived_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ci_active_serial ON configuration_items(lower(serial_number)) WHERE serial_number IS NOT NULL AND archived_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ci_active_hostname ON configuration_items(lower(hostname)) WHERE hostname IS NOT NULL AND archived_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ci_source_record ON configuration_items(source_system, source_record_id) WHERE source_system IS NOT NULL AND source_record_id IS NOT NULL AND archived_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_ci_name ON configuration_items(name); CREATE INDEX IF NOT EXISTS idx_ci_type_status ON configuration_items(type_id,status); CREATE INDEX IF NOT EXISTS idx_ci_department ON configuration_items(department_id); CREATE INDEX IF NOT EXISTS idx_ci_owner ON configuration_items(owner_user_id); CREATE INDEX IF NOT EXISTS idx_ci_environment ON configuration_items(environment); CREATE INDEX IF NOT EXISTS idx_ci_criticality ON configuration_items(criticality);
+CREATE TABLE IF NOT EXISTS ci_relationships (
+    id VARCHAR(64) PRIMARY KEY, source_ci_id VARCHAR(64) NOT NULL REFERENCES configuration_items(id) ON DELETE RESTRICT, target_ci_id VARCHAR(64) NOT NULL REFERENCES configuration_items(id) ON DELETE RESTRICT,
+    relationship_type_id VARCHAR(64) NOT NULL REFERENCES cmdb_relationship_types(id) ON DELETE RESTRICT, status VARCHAR(16) NOT NULL CHECK(status IN ('ACTIVE','INACTIVE')), description TEXT, source VARCHAR(32) NOT NULL, confidence NUMERIC(5,2) NOT NULL CHECK(confidence >= 0 AND confidence <= 100), valid_from TIMESTAMPTZ NOT NULL, valid_to TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), created_by VARCHAR(64) REFERENCES bank_users(id) ON DELETE SET NULL, archived_at TIMESTAMPTZ, source_payload JSONB, CHECK(source_ci_id <> target_ci_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ci_active_relationship ON ci_relationships(source_ci_id,target_ci_id,relationship_type_id) WHERE status='ACTIVE' AND archived_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_ci_rel_source ON ci_relationships(source_ci_id,relationship_type_id) WHERE status='ACTIVE' AND archived_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_ci_rel_target ON ci_relationships(target_ci_id,relationship_type_id) WHERE status='ACTIVE' AND archived_at IS NULL;
+CREATE TABLE IF NOT EXISTS ci_record_links (
+    id VARCHAR(64) PRIMARY KEY, ci_id VARCHAR(64) NOT NULL REFERENCES configuration_items(id) ON DELETE RESTRICT, record_type VARCHAR(32) NOT NULL, record_id VARCHAR(128) NOT NULL, relationship VARCHAR(32) NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), created_by VARCHAR(64) REFERENCES bank_users(id) ON DELETE SET NULL, source_payload JSONB,
+    UNIQUE(ci_id,record_type,record_id,relationship)
+);
+CREATE INDEX IF NOT EXISTS idx_ci_record_links_record ON ci_record_links(record_type,record_id);
 
 -- ----------------------------------------------------------------------------
 -- 3. Workflows & SLA Policies
@@ -984,3 +1055,162 @@ CREATE INDEX IF NOT EXISTS idx_orch_relations_target ON orchestration_work_relat
 CREATE INDEX IF NOT EXISTS idx_orch_sla_status ON orchestration_sla_clocks(status, target_at);
 CREATE INDEX IF NOT EXISTS idx_orch_notifications_dedupe ON orchestration_notification_deliveries(deduplication_key, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_orch_trigger_receipts ON orchestration_trigger_receipts(trigger_type, event_name, received_at DESC);
+
+-- ----------------------------------------------------------------------------
+-- 16. Controlled legacy projection/import support
+-- ----------------------------------------------------------------------------
+-- Relational columns remain the query path. source_payload preserves fields
+-- that existed in the JSON runtime during the zero-loss cutover and can be
+-- retired only after the corresponding repository has been migrated.
+ALTER TABLE bank_divisions ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE bank_departments ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE bank_teams ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE bank_departments ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+ALTER TABLE bank_departments ADD COLUMN IF NOT EXISTS manager_id VARCHAR(128);
+ALTER TABLE bank_departments ADD COLUMN IF NOT EXISTS admin_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE bank_departments ADD COLUMN IF NOT EXISTS color VARCHAR(32);
+ALTER TABLE bank_departments ADD COLUMN IF NOT EXISTS icon VARCHAR(64);
+ALTER TABLE bank_departments ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE bank_departments ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE bank_departments ADD COLUMN IF NOT EXISTS directory_source VARCHAR(32);
+ALTER TABLE bank_teams ADD COLUMN IF NOT EXISTS code VARCHAR(64);
+ALTER TABLE bank_teams ADD COLUMN IF NOT EXISTS lead_id VARCHAR(128);
+ALTER TABLE bank_teams ADD COLUMN IF NOT EXISTS security_domain VARCHAR(64);
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS full_name VARCHAR(255);
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS sam_account_name VARCHAR(128);
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS user_principal_name VARCHAR(255);
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS distinguished_name TEXT;
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS ldap_domain VARCHAR(255);
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS ldap_bind_status VARCHAR(32);
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS directory_source VARCHAR(32);
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS distribution_groups JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS owned_risk_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE workflows ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE sla_policies ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE ticket_approvals ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE ticket_comments ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE ticket_attachments ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE risk_register_items ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE kb_articles ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE saved_filters ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE ticket_relationships ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE ticket_tasks ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE ticket_worklogs ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE ticket_sla_instances ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE ticket_satisfaction ADD COLUMN IF NOT EXISTS source_payload JSONB;
+ALTER TABLE ticket_ai_recommendations ADD COLUMN IF NOT EXISTS source_payload JSONB;
+
+-- Department connectors are operational resources, not legacy JSON records.
+-- Secrets are intentionally out of scope: only non-sensitive configuration
+-- summaries may be persisted here; credentials belong in a secret manager.
+CREATE TABLE IF NOT EXISTS department_connections (
+    id VARCHAR(128) PRIMARY KEY,
+    department_id VARCHAR(128) NOT NULL REFERENCES bank_departments(id) ON DELETE RESTRICT,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(64) NOT NULL CHECK (type IN ('SIEM','EDR','ACTIVE_DIRECTORY','CLOUD_INFRA','VULN_SCANNER','HRIS','CORE_BANKING','PAYMENT_GATEWAY','TICKETING','COMMUNICATION','DATABASE')),
+    provider VARCHAR(255) NOT NULL,
+    endpoint_url VARCHAR(1024) NOT NULL,
+    auth_type VARCHAR(64) NOT NULL CHECK (auth_type IN ('API_KEY','OAUTH2','MTLS_CERTIFICATE','LDAP_BIND','BEARER_TOKEN')),
+    status VARCHAR(32) NOT NULL DEFAULT 'DISCONNECTED' CHECK (status IN ('CONNECTED','SYNCING','ERROR','DISCONNECTED')),
+    last_sync_at TIMESTAMPTZ,
+    latency_ms INTEGER CHECK (latency_ms IS NULL OR latency_ms >= 0),
+    health_score NUMERIC(5,2) CHECK (health_score IS NULL OR (health_score >= 0 AND health_score <= 100)),
+    sync_frequency_minutes INTEGER NOT NULL DEFAULT 0 CHECK (sync_frequency_minutes >= 0 AND sync_frequency_minutes <= 10080),
+    description TEXT NOT NULL DEFAULT '',
+    config_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source_payload JSONB,
+    created_by_user_id VARCHAR(64) REFERENCES bank_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_department_connections_active_name
+    ON department_connections(department_id, lower(name)) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_department_connections_department
+    ON department_connections(department_id, status) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_departments_active_division
+    ON bank_departments(is_active, division_id, name);
+CREATE INDEX IF NOT EXISTS idx_departments_manager
+    ON bank_departments(manager_id);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_bank_departments_manager'
+    ) THEN
+        ALTER TABLE bank_departments
+            ADD CONSTRAINT fk_bank_departments_manager
+            FOREIGN KEY (manager_id) REFERENCES bank_users(id) ON DELETE SET NULL;
+    END IF;
+END $$;
+
+-- AD-generated department slugs can exceed the original 64-character limit.
+-- Widen the normalized key and every FK that points to it before importing;
+-- this is an additive, metadata-preserving change (no truncation).
+ALTER TABLE bank_departments ALTER COLUMN id TYPE VARCHAR(128);
+ALTER TABLE bank_teams ALTER COLUMN department_id TYPE VARCHAR(128);
+ALTER TABLE bank_users ALTER COLUMN department_id TYPE VARCHAR(128);
+ALTER TABLE bank_assets ALTER COLUMN department_id TYPE VARCHAR(128);
+ALTER TABLE bank_applications ALTER COLUMN department_id TYPE VARCHAR(128);
+ALTER TABLE tickets ALTER COLUMN department_id TYPE VARCHAR(128);
+ALTER TABLE workflow_templates ALTER COLUMN owner_department_id TYPE VARCHAR(128);
+
+-- Canonical work-intake categories. The new-work modal reads this catalog from
+-- PostgreSQL; category options must not be maintained as a client/server array.
+CREATE TABLE IF NOT EXISTS ticket_categories (
+    code VARCHAR(64) PRIMARY KEY,
+    display_name VARCHAR(128) NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ticket_categories_active_sort
+    ON ticket_categories(is_active, sort_order, code);
+
+INSERT INTO ticket_categories(code, display_name, description, sort_order) VALUES
+    ('GENERAL_REQUEST', 'General Request', 'General business request', 10),
+    ('GENERAL_TASK', 'General Task', 'General operational task', 20),
+    ('IT_SUPPORT', 'IT Support', 'End-user technology support', 30),
+    ('ACCESS_REQUEST', 'Access Request', 'System or facility access request', 40),
+    ('HARDWARE_SOFTWARE', 'Hardware Software', 'Hardware or software service request', 50),
+    ('NETWORK_INFRASTRUCTURE', 'Network Infrastructure', 'Network and infrastructure request', 60),
+    ('CHANGE_REQUEST', 'Change Request', 'Controlled change request', 70),
+    ('INCIDENT_MANAGEMENT', 'Incident Management', 'Operational incident handling', 80),
+    ('PROJECT_DELIVERY', 'Project Delivery', 'Project delivery work item', 90),
+    ('FINANCE_PROCUREMENT', 'Finance Procurement', 'Finance or procurement request', 100),
+    ('HR_OPERATIONS', 'HR Operations', 'Human resources operations request', 110),
+    ('COMPLIANCE_LEGAL', 'Compliance Legal', 'Compliance or legal request', 120),
+    ('BUSINESS_OPERATIONS', 'Business Operations', 'Business operations request', 130),
+    ('SECURITY_REVIEW', 'Security Review', 'Information-security review', 140),
+    ('VULNERABILITY', 'Vulnerability', 'Vulnerability management item', 150),
+    ('INCIDENT', 'Incident', 'Security incident', 160),
+    ('SECURITY_EXCEPTION', 'Security Exception', 'Security exception request', 170),
+    ('RISK_ACCEPTANCE', 'Risk Acceptance', 'Risk acceptance request', 180),
+    ('AUDIT_FINDING', 'Audit Finding', 'Audit finding remediation', 190),
+    ('IAM_REQUEST', 'IAM Request', 'Identity and access management request', 200),
+    ('DLP_ALERT', 'DLP Alert', 'Data loss prevention alert', 210),
+    ('THIRD_PARTY_ASSESSMENT', 'Third Party Assessment', 'Third-party assessment request', 220)
+ON CONFLICT (code) DO UPDATE SET
+    display_name = EXCLUDED.display_name,
+    description = EXCLUDED.description,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = NOW();
+
+CREATE TABLE IF NOT EXISTS legacy_json_records (
+    collection VARCHAR(128) NOT NULL,
+    record_id VARCHAR(255) NOT NULL,
+    payload JSONB NOT NULL,
+    source_checksum CHAR(64) NOT NULL,
+    imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (collection, record_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_legacy_json_records_collection ON legacy_json_records(collection);

@@ -146,34 +146,34 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
     switch (color) {
       case 'green':
         return {
-          card: 'border-[#B8EAD1] bg-[#F6FCF9] hover:border-[#00B259]',
-          badge: 'bg-[#E6F7EF] text-[#007860] border-[#B8EAD1]',
-          bar: 'bg-[#00B259]',
+          card: 'border-semantic-success-border bg-semantic-success-card hover:border-semantic-brand',
+          badge: 'bg-semantic-success-surface text-semantic-success border-semantic-success-border',
+          bar: 'bg-semantic-brand',
         };
       case 'blue':
         return {
-          card: 'border-[#BAE0FD] bg-[#F7FBFE] hover:border-[#0073D3]',
-          badge: 'bg-[#EBF4FD] text-[#0073D3] border-[#BAE0FD]',
-          bar: 'bg-[#0073D3]',
+          card: 'border-semantic-info-border bg-semantic-info-canvas hover:border-semantic-info',
+          badge: 'bg-semantic-info-surface text-semantic-info border-semantic-info-border',
+          bar: 'bg-semantic-info',
         };
       case 'amber':
         return {
-          card: 'border-[#FFE7BA] bg-[#FFFBF5] hover:border-[#FA8C16]',
-          badge: 'bg-[#FFF7E6] text-[#D46B08] border-[#FFE7BA]',
-          bar: 'bg-[#FA8C16]',
+          card: 'border-semantic-warning-border bg-semantic-warning-card hover:border-semantic-warning-bright',
+          badge: 'bg-semantic-warning-surface text-semantic-warning border-semantic-warning-border',
+          bar: 'bg-semantic-warning-bright',
         };
       case 'coral':
         return {
-          card: 'border-[#FFA39E] bg-[#FFF8F8] hover:border-[#E51739]',
-          badge: 'bg-[#FDE8EB] text-[#CF1322] border-[#FFA39E]',
-          bar: 'bg-[#E51739]',
+          card: 'border-semantic-danger-border bg-semantic-danger-card hover:border-semantic-brand-danger',
+          badge: 'bg-semantic-danger-surface text-semantic-danger border-semantic-danger-border',
+          bar: 'bg-semantic-brand-danger',
         };
       case 'purple':
       default:
         return {
-          card: 'border-[#EFDBFF] bg-[#FAF5FF] hover:border-[#722ED1]',
-          badge: 'bg-[#F9F0FF] text-[#531DAB] border-[#EFDBFF]',
-          bar: 'bg-[#722ED1]',
+          card: 'border-semantic-purple-border bg-semantic-purple-surface hover:border-semantic-purple',
+          badge: 'bg-semantic-purple-soft text-semantic-purple-strong border-semantic-purple-border',
+          bar: 'bg-semantic-purple',
         };
     }
   };
@@ -181,23 +181,23 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
   const filteredIdeas = selectedCategory === 'ALL' ? ideas : ideas.filter((i) => i.category === selectedCategory);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#F2F5FA] overflow-hidden select-none">
+    <div className="flex-1 flex flex-col h-full bg-semantic-page-muted overflow-hidden select-none">
       {/* Wrike Ideate Top Bar */}
-      <div className="bg-[#FFFFFF] border-b border-[#DCE1EB] px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 shadow-wrike-sm">
+      <div className="bg-semantic-panel border-b border-semantic-surface-alt px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 shadow-wrike-sm">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#E6F7EF] text-[#007860] border border-[#B8EAD1] flex items-center justify-center shadow-sm">
-            <Lightbulb className="w-4 h-4 text-[#00B259]" />
+          <div className="w-8 h-8 rounded-lg bg-semantic-success-surface text-semantic-success border border-semantic-success-border flex items-center justify-center shadow-sm">
+            <Lightbulb className="w-4 h-4 text-semantic-brand" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-[#162136]">
+              <h2 className="text-sm font-bold text-semantic-primary">
                 Wrike Ideate: Cyber Threat & Strategy Canvas
               </h2>
-              <span className="px-2 py-0.5 rounded-full bg-[#E6F7EF] text-[#007860] text-[10px] font-bold border border-[#B8EAD1]">
+              <span className="px-2 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success text-caption font-bold border border-semantic-success-border">
                 Real-Time Backend Synced
               </span>
             </div>
-            <p className="text-[11px] text-[#657694]">
+            <p className="text-label text-semantic-jira-muted-alt">
               Brainstorm cyber defense initiatives, model attack vectors, and persist real ideas with 1-click task creation.
             </p>
           </div>
@@ -206,13 +206,13 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
         {/* Action Controls & Filters */}
         <div className="flex items-center gap-2">
           {/* Category Filter */}
-          <div className="flex items-center bg-[#F8FAFC] border border-[#DCE1EB] rounded-md p-0.5 text-xs">
+          <div className="flex items-center bg-semantic-subtle border border-semantic-surface-alt rounded-md p-0.5 text-xs">
             {['ALL', 'THREAT_VECTOR', 'ZERO_TRUST', 'COMPLIANCE', 'DEVSECOPS'].map((cat) => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
-                  selectedCategory === cat ? 'bg-[#00B259] text-white font-semibold shadow-sm' : 'text-[#657694] hover:text-[#162136]'
+                className={`px-2.5 py-1 rounded text-label font-medium transition-colors ${
+                  selectedCategory === cat ? 'bg-semantic-brand text-white font-semibold shadow-sm' : 'text-semantic-jira-muted-alt hover:text-semantic-primary'
                 }`}
               >
                 {cat.replace('_', ' ')}
@@ -229,18 +229,18 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
           </button>
 
           {/* Zoom controls */}
-          <div className="hidden sm:flex items-center bg-[#FFFFFF] border border-[#DCE1EB] rounded-md text-xs">
+          <div className="hidden sm:flex items-center bg-semantic-panel border border-semantic-surface-alt rounded-md text-xs">
             <button
               onClick={() => setZoomLevel(Math.max(60, zoomLevel - 10))}
-              className="p-1.5 hover:bg-[#F8FAFC] text-[#657694] hover:text-[#162136] border-r border-[#DCE1EB]"
+              className="p-1.5 hover:bg-semantic-subtle text-semantic-jira-muted-alt hover:text-semantic-primary border-r border-semantic-surface-alt"
               title="Zoom out"
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
-            <span className="px-2 font-mono text-[11px] text-[#2B3A57]">{zoomLevel}%</span>
+            <span className="px-2 font-mono text-label text-semantic-brand-ink">{zoomLevel}%</span>
             <button
               onClick={() => setZoomLevel(Math.min(140, zoomLevel + 10))}
-              className="p-1.5 hover:bg-[#F8FAFC] text-[#657694] hover:text-[#162136]"
+              className="p-1.5 hover:bg-semantic-subtle text-semantic-jira-muted-alt hover:text-semantic-primary"
               title="Zoom in"
             >
               <ZoomIn className="w-3.5 h-3.5" />
@@ -253,18 +253,18 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
       <div className="flex-1 flex overflow-hidden relative">
         {/* Infinite Grid Background */}
         <div
-          className="flex-1 wrike-canvas-grid overflow-auto p-8 relative custom-scrollbar"
-          style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top left' }}
+          className="flex-1 wrike-canvas-grid overflow-auto p-8 relative custom-scrollbar origin-top-left"
+          style={{ transform: `scale(${zoomLevel / 100})` }}
         >
           {isLoading ? (
-            <div className="flex items-center justify-center p-12 text-xs text-[#657694]">
+            <div className="flex items-center justify-center p-12 text-xs text-semantic-jira-muted-alt">
               Loading ideas from database...
             </div>
           ) : filteredIdeas.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-16 text-center">
-              <Lightbulb className="w-10 h-10 text-[#BFC7D9] mb-3" />
-              <h3 className="font-bold text-sm text-[#162136]">No sticky notes in this category</h3>
-              <p className="text-xs text-[#657694] mt-1 max-w-sm">
+              <Lightbulb className="w-10 h-10 text-semantic-dark-muted mb-3" />
+              <h3 className="font-bold text-sm text-semantic-primary">No sticky notes in this category</h3>
+              <p className="text-xs text-semantic-jira-muted-alt mt-1 max-w-sm">
                 Click "+ Add Sticky Note" to brainstorm a new threat defense strategy or security architectural initiative.
               </p>
               <button
@@ -286,7 +286,7 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
                     key={node.id}
                     onClick={() => setSelectedNodeId(node.id)}
                     className={`relative p-4 rounded-xl border-2 shadow-wrike-sm transition-all duration-200 cursor-pointer flex flex-col justify-between min-h-[220px] ${styles.card} ${
-                      isSelected ? 'ring-2 ring-[#00B259] shadow-wrike-md scale-[1.01]' : ''
+                      isSelected ? 'ring-2 ring-semantic-brand shadow-wrike-md scale-[1.01]' : ''
                     }`}
                   >
                     {/* Top Bar Accent */}
@@ -295,16 +295,16 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
                     <div>
                       {/* Header: Category & Delete */}
                       <div className="flex items-center justify-between gap-2 mb-2.5 pt-1">
-                        <span className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-bold border ${styles.badge}`}>
+                        <span className={`px-2 py-0.5 rounded-full font-mono text-caption font-bold border ${styles.badge}`}>
                           {node.category.replace('_', ' ')}
                         </span>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#FFFFFF] border border-[#DCE1EB] text-[#2B3A57]">
+                          <span className="text-caption font-bold px-2 py-0.5 rounded bg-semantic-panel border border-semantic-surface-alt text-semantic-brand-ink">
                             {node.priority}
                           </span>
                           <button
                             onClick={(e) => handleDeleteIdea(node.id, e)}
-                            className="p-1 rounded text-[#8F9CAE] hover:text-[#E51739] hover:bg-[#FDE8EB] transition-colors"
+                            className="p-1 rounded text-semantic-muted-alt hover:text-semantic-brand-danger hover:bg-semantic-danger-surface transition-colors"
                             title="Delete sticky note"
                           >
                             <Trash2 className="w-3 h-3" />
@@ -313,12 +313,12 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
                       </div>
 
                       {/* Title */}
-                      <h3 className="font-bold text-[#162136] text-sm leading-snug mb-1.5">
+                      <h3 className="font-bold text-semantic-primary text-sm leading-snug mb-1.5">
                         {node.title}
                       </h3>
 
                       {/* Description */}
-                      <p className="text-xs text-[#657694] line-clamp-3 leading-relaxed mb-3">
+                      <p className="text-xs text-semantic-jira-muted-alt line-clamp-3 leading-relaxed mb-3">
                         {node.description}
                       </p>
                     </div>
@@ -327,21 +327,21 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
                       {/* Tags */}
                       <div className="flex flex-wrap gap-1 mb-3">
                         {node.tags.map((t) => (
-                          <span key={t} className="px-1.5 py-0.2 rounded bg-[#FFFFFF]/80 border border-[#DCE1EB] text-[#2B3A57] text-[9px] font-mono">
+                          <span key={t} className="px-1.5 py-0.2 rounded bg-semantic-panel/80 border border-semantic-surface-alt text-semantic-brand-ink text-micro font-mono">
                             #{t}
                           </span>
                         ))}
                       </div>
 
                       {/* Footer: Assignee & 1-Click Action */}
-                      <div className="pt-2 border-t border-[#DCE1EB] flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-1.5 text-[11px] text-[#657694]">
-                          <User className="w-3 h-3 text-[#00B259]" />
-                          <span className="truncate max-w-[130px]">{node.assignee}</span>
+                      <div className="pt-2 border-t border-semantic-surface-alt flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-1.5 text-label text-semantic-jira-muted-alt">
+                          <User className="w-3 h-3 text-semantic-brand" />
+                          <span className="truncate max-w-dsTruncateCompact">{node.assignee}</span>
                         </div>
 
                         {node.status === 'CONVERTED' ? (
-                          <span className="flex items-center gap-1 text-[#007860] bg-[#E6F7EF] border border-[#B8EAD1] px-2 py-0.5 rounded-full text-[10px] font-bold">
+                          <span className="flex items-center gap-1 text-semantic-success bg-semantic-success-surface border border-semantic-success-border px-2 py-0.5 rounded-full text-caption font-bold">
                             <CheckCircle2 className="w-3 h-3" />
                             <span>{node.convertedTicketKey}</span>
                           </span>
@@ -351,7 +351,7 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
                               e.stopPropagation();
                               handleConvertIdea(node);
                             }}
-                            className="wrike-btn-primary text-[11px] py-1 px-2.5 shadow-sm"
+                            className="wrike-btn-primary text-label py-1 px-2.5 shadow-sm"
                             title="Convert this idea into a real Wrike Task"
                           >
                             <span>Convert to Task</span>
@@ -369,66 +369,66 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
 
         {/* Right Inspector Drawer */}
         {selectedNode && (
-          <div className="w-80 bg-[#FFFFFF] border-l border-[#DCE1EB] p-4 flex flex-col justify-between shrink-0 shadow-wrike-lg z-10 overflow-y-auto custom-scrollbar">
+          <div className="w-80 bg-semantic-panel border-l border-semantic-surface-alt p-4 flex flex-col justify-between shrink-0 shadow-wrike-lg z-dsContent overflow-y-auto custom-scrollbar">
             <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-[#DCE1EB] pb-2">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-[#162136]">
-                  <Sparkles className="w-3.5 h-3.5 text-[#00B259]" />
+              <div className="flex items-center justify-between border-b border-semantic-surface-alt pb-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-semantic-primary">
+                  <Sparkles className="w-3.5 h-3.5 text-semantic-brand" />
                   <span>Ideate Inspector</span>
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getColorClasses(selectedNode.color).badge}`}>
+                <span className={`px-2 py-0.5 rounded-full text-caption font-bold border ${getColorClasses(selectedNode.color).badge}`}>
                   {selectedNode.status}
                 </span>
               </div>
 
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-[#657694]">Idea Title</label>
-                <div className="text-xs font-bold text-[#162136] mt-0.5 leading-snug">
+                <label className="text-caption font-bold uppercase tracking-wider text-semantic-jira-muted-alt">Idea Title</label>
+                <div className="text-xs font-bold text-semantic-primary mt-0.5 leading-snug">
                   {selectedNode.title}
                 </div>
               </div>
 
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-[#657694]">Brainstorming Notes</label>
-                <p className="text-xs text-[#2B3A57] mt-1 bg-[#F8FAFC] p-2.5 rounded-md border border-[#DCE1EB] leading-relaxed">
+                <label className="text-caption font-bold uppercase tracking-wider text-semantic-jira-muted-alt">Brainstorming Notes</label>
+                <p className="text-xs text-semantic-brand-ink mt-1 bg-semantic-subtle p-2.5 rounded-md border border-semantic-surface-alt leading-relaxed">
                   {selectedNode.description}
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2 bg-[#F8FAFC] rounded border border-[#DCE1EB]">
-                  <span className="text-[10px] text-[#657694] block">Domain Category</span>
-                  <span className="font-semibold text-[#162136] text-[11px]">{selectedNode.category}</span>
+                <div className="p-2 bg-semantic-subtle rounded border border-semantic-surface-alt">
+                  <span className="text-caption text-semantic-jira-muted-alt block">Domain Category</span>
+                  <span className="font-semibold text-semantic-primary text-label">{selectedNode.category}</span>
                 </div>
-                <div className="p-2 bg-[#F8FAFC] rounded border border-[#DCE1EB]">
-                  <span className="text-[10px] text-[#657694] block">Business Priority</span>
-                  <span className="font-semibold text-[#E51739] text-[11px]">{selectedNode.priority}</span>
+                <div className="p-2 bg-semantic-subtle rounded border border-semantic-surface-alt">
+                  <span className="text-caption text-semantic-jira-muted-alt block">Business Priority</span>
+                  <span className="font-semibold text-semantic-brand-danger text-label">{selectedNode.priority}</span>
                 </div>
               </div>
 
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-[#657694] mb-1.5 block">Idea Tags</label>
+                <label className="text-caption font-bold uppercase tracking-wider text-semantic-jira-muted-alt mb-1.5 block">Idea Tags</label>
                 <div className="flex flex-wrap gap-1">
                   {selectedNode.tags.map((t) => (
-                    <span key={t} className="px-2 py-0.5 rounded bg-[#EBF4FD] text-[#0073D3] border border-[#BAE0FD] text-[10px] font-mono">
+                    <span key={t} className="px-2 py-0.5 rounded bg-semantic-info-surface text-semantic-info border border-semantic-info-border text-caption font-mono">
                       #{t}
                     </span>
                   ))}
                 </div>
               </div>
 
-              <div className="p-3 bg-[#E6F7EF] border border-[#B8EAD1] rounded-lg text-xs text-[#007860] space-y-1">
+              <div className="p-3 bg-semantic-success-surface border border-semantic-success-border rounded-lg text-xs text-semantic-success space-y-1">
                 <div className="font-bold flex items-center gap-1.5">
                   <CheckSquare className="w-3.5 h-3.5" />
                   <span>Wrike Work Intelligence</span>
                 </div>
-                <p className="text-[11px] leading-snug">
+                <p className="text-label leading-snug">
                   Converting this idea writes directly to the backend database, schedules SLA timers, and initializes workflows.
                 </p>
               </div>
             </div>
 
-            <div className="pt-4 border-t border-[#DCE1EB] space-y-2">
+            <div className="pt-4 border-t border-semantic-surface-alt space-y-2">
               {selectedNode.status === 'CONVERTED' ? (
                 <button
                   onClick={() => onNavigate('table')}
@@ -453,18 +453,18 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
 
       {/* Add Idea Modal */}
       {isAddingIdea && (
-        <div className="fixed inset-0 bg-[#162136]/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-md bg-[#FFFFFF] rounded-xl border border-[#DCE1EB] shadow-wrike-lg p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-[#DCE1EB] pb-2.5">
+        <div className="fixed inset-0 bg-semantic-primary/50 backdrop-blur-sm flex items-center justify-center z-dsOverlay p-4">
+          <div className="w-full max-w-md bg-semantic-panel rounded-xl border border-semantic-surface-alt shadow-wrike-lg p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-semantic-surface-alt pb-2.5">
               <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded bg-[#E6F7EF] text-[#00B259] flex items-center justify-center font-bold text-xs">
+                <div className="w-6 h-6 rounded bg-semantic-success-surface text-semantic-brand flex items-center justify-center font-bold text-xs">
                   💡
                 </div>
-                <h3 className="font-bold text-sm text-[#162136]">Add Ideate Sticky Note</h3>
+                <h3 className="font-bold text-sm text-semantic-primary">Add Ideate Sticky Note</h3>
               </div>
               <button
                 onClick={() => setIsAddingIdea(false)}
-                className="text-[#657694] hover:text-[#162136] p-1 text-sm font-bold"
+                className="text-semantic-jira-muted-alt hover:text-semantic-primary p-1 text-sm font-bold"
               >
                 ✕
               </button>
@@ -472,7 +472,7 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-bold text-[#2B3A57] mb-1 block">Idea Title *</label>
+                <label className="font-bold text-semantic-brand-ink mb-1 block">Idea Title *</label>
                 <input
                   type="text"
                   value={newTitle}
@@ -484,7 +484,7 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
               </div>
 
               <div>
-                <label className="font-bold text-[#2B3A57] mb-1 block">Description & Scope</label>
+                <label className="font-bold text-semantic-brand-ink mb-1 block">Description & Scope</label>
                 <textarea
                   value={newDesc}
                   onChange={(e) => setNewDesc(e.target.value)}
@@ -495,7 +495,7 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="font-bold text-[#2B3A57] mb-1 block">Domain Category</label>
+                  <label className="font-bold text-semantic-brand-ink mb-1 block">Domain Category</label>
                   <select
                     value={newCategory}
                     onChange={(e: any) => setNewCategory(e.target.value)}
@@ -511,7 +511,7 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
                 </div>
 
                 <div>
-                  <label className="font-bold text-[#2B3A57] mb-1 block">Sticky Color</label>
+                  <label className="font-bold text-semantic-brand-ink mb-1 block">Sticky Color</label>
                   <select
                     value={newColor}
                     onChange={(e: any) => setNewColor(e.target.value)}
@@ -527,7 +527,7 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#DCE1EB]">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-semantic-surface-alt">
               <button
                 onClick={() => setIsAddingIdea(false)}
                 className="wrike-btn-secondary py-1.5 px-3"

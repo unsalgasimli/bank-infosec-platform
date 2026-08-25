@@ -65,15 +65,23 @@ export class AuthService {
         }
       }
 
-      // If user is direct Assignee or Reporter
+      // A ticket creator must retain access to the ticket they submitted, even
+      // when routing sends the work to another department or queue. `reporterId`
+      // is the canonical creator field; owner/securityOwner are compatibility
+      // fallbacks for tickets created by older flows.
+      const isCreator = [ticket.reporterId, ticket.ownerId, ticket.securityOwnerId].includes(user.id);
+
+      // If user is direct Assignee, Reporter, Requester, Participant, or Watcher
       const isAssignee = ticket.assigneeId === user.id;
       const isReporter = ticket.reporterId === user.id;
-      const isWatcher = ticket.watcherIds.includes(user.id);
+      const isRequester = ticket.requesterId === user.id || ticket.onBehalfOfUserId === user.id;
+      const isParticipant = ticket.participantIds?.includes(user.id);
+      const isWatcher = ticket.watcherIds?.includes(user.id);
       const isAppOwner = Boolean(ticket.applicationId && user.ownedApplicationIds.includes(ticket.applicationId));
       const isAssetOwner = Boolean(ticket.assetId && user.ownedAssetIds.includes(ticket.assetId));
 
-      // Direct assignees and reporters have legitimate task access
-      if (isAssignee || isReporter) {
+      // Direct assignees, reporters, requesters, and participants have legitimate task access
+      if (isCreator || isAssignee || isReporter || isRequester || isParticipant || isWatcher) {
         return { allowed: true };
       }
 

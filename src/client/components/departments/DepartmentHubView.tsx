@@ -9,8 +9,6 @@ import {
   CheckSquare,
   ArrowRight,
   Search,
-  Activity,
-  Link2,
   Zap,
   Lock,
   Layers,
@@ -140,28 +138,24 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
     return matchesSearch && matchesDiv;
   });
 
-  const totalConnections = departments.reduce((acc, d) => acc + (d.connectionCount || 0), 0);
-  const totalMembers = departments.reduce((acc, d) => acc + (d.memberCount || 0), 0);
-  const totalActiveTasks = departments.reduce((acc, d) => acc + (d.activeTaskCount || 0), 0);
-
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#F4F6FB] overflow-hidden select-none">
+    <div className="flex-1 flex flex-col h-full bg-semantic-page overflow-hidden select-none">
       {/* Header Bar */}
-      <div className="bg-[#FFFFFF] border-b border-[#E2E8F0] px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 shadow-sm">
+      <div className="bg-semantic-panel border-b border-semantic-border px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 shadow-sm">
         <div className="flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-[#E6F7EF] text-[#00B259] border border-[#B8EAD1] flex items-center justify-center font-bold shadow-xs">
-            <Building2 className="w-5 h-5 text-[#00B259]" />
+          <div className="w-10 h-10 rounded-xl bg-semantic-success-surface text-semantic-brand border border-semantic-success-border flex items-center justify-center font-bold shadow-xs">
+            <Building2 className="w-5 h-5 text-semantic-brand" />
           </div>
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-lg font-extrabold text-[#162136] tracking-tight">
+              <h1 className="text-lg font-extrabold text-semantic-primary tracking-tight">
                 Bank Departments Hub & Scoped Administration
               </h1>
-              <span className="px-2.5 py-0.5 rounded-full bg-[#E6F7EF] text-[#007860] text-[10px] font-bold border border-[#B8EAD1]">
+              <span className="px-2.5 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success text-caption font-bold border border-semantic-success-border">
                 Enterprise Multi-Dept RBAC
               </span>
             </div>
-            <p className="text-xs text-[#5A6A85] mt-0.5">
+            <p className="text-xs text-semantic-jira-muted-strong mt-0.5">
               Manage IT, Infosec, HR, Core Banking, and GRC departments with scoped administrators, templates, connections & flows.
             </p>
           </div>
@@ -170,9 +164,9 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => onNavigate('cross-tasks')}
-            className="px-3.5 py-2 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#162136] border border-[#E2E8F0] text-xs font-bold flex items-center gap-2 transition-all shadow-xs"
+            className="px-3.5 py-2 rounded-lg bg-semantic-subtle hover:bg-semantic-neutral-surface text-semantic-primary border border-semantic-border text-xs font-bold flex items-center gap-2 transition-all shadow-xs"
           >
-            <Layers className="w-4 h-4 text-[#0073D3]" />
+            <Layers className="w-4 h-4 text-semantic-info" />
             <span>Cross-Dept Workflows</span>
           </button>
 
@@ -188,72 +182,27 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
         </div>
       </div>
 
-      {/* Global Bank Department Metrics */}
-      <div className="bg-[#FFFFFF] border-b border-[#E2E8F0] px-6 py-3 shrink-0">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-5xl">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#F0F5FF] text-[#0052CC] flex items-center justify-center font-bold text-xs border border-[#D6E4FF]">
-              <Building2 className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="text-[11px] font-bold text-[#5A6A85] uppercase">Bank Departments</div>
-              <div className="text-base font-extrabold text-[#162136]">{departments.length} Active Units</div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#E6F7EF] text-[#007860] flex items-center justify-center font-bold text-xs border border-[#B8EAD1]">
-              <Link2 className="w-4 h-4 text-[#00B259]" />
-            </div>
-            <div>
-              <div className="text-[11px] font-bold text-[#5A6A85] uppercase">System Connections</div>
-              <div className="text-base font-extrabold text-[#007860]">{totalConnections} Integrated Connectors</div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#FAF5FF] text-[#722ED1] flex items-center justify-center font-bold text-xs border border-[#EFDBFF]">
-              <Users className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="text-[11px] font-bold text-[#5A6A85] uppercase">Department Staff</div>
-              <div className="text-base font-extrabold text-[#162136]">{totalMembers} Specialists</div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#FFF7E6] text-[#D46B08] flex items-center justify-center font-bold text-xs border border-[#FFE7BA]">
-              <Activity className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="text-[11px] font-bold text-[#5A6A85] uppercase">In-Flight Tasks</div>
-              <div className="text-base font-extrabold text-[#162136]">{totalActiveTasks} Cross-Dept Tasks</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Main Filter & Department Cards Grid */}
       <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-5">
         <div className="max-w-7xl mx-auto space-y-4">
           {/* Toast Notification */}
           {toastMessage && (
-            <div className="p-3.5 rounded-lg bg-[#E6F7EF] border border-[#B8EAD1] text-xs font-semibold text-[#007860] flex items-center gap-2 shadow-sm animate-fade-in">
+            <div className="p-3.5 rounded-lg bg-semantic-success-surface border border-semantic-success-border text-xs font-semibold text-semantic-success flex items-center gap-2 shadow-sm animate-fade-in">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>{toastMessage}</span>
             </div>
           )}
 
           {/* Search & Filters */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#FFFFFF] p-3 rounded-xl border border-[#E2E8F0] shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-semantic-panel p-3 rounded-xl border border-semantic-border shadow-xs">
             <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-[#8D99AE] absolute left-3 top-2.5" />
+              <Search className="w-4 h-4 text-semantic-jira-icon absolute left-3 top-2.5" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search departments by name, code or function..."
-                className="w-full pl-9 pr-3 py-1.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs font-medium text-[#162136] focus:outline-none focus:border-[#00B259]"
+                className="w-full pl-9 pr-3 py-1.5 bg-semantic-subtle border border-semantic-border rounded-lg text-xs font-medium text-semantic-primary focus:outline-none focus:border-semantic-brand"
               />
             </div>
 
@@ -270,8 +219,8 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
                   onClick={() => setSelectedDivision(tab.id)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 ${
                     selectedDivision === tab.id
-                      ? 'bg-[#162136] text-white'
-                      : 'bg-[#F8FAFC] text-[#5A6A85] hover:bg-[#EDF2F7] hover:text-[#162136]'
+                      ? 'bg-semantic-primary text-white'
+                      : 'bg-semantic-subtle text-semantic-jira-muted-strong hover:bg-semantic-border-subtle hover:text-semantic-primary'
                   }`}
                 >
                   {tab.label}
@@ -289,8 +238,8 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
               return (
                 <div
                   key={dept.id}
-                  className="bg-[#FFFFFF] border border-[#E2E8F0] hover:border-[#CBD5E1] rounded-2xl p-5 flex flex-col justify-between space-y-4 shadow-sm hover:shadow-md transition-all group"
-                  style={{ borderTop: `4px solid ${dept.color || '#0052CC'}` }}
+                  className="bg-semantic-panel border border-semantic-border hover:border-semantic-border-strong rounded-2xl p-5 flex flex-col justify-between space-y-4 shadow-sm hover:shadow-md transition-all group"
+                  style={{ borderTop: `4px solid ${dept.color || 'var(--color-jira-blue-500)'}` }}
                 >
                   {/* Card Header */}
                   <div>
@@ -298,50 +247,83 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
                       <div className="flex items-center gap-3">
                         <div
                           className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shadow-xs"
-                          style={{ backgroundColor: dept.color || '#0052CC' }}
+                          style={{ backgroundColor: dept.color || 'var(--color-jira-blue-500)' }}
                         >
                           <Icon className="w-5 h-5" />
                         </div>
                         <div>
                           <div className="flex items-center gap-1.5">
-                            <span className="font-mono text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0]">
+                            <span className="font-mono text-caption font-extrabold uppercase px-2 py-0.5 rounded bg-semantic-neutral-surface text-semantic-secondary border border-semantic-border">
                               {dept.code}
                             </span>
                             {isUserAdminHere && (
-                              <span className="px-2 py-0.5 rounded-full bg-[#E6F7EF] text-[#007860] text-[9px] font-extrabold border border-[#B8EAD1]">
+                              <span className="px-2 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success text-micro font-extrabold border border-semantic-success-border">
                                 ADMIN ACCESS
                               </span>
                             )}
                           </div>
-                          <h3 className="font-extrabold text-sm text-[#162136] mt-1 leading-snug group-hover:text-[#0073D3] transition-colors">
+                          <h3 className="font-extrabold text-sm text-semantic-primary mt-1 leading-snug group-hover:text-semantic-info transition-colors">
                             {dept.name}
                           </h3>
                         </div>
                       </div>
                     </div>
 
-                    <p className="text-xs text-[#5A6A85] leading-relaxed line-clamp-2 mt-2">
+                    <p className="text-xs text-semantic-jira-muted-strong leading-relaxed line-clamp-2 mt-2">
                       {dept.description}
                     </p>
+
+                    <div className="mt-3 rounded-lg border border-semantic-border bg-semantic-subtle/60 px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-caption font-extrabold uppercase tracking-wide text-semantic-jira-muted-strong">
+                          Sections
+                        </span>
+                        <span className="text-caption font-bold text-semantic-info">
+                          {dept.sectionCount || dept.sections?.length || 0}
+                        </span>
+                      </div>
+                      {(dept.sections?.length || 0) > 0 ? (
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          {dept.sections.slice(0, 3).map((section: any) => (
+                            <span
+                              key={section.id}
+                              className="px-2 py-0.5 rounded-full bg-semantic-panel border border-semantic-border text-caption font-semibold text-semantic-primary"
+                              title={section.code}
+                            >
+                              {section.name}
+                            </span>
+                          ))}
+                          {(dept.sectionCount || dept.sections.length) > 3 && (
+                            <span className="px-2 py-0.5 rounded-full bg-semantic-neutral-surface text-caption font-semibold text-semantic-secondary">
+                              +{(dept.sectionCount || dept.sections.length) - 3} more
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-caption text-semantic-jira-muted-strong mt-1">
+                          No active sections in directory
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Resource Badges */}
-                  <div className="grid grid-cols-3 gap-2 py-2.5 border-y border-[#F1F5F9] text-center">
-                    <div className="p-2 rounded-lg bg-[#F8FAFC]">
-                      <div className="text-[10px] text-[#8D99AE] font-bold uppercase">Staff</div>
-                      <div className="text-xs font-extrabold text-[#162136] mt-0.5">
+                  <div className="grid grid-cols-3 gap-2 py-2.5 border-y border-semantic-neutral-surface text-center">
+                    <div className="p-2 rounded-lg bg-semantic-subtle">
+                      <div className="text-caption text-semantic-jira-icon font-bold uppercase">Staff</div>
+                      <div className="text-xs font-extrabold text-semantic-primary mt-0.5">
                         {dept.memberCount || 0} Members
                       </div>
                     </div>
-                    <div className="p-2 rounded-lg bg-[#F8FAFC]">
-                      <div className="text-[10px] text-[#8D99AE] font-bold uppercase">Connectors</div>
-                      <div className="text-xs font-extrabold text-[#007860] mt-0.5">
+                    <div className="p-2 rounded-lg bg-semantic-subtle">
+                      <div className="text-caption text-semantic-jira-icon font-bold uppercase">Connectors</div>
+                      <div className="text-xs font-extrabold text-semantic-success mt-0.5">
                         {dept.connectionCount || 0} Linked
                       </div>
                     </div>
-                    <div className="p-2 rounded-lg bg-[#F8FAFC]">
-                      <div className="text-[10px] text-[#8D99AE] font-bold uppercase">Active Tasks</div>
-                      <div className="text-xs font-extrabold text-[#0073D3] mt-0.5">
+                    <div className="p-2 rounded-lg bg-semantic-subtle">
+                      <div className="text-caption text-semantic-jira-icon font-bold uppercase">Active Tasks</div>
+                      <div className="text-xs font-extrabold text-semantic-info mt-0.5">
                         {dept.activeTaskCount || 0} Tasks
                       </div>
                     </div>
@@ -349,16 +331,16 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
 
                   {/* Department Admin & SLA Summary */}
                   <div className="space-y-2 text-xs">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-[#5A6A85] font-semibold">Department Admin:</span>
-                      <span className="font-bold text-[#162136] truncate max-w-[180px]">
-                        {dept.managerName || 'Assigned Lead'}
+                    <div className="flex items-center justify-between text-label">
+                      <span className="text-semantic-jira-muted-strong font-semibold">Department Manager:</span>
+                      <span className="font-bold text-semantic-primary truncate max-w-[180px]">
+                        {dept.managerName || 'Not assigned'}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-[#5A6A85] font-semibold">SLA Targets:</span>
-                      <span className="font-mono text-[#007860] font-bold">
+                    <div className="flex items-center justify-between text-label">
+                      <span className="text-semantic-jira-muted-strong font-semibold">SLA Targets:</span>
+                      <span className="font-mono text-semantic-success font-bold">
                         P1: {dept.settings?.criticalSlaHours || 2}h | Standard: {dept.settings?.defaultSlaHours || 24}h
                       </span>
                     </div>
@@ -368,7 +350,7 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
                   <div className="pt-2">
                     <button
                       onClick={() => onSelectDepartment(dept.id)}
-                      className="w-full py-2 px-3 rounded-lg bg-[#F8FAFC] hover:bg-[#162136] text-[#162136] hover:text-white border border-[#E2E8F0] hover:border-transparent text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs group-hover:bg-[#162136] group-hover:text-white"
+                      className="w-full py-2 px-3 rounded-lg bg-semantic-subtle hover:bg-semantic-primary text-semantic-primary hover:text-white border border-semantic-border hover:border-transparent text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs group-hover:bg-semantic-primary group-hover:text-white"
                     >
                       <Settings className="w-3.5 h-3.5" />
                       <span>
@@ -386,21 +368,21 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
 
       {/* Create Department Modal (Super Admin) */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-4">
-          <div className="bg-[#FFFFFF] border border-[#E2E8F0] rounded-2xl max-w-xl w-full p-6 space-y-5 shadow-2xl animate-scale-in">
-            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3.5">
+        <div className="fixed inset-0 z-dsOverlay flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-4">
+          <div className="bg-semantic-panel border border-semantic-border rounded-2xl max-w-xl w-full p-6 space-y-5 shadow-2xl animate-scale-in">
+            <div className="flex items-center justify-between border-b border-semantic-border pb-3.5">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-[#E6F7EF] text-[#00B259] flex items-center justify-center font-bold">
+                <div className="w-8 h-8 rounded-lg bg-semantic-success-surface text-semantic-brand flex items-center justify-center font-bold">
                   <Building2 className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-extrabold text-[#162136]">Create Bank Department</h3>
-                  <p className="text-xs text-[#5A6A85]">Provision new organizational unit, admin roles and SLA policies.</p>
+                  <h3 className="text-base font-extrabold text-semantic-primary">Create Bank Department</h3>
+                  <p className="text-xs text-semantic-jira-muted-strong">Provision new organizational unit, admin roles and SLA policies.</p>
                 </div>
               </div>
               <button
                 onClick={() => setIsCreateModalOpen(false)}
-                className="p-1 rounded-lg text-[#8D99AE] hover:text-[#162136] hover:bg-[#F8FAFC]"
+                className="p-1 rounded-lg text-semantic-jira-icon hover:text-semantic-primary hover:bg-semantic-subtle"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -409,36 +391,36 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
             <form onSubmit={handleCreateDepartment} className="space-y-4 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-[#162136] mb-1">Department Name *</label>
+                  <label className="block font-bold text-semantic-primary mb-1">Department Name *</label>
                   <input
                     type="text"
                     required
                     value={newDeptName}
                     onChange={(e) => setNewDeptName(e.target.value)}
                     placeholder="e.g. Anti-Money Laundering & Fraud"
-                    className="w-full px-3 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs font-medium focus:outline-none focus:border-[#00B259]"
+                    className="w-full px-3 py-2 bg-semantic-subtle border border-semantic-border rounded-lg text-xs font-medium focus:outline-none focus:border-semantic-brand"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-bold text-[#162136] mb-1">Department Code *</label>
+                  <label className="block font-bold text-semantic-primary mb-1">Department Code *</label>
                   <input
                     type="text"
                     required
                     value={newDeptCode}
                     onChange={(e) => setNewDeptCode(e.target.value)}
                     placeholder="e.g. AML_FRAUD"
-                    className="w-full px-3 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs font-mono font-bold uppercase focus:outline-none focus:border-[#00B259]"
+                    className="w-full px-3 py-2 bg-semantic-subtle border border-semantic-border rounded-lg text-xs font-mono font-bold uppercase focus:outline-none focus:border-semantic-brand"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-bold text-[#162136] mb-1">Division Alignment</label>
+                <label className="block font-bold text-semantic-primary mb-1">Division Alignment</label>
                 <select
                   value={newDeptDivision}
                   onChange={(e) => setNewDeptDivision(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs font-medium focus:outline-none focus:border-[#00B259]"
+                  className="w-full px-3 py-2 bg-semantic-subtle border border-semantic-border rounded-lg text-xs font-medium focus:outline-none focus:border-semantic-brand"
                 >
                   <option value="div-sec">Information Security & Cyber Defense</option>
                   <option value="div-it">Information Technology & Cloud Infrastructure</option>
@@ -448,19 +430,19 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-[#162136] mb-1">Description & Purpose</label>
+                <label className="block font-bold text-semantic-primary mb-1">Description & Purpose</label>
                 <textarea
                   rows={2}
                   value={newDeptDesc}
                   onChange={(e) => setNewDeptDesc(e.target.value)}
                   placeholder="Primary banking duties, functions and scope..."
-                  className="w-full px-3 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs font-medium focus:outline-none focus:border-[#00B259]"
+                  className="w-full px-3 py-2 bg-semantic-subtle border border-semantic-border rounded-lg text-xs font-medium focus:outline-none focus:border-semantic-brand"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-[#162136] mb-1">Brand Color Accent</label>
+                  <label className="block font-bold text-semantic-primary mb-1">Brand Color Accent</label>
                   <div className="flex items-center gap-2">
                     {['#0052CC', '#00875A', '#6554C0', '#FF5630', '#00B8D9', '#E51739'].map((c) => (
                       <button
@@ -468,7 +450,7 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
                         type="button"
                         onClick={() => setNewDeptColor(c)}
                         className={`w-6 h-6 rounded-full border-2 transition-transform ${
-                          newDeptColor === c ? 'scale-110 border-[#162136]' : 'border-transparent'
+                          newDeptColor === c ? 'scale-110 border-semantic-primary' : 'border-transparent'
                         }`}
                         style={{ backgroundColor: c }}
                       />
@@ -477,11 +459,11 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-[#162136] mb-1">Department Icon</label>
+                  <label className="block font-bold text-semantic-primary mb-1">Department Icon</label>
                   <select
                     value={newDeptIcon}
                     onChange={(e) => setNewDeptIcon(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs font-medium focus:outline-none focus:border-[#00B259]"
+                    className="w-full px-3 py-1.5 bg-semantic-subtle border border-semantic-border rounded-lg text-xs font-medium focus:outline-none focus:border-semantic-brand"
                   >
                     <option value="Shield">Shield (Security)</option>
                     <option value="Server">Server (Infrastructure)</option>
@@ -493,32 +475,32 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 p-3 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0]">
+              <div className="grid grid-cols-2 gap-3 p-3 bg-semantic-subtle rounded-lg border border-semantic-border">
                 <div>
-                  <label className="block font-semibold text-[#5A6A85] mb-1">Standard SLA (Hours)</label>
+                  <label className="block font-semibold text-semantic-jira-muted-strong mb-1">Standard SLA (Hours)</label>
                   <input
                     type="number"
                     value={newDeptSla}
                     onChange={(e) => setNewDeptSla(e.target.value)}
-                    className="w-full px-2.5 py-1.5 bg-[#FFFFFF] border border-[#E2E8F0] rounded text-xs font-mono font-bold"
+                    className="w-full px-2.5 py-1.5 bg-semantic-panel border border-semantic-border rounded text-xs font-mono font-bold"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#5A6A85] mb-1">Critical P1 SLA (Hours)</label>
+                  <label className="block font-semibold text-semantic-jira-muted-strong mb-1">Critical P1 SLA (Hours)</label>
                   <input
                     type="number"
                     value={newDeptCriticalSla}
                     onChange={(e) => setNewDeptCriticalSla(e.target.value)}
-                    className="w-full px-2.5 py-1.5 bg-[#FFFFFF] border border-[#E2E8F0] rounded text-xs font-mono font-bold text-[#E51739]"
+                    className="w-full px-2.5 py-1.5 bg-semantic-panel border border-semantic-border rounded text-xs font-mono font-bold text-semantic-brand-danger"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2.5 pt-3 border-t border-[#E2E8F0]">
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-semantic-border">
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-[#F8FAFC] hover:bg-[#EDF2F7] text-[#5A6A85] font-bold text-xs"
+                  className="px-4 py-2 rounded-lg bg-semantic-subtle hover:bg-semantic-border-subtle text-semantic-jira-muted-strong font-bold text-xs"
                 >
                   Cancel
                 </button>

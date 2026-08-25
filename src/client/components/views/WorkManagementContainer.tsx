@@ -7,6 +7,7 @@ import { WrikeCalendarView } from './WrikeCalendarView.js';
 import { WrikeWorkloadView } from './WrikeWorkloadView.js';
 import { Ticket } from '../../../shared/types/ticket.js';
 import { BankApplication, BankAsset } from '../../../shared/types/asset.js';
+import { BankDepartment } from '../../../shared/types/auth.js';
 import { ViewMode } from '../../../shared/types/navigation.js';
 
 interface WorkManagementContainerProps {
@@ -16,6 +17,7 @@ interface WorkManagementContainerProps {
   tickets: Ticket[];
   applications: BankApplication[];
   assets: BankAsset[];
+  departments?: BankDepartment[];
   activeViewMode: ViewMode;
   onSelectViewMode: (mode: ViewMode) => void;
   onSelectTicket: (ticket: Ticket) => void;
@@ -24,6 +26,7 @@ interface WorkManagementContainerProps {
   createButtonLabel?: string;
   supportsViewSwitcher?: boolean;
   dataScope?: 'authorized' | 'assigned' | 'reported';
+  allowedViewModes?: ViewMode[];
 }
 
 export const WorkManagementContainer: React.FC<WorkManagementContainerProps> = ({
@@ -33,6 +36,7 @@ export const WorkManagementContainer: React.FC<WorkManagementContainerProps> = (
   tickets,
   applications,
   assets,
+  departments,
   activeViewMode,
   onSelectViewMode,
   onSelectTicket,
@@ -41,9 +45,17 @@ export const WorkManagementContainer: React.FC<WorkManagementContainerProps> = (
   createButtonLabel = 'New Task',
   supportsViewSwitcher = true,
   dataScope = 'authorized',
+  allowedViewModes = ['spreadsheet', 'kanban', 'gantt', 'calendar'],
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('ALL');
+
+  const effectiveViewMode = useMemo(() => {
+    if (allowedViewModes.includes(activeViewMode)) {
+      return activeViewMode;
+    }
+    return allowedViewModes[0] || 'spreadsheet';
+  }, [activeViewMode, allowedViewModes]);
 
   // Filter tickets based on status and search query
   const filteredTickets = useMemo(() => {
@@ -86,14 +98,14 @@ export const WorkManagementContainer: React.FC<WorkManagementContainerProps> = (
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#FFFFFF] overflow-hidden">
+    <div className="flex-1 flex flex-col h-full bg-semantic-panel overflow-hidden">
       {/* Top Destination Header Toolbar with View Switcher */}
       <DestinationViewHeader
         title={title}
         description={description}
         icon={icon}
         itemCount={filteredTickets.length}
-        activeViewMode={activeViewMode}
+        activeViewMode={effectiveViewMode}
         onSelectViewMode={onSelectViewMode}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -103,29 +115,32 @@ export const WorkManagementContainer: React.FC<WorkManagementContainerProps> = (
         onOpenCreate={onOpenCreate}
         createButtonLabel={createButtonLabel}
         supportsViewSwitcher={supportsViewSwitcher}
+        allowedViewModes={allowedViewModes}
       />
 
       {/* Render Active View Mode */}
       <div className="flex-1 flex overflow-hidden">
-        {activeViewMode === 'spreadsheet' && (
+        {effectiveViewMode === 'spreadsheet' && (
           <WrikeTableView
             tickets={filteredTickets}
             applications={applications}
             assets={assets}
+            departments={departments}
             onSelectTicket={onSelectTicket}
             onOpenCreate={onOpenCreate}
+            onRefreshTickets={onRefreshTickets}
             hideHeader={true}
           />
         )}
 
-        {activeViewMode === 'kanban' && (
+        {effectiveViewMode === 'kanban' && (
           <TicketKanbanBoard
             tickets={filteredTickets}
             onSelectTicket={onSelectTicket}
           />
         )}
 
-        {activeViewMode === 'gantt' && (
+        {effectiveViewMode === 'gantt' && (
           <WrikeGanttView
             tickets={filteredTickets}
             onSelectTicket={onSelectTicket}
@@ -134,14 +149,14 @@ export const WorkManagementContainer: React.FC<WorkManagementContainerProps> = (
           />
         )}
 
-        {activeViewMode === 'calendar' && (
+        {effectiveViewMode === 'calendar' && (
           <WrikeCalendarView
             tickets={filteredTickets}
             onSelectTicket={onSelectTicket}
           />
         )}
 
-        {activeViewMode === 'capacity' && (
+        {effectiveViewMode === 'capacity' && (
           <WrikeWorkloadView
             tickets={filteredTickets}
             onSelectTicket={onSelectTicket}

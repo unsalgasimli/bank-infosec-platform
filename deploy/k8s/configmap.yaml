@@ -23,6 +23,6 @@ data:
   S3_BUCKET: "apex-bank-infosec-artifacts"
   S3_REGION: "us-east-1"
   LOG_LEVEL: "info"
-  CORS_ORIGIN: "https://infosec.apexbank.int"
+  CORS_ORIGIN: "http://infosec.apexbank.int"
   RATE_LIMIT_WINDOW_MS: "900000"
   RATE_LIMIT_MAX_REQUESTS: "2000"

@@ -2,7 +2,8 @@ import { createHmac, randomBytes } from 'node:crypto';
 import { Request, Response } from 'express';
 import { config } from '../config/index.js';
 
-const SESSION_COOKIE_NAME = '__Host-aegis_session';
+// `__Host-` cookies require the Secure attribute, which browsers reject over HTTP.
+const SESSION_COOKIE_NAME = 'aegis_session';
 const SESSION_IDLE_TTL_MS = config.SESSION_TIMEOUT_MINUTES * 60 * 1000;
 const SESSION_ABSOLUTE_TTL_MS = config.SESSION_ABSOLUTE_TIMEOUT_HOURS * 60 * 60 * 1000;
 const SESSION_HASH_KEY = randomBytes(32);
@@ -72,14 +73,14 @@ export class SessionService {
   public static setCookie(res: Response, token: string): void {
     res.setHeader(
       'Set-Cookie',
-      `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${Math.floor(SESSION_ABSOLUTE_TTL_MS / 1000)}`
+      `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(SESSION_ABSOLUTE_TTL_MS / 1000)}`
     );
   }
 
   public static clearCookie(res: Response): void {
     res.setHeader(
       'Set-Cookie',
-      `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0`
+      `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`
     );
   }
 }

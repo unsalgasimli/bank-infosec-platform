@@ -55,32 +55,32 @@ export const AnalystDashboard: React.FC<AnalystDashboardProps> = ({
       );
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-[#F4F5F7] custom-scrollbar">
+    <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-semantic-jira-surface custom-scrollbar">
       {/* Header */}
-      <div className="bg-[#FFFFFF] border border-[#DFE1E6] rounded-md p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+      <div className="bg-semantic-panel border border-semantic-jira-border rounded-md p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
         <div>
           <div className="flex items-center gap-2">
-            <UserCheck className="w-4 h-4 text-[#0052CC]" />
-            <span className="text-[11px] font-mono text-[#5E6C84] uppercase tracking-wider">
+            <UserCheck className="w-4 h-4 text-semantic-jira-brand" />
+            <span className="text-label font-mono text-semantic-jira-muted uppercase tracking-wider">
               Atlassian Jira • Personal Workspace
             </span>
           </div>
-          <h1 className="text-xl font-bold text-[#172B4D] tracking-tight mt-1">
+          <h1 className="text-xl font-bold text-semantic-jira-primary tracking-tight mt-1">
             Personal Security Workspace ({currentUser?.fullName})
           </h1>
-          <p className="text-xs text-[#5E6C84] mt-0.5">
-            Role: <strong className="text-[#172B4D]">{currentUser?.roles[0]}</strong> • Department: {currentUser?.departmentId} • Security Clearance: <strong className="text-[#0052CC]">{currentUser?.securityClearance}</strong>
+          <p className="text-xs text-semantic-jira-muted mt-0.5">
+            Role: <strong className="text-semantic-jira-primary">{currentUser?.roles[0]}</strong> • Department: {currentUser?.departmentId} • Security Clearance: <strong className="text-semantic-jira-brand">{currentUser?.securityClearance}</strong>
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="p-2.5 px-3 rounded bg-[#FFFFFF] border border-[#DFE1E6] text-right">
-            <div className="text-[10px] text-[#5E6C84] font-bold uppercase">My Open Load</div>
-            <div className="text-lg font-mono font-bold text-[#0052CC]">{myTickets.length} Issues</div>
+          <div className="p-2.5 px-3 rounded bg-semantic-panel border border-semantic-jira-border text-right">
+            <div className="text-caption text-semantic-jira-muted font-bold uppercase">My Open Load</div>
+            <div className="text-lg font-mono font-bold text-semantic-jira-brand">{myTickets.length} Issues</div>
           </div>
-          <div className="p-2.5 px-3 rounded bg-[#FFFFFF] border border-[#DFE1E6] text-right">
-            <div className="text-[10px] text-[#5E6C84] font-bold uppercase">SLA Urgent</div>
-            <div className="text-lg font-mono font-bold text-[#FF8B00]">{slaApproaching.length}</div>
+          <div className="p-2.5 px-3 rounded bg-semantic-panel border border-semantic-jira-border text-right">
+            <div className="text-caption text-semantic-jira-muted font-bold uppercase">SLA Urgent</div>
+            <div className="text-lg font-mono font-bold text-semantic-warning-bright">{slaApproaching.length}</div>
           </div>
         </div>
       </div>
@@ -91,59 +91,59 @@ export const AnalystDashboard: React.FC<AnalystDashboardProps> = ({
           onClick={() => setActiveTab('ASSIGNED')}
           className={`p-4 rounded-md border text-left transition-colors shadow-sm ${
             activeTab === 'ASSIGNED'
-              ? 'bg-[#DEEBFF] border-[#0052CC]'
-              : 'bg-[#FFFFFF] border-[#DFE1E6] hover:bg-[#EBECF0]'
+              ? 'bg-semantic-jira-brand-surface border-semantic-jira-brand'
+              : 'bg-semantic-panel border-semantic-jira-border hover:bg-semantic-jira-hover'
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#172B4D] flex items-center gap-1.5">
-              <Inbox className="w-4 h-4 text-[#0052CC]" /> Assigned to Me
+            <span className="text-xs font-semibold uppercase tracking-wider text-semantic-jira-primary flex items-center gap-1.5">
+              <Inbox className="w-4 h-4 text-semantic-jira-brand" /> Assigned to Me
             </span>
-            <span className="font-mono text-lg font-bold text-[#172B4D]">{myTickets.length}</span>
+            <span className="font-mono text-lg font-bold text-semantic-jira-primary">{myTickets.length}</span>
           </div>
-          <p className="text-[11px] text-[#5E6C84] mt-1">Issues currently waiting on your action.</p>
+          <p className="text-label text-semantic-jira-muted mt-1">Issues currently waiting on your action.</p>
         </button>
 
         <button
           onClick={() => setActiveTab('APPROVALS')}
           className={`p-4 rounded-md border text-left transition-colors shadow-sm ${
             activeTab === 'APPROVALS'
-              ? 'bg-[#DEEBFF] border-[#0052CC]'
-              : 'bg-[#FFFFFF] border-[#DFE1E6] hover:bg-[#EBECF0]'
+              ? 'bg-semantic-jira-brand-surface border-semantic-jira-brand'
+              : 'bg-semantic-panel border-semantic-jira-border hover:bg-semantic-jira-hover'
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#172B4D] flex items-center gap-1.5">
-              <FileSignature className="w-4 h-4 text-[#0052CC]" /> Pending My Sign-off
+            <span className="text-xs font-semibold uppercase tracking-wider text-semantic-jira-primary flex items-center gap-1.5">
+              <FileSignature className="w-4 h-4 text-semantic-jira-brand" /> Pending My Sign-off
             </span>
-            <span className="font-mono text-lg font-bold text-[#172B4D]">{myApprovals.length}</span>
+            <span className="font-mono text-lg font-bold text-semantic-jira-primary">{myApprovals.length}</span>
           </div>
-          <p className="text-[11px] text-[#5E6C84] mt-1">Governance & exception gates requiring approval.</p>
+          <p className="text-label text-semantic-jira-muted mt-1">Governance & exception gates requiring approval.</p>
         </button>
 
         <button
           onClick={() => setActiveTab('SLA_URGENT')}
           className={`p-4 rounded-md border text-left transition-colors shadow-sm ${
             activeTab === 'SLA_URGENT'
-              ? 'bg-[#FFFAE6] border-[#FF8B00]'
-              : 'bg-[#FFFFFF] border-[#DFE1E6] hover:bg-[#EBECF0]'
+              ? 'bg-semantic-warning-soft border-semantic-warning-bright'
+              : 'bg-semantic-panel border-semantic-jira-border hover:bg-semantic-jira-hover'
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#FF8B00] flex items-center gap-1.5">
-              <Clock className="w-4 h-4 text-[#FF8B00]" /> SLA Approaching
+            <span className="text-xs font-semibold uppercase tracking-wider text-semantic-warning-bright flex items-center gap-1.5">
+              <Clock className="w-4 h-4 text-semantic-warning-bright" /> SLA Approaching
             </span>
-            <span className="font-mono text-lg font-bold text-[#FF8B00]">{slaApproaching.length}</span>
+            <span className="font-mono text-lg font-bold text-semantic-warning-bright">{slaApproaching.length}</span>
           </div>
-          <p className="text-[11px] text-[#5E6C84] mt-1">Tickets near breach needing fast turnaround.</p>
+          <p className="text-label text-semantic-jira-muted mt-1">Tickets near breach needing fast turnaround.</p>
         </button>
       </div>
 
       {/* Main Workspace Table & Search */}
-      <div className="bg-[#FFFFFF] border border-[#DFE1E6] rounded-md p-5 space-y-4 shadow-sm">
+      <div className="bg-semantic-panel border border-semantic-jira-border rounded-md p-5 space-y-4 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2">
-            <h3 className="text-xs font-bold text-[#172B4D] uppercase tracking-wider">
+            <h3 className="text-xs font-bold text-semantic-jira-primary uppercase tracking-wider">
               {activeTab === 'ASSIGNED'
                 ? `My Assigned Issues (${myTickets.length})`
                 : activeTab === 'APPROVALS'
@@ -155,7 +155,7 @@ export const AnalystDashboard: React.FC<AnalystDashboardProps> = ({
           </div>
 
           <div className="relative w-full sm:w-72">
-            <Search className="w-3.5 h-3.5 text-[#5E6C84] absolute left-2.5 top-2" />
+            <Search className="w-3.5 h-3.5 text-semantic-jira-muted absolute left-2.5 top-2" />
             <input
               type="text"
               value={search}
@@ -169,24 +169,24 @@ export const AnalystDashboard: React.FC<AnalystDashboardProps> = ({
         {/* List of items */}
         {activeTab === 'APPROVALS' ? (
           myApprovals.length === 0 ? (
-            <div className="p-8 text-center text-[#5E6C84] text-xs italic bg-[#FFFFFF] rounded border border-[#DFE1E6]">
+            <div className="p-8 text-center text-semantic-jira-muted text-xs italic bg-semantic-panel rounded border border-semantic-jira-border">
               No pending approval requests requiring your sign-off.
             </div>
           ) : (
-            <div className="divide-y divide-[#DFE1E6] text-xs">
+            <div className="divide-y divide-semantic-jira-border text-xs">
               {myApprovals.map((chain: any) => (
                 <div
                   key={chain.id}
                   onClick={() => onSelectTicket({ id: chain.ticketId } as any)}
-                  className="py-3 flex items-center justify-between cursor-pointer hover:bg-[#EBECF0] px-2 rounded transition-colors"
+                  className="py-3 flex items-center justify-between cursor-pointer hover:bg-semantic-jira-hover px-2 rounded transition-colors"
                 >
                   <div className="space-y-0.5">
-                    <div className="font-semibold text-[#172B4D] text-xs">{chain.title}</div>
-                    <div className="text-[11px] text-[#5E6C84]">
+                    <div className="font-semibold text-semantic-jira-primary text-xs">{chain.title}</div>
+                    <div className="text-label text-semantic-jira-muted">
                       Dual-control approval gate • Stage {chain.currentStepIndex + 1}
                     </div>
                   </div>
-                  <span className="text-[#0052CC] flex items-center gap-1 font-medium hover:underline">
+                  <span className="text-semantic-jira-brand flex items-center gap-1 font-medium hover:underline">
                     Review & Sign <ArrowRight className="w-3 h-3" />
                   </span>
                 </div>
@@ -194,29 +194,29 @@ export const AnalystDashboard: React.FC<AnalystDashboardProps> = ({
             </div>
           )
         ) : (filteredTickets as Ticket[]).length === 0 ? (
-          <div className="p-8 text-center text-[#5E6C84] text-xs italic bg-[#FFFFFF] rounded border border-[#DFE1E6]">
+          <div className="p-8 text-center text-semantic-jira-muted text-xs italic bg-semantic-panel rounded border border-semantic-jira-border">
             No issues found in this workspace filter.
           </div>
         ) : (
-          <div className="divide-y divide-[#DFE1E6] text-xs">
+          <div className="divide-y divide-semantic-jira-border text-xs">
             {(filteredTickets as Ticket[]).map((t) => (
               <div
                 key={t.id}
                 onClick={() => onSelectTicket(t)}
-                className="py-2.5 flex items-center justify-between cursor-pointer hover:bg-[#EBECF0] px-2 rounded transition-colors group"
+                className="py-2.5 flex items-center justify-between cursor-pointer hover:bg-semantic-jira-hover px-2 rounded transition-colors group"
               >
                 <div className="flex items-center gap-3">
                   <Badge type="PROJECT" value={t.projectCode} />
-                  <span className="font-mono font-semibold text-[#0052CC] group-hover:underline">{t.key}</span>
-                  <span className="text-[#172B4D] font-medium truncate max-w-md">{t.title}</span>
-                  <span className="jira-lozenge jira-lozenge-inprogress text-[10px]">
+                  <span className="font-mono font-semibold text-semantic-jira-brand group-hover:underline">{t.key}</span>
+                  <span className="text-semantic-jira-primary font-medium truncate max-w-md">{t.title}</span>
+                  <span className="jira-lozenge jira-lozenge-inprogress text-caption">
                     {t.statusName}
                   </span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Badge type="SEVERITY" value={t.technicalSeverity} />
                   <SLARing remainingMinutes={t.slaRemainingMinutes} state={t.slaState} size="sm" />
-                  <ArrowRight className="w-3.5 h-3.5 text-[#5E6C84] group-hover:text-[#0052CC] transition-colors" />
+                  <ArrowRight className="w-3.5 h-3.5 text-semantic-jira-muted group-hover:text-semantic-jira-brand transition-colors" />
                 </div>
               </div>
             ))}

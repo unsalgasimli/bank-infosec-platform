@@ -62,7 +62,7 @@ export interface NavigationItem {
   moduleId: NavigationModuleId;
   iconName: string;
   allowedRoles?: BankRole[];
-  badgeKey?: 'tasks' | 'approvals' | 'incidents' | 'risks' | 'assets' | 'kb' | 'departments';
+  badgeKey?: 'tasks' | 'my-tasks' | 'my-requests' | 'approvals' | 'incidents' | 'risks' | 'assets' | 'kb' | 'departments';
   isDefaultView?: boolean;
   defaultViewMode?: ViewMode;
   supportsViewSwitcher?: boolean;
@@ -95,7 +95,7 @@ export const NAVIGATION_MODULES: NavigationModule[] = [
         label: 'My Tasks',
         moduleId: 'my-work',
         iconName: 'CheckSquare',
-        badgeKey: 'tasks',
+        badgeKey: 'my-tasks',
         supportsViewSwitcher: true,
         defaultViewMode: 'spreadsheet',
         description: 'Tasks and action items specifically assigned to you across all banking units.',
@@ -147,7 +147,6 @@ export const NAVIGATION_MODULES: NavigationModule[] = [
         label: 'Projects & Tasks',
         moduleId: 'work-management',
         iconName: 'Layers',
-        badgeKey: 'tasks',
         supportsViewSwitcher: true,
         defaultViewMode: 'spreadsheet',
         description: 'Unified cross-functional task spreadsheet, Kanban board, Gantt schedule, and capacity view.',
@@ -490,7 +489,7 @@ export function resolveLegacyRoute(route: string): { destinationId: DestinationI
     case 'departments':
       return { destinationId: 'admin-departments' };
     case 'dept-admin':
-      return { destinationId: 'admin-departments' };
+      return { destinationId: 'dept-admin' };
     case 'request-forms':
       return { destinationId: 'admin-request-forms' };
     case 'automations':

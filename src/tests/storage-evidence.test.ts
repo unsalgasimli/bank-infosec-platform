@@ -1,7 +1,5 @@
 import assert from 'node:assert';
 import test from 'node:test';
-import fs from 'node:fs';
-import path from 'node:path';
 import { db } from '../server/db/database.js';
 import { initialSeedData } from '../server/db/seed.js';
 import { StorageController } from '../server/controllers/storage.controller.js';
@@ -26,7 +24,7 @@ const response = () => {
 };
 
 test('evidence upload stores the opaque key and download re-authorizes the ticket', async (t) => {
-  const originalDatabase = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'data/database.test.json'), 'utf8'));
+  const originalDatabase = structuredClone(initialSeedData);
   const originalUpload = storageService.upload.bind(storageService);
   const originalGetFileBuffer = storageService.getFileBuffer.bind(storageService);
   t.after(() => {
@@ -37,8 +35,10 @@ test('evidence upload stores the opaque key and download re-authorizes the ticke
   });
   db.reset(JSON.parse(JSON.stringify(initialSeedData)));
 
-  const user = db.data.users.find((candidate) => candidate.roles.includes('CISO'))!;
-  const ticket = db.data.tickets[0];
+  const user: any = { id: 'usr-ciso-test', fullName: 'CISO Test', email: 'ciso@bank.test', roles: ['CISO'], departmentId: 'dept-secops', isActive: true };
+  const ticket: any = { id: 'tick-test-01', key: 'SEC-0001', title: 'Test Ticket', departmentId: 'dept-secops', assigneeId: user.id, reporterId: user.id, status: 'OPEN', statusCategory: 'TO_DO', priority: 'HIGH', technicalSeverity: 'CRITICAL', category: 'INCIDENT', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  db.data.users.push(user);
+  db.data.tickets.push(ticket);
   storageService.upload = async () => ({
     storageKey: 'bank-artifacts/2026/08/unit-test-evidence.txt', storageProvider: 'local' as const,
     sha256Hash: 'a'.repeat(64), fileSizeBytes: 5, mimeType: 'text/plain',

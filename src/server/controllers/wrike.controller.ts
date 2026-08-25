@@ -36,7 +36,15 @@ export class WrikeController {
       : 'authorized';
 
     if (scope === 'assigned') {
-      return authorizedTickets.filter((ticket) => ticket.assigneeId === user.id);
+      return authorizedTickets.filter(
+        (ticket) =>
+          ticket.assigneeId === user.id ||
+          (!ticket.assigneeId &&
+            ((ticket.targetDepartmentId && ticket.targetDepartmentId === user.departmentId) ||
+              (ticket.departmentId && ticket.departmentId === user.departmentId) ||
+              (ticket.assignmentGroupId && user.teamIds?.includes(ticket.assignmentGroupId)) ||
+              ticket.participatingDepartmentIds?.includes(user.departmentId || '')))
+      );
     }
 
     if (scope === 'reported') {
@@ -170,7 +178,7 @@ export class WrikeController {
       const ticketId = `tick-${uuidv4().substring(0, 8)}`;
       const now = new Date().toISOString();
 
-      const workflow = db.data.workflows[0] || {
+      const workflow = db.data.workflows.find((candidate) => candidate.states?.length) || {
         id: 'wf-secops-v1',
         states: [{ id: 'st-open', name: 'Open', category: 'TO_DO', color: '#657694', isInitial: true }],
       };
@@ -493,7 +501,11 @@ export class WrikeController {
       const ticketId = `tick-${uuidv4().substring(0, 8)}`;
       const now = new Date().toISOString();
 
-      const workflow = db.data.workflows[0];
+      const workflow = db.data.workflows.find((candidate) => candidate.states?.length);
+      if (!workflow) {
+        res.status(422).json({ success: false, error: 'No active ticket workflow is configured in the system.' });
+        return;
+      }
       const initialStatus = workflow.states.find((s) => s.isInitial) || workflow.states[0];
       const technicalSeverity = (values?.urgency === 'EMERGENCY' ? 'CRITICAL' : form.defaultSeverity) as Ticket['technicalSeverity'];
       const slaPolicyId = form.slaPolicyId || db.data.slaPolicies[0]?.id;
@@ -637,6 +649,19 @@ export class WrikeController {
 
   public static async getWorkflowTemplateMetadata(req: Request, res: Response): Promise<void> {
     res.json({ success: true, metadata: WorkflowTemplateService.metadata() });
+  }
+
+  public static async getWorkflowAssignmentOptions(req: Request, res: Response): Promise<void> {
+    const offset = Number.parseInt(String(req.query.offset || '0'), 10);
+    const limit = Number.parseInt(String(req.query.limit || '40'), 10);
+    const page = WorkflowTemplateService.assignmentOptions({
+      departmentId: typeof req.query.departmentId === 'string' ? req.query.departmentId : undefined,
+      sectionId: typeof req.query.sectionId === 'string' ? req.query.sectionId : undefined,
+      query: typeof req.query.query === 'string' ? req.query.query : undefined,
+      offset: Number.isFinite(offset) ? offset : 0,
+      limit: Number.isFinite(limit) ? limit : 40,
+    });
+    res.json({ success: true, ...page });
   }
 
   public static async listWorkflowRuns(req: Request, res: Response): Promise<void> {

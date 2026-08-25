@@ -11,14 +11,18 @@ import {
 } from 'lucide-react';
 import { Ticket } from '../../../shared/types/ticket.js';
 import { BankApplication, BankAsset } from '../../../shared/types/asset.js';
+import { BankDepartment } from '../../../shared/types/auth.js';
 import { Badge } from '../common/Badge.js';
+import { useAuth } from '../../context/AuthContext.js';
 
 interface WrikeTableViewProps {
   tickets: Ticket[];
   applications: BankApplication[];
   assets: BankAsset[];
+  departments?: BankDepartment[];
   onSelectTicket: (ticket: Ticket) => void;
   onOpenCreate: () => void;
+  onRefreshTickets?: () => void;
   hideHeader?: boolean;
 }
 
@@ -26,14 +30,18 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
   tickets,
   applications,
   assets,
+  departments,
   onSelectTicket,
   onOpenCreate,
+  onRefreshTickets,
   hideHeader = false,
 }) => {
+  const { allUsers, fetchWithAuth } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('ALL');
   const [selectedSeverityFilter, setSelectedSeverityFilter] = useState('ALL');
   const [selectedTicketIds, setSelectedTicketIds] = useState<string[]>([]);
+  const [isResolving, setIsResolving] = useState(false);
 
   // Filter tickets
   const filteredTickets = useMemo(() => {
@@ -123,31 +131,31 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#FFFFFF] overflow-hidden select-none">
+    <div className="flex-1 flex flex-col h-full bg-semantic-panel overflow-hidden select-none">
       {/* Clean Single-Row View Header Toolbar (Hidden when wrapped in WorkManagementContainer) */}
       {!hideHeader && (
-        <div className="bg-[#FFFFFF] border-b border-[#E2E8F0] px-6 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0">
+        <div className="bg-semantic-panel border-b border-semantic-border px-6 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0">
           {/* Left: View Title, Counter & Segmented Status Filter */}
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-[#162136]">Spreadsheet Tasks</h2>
-              <span className="px-2.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#475569] font-mono text-xs font-bold border border-[#E2E8F0]">
+              <h2 className="text-base font-bold text-semantic-primary">Spreadsheet Tasks</h2>
+              <span className="px-2.5 py-0.5 rounded-full bg-semantic-neutral-surface text-semantic-secondary font-mono text-xs font-bold border border-semantic-border">
                 {filteredTickets.length}
               </span>
             </div>
 
-            <div className="h-4 w-[1px] bg-[#E2E8F0] mx-1 hidden sm:block" />
+            <div className="h-4 w-[1px] bg-semantic-border mx-1 hidden sm:block" />
 
             {/* Clean Segmented Filter */}
-            <div className="flex items-center bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-0.5 text-xs">
+            <div className="flex items-center bg-semantic-subtle border border-semantic-border rounded-lg p-0.5 text-xs">
               {['ALL', 'OPEN', 'RESOLVED'].map((st) => (
                 <button
                   key={st}
                   onClick={() => setSelectedStatusFilter(st)}
                   className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
                     selectedStatusFilter === st
-                      ? 'bg-[#00B259] text-white shadow-xs'
-                      : 'text-[#5A6A85] hover:text-[#162136]'
+                      ? 'bg-semantic-brand text-white shadow-xs'
+                      : 'text-semantic-jira-muted-strong hover:text-semantic-primary'
                   }`}
                 >
                   {st === 'ALL' ? 'All Tasks' : st === 'OPEN' ? 'Active' : 'Completed'}
@@ -159,13 +167,13 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
           {/* Right: Search Filter + CSV Export + Primary CTA */}
           <div className="flex items-center gap-2.5">
             <div className="relative flex items-center">
-              <Search className="w-4 h-4 absolute left-3 text-[#8D99AE] pointer-events-none" />
+              <Search className="w-4 h-4 absolute left-3 text-semantic-jira-icon pointer-events-none" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Filter this view..."
-                className="bg-[#FFFFFF] border border-[#E2E8F0] focus:border-[#00B259] focus:ring-2 focus:ring-[#00B259]/15 rounded-lg pl-9 pr-3 py-1.5 text-xs text-[#162136] outline-none w-56 transition-all"
+                className="bg-semantic-panel border border-semantic-border focus:border-semantic-brand focus:ring-2 focus:ring-semantic-brand/15 rounded-lg pl-9 pr-3 py-1.5 text-xs text-semantic-primary outline-none w-56 transition-all"
               />
             </div>
 
@@ -191,25 +199,51 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
 
       {/* Floating Bulk Action Bar */}
       {selectedTicketIds.length > 0 && (
-        <div className="bg-[#162136] text-white px-6 py-2.5 flex items-center justify-between z-20 shrink-0 shadow-md text-xs">
+        <div className="bg-semantic-primary text-white px-6 py-2.5 flex items-center justify-between z-dsSticky shrink-0 shadow-md text-xs">
           <div className="flex items-center gap-3">
-            <span className="w-6 h-6 rounded-full bg-[#00B259] text-white font-bold flex items-center justify-center text-xs">
+            <span className="w-6 h-6 rounded-full bg-semantic-brand text-white font-bold flex items-center justify-center text-xs">
               {selectedTicketIds.length}
             </span>
             <span className="font-semibold text-sm">{selectedTicketIds.length} tasks selected</span>
           </div>
           <div className="flex items-center gap-2.5">
             <button
-              onClick={() => alert(`Bulk updated ${selectedTicketIds.length} tasks`)}
-              className="px-3.5 py-1.5 rounded-lg bg-[#00B259] hover:bg-[#00964B] text-white font-bold transition-colors"
+              disabled={isResolving}
+              onClick={async () => {
+                if (selectedTicketIds.length === 0 || isResolving) return;
+                setIsResolving(true);
+                try {
+                  const response = await fetchWithAuth('/api/tickets/bulk', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      ticketIds: selectedTicketIds,
+                      action: 'RESOLVE',
+                      value: 'Marked resolved via bulk action',
+                    }),
+                  });
+                  const data = await response.json();
+                  if (data.success) {
+                    setSelectedTicketIds([]);
+                    if (onRefreshTickets) onRefreshTickets();
+                  } else {
+                    alert(data.error || 'Failed to resolve tickets.');
+                  }
+                } catch (err: any) {
+                  alert(err.message || 'Error occurred while resolving tickets.');
+                } finally {
+                  setIsResolving(false);
+                }
+              }}
+              className="px-3.5 py-1.5 rounded-lg bg-semantic-brand hover:bg-semantic-brandHover disabled:opacity-50 text-white font-bold transition-colors flex items-center gap-1.5"
             >
-              Mark Resolved
+              {isResolving ? 'Resolving...' : 'Mark Resolved'}
             </button>
             <button
               onClick={() => setSelectedTicketIds([])}
-              className="px-3 py-1.5 rounded-lg bg-[#2B3A57] hover:bg-[#40516E] text-[#BFC7D9] transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-semantic-brand-ink hover:bg-semantic-brand-ink-hover text-semantic-dark-muted transition-colors"
             >
-              Deselect All
+              Seçimi ləğv et
             </button>
           </div>
         </div>
@@ -218,14 +252,14 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
       {/* Table Container */}
       <div className="flex-1 overflow-auto custom-scrollbar">
         <table className="wrike-table">
-          <thead className="sticky top-0 z-10 shadow-xs">
+          <thead className="sticky top-0 z-dsContent shadow-xs">
             <tr>
               <th className="w-12 text-center">
                 <input
                   type="checkbox"
                   checked={filteredTickets.length > 0 && selectedTicketIds.length === filteredTickets.length}
                   onChange={toggleSelectAll}
-                  className="rounded border-[#CBD5E1] text-[#00B259] focus:ring-[#00B259] cursor-pointer w-4 h-4"
+                  className="rounded border-semantic-border-strong text-semantic-brand focus:ring-semantic-brand cursor-pointer w-4 h-4"
                 />
               </th>
               <th className="w-28">Key</th>
@@ -242,7 +276,7 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
           <tbody>
             {filteredTickets.length === 0 ? (
               <tr>
-                <td colSpan={10} className="p-16 text-center text-[#5A6A85] text-sm">
+                <td colSpan={10} className="p-16 text-center text-semantic-jira-muted-strong text-sm">
                   No matching tasks found.
                 </td>
               </tr>
@@ -254,7 +288,7 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
                     key={ticket.id}
                     onClick={() => onSelectTicket(ticket)}
                     className={`cursor-pointer transition-colors ${
-                      isSelected ? 'bg-[#E6F7EF]/50' : 'hover:bg-[#F8FAFC]'
+                      isSelected ? 'bg-semantic-success-surface/50' : 'hover:bg-semantic-subtle'
                     }`}
                   >
                     {/* Checkbox */}
@@ -263,23 +297,23 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => {}}
-                        className="rounded border-[#CBD5E1] text-[#00B259] focus:ring-[#00B259] cursor-pointer w-4 h-4"
+                        className="rounded border-semantic-border-strong text-semantic-brand focus:ring-semantic-brand cursor-pointer w-4 h-4"
                       />
                     </td>
 
                     {/* Key */}
-                    <td className="font-mono font-bold text-[#0073D3] text-xs">
+                    <td className="font-mono font-bold text-semantic-info text-xs">
                       {ticket.key}
                     </td>
 
                     {/* Title */}
                     <td>
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-[#162136] hover:text-[#00B259] transition-colors truncate text-sm">
+                        <span className="font-bold text-semantic-primary hover:text-semantic-brand transition-colors truncate text-sm">
                           {ticket.title}
                         </span>
                         {ticket.tags && ticket.tags.length > 0 && (
-                          <span className="px-2 py-0.5 rounded bg-[#F1F5F9] border border-[#E2E8F0] text-[11px] font-mono text-[#5A6A85]">
+                          <span className="px-2 py-0.5 rounded bg-semantic-neutral-surface border border-semantic-border text-label font-mono text-semantic-jira-muted-strong">
                             #{ticket.tags[0]}
                           </span>
                         )}
@@ -302,30 +336,56 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
                     {/* SLA Status */}
                     <td>
                       <div className="flex items-center gap-1.5 font-mono text-xs">
-                        <Clock className="w-3.5 h-3.5 text-[#00B259]" />
+                        <Clock className="w-3.5 h-3.5 text-semantic-brand" />
                         <Badge type="SLA" value={ticket.slaState || 'SAFE'} />
                       </div>
                     </td>
 
-                    {/* Assignee */}
+                    {/* Assignee / Department Queue */}
                     <td>
-                      <div className="flex items-center gap-2 text-xs text-[#2B3A57]">
-                        <div className="w-6 h-6 rounded-full bg-[#00B259] text-white flex items-center justify-center text-[10px] font-bold shadow-sm">
-                          {ticket.assigneeId ? ticket.assigneeId.slice(4, 6).toUpperCase() : 'UG'}
-                        </div>
-                        <span className="truncate max-w-[110px] font-semibold">{ticket.assigneeId || 'Unassigned'}</span>
-                      </div>
+                      {ticket.assigneeId ? (
+                        (() => {
+                          const assignedUser = allUsers.find((u) => u.id === ticket.assigneeId);
+                          return (
+                            <div className="flex items-center gap-2 text-xs text-semantic-brand-ink">
+                              <div className="w-6 h-6 rounded-full bg-semantic-jira-brand text-white flex items-center justify-center text-caption font-bold shadow-sm shrink-0">
+                                {assignedUser ? assignedUser.fullName.charAt(0).toUpperCase() : ticket.assigneeId.slice(4, 6).toUpperCase()}
+                              </div>
+                              <span className="truncate max-w-dsTruncateCompact font-semibold">
+                                {assignedUser?.fullName || ticket.assigneeId}
+                              </span>
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        (() => {
+                          const dept = departments?.find((d) => d.id === (ticket.targetDepartmentId || ticket.departmentId));
+                          return (
+                            <div className="flex items-center gap-1.5 text-xs text-semantic-info-strong">
+                              <span
+                                className="px-2.5 py-0.5 rounded-full bg-semantic-info-soft border border-semantic-info-soft-border text-label font-bold tracking-tight flex items-center gap-1.5"
+                                title={dept ? `${dept.name} Növbəsi - Götürülməyi gözləyir` : 'Şöbə Növbəsi'}
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-semantic-info-strong animate-pulse shrink-0" />
+                              <span className="truncate max-w-dsTruncateCompact">
+                                  {dept?.name || (ticket.targetDepartmentId ? 'Şöbə Növbəsi' : 'Təyin edilməyib')}
+                                </span>
+                              </span>
+                            </div>
+                          );
+                        })()
+                      )}
                     </td>
 
                     {/* Target Asset */}
                     <td>
-                      <span className="font-mono text-xs text-[#5A6A85]">
+                      <span className="font-mono text-xs text-semantic-jira-muted-strong">
                         {ticket.assetId || ticket.applicationId || 'Core Platform'}
                       </span>
                     </td>
 
                     {/* Created Date */}
-                    <td className="text-xs text-[#5A6A85] font-mono">
+                    <td className="text-xs text-semantic-jira-muted-strong font-mono">
                       {new Date(ticket.createdAt).toLocaleDateString()}
                     </td>
                   </tr>
@@ -337,14 +397,14 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
       </div>
 
       {/* Table Footer */}
-      <div className="bg-[#F8FAFC] border-t border-[#E2E8F0] px-6 py-2.5 flex items-center justify-between text-xs text-[#5A6A85] shrink-0 font-medium">
+      <div className="bg-semantic-subtle border-t border-semantic-border px-6 py-2.5 flex items-center justify-between text-xs text-semantic-jira-muted-strong shrink-0 font-medium">
         <div>
-          Showing <span className="font-bold text-[#162136]">{filteredTickets.length}</span> total tasks
+          Showing <span className="font-bold text-semantic-primary">{filteredTickets.length}</span> total tasks
         </div>
         <div className="flex items-center gap-5 text-xs">
-          <span>Critical: <b className="text-[#E51739]">{filteredTickets.filter((t) => t.technicalSeverity === 'CRITICAL').length}</b></span>
-          <span>In Progress: <b className="text-[#0073D3]">{filteredTickets.filter((t) => t.statusCategory === 'IN_PROGRESS').length}</b></span>
-          <span>Resolved: <b className="text-[#007860]">{filteredTickets.filter((t) => t.statusCategory === 'DONE').length}</b></span>
+          <span>Critical: <b className="text-semantic-brand-danger">{filteredTickets.filter((t) => t.technicalSeverity === 'CRITICAL').length}</b></span>
+          <span>In Progress: <b className="text-semantic-info">{filteredTickets.filter((t) => t.statusCategory === 'IN_PROGRESS').length}</b></span>
+          <span>Resolved: <b className="text-semantic-success">{filteredTickets.filter((t) => t.statusCategory === 'DONE').length}</b></span>
         </div>
       </div>
     </div>

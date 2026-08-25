@@ -9,8 +9,8 @@ import type { DatabaseSchema } from './database.js';
  * fixtures belong in test-only files, never in the operational baseline.
  */
 export const initialSeedData: DatabaseSchema = {
-  divisions: [], departments: [], teams: [], users: [], workflows: [], slaPolicies: [],
-  tickets: [], approvals: [], assets: [], applications: [], risks: [], comments: [],
+  divisions: [], departments: [], departmentSections: [], teams: [], users: [], workflows: [], slaPolicies: [],
+  tickets: [], approvals: [], assets: [], applications: [], cmdbTypes: [], cmdbRelationshipTypes: [], configurationItems: [], ciRelationships: [], ciRecordLinks: [], risks: [], comments: [],
   attachments: [], auditEvents: [], automationRules: [], queues: [], kbArticles: [],
   ideas: [], requestForms: [], requestSubmissions: [], blueprints: [], workflowRuns: [],
   proofingDocuments: [], ganttDependencies: [], notifications: [], connections: [], savedFilters: [],
@@ -21,4 +21,10 @@ export const initialSeedData: DatabaseSchema = {
   connectorDefinitions: [], notificationPoliciesV2: [], workflowInstances: [], nodeInstances: [],
   nodeAttempts: [], deadLetters: [], workItemsV2: [], workRelations: [], workflowSlaClocks: [],
   notificationDeliveries: [], triggerReceipts: [], executionEvents: [],
+  projects: [], projectMembers: [], projectMilestones: [], projectTaskDependencies: [],
+  projectStatusUpdates: [], projectRisks: [], projectActivities: [],
 };
+
+export function createEmptyDatabaseSchema(): DatabaseSchema {
+  return structuredClone(initialSeedData);
+}

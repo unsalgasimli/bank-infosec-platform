@@ -3,9 +3,10 @@ import { BankUser, LDAPLoginPayload, AuthSessionResponse, LDAPGroupInfo } from '
 import { db } from '../db/database.js';
 import { AuditService } from './audit.service.js';
 import { LDAPSyncService } from './ldap-sync.service.js';
-import { isAccountDisabled } from './ldap-directory.data.js';
+import { isAccountDisabled, isGenuineEmployeeOrIntern, parseMemberOfGroups } from './ldap-directory.data.js';
 import { config } from '../config/index.js';
 import { logger } from './logger.service.js';
+import { PostgresProjectionRepository } from '../db/postgres/projection-repository.js';
 
 function parseActiveDirectoryError(_errorMessage: string): string {
   return 'İstifadəçi adı və ya şifrə yanlışdır, yaxud hesab giriş üçün əlçatan deyil.';
@@ -116,7 +117,12 @@ export class LDAPAuthService {
           (normalizedDirectoryValue(user.username) === usernameKey ||
             normalizedDirectoryValue(user.sAMAccountName) === usernameKey ||
             normalizedDirectoryValue(user.email) === rawInputKey ||
-            normalizedDirectoryValue(user.userPrincipalName) === rawInputKey)
+            normalizedDirectoryValue(user.userPrincipalName) === rawInputKey) &&
+          isGenuineEmployeeOrIntern(
+            user,
+            user.distributionGroups || [],
+            user.sAMAccountName || user.username
+          )
       );
 
       if (!allowDevelopmentBypass) {
@@ -133,15 +139,18 @@ export class LDAPAuthService {
 
       developmentUser.ldapBindStatus = 'AUTHENTICATED';
       developmentUser.lastLdapLoginAt = new Date().toISOString();
-      db.persist();
-      AuditService.log({
+      const loginAudit = AuditService.log({
         actor: developmentUser,
         action: 'USER_LOGIN',
         entityType: 'USER',
         entityId: developmentUser.id,
         ipAddress,
         userAgent: 'Development empty-password LDAP directory bypass',
+        persist: config.DB_TYPE !== 'postgres',
       });
+      if (config.DB_TYPE === 'postgres') {
+        await PostgresProjectionRepository.persistLogin(developmentUser, loginAudit);
+      }
 
       return {
         success: true,
@@ -224,6 +233,8 @@ export class LDAPAuthService {
         let adGroups: string[] = [];
         let adTitle = '';
         let adDepartment = '';
+        let adManagerDn = '';
+        let adDistinguishedName = '';
 
         try {
           const escapedSamAccountName = escapeLdapFilterValue(sAMAccountName);
@@ -235,7 +246,23 @@ export class LDAPAuthService {
             scope: 'sub',
             filter: `(|(sAMAccountName=${escapedSamAccountName})(mail=${escapedMail})(userPrincipalName=${escapedUpn}))`,
             paged: { pageSize: 100 },
-            attributes: ['displayName', 'mail', 'memberOf', 'title', 'department', 'distinguishedName', 'userAccountControl', 'accountExpires'],
+            attributes: [
+              'sAMAccountName',
+              'userPrincipalName',
+              'displayName',
+              'mail',
+              'memberOf',
+              'title',
+              'department',
+              'distinguishedName',
+              'manager',
+              'description',
+              'employeeType',
+              'objectClass',
+              'servicePrincipalName',
+              'userAccountControl',
+              'accountExpires',
+            ],
           });
 
           if (searchRes.searchEntries.length === 1) {
@@ -250,19 +277,22 @@ export class LDAPAuthService {
               };
             }
 
+            const resolvedSamAccountName = normalizedDirectoryValue(entry.sAMAccountName) || sAMAccountName;
+            const parsedGroups = parseMemberOfGroups(entry.memberOf);
+            if (!isGenuineEmployeeOrIntern(entry, parsedGroups, resolvedSamAccountName)) {
+              return {
+                success: false,
+                user: null as any,
+                message: 'Yalnız real əməkdaş və ya intern hesabı ilə girişə icazə verilir; texniki/service hesabları istifadəçi kataloquna daxil edilmir.',
+              };
+            }
+
             adDisplayName = (entry.displayName as string) || adDisplayName;
             adMail = (entry.mail as string) || adMail;
             adTitle = (entry.title as string) || adTitle;
             adDepartment = (entry.department as string) || adDepartment;
-
-            const memberOf = Array.isArray(entry.memberOf) ? entry.memberOf : entry.memberOf ? [entry.memberOf] : [];
-            const parsedGroups = memberOf
-              .map((rawDn: any) => {
-                const dn = typeof rawDn === 'string' ? rawDn : rawDn?.toString('utf-8') || '';
-                const match = dn.match(/^CN=([^,]+)/i);
-                return match ? match[1] : '';
-              })
-              .filter(Boolean);
+            adManagerDn = (entry.manager as string) || adManagerDn;
+            adDistinguishedName = (entry.distinguishedName as string) || adDistinguishedName;
 
             if (parsedGroups.length > 0) {
               adGroups = parsedGroups;
@@ -287,7 +317,36 @@ export class LDAPAuthService {
             u.email.toLowerCase() === adMail.toLowerCase()
         );
 
-        const deptMapping = LDAPSyncService.mapDepartment(adDepartment, adTitle, adGroups);
+        const deptMapping = LDAPSyncService.mapDepartment(adDepartment, adTitle, adGroups, adDistinguishedName);
+        if (!db.data.departmentSections) db.data.departmentSections = [];
+        const section = deptMapping.sectionId && deptMapping.sectionName && deptMapping.sectionCode
+          ? (() => {
+              const existing = db.data.departmentSections.find((item) => item.id === deptMapping.sectionId);
+              if (existing) {
+                existing.departmentId = deptMapping.departmentId;
+                existing.name = deptMapping.sectionName!;
+                existing.code = deptMapping.sectionCode!;
+                existing.isActive = true;
+                existing.directorySource = 'ACTIVE_DIRECTORY';
+                return existing;
+              }
+              const created = {
+                id: deptMapping.sectionId!,
+                departmentId: deptMapping.departmentId,
+                name: deptMapping.sectionName!,
+                code: deptMapping.sectionCode!,
+                isActive: true,
+                directorySource: 'ACTIVE_DIRECTORY' as const,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              };
+              db.data.departmentSections.push(created);
+              return created;
+            })()
+          : undefined;
+        const manager = adManagerDn
+          ? db.data.users.find((candidate) => candidate.isActive && candidate.distinguishedName?.toLowerCase() === adManagerDn.toLowerCase())
+          : undefined;
 
         if (!user) {
           const id = `usr-${sAMAccountName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
@@ -300,6 +359,7 @@ export class LDAPAuthService {
             title: adTitle,
             divisionId: deptMapping.divisionId,
             departmentId: deptMapping.departmentId,
+            sectionId: section?.id,
             teamIds: deptMapping.teamIds,
             roles: deptMapping.roles,
             securityClearance: deptMapping.securityClearance,
@@ -308,7 +368,8 @@ export class LDAPAuthService {
             ownedRiskIds: [],
             isActive: true,
             userPrincipalName: `${sAMAccountName}@${domainDns}`,
-            distinguishedName: `CN=${adDisplayName},${config.LDAP_BASE_DN}`,
+            distinguishedName: adDistinguishedName || `CN=${adDisplayName},${config.LDAP_BASE_DN}`,
+            managerId: manager?.id,
             ldapDomain: config.LDAP_DOMAIN,
             distributionGroups: adGroups,
             ldapBindStatus: 'AUTHENTICATED',
@@ -321,10 +382,13 @@ export class LDAPAuthService {
           user.email = adMail;
           user.title = adTitle;
           user.departmentId = deptMapping.departmentId;
+          user.sectionId = section?.id;
           user.divisionId = deptMapping.divisionId;
           user.teamIds = deptMapping.teamIds;
           user.roles = deptMapping.roles;
           user.securityClearance = deptMapping.securityClearance;
+          user.distinguishedName = adDistinguishedName || user.distinguishedName;
+          user.managerId = manager?.id;
           user.distributionGroups = adGroups;
           user.isActive = true;
           user.ldapBindStatus = 'AUTHENTICATED';

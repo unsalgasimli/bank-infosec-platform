@@ -32,15 +32,14 @@ export class ApprovalService {
           const deptMgr = db.data.users.find((u) => u.id === resolvedDept.managerId && u.isActive);
           if (deptMgr) return [deptMgr];
         }
-        const managerCandidates = db.data.users.filter((u) => (u.roles.includes('INFOSEC_MANAGER') || u.roles.includes('DEPARTMENT_MANAGER') || u.roles.includes('CISO') || u.roles.includes('TEAM_LEAD')) && u.isActive);
-        return managerCandidates.length > 0 ? managerCandidates : db.data.users.slice(0, 1);
+        return [];
       }
       case 'DEPARTMENT_HEAD': {
         if (dept?.managerId) {
           const deptMgr = db.data.users.find((u) => u.id === dept.managerId && u.isActive);
           if (deptMgr) return [deptMgr];
         }
-        return db.data.users.filter((u) => u.roles.includes('DEPARTMENT_ADMIN') && u.isActive);
+        return [];
       }
       case 'SERVICE_OWNER': {
         if (ticket.applicationId) {

@@ -27,7 +27,7 @@ export const ApprovalsTab: React.FC<ApprovalsTabProps> = ({
       <div className="p-8 text-center bg-slate-50/70 border border-dashed border-slate-200 rounded-xl text-xs text-slate-500">
         <KeyRound className="w-6 h-6 text-slate-400 mx-auto mb-2" />
         <h4 className="font-semibold text-slate-700">No Sign-off Gates Required</h4>
-        <p className="text-[11px] text-slate-400 mt-0.5">No formal governance sign-off or dual-control approval gate required for this ticket type.</p>
+        <p className="text-label text-slate-400 mt-0.5">No formal governance sign-off or dual-control approval gate required for this ticket type.</p>
       </div>
     );
   }
@@ -60,12 +60,12 @@ export const ApprovalsTab: React.FC<ApprovalsTabProps> = ({
       <div className="bg-slate-50/60 border border-slate-200 rounded-xl p-5 flex items-center justify-between shadow-xs flex-wrap gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <KeyRound className="w-4 h-4 text-[#0052CC]" />
+            <KeyRound className="w-4 h-4 text-semantic-jira-brand" />
             <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
               Governance & Dual-Control Sign-Off Gates
             </h3>
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">
+          <p className="text-label text-slate-500 mt-1">
             Cryptographically logged dual-control authorization chain required for high-risk exception & retest gates.
           </p>
         </div>
@@ -98,7 +98,7 @@ export const ApprovalsTab: React.FC<ApprovalsTabProps> = ({
                   </div>
                   <div>
                     <div className="font-bold text-slate-900 text-xs">{step.name}</div>
-                    <div className="text-[11px] text-slate-500">Required Role: <strong className="text-slate-800 font-semibold">{step.requiredRole || 'Designated Signer'}</strong></div>
+                    <div className="text-label text-slate-500">Required Role: <strong className="text-slate-800 font-semibold">{step.requiredRole || 'Designated Signer'}</strong></div>
                   </div>
                 </div>
 
@@ -135,7 +135,7 @@ export const ApprovalsTab: React.FC<ApprovalsTabProps> = ({
 
               {/* Decided Info */}
               {step.decisionAt && (
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-mono flex-wrap gap-2">
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-label text-slate-500 font-mono flex-wrap gap-2">
                   <span>Decided by User: <strong className="text-slate-800 font-semibold">{step.decisionByUserName || step.decisionByUserId}</strong></span>
                   <span>{new Date(step.decisionAt).toLocaleString()}</span>
                 </div>
@@ -154,7 +154,7 @@ export const ApprovalsTab: React.FC<ApprovalsTabProps> = ({
 
       {/* Decision Modal */}
       {selectedStep && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-dsOverlay flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">

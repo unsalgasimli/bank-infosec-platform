@@ -8,6 +8,8 @@ import { AuditService } from '../services/audit.service.js';
 import { db } from '../db/database.js';
 import { config } from '../config/index.js';
 import { SessionService } from '../services/session.service.js';
+import { isGenuineEmployeeOrIntern } from '../services/ldap-directory.data.js';
+import { DepartmentsRepository } from '../db/postgres/departments-repository.js';
 
 const ldapLoginSchema = z.object({
   usernameOrEmail: z.string().trim().min(1).max(256),
@@ -16,14 +18,6 @@ const ldapLoginSchema = z.object({
 
 export class AuthController {
   public static async ldapLogin(req: AuthenticatedRequest, res: Response): Promise<void> {
-    if (config.REQUIRE_HTTPS_AUTH && !req.secure) {
-      res.status(400).json({
-        success: false,
-        message: 'Təhlükəsiz giriş üçün HTTPS tələb olunur. HTTP üzərindən parol göndərilmədi.',
-      });
-      return;
-    }
-
     const parsed = ldapLoginSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ success: false, message: 'İstifadəçi adı tələb olunur.' });
@@ -85,9 +79,15 @@ export class AuthController {
   }
 
   public static listUsers(req: AuthenticatedRequest, res: Response): void {
+    if (config.DB_TYPE === 'postgres') {
+      void DepartmentsRepository.listActiveDirectoryUsers()
+        .then((users) => res.json({ success: true, users }))
+        .catch((error: any) => res.status(500).json({ success: false, error: error?.message || 'Failed to retrieve Active Directory users' }));
+      return;
+    }
     db.reload();
     const users = db.data.users
-      .filter((user) => user.directorySource === 'ACTIVE_DIRECTORY')
+      .filter((user) => user.isActive && user.directorySource === 'ACTIVE_DIRECTORY' && isGenuineEmployeeOrIntern(user, user.distributionGroups || [], user.sAMAccountName || user.username))
       .map(({ distinguishedName, ldapBindStatus, lastLdapLoginAt, ...user }) => user);
     res.json({ success: true, users });
   }
@@ -137,7 +137,7 @@ export class AuthController {
   public static getUsersByDepartment(req: AuthenticatedRequest, res: Response): void {
     try {
       const departments = db.data.departments || [];
-      const users = db.data.users || [];
+      const users = (db.data.users || []).filter((user) => isGenuineEmployeeOrIntern(user, user.distributionGroups || [], user.sAMAccountName || user.username));
 
       const result = departments.map((dept) => {
         const deptUsers = users.filter((u) => u.departmentId === dept.id);

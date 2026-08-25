@@ -1,16 +1,13 @@
 import assert from 'node:assert';
-import fs from 'node:fs';
-import path from 'node:path';
 import test from 'node:test';
 import { db } from '../server/db/database.js';
 import { initialSeedData } from '../server/db/seed.js';
 import { WorkflowTemplateService } from '../server/services/workflow-template.service.js';
 
 test('Backend-owned workflow templates', async (t) => {
-  const databasePath = path.resolve(process.cwd(), 'data/database.json');
-  const originalDatabase = JSON.parse(fs.readFileSync(databasePath, 'utf8'));
+  const originalDatabase = structuredClone(db.data);
   t.after(() => { db.data = originalDatabase; db.persist(); });
-  db.reset(JSON.parse(JSON.stringify(initialSeedData)));
+  db.reset(structuredClone(originalDatabase));
   const actor = db.data.users.find((user) => user.roles.includes('CISO'))!;
 
   await t.test('catalog and create-work metadata come from persisted backend configuration', () => {

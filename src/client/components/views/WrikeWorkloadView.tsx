@@ -93,30 +93,30 @@ export const WrikeWorkloadView: React.FC<WrikeWorkloadViewProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#FFFFFF] overflow-hidden select-none">
+    <div className="flex-1 flex flex-col h-full bg-semantic-panel overflow-hidden select-none">
       {/* Wrike Workload Header */}
-      <div className="bg-[#FFFFFF] border-b border-[#DCE1EB] px-5 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 shadow-wrike-sm">
+      <div className="bg-semantic-panel border-b border-semantic-surface-alt px-5 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 shadow-wrike-sm">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#FAF5FF] text-[#722ED1] border border-[#EFDBFF] flex items-center justify-center font-bold text-xs">
-            <Users className="w-4 h-4 text-[#722ED1]" />
+          <div className="w-8 h-8 rounded-lg bg-semantic-purple-surface text-semantic-purple border border-semantic-purple-border flex items-center justify-center font-bold text-xs">
+            <Users className="w-4 h-4 text-semantic-purple" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-[#162136]">
+              <h2 className="text-sm font-bold text-semantic-primary">
                 Wrike Workload & Resource Capacity
               </h2>
-              <span className="px-2 py-0.5 rounded-full bg-[#FAF5FF] text-[#722ED1] text-[10px] font-bold border border-[#EFDBFF]">
+              <span className="px-2 py-0.5 rounded-full bg-semantic-purple-surface text-semantic-purple text-caption font-bold border border-semantic-purple-border">
                 Real-Time Backend Synced ({utilizationPct}%)
               </span>
             </div>
-            <p className="text-[11px] text-[#657694]">
+            <p className="text-label text-semantic-jira-muted-alt">
               Monitor team capacity, prevent analyst burnout, and balance emergency security workload.
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-[#657694] font-medium hidden md:inline">{selectedWeek}</span>
+          <span className="text-xs text-semantic-jira-muted-alt font-medium hidden md:inline">{selectedWeek}</span>
           <button
             onClick={handleAutoBalance}
             className="wrike-btn-primary text-xs py-1.5"
@@ -128,10 +128,10 @@ export const WrikeWorkloadView: React.FC<WrikeWorkloadViewProps> = ({
       </div>
 
       {/* Main Workload Capacity Rows */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar bg-[#F2F5FA]">
+      <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar bg-semantic-page-muted">
         <div className="max-w-5xl space-y-4">
           {rebalancedMessage && (
-            <div className="p-3 rounded-lg bg-[#E6F7EF] border border-[#B8EAD1] text-xs font-semibold text-[#007860] flex items-center gap-2 shadow-sm">
+            <div className="p-3 rounded-lg bg-semantic-success-surface border border-semantic-success-border text-xs font-semibold text-semantic-success flex items-center gap-2 shadow-sm">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>{rebalancedMessage}</span>
             </div>
@@ -143,35 +143,35 @@ export const WrikeWorkloadView: React.FC<WrikeWorkloadViewProps> = ({
             return (
               <div
                 key={member.userId}
-                className="wrike-card p-4 flex flex-col justify-between space-y-3 shadow-wrike-sm hover:border-[#00B259] transition-colors"
+                className="wrike-card p-4 flex flex-col justify-between space-y-3 shadow-wrike-sm hover:border-semantic-brand transition-colors"
               >
                 {/* Member Header */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-[#00B259] text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                    <div className="w-9 h-9 rounded-full bg-semantic-brand text-white flex items-center justify-center font-bold text-xs shadow-sm">
                       {member.avatar}
                     </div>
                     <div>
-                      <div className="font-bold text-[#162136] text-sm flex items-center gap-2">
+                      <div className="font-bold text-semantic-primary text-sm flex items-center gap-2">
                         <span>{member.name}</span>
-                        <span className="text-[11px] font-normal text-[#657694]">• {member.role}</span>
+                        <span className="text-label font-normal text-semantic-jira-muted-alt">• {member.role}</span>
                       </div>
-                      <div className="text-[11px] text-[#657694]">{member.title}</div>
+                      <div className="text-label text-semantic-jira-muted-alt">{member.title}</div>
                     </div>
                   </div>
 
                   {/* Allocation Status Badge */}
                   <div className="text-right">
                     <div className="flex items-center gap-1.5">
-                      <span className={`text-xs font-bold font-mono ${member.isOverAllocated ? 'text-[#E51739]' : 'text-[#007860]'}`}>
+                      <span className={`text-xs font-bold font-mono ${member.isOverAllocated ? 'text-semantic-brand-danger' : 'text-semantic-success'}`}>
                         {member.allocatedWeeklyHours}h / {member.maxWeeklyHours}h ({member.utilizationPercent}%)
                       </span>
                       {member.isOverAllocated ? (
-                        <span className="px-2 py-0.5 rounded-full bg-[#FDE8EB] text-[#CF1322] border border-[#FFA39E] text-[10px] font-bold flex items-center gap-1">
+                        <span className="px-2 py-0.5 rounded-full bg-semantic-danger-surface text-semantic-danger border border-semantic-danger-border text-caption font-bold flex items-center gap-1">
                           <AlertTriangle className="w-2.5 h-2.5" /> Over Capacity
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full bg-[#E6F7EF] text-[#007860] border border-[#B8EAD1] text-[10px] font-bold">
+                        <span className="px-2 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success border border-semantic-success-border text-caption font-bold">
                           Optimal
                         </span>
                       )}
@@ -181,10 +181,10 @@ export const WrikeWorkloadView: React.FC<WrikeWorkloadViewProps> = ({
 
                 {/* Capacity Progress Meter */}
                 <div>
-                  <div className="w-full h-2 rounded-full bg-[#EBF0F7] overflow-hidden">
+                  <div className="w-full h-2 rounded-full bg-semantic-table overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-300 ${
-                        member.isOverAllocated ? 'bg-[#E51739]' : member.utilizationPercent > 75 ? 'bg-[#00B259]' : 'bg-[#0073D3]'
+                        member.isOverAllocated ? 'bg-semantic-brand-danger' : member.utilizationPercent > 75 ? 'bg-semantic-brand' : 'bg-semantic-info'
                       }`}
                       style={{ width: `${Math.min(100, member.utilizationPercent)}%` }}
                     />
@@ -192,23 +192,23 @@ export const WrikeWorkloadView: React.FC<WrikeWorkloadViewProps> = ({
                 </div>
 
                 {/* Assigned Tasks Strip */}
-                <div className="pt-2 border-t border-[#EBF0F7]">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-[#657694] mb-1.5">
+                <div className="pt-2 border-t border-semantic-table">
+                  <div className="text-caption font-bold uppercase tracking-wider text-semantic-jira-muted-alt mb-1.5">
                     Active Assigned Work ({memberTickets.length} items)
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {memberTickets.length === 0 ? (
-                      <span className="text-xs text-[#8F9CAE] italic">No active high-priority tasks assigned.</span>
+                      <span className="text-xs text-semantic-muted-alt italic">No active high-priority tasks assigned.</span>
                     ) : (
                       memberTickets.map((t) => (
                         <div
                           key={t.id}
                           onClick={() => onSelectTicket(t)}
-                          className="px-2.5 py-1.5 bg-[#F8FAFC] border border-[#DCE1EB] hover:border-[#00B259] rounded-md text-xs cursor-pointer flex items-center gap-2 transition-colors"
+                          className="px-2.5 py-1.5 bg-semantic-subtle border border-semantic-surface-alt hover:border-semantic-brand rounded-md text-xs cursor-pointer flex items-center gap-2 transition-colors"
                         >
-                          <span className="font-mono font-bold text-[#0073D3] text-[11px]">{t.key}</span>
-                          <span className="font-medium text-[#162136] truncate max-w-[200px]">{t.title}</span>
-                          <span className="wrike-pill wrike-pill-gray text-[9px]">{t.statusName}</span>
+                          <span className="font-mono font-bold text-semantic-info text-label">{t.key}</span>
+                          <span className="font-medium text-semantic-primary truncate max-w-dsTruncateWide">{t.title}</span>
+                          <span className="wrike-pill wrike-pill-gray text-micro">{t.statusName}</span>
                         </div>
                       ))
                     )}

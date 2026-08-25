@@ -18,6 +18,7 @@ export class AuditService {
     correlationId?: string;
     fieldChanges?: AuditEvent['fieldChanges'];
     metadata?: Record<string, any>;
+    persist?: boolean;
   }): AuditEvent {
     const fallbackUser = db.data.users?.find((u) => u.roles?.includes('CISO')) || db.data.users?.[0];
     const event: AuditEvent = {
@@ -41,12 +42,12 @@ export class AuditService {
       db.data.auditEvents = [];
     }
     db.data.auditEvents.unshift(event);
-    db.persist();
+    if (params.persist !== false) db.persist();
     return event;
   }
 
   public static getEventsForEntity(entityId: string): AuditEvent[] {
-    return db.data.auditEvents.filter((e) => e.entityId === entityId);
+    return (db.data.auditEvents || []).filter((e) => e.entityId === entityId);
   }
 
   public static getAllEvents(limit: number = 200): AuditEvent[] {

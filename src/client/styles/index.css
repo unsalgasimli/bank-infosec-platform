@@ -1,38 +1,18 @@
+@import './tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: light;
-  --wrike-green: #00B259;
-  --wrike-green-hover: #00964B;
-  --wrike-green-light: #E6F7EF;
-  --wrike-green-dark: #007860;
-  --wrike-midnight: #162136;
-  --wrike-midnight-fair: #2B3A57;
-  --wrike-midnight-middle: #5A6A85;
-  --wrike-midnight-light: #8D99AE;
-  --wrike-bg: #F4F6FB;
-  --wrike-surface: #FFFFFF;
-  --wrike-border: #E2E8F0;
-  --wrike-border-subtle: #EDF2F7;
-  --wrike-blue: #0073D3;
-  --wrike-blue-light: #EBF4FD;
-  --wrike-red: #E51739;
-  --wrike-red-light: #FDE8EB;
-  --wrike-amber: #FA8C16;
-  --wrike-amber-light: #FFF7E6;
-}
-
 body {
   margin: 0;
   padding: 0;
-  background-color: var(--wrike-bg);
-  color: var(--wrike-midnight);
-  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 15px;
-  line-height: 1.55;
-  letter-spacing: -0.01em;
+  background-color: var(--surface-page);
+  color: var(--text-primary);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-relaxed);
+  letter-spacing: var(--letter-spacing-tight);
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -40,553 +20,152 @@ body {
   font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
 }
 
-/* Wrike Scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
-  border-radius: 6px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
-}
+/* Shared scrollbar policy. The custom class remains an opt-in alias. */
+::-webkit-scrollbar,
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track,
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb,
+.custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: var(--radius-sm); }
+::-webkit-scrollbar-thumb:hover,
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--text-placeholder); }
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
-  border-radius: 6px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
-}
-
-/* Wrike Primary Emerald Button - Clean, Crisp & High Legibility */
-.wrike-btn-primary {
+/* Button primitives. Feature code should select one of these variants. */
+.wrike-btn-primary,
+.wrike-btn-secondary,
+.jira-btn-primary,
+.jira-btn-secondary,
+.jira-btn-subtle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  background-color: #00B259;
-  color: #FFFFFF;
-  font-weight: 600;
-  font-size: 0.9375rem; /* 15px */
-  letter-spacing: -0.01em;
-  padding: 0.55rem 1.1rem;
-  border-radius: 0.55rem;
-  transition: all 0.15s ease;
-  box-shadow: 0 1px 2px rgba(0, 178, 89, 0.2);
-  border: 1px solid transparent;
   cursor: pointer;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-tight);
+  transition: background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
 }
-.wrike-btn-primary:hover {
-  background-color: #00964B;
-  box-shadow: 0 4px 8px -1px rgba(0, 178, 89, 0.25);
-}
-.wrike-btn-primary:active {
-  background-color: #007860;
-  transform: translateY(1px);
-}
+.wrike-btn-primary,
+.wrike-btn-secondary { gap: var(--space-2); font-size: var(--font-size-body); padding: var(--control-wrike-padding-y) var(--control-wrike-padding-x); border-radius: var(--radius-md); }
+.wrike-btn-primary { padding-inline: var(--control-wrike-primary-padding-x); }
+.wrike-btn-primary { background-color: var(--color-brand-500); color: var(--text-inverse); box-shadow: var(--shadow-xs); border: 1px solid transparent; }
+.wrike-btn-primary:hover { background-color: var(--color-brand-600); box-shadow: var(--shadow-brand-hover); }
+.wrike-btn-primary:active { background-color: var(--color-brand-700); transform: translateY(1px); }
+.wrike-btn-secondary { background-color: var(--surface-panel); color: var(--color-brand-ink); border: 1px solid var(--border-default); box-shadow: var(--shadow-xs); }
+.wrike-btn-secondary:hover { background-color: var(--surface-subtle); border-color: var(--border-strong); color: var(--text-primary); }
 
-/* Wrike Secondary Button */
-.wrike-btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  background-color: #FFFFFF;
-  color: #2B3A57;
-  font-weight: 600;
-  font-size: 0.9375rem; /* 15px */
-  letter-spacing: -0.01em;
-  padding: 0.55rem 1.05rem;
-  border-radius: 0.55rem;
-  border: 1px solid #E2E8F0;
-  transition: all 0.15s ease;
-  box-shadow: 0 1px 2px rgba(22, 33, 54, 0.04);
-  cursor: pointer;
-}
-.wrike-btn-secondary:hover {
-  background-color: #F8FAFC;
-  border-color: #CBD5E1;
-  color: #162136;
-}
+.jira-btn-primary,
+.jira-btn-secondary,
+.jira-btn-subtle { gap: var(--control-jira-gap); font-size: var(--font-size-sm); padding: var(--control-jira-padding-y) var(--control-jira-padding-x); border-radius: var(--radius-sm); line-height: var(--line-height-control); }
+.jira-btn-primary { background-color: var(--color-jira-blue-500); color: var(--text-inverse); box-shadow: var(--shadow-jira-primary); border: 1px solid transparent; }
+.jira-btn-primary:hover { background-color: var(--color-jira-blue-600); box-shadow: var(--shadow-jira-primary-hover); }
+.jira-btn-primary:active { background-color: var(--color-jira-blue-700); transform: translateY(1px); }
+.jira-btn-secondary { background-color: var(--surface-panel); color: var(--color-jira-text); border: 1px solid var(--color-jira-border); box-shadow: var(--shadow-jira-xs); }
+.jira-btn-secondary:hover { background-color: var(--color-jira-hover); border-color: var(--color-jira-border-strong); color: var(--color-jira-text-strong); }
+.jira-btn-secondary:active { background-color: var(--color-jira-hover); transform: translateY(1px); }
+.jira-btn-subtle { background-color: transparent; color: var(--color-jira-muted); border: 1px solid transparent; }
+.jira-btn-subtle:hover { background-color: var(--color-jira-hover); color: var(--color-jira-text); }
+.wrike-btn-primary:focus-visible,
+.wrike-btn-secondary:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+.jira-btn-primary:focus-visible,
+.jira-btn-secondary:focus-visible,
+.jira-btn-subtle:focus-visible { outline: 2px solid var(--color-jira-focus); outline-offset: 2px; }
+.wrike-btn-primary:disabled,
+.wrike-btn-secondary:disabled,
+.jira-btn-primary:disabled,
+.jira-btn-secondary:disabled,
+.jira-btn-subtle:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
 
-/* Wrike Subtle Button */
-.wrike-btn-subtle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  background-color: transparent;
-  color: #475569;
-  font-weight: 600;
-  font-size: 0.9375rem; /* 15px */
-  padding: 0.5rem 0.85rem;
-  border-radius: 0.55rem;
-  transition: all 0.15s ease;
-  cursor: pointer;
-}
-.wrike-btn-subtle:hover {
-  background-color: #EDF2F7;
-  color: #162136;
-}
+/* Form controls */
+.wrike-input,
+.jira-input { width: 100%; font-family: inherit; transition: border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard); }
+.wrike-input { background-color: var(--surface-panel); border: 1px solid var(--border-strong); border-radius: var(--radius-md); padding: var(--control-wrike-padding-y) var(--control-wrike-input-padding-x); font-size: var(--font-size-body); color: var(--text-primary); }
+.wrike-input:focus,
+.wrike-input:focus-visible { outline: none; border-color: var(--border-focus); box-shadow: var(--focus-ring-brand); }
+.wrike-input::placeholder { color: var(--text-placeholder); }
+.jira-input { background-color: var(--color-jira-surface); border: 1px solid var(--color-jira-border); border-radius: var(--radius-sm); padding: var(--control-jira-padding-y) var(--control-jira-input-padding-x); font-size: var(--font-size-sm); color: var(--color-jira-text); }
+.jira-input:hover { background-color: var(--color-jira-hover); border-color: var(--color-jira-border-strong); }
+.jira-input:focus,
+.jira-input:focus-visible { outline: none; background-color: var(--surface-panel); border-color: var(--color-jira-focus); box-shadow: var(--focus-ring-jira); }
+.jira-input::placeholder { color: var(--color-jira-muted-light); }
 
-/* Wrike Inputs - Spacious and Clear */
-.wrike-input {
-  width: 100%;
-  background-color: #FFFFFF;
-  border: 1px solid #CBD5E1;
-  border-radius: 0.55rem;
-  padding: 0.55rem 0.85rem;
-  font-size: 0.9375rem; /* 15px */
-  color: #162136;
-  font-family: inherit;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-.wrike-input:focus {
-  outline: none;
-  border-color: #00B259;
-  box-shadow: 0 0 0 3px rgba(0, 178, 89, 0.15);
-}
-.wrike-input::placeholder {
-  color: #94A3B8;
-}
+input[type="date"] { cursor: pointer; position: relative; }
+input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.7; padding: var(--space-1); border-radius: var(--radius-xs); transition: opacity var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard); }
+input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: 1; background-color: var(--color-neutral-250); }
 
-/* Universal Enterprise Select Styling */
-select, .wrike-select {
+select,
+.wrike-select {
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
   background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235A6A85' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
   background-repeat: no-repeat;
-  background-position: right 0.75rem center;
-  background-size: 1rem 1rem;
-  padding-right: 2.25rem !important;
-  background-color: #FFFFFF;
-  border: 1px solid #CBD5E1;
-  border-radius: 0.55rem;
+  background-position: right var(--select-icon-offset) center;
+  background-size: var(--select-icon-size) var(--select-icon-size);
+  padding-right: var(--select-padding-right);
+  background-color: var(--surface-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   font-family: inherit;
-  font-size: 0.9375rem; /* 15px */
-  color: #162136;
-  font-weight: 500;
-  line-height: 1.4;
-  transition: all 0.15s ease;
+  font-size: var(--font-size-body);
+  color: var(--text-primary);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-normal);
+  transition: border-color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard);
   cursor: pointer;
 }
+select:hover,
+.wrike-select:hover { border-color: var(--text-placeholder); background-color: var(--surface-subtle); }
+select:focus,
+select:focus-visible,
+.wrike-select:focus,
+.wrike-select:focus-visible { outline: none; border-color: var(--border-focus); box-shadow: var(--focus-ring-brand); background-color: var(--surface-panel); }
+select option { background-color: var(--surface-panel); color: var(--text-primary); padding: var(--select-option-padding-y) var(--select-option-padding-x); font-size: var(--font-size-body); font-weight: var(--font-weight-medium); }
 
-select:hover, .wrike-select:hover {
-  border-color: #94A3B8;
-  background-color: #F8FAFC;
-}
+/* Surfaces, statuses, and tables */
+.wrike-card { background-color: var(--surface-panel); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); }
+.wrike-pill { display: inline-flex; align-items: center; gap: var(--pill-gap); padding: var(--pill-padding-y) var(--pill-padding-x); border-radius: var(--radius-full); font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); letter-spacing: var(--letter-spacing-tight); line-height: var(--line-height-tight); }
+.wrike-pill-green { background-color: var(--status-success-bg); color: var(--status-success-text); border: 1px solid var(--color-brand-100); }
+.wrike-pill-blue { background-color: var(--status-info-bg); color: var(--status-info-text); border: 1px solid var(--color-info-100); }
+.wrike-pill-amber { background-color: var(--status-warning-bg); color: var(--status-warning-text); border: 1px solid var(--color-warning-100); }
 
-select:focus, .wrike-select:focus {
-  outline: none;
-  border-color: #00B259;
-  box-shadow: 0 0 0 3px rgba(0, 178, 89, 0.15);
-  background-color: #FFFFFF;
-}
+.jira-lozenge { display: inline-flex; align-items: center; padding: 0.15rem 0.5rem; border-radius: var(--radius-xs); font-size: var(--font-size-label); font-weight: var(--font-weight-bold); letter-spacing: var(--letter-spacing-label); text-transform: uppercase; line-height: var(--line-height-tight); white-space: nowrap; }
+.jira-lozenge-todo { background-color: var(--color-jira-todo-bg); color: var(--color-jira-todo-text); }
+.jira-lozenge-inprogress { background-color: var(--color-jira-blue-50); color: var(--color-jira-blue-600); }
+.jira-lozenge-review { background-color: var(--color-jira-review-bg); color: var(--color-jira-review-text); }
+.jira-lozenge-blocked { background-color: var(--color-jira-blocked-bg); color: var(--color-jira-blocked-text); }
+.jira-lozenge-done { background-color: var(--color-jira-done-bg); color: var(--color-jira-done-text); }
+.jira-filter-pill { display: inline-flex; align-items: center; gap: var(--filter-pill-gap); padding: var(--filter-pill-padding-y) var(--filter-pill-padding-x); border-radius: var(--radius-xs); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); cursor: pointer; transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); border: 1px solid transparent; }
+.jira-filter-pill-inactive { background-color: var(--color-jira-surface-muted); color: var(--color-jira-muted); border-color: var(--color-jira-border); }
+.jira-filter-pill-inactive:hover { background-color: var(--color-jira-hover); color: var(--color-jira-text); }
+.jira-filter-pill:focus-visible { outline: 2px solid var(--color-jira-focus); outline-offset: 2px; }
 
-select option {
-  background-color: #FFFFFF;
-  color: #162136;
-  padding: 0.6rem 0.8rem;
-  font-size: 0.9375rem;
-  font-weight: 500;
-}
+.jira-table,
+.wrike-table { width: 100%; text-align: left; border-collapse: separate; border-spacing: 0; }
+.jira-table { font-size: var(--font-size-sm); }
+.jira-table th { padding: var(--table-jira-padding-y) var(--table-jira-padding-x); background-color: var(--color-jira-surface); color: var(--color-jira-muted); font-weight: var(--font-weight-bold); font-size: var(--font-size-label); text-transform: uppercase; letter-spacing: var(--letter-spacing-overline); border-bottom: 1px solid var(--color-jira-border); }
+.jira-table td { padding: var(--table-jira-padding-y) var(--table-jira-padding-x); border-bottom: 1px solid var(--color-jira-surface-muted); color: var(--color-jira-text); vertical-align: middle; }
+.jira-table tbody tr { transition: background-color var(--duration-table-jira) var(--ease-standard); }
+.jira-table tbody tr:hover { background-color: var(--color-jira-surface-muted); }
+.wrike-table { font-size: var(--font-size-body); }
+.wrike-table th { padding: var(--table-wrike-padding-y) var(--table-wrike-padding-x); background-color: var(--surface-subtle); color: var(--text-secondary); font-weight: var(--font-weight-bold); font-size: var(--font-size-sm); text-transform: uppercase; letter-spacing: var(--letter-spacing-overline); border-bottom: 1px solid var(--border-strong); border-right: 1px solid var(--color-neutral-250); }
+.wrike-table td { padding: var(--table-wrike-padding-y) var(--table-wrike-padding-x); border-bottom: 1px solid var(--color-neutral-250); border-right: 1px solid var(--surface-subtle); color: var(--color-content-strong); font-size: var(--font-size-body); vertical-align: middle; }
+.wrike-table tbody tr { transition: background-color var(--duration-table-wrike) var(--ease-standard); }
+.wrike-table tbody tr:hover { background-color: var(--surface-subtle); }
 
-/* Wrike Cards & Surfaces */
-.wrike-card {
-  background-color: #FFFFFF;
-  border: 1px solid #E2E8F0;
-  border-radius: 0.75rem;
-  box-shadow: 0 1px 3px rgba(22, 33, 54, 0.04);
-}
+/* Small shared helper still used by feature views. */
+.mini-label { display: block; font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); color: var(--text-secondary); }
 
-.wrike-card-hover {
-  transition: all 0.2s ease;
-}
-.wrike-card-hover:hover {
-  border-color: #00B259;
-  box-shadow: 0 6px 16px rgba(22, 33, 54, 0.08);
-  transform: translateY(-1px);
-}
+.wrike-canvas-grid { background-color: var(--color-canvas); background-image: radial-gradient(var(--border-strong) 1px, transparent 1px); background-size: 28px 28px; }
+.wrike-gantt-grid { background-image: linear-gradient(to right, var(--color-neutral-250) 1px, transparent 1px); background-size: 48px 100%; }
+.wrike-dropdown-menu { background-color: var(--surface-panel); border: 1px solid var(--border-default); box-shadow: var(--shadow-lg); border-radius: var(--radius-dropdown); }
 
-/* Wrike Status Pills - Legible and Clean */
-.wrike-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.25rem 0.65rem;
-  border-radius: 9999px;
-  font-size: 0.8125rem; /* 13px */
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  line-height: 1.2;
-}
-
-.wrike-pill-green {
-  background-color: #E6F7EF;
-  color: #007860;
-  border: 1px solid #B8EAD1;
-}
-
-.wrike-pill-blue {
-  background-color: #EBF4FD;
-  color: #0073D3;
-  border: 1px solid #BAE0FD;
-}
-
-.wrike-pill-amber {
-  background-color: #FFF7E6;
-  color: #D46B08;
-  border: 1px solid #FFE7BA;
-}
-
-.wrike-pill-red {
-  background-color: #FDE8EB;
-  color: #CF1322;
-  border: 1px solid #FFA39E;
-}
-
-/* Jira Compatibility & Enterprise UI Utility Classes */
-.jira-btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  background-color: #0052CC;
-  color: #FFFFFF;
-  font-weight: 600;
-  font-size: 0.8125rem; /* 13px */
-  letter-spacing: -0.01em;
-  padding: 0.45rem 0.85rem;
-  border-radius: 0.375rem;
-  transition: all 0.15s ease;
-  box-shadow: 0 1px 2px rgba(0, 82, 204, 0.2);
-  border: 1px solid transparent;
-  cursor: pointer;
-  line-height: 1.25;
-}
-.jira-btn-primary:hover {
-  background-color: #0747A6;
-  box-shadow: 0 3px 6px -1px rgba(0, 82, 204, 0.25);
-}
-.jira-btn-primary:active {
-  background-color: #003884;
-  transform: translateY(1px);
-}
-.jira-btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-.jira-btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  background-color: #FFFFFF;
-  color: #172B4D;
-  font-weight: 600;
-  font-size: 0.8125rem; /* 13px */
-  letter-spacing: -0.01em;
-  padding: 0.45rem 0.85rem;
-  border-radius: 0.375rem;
-  border: 1px solid #DFE1E6;
-  transition: all 0.15s ease;
-  box-shadow: 0 1px 2px rgba(9, 30, 66, 0.04);
-  cursor: pointer;
-  line-height: 1.25;
-}
-.jira-btn-secondary:hover {
-  background-color: #F4F5F7;
-  border-color: #C1C7D0;
-  color: #091E42;
-}
-.jira-btn-secondary:active {
-  background-color: #EBECF0;
-  transform: translateY(1px);
-}
-.jira-btn-secondary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.jira-btn-subtle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  background-color: transparent;
-  color: #5E6C84;
-  font-weight: 600;
-  font-size: 0.8125rem; /* 13px */
-  padding: 0.45rem 0.75rem;
-  border-radius: 0.375rem;
-  border: 1px solid transparent;
-  transition: all 0.15s ease;
-  cursor: pointer;
-  line-height: 1.25;
-}
-.jira-btn-subtle:hover {
-  background-color: #EBECF0;
-  color: #172B4D;
-}
-.jira-btn-subtle:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.jira-input {
-  width: 100%;
-  background-color: #FAFBFC;
-  border: 1px solid #DFE1E6;
-  border-radius: 0.375rem;
-  padding: 0.45rem 0.75rem;
-  font-size: 0.8125rem; /* 13px */
-  color: #172B4D;
-  font-family: inherit;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
-}
-.jira-input:hover {
-  background-color: #EBECF0;
-  border-color: #C1C7D0;
-}
-.jira-input:focus {
-  outline: none;
-  background-color: #FFFFFF;
-  border-color: #4C9AFF;
-  box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.25);
-}
-.jira-input::placeholder {
-  color: #7A869A;
-}
-
-/* Jira Lozenges (Status badges) */
-.jira-lozenge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.15rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.6875rem; /* 11px */
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-.jira-lozenge-todo {
-  background-color: #DFE1E6;
-  color: #42526E;
-}
-.jira-lozenge-inprogress {
-  background-color: #DEEBFF;
-  color: #0747A6;
-}
-.jira-lozenge-review {
-  background-color: #EAE6FF;
-  color: #403294;
-}
-.jira-lozenge-blocked {
-  background-color: #FFEBE6;
-  color: #BF2600;
-}
-.jira-lozenge-done {
-  background-color: #E3FCEF;
-  color: #006644;
-}
-
-/* Jira Filter Pills */
-.jira-filter-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.3rem 0.65rem;
-  border-radius: 0.25rem;
-  font-size: 0.75rem; /* 12px */
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  border: 1px solid transparent;
-}
-.jira-filter-pill-inactive {
-  background-color: #F4F5F7;
-  color: #5E6C84;
-  border-color: #DFE1E6;
-}
-.jira-filter-pill-inactive:hover {
-  background-color: #EBECF0;
-  color: #172B4D;
-}
-.jira-filter-pill-active {
-  background-color: #DEEBFF;
-  color: #0052CC;
-  border-color: #B3D4FF;
-}
-
-/* Jira Table */
-.jira-table {
-  width: 100%;
-  text-align: left;
-  font-size: 0.8125rem; /* 13px */
-  border-collapse: separate;
-  border-spacing: 0;
-}
-.jira-table th {
-  padding: 0.6rem 0.85rem;
-  background-color: #FAFBFC;
-  color: #5E6C84;
-  font-weight: 700;
-  font-size: 0.6875rem; /* 11px */
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-bottom: 1px solid #DFE1E6;
-}
-.jira-table td {
-  padding: 0.6rem 0.85rem;
-  border-bottom: 1px solid #F4F5F7;
-  color: #172B4D;
-  vertical-align: middle;
-}
-.jira-table tbody tr {
-  transition: background-color 0.1s ease;
-}
-.jira-table tbody tr:hover {
-  background-color: #F4F5F7;
-}
-
-.wrike-table {
-  width: 100%;
-  text-align: left;
-  font-size: 0.9375rem; /* 15px */
-  border-collapse: separate;
-  border-spacing: 0;
-}
-
-.wrike-table th {
-  padding: 0.85rem 1.1rem;
-  background-color: #F8FAFC;
-  color: #475569;
-  font-weight: 700;
-  font-size: 0.8125rem; /* 13px */
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-bottom: 1px solid #CBD5E1;
-  border-right: 1px solid #F1F5F9;
-}
-
-.wrike-table td {
-  padding: 0.85rem 1.1rem;
-  border-bottom: 1px solid #F1F5F9;
-  border-right: 1px solid #F8FAFC;
-  color: #1E293B;
-  font-size: 0.9375rem; /* 15px */
-  vertical-align: middle;
-}
-
-.wrike-table tbody tr {
-  transition: background-color 0.12s ease;
-}
-
-.wrike-table tbody tr:hover {
-  background-color: #F8FAFC;
-}
-
-/* Universal Typography Helpers */
-.section-label {
-  font-size: 0.75rem; /* 12px */
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #475569;
-}
-.field-label {
-  display: block;
-  font-size: 0.84rem; /* 13.5px */
-  font-weight: 600;
-  color: #162136;
-}
-.mini-label {
-  display: block;
-  font-size: 0.75rem; /* 12px */
-  font-weight: 600;
-  color: #475569;
-}
-.pill {
-  padding: 0.3rem 0.75rem;
-  border-radius: 9999px;
-  background: #E6F7EF;
-  color: #007860;
-  border: 1px solid #B8EAD1;
-  font-weight: 700;
-  font-size: 0.75rem; /* 12px */
-  height: max-content;
-}
-.step-number {
-  width: 26px;
-  height: 26px;
-  border-radius: 9999px;
-  background: #00B259;
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  flex-shrink: 0;
-  font-size: 0.8125rem; /* 13px */
-}
-.empty-box {
-  border: 1px dashed #CBD5E1;
-  border-radius: 0.625rem;
-  padding: 1.25rem;
-  color: #475569;
-  font-size: 0.875rem;
-  text-align: center;
-}
-.empty-action {
-  width: 100%;
-  height: 128px;
-  border: 2px dashed #CBD5E1;
-  border-radius: 0.75rem;
-  color: #475569;
-  font-size: 0.9375rem;
-  font-weight: 600;
-}
-.empty-action:hover {
-  border-color: #00B259;
-  color: #007860;
-}
-
-/* Wrike Canvas Grid Pattern */
-.wrike-canvas-grid {
-  background-color: #F8FAFD;
-  background-image: radial-gradient(#CBD5E1 1px, transparent 1px);
-  background-size: 28px 28px;
-}
-
-/* Gantt Chart Grid */
-.wrike-gantt-grid {
-  background-image: linear-gradient(to right, #F1F5F9 1px, transparent 1px);
-  background-size: 48px 100%;
-}
-
-/* Dropdown popover */
-.wrike-dropdown-menu {
-  background-color: #FFFFFF;
-  border: 1px solid #E2E8F0;
-  box-shadow: 0 10px 25px -5px rgba(22, 33, 54, 0.12), 0 8px 10px -6px rgba(22, 33, 54, 0.06);
-  border-radius: 0.625rem;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: var(--duration-reduced);
+    animation-iteration-count: 1;
+    scroll-behavior: auto;
+    transition-duration: var(--duration-reduced);
+  }
 }

@@ -32,14 +32,18 @@ export function errorHandlerMiddleware(
     `Unhandled Exception: ${err.message}`
   );
 
-  // RFC 7807 Problem Details for HTTP APIs
+  const safeDetail = config.NODE_ENV === 'production' && statusCode === 500
+    ? 'An unexpected error occurred while processing your banking operation. Please contact InfoSec Engineering with the Request ID.'
+    : err.message;
+
+  // RFC 7807 Problem Details for HTTP APIs. `error` is retained as a
+  // compatibility field for existing clients that predate RFC 7807.
   res.status(statusCode).json({
-    type: `https://bank.apex.int/errors/${err.code || 'internal-error'}`,
+    type: `urn:aegissec:error:${err.code || 'internal-error'}`,
     title: statusCode === 500 ? 'Internal Server Error' : err.name || 'API Error',
     status: statusCode,
-    detail: config.NODE_ENV === 'production' && statusCode === 500
-      ? 'An unexpected error occurred while processing your banking operation. Please contact InfoSec Engineering with the Request ID.'
-      : err.message,
+    detail: safeDetail,
+    error: safeDetail,
     instance: req.originalUrl,
     requestId,
     timestamp: new Date().toISOString(),

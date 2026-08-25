@@ -6,6 +6,7 @@ import type { Ticket, TicketProjectCode } from '../../shared/types/ticket.js';
 import { db } from '../db/database.js';
 import { AuditService } from './audit.service.js';
 import { GraphOrchestratorService } from './graph-orchestrator.service.js';
+import { SLAService } from './sla.service.js';
 
 const launchSchema = z.object({
   parameters: z.record(z.string().trim().max(500)).default({}),
@@ -105,17 +106,19 @@ export class WorkflowTemplateService {
       .map((template) => this.enrich(template));
   }
 
-  static metadata() {
+  static metadata({ includeUsers = false }: { includeUsers?: boolean } = {}) {
     // `sync:ad` can run in a separate CLI process. Reload the durable
     // directory projection before returning assignment choices so a running
     // API immediately sees the newly synchronized identities.
     db.reload();
+    SLAService.ensurePoliciesInstalled();
     const departments = (db.data.departments || [])
       .filter((item) => item.isActive !== false && item.directorySource === 'ACTIVE_DIRECTORY');
     const departmentIds = new Set(departments.map((item) => item.id));
     const users = (db.data.users || [])
       .filter((item) => item.isActive && item.directorySource === 'ACTIVE_DIRECTORY' && departmentIds.has(item.departmentId));
 
+    const sections = db.data.departmentSections || [];
     return {
       directory: {
         source: 'ACTIVE_DIRECTORY',
@@ -124,14 +127,52 @@ export class WorkflowTemplateService {
           ? undefined
           : 'No live Active Directory directory data is available. Complete a successful LDAPS synchronization before assigning a user or department queue.',
       },
-      departments: departments.map(({ id, name, code, color, settings }) => ({
-        id, name, code, color, defaultSlaHours: settings?.defaultSlaHours,
+      departments: departments.map(({ id, name, code, color, settings, managerId, adminUserIds, divisionId }) => ({
+        id, name, code, color, defaultSlaHours: settings?.defaultSlaHours, managerId, adminUserIds, divisionId,
       })),
-      teams: (db.data.teams || []).filter((item) => departmentIds.has(item.departmentId)).map(({ id, name, code, departmentId, securityDomain }) => ({ id, name, code, departmentId, securityDomain })),
-      users: users.map(({ id, fullName, title, departmentId, teamIds, roles, managerId }) => ({ id, fullName, title, departmentId, teamIds, roles, managerId })),
+      sections: sections.filter((section) => section.isActive !== false).map(({ id, departmentId, name, code, managerId }) => ({ id, departmentId, name, code, managerId })),
+      teams: [
+        { id: 'team-soc', name: 'SOC & İnsidentlərin İdarəolunması', code: 'SOC', departmentId: 'dept-secops', securityDomain: 'SOC' as const },
+        { id: 'team-appsec', name: 'Tətbiqi Təhlükəsizlik (AppSec & Pentest)', code: 'APPSEC', departmentId: 'dept-secops', securityDomain: 'APPSEC' as const },
+        { id: 'team-grc', name: 'Komplayens, Audit və Risk (GRC)', code: 'GRC', departmentId: 'dept-secops', securityDomain: 'GRC' as const },
+        { id: 'team-devsecops', name: 'DevSecOps & Platform Mühəndisliyi', code: 'DEVSECOPS', departmentId: 'dept-secops', securityDomain: 'SEC_ARCHITECTURE' as const },
+        { id: 'team-it-infra', name: 'İT İnfrastruktur və Sistemlər', code: 'IT_INFRA', departmentId: 'dept-it', securityDomain: 'GENERAL_INFOSEC' as const },
+        { id: 'team-hr-ops', name: 'İnsan Resursları və Kadr Əməliyyatları', code: 'HR_OPS', departmentId: 'dept-marketing', securityDomain: 'GENERAL_INFOSEC' as const },
+        { id: 'team-swift-eng', name: 'Əsas Bankçılıq və SWIFT Əməliyyatları', code: 'SWIFT', departmentId: 'dept-hesablasmalar-departamenti', securityDomain: 'GENERAL_INFOSEC' as const },
+        ...(db.data.teams || []).filter((item) => !['team-soc', 'team-appsec', 'team-grc', 'team-devsecops', 'team-it-infra', 'team-hr-ops', 'team-swift-eng'].includes(item.id)),
+      ],
+      // User assignment choices are loaded separately in bounded pages. Sending
+      // the entire directory here made every ticket-modal opening deserialize
+      // and process hundreds of identities, even when no assignment was made.
+      users: includeUsers
+        ? users.map(({ id, fullName, title, departmentId, sectionId, teamIds, roles, managerId }) => ({ id, fullName, title, departmentId, sectionId, sectionName: sections.find((section) => section.id === sectionId)?.name, teamIds, roles, managerId }))
+        : [],
       workflows: (db.data.workflows || []).filter((item) => item.isActive !== false).map(({ id, name, version }) => ({ id, name, version })),
       slaPolicies: (db.data.slaPolicies || []).map(({ id, name, description, isDefault, thresholds }) => ({ id, name, description, isDefault, thresholds })),
-      categories: ['VULNERABILITY', 'INCIDENT', 'SECURITY_EXCEPTION', 'RISK_ACCEPTANCE', 'AUDIT_FINDING', 'SECURITY_REVIEW', 'IAM_REQUEST', 'DLP_ALERT', 'THIRD_PARTY_ASSESSMENT', 'GENERAL_REQUEST'],
+      categories: [
+        'GENERAL_REQUEST',
+        'GENERAL_TASK',
+        'IT_SUPPORT',
+        'ACCESS_REQUEST',
+        'HARDWARE_SOFTWARE',
+        'NETWORK_INFRASTRUCTURE',
+        'CHANGE_REQUEST',
+        'INCIDENT_MANAGEMENT',
+        'PROJECT_DELIVERY',
+        'FINANCE_PROCUREMENT',
+        'HR_OPERATIONS',
+        'COMPLIANCE_LEGAL',
+        'BUSINESS_OPERATIONS',
+        'SECURITY_REVIEW',
+        'VULNERABILITY',
+        'INCIDENT',
+        'SECURITY_EXCEPTION',
+        'RISK_ACCEPTANCE',
+        'AUDIT_FINDING',
+        'IAM_REQUEST',
+        'DLP_ALERT',
+        'THIRD_PARTY_ASSESSMENT',
+      ],
       severities: ['INFORMATIONAL', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'],
       priorities: ['P1_URGENT', 'P2_HIGH', 'P3_MEDIUM', 'P4_LOW'],
       projectCodes: ['SEC', 'SOC', 'VM', 'APPSEC', 'GRC', 'DLP', 'IAM', 'ARCH', 'AUDIT', 'TPRM'],
@@ -158,6 +199,55 @@ export class WorkflowTemplateService {
         { value: 'RECURRING_TASK', label: 'Recurring Operational Task' },
         { value: 'CROSS_DEPARTMENT', label: 'Cross-Department Orchestration' },
       ],
+    };
+  }
+
+  static assignmentOptions(input: { departmentId?: string; sectionId?: string; query?: string; offset?: number; limit?: number }) {
+    db.reload();
+    const departments = (db.data.departments || [])
+      .filter((item) => item.isActive !== false && item.directorySource === 'ACTIVE_DIRECTORY');
+    const departmentIds = new Set(departments.map((item) => item.id));
+    const departmentId = input.departmentId?.trim() || undefined;
+    const sectionId = input.sectionId?.trim() || undefined;
+    const query = input.query?.trim().toLocaleLowerCase('az') || '';
+    const offset = Math.max(0, Math.floor(input.offset || 0));
+    const limit = Math.min(100, Math.max(10, Math.floor(input.limit || 40)));
+    const team = departmentId ? (db.data.teams || []).find((item) => item.id === departmentId) : undefined;
+    const itSubDepartmentIds = new Set([
+      'dept-it',
+      'dept-sistem-inzibatciligi-bolmesi',
+      'dept-sebeke-inzibatciligi-bolmesi',
+      'dept-proqram-teminatlarinin-idare-olunmasi-ve-desteklenmesi-sobesi',
+      'dept-texniki-destek-sobesi',
+    ]);
+    const secSubDepartmentIds = new Set(['dept-secops', 'dept-phys-sec']);
+
+    const matchesScope = (user: BankUser) => {
+      if (sectionId && user.sectionId !== sectionId) return false;
+      if (!departmentId) return true;
+      if (user.departmentId === departmentId) return true;
+      if (team && user.teamIds?.includes(team.id)) return true;
+      if (departmentId === 'dept-it' && itSubDepartmentIds.has(user.departmentId)) return true;
+      return departmentId === 'dept-secops' && (
+        secSubDepartmentIds.has(user.departmentId) ||
+        user.teamIds?.some((id) => ['team-soc', 'team-appsec', 'team-grc', 'team-devsecops'].includes(id))
+      );
+    };
+    const matchesQuery = (user: BankUser) => !query || [user.fullName, user.title, user.username, user.email]
+      .filter(Boolean)
+      .some((value) => value.toLocaleLowerCase('az').includes(query));
+    const matches = (db.data.users || [])
+      .filter((user) => user.isActive && user.directorySource === 'ACTIVE_DIRECTORY' && departmentIds.has(user.departmentId))
+      .filter(matchesScope)
+      .filter(matchesQuery)
+      .sort((left, right) => left.fullName.localeCompare(right.fullName, 'az'));
+    const page = matches.slice(offset, offset + limit)
+      .map(({ id, fullName, title, departmentId: userDepartmentId, sectionId, teamIds, roles, managerId }) => ({ id, fullName, title, departmentId: userDepartmentId, sectionId, sectionName: (db.data.departmentSections || []).find((section) => section.id === sectionId)?.name, teamIds, roles, managerId }));
+
+    return {
+      users: page,
+      total: matches.length,
+      nextOffset: offset + page.length < matches.length ? offset + page.length : null,
     };
   }
 

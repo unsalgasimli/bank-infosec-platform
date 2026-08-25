@@ -32,6 +32,7 @@ import { useAuth } from '../../context/AuthContext.js';
 import { DepartmentConnection, ConnectionTestResult } from '../../../shared/types/connections.js';
 import { BankDepartment, BankUser } from '../../../shared/types/auth.js';
 import { ProjectBlueprint } from '../../../shared/types/blueprints.js';
+import { DirectoryAssignmentSelect } from '../common/DirectoryAssignmentSelect.js';
 
 interface DepartmentAdminPortalProps {
   departmentId: string;
@@ -50,6 +51,9 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'MEMBERS' | 'SETTINGS' | 'TEMPLATES' | 'CONNECTIONS' | 'FLOWS'>('OVERVIEW');
   const [data, setData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [directoryUsers, setDirectoryUsers] = useState<BankUser[]>([]);
+  const [directoryLoadError, setDirectoryLoadError] = useState<string | null>(null);
 
   // Test Connection State
   const [testingConnId, setTestingConnId] = useState<string | null>(null);
@@ -62,9 +66,7 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
 
   // Add Member Modal State
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
-  const [memberName, setMemberName] = useState('');
-  const [memberEmail, setMemberEmail] = useState('');
-  const [memberTitle, setMemberTitle] = useState('');
+  const [memberUserId, setMemberUserId] = useState('');
   const [memberRole, setMemberRole] = useState('SECURITY_ANALYST');
   const [isDeptAdminFlag, setIsDeptAdminFlag] = useState(false);
 
@@ -82,14 +84,18 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
   const loadDepartmentData = async () => {
     try {
       setIsLoading(true);
+      setLoadError(null);
       const res = await fetchWithAuth(`/api/departments/${departmentId}`);
       const resData = await res.json();
-      if (resData.success) {
-        setData(resData);
-        setSettingsForm(resData.department?.settings || {});
+      if (!res.ok || !resData.success) {
+        throw new Error(resData?.error || 'Department data could not be loaded.');
       }
-    } catch (err) {
+      setData(resData);
+      setSettingsForm(resData.department?.settings || {});
+    } catch (err: any) {
       console.error('Failed to load department admin details', err);
+      setData(null);
+      setLoadError(err?.message || 'Department data could not be loaded.');
     } finally {
       setIsLoading(false);
     }
@@ -97,6 +103,20 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
 
   useEffect(() => {
     loadDepartmentData();
+    setDirectoryLoadError(null);
+    fetchWithAuth('/api/auth/users')
+      .then(async (res) => {
+        const resData = await res.json();
+        if (!res.ok || !resData.success || !Array.isArray(resData.users)) {
+          throw new Error(resData?.error || 'Live Active Directory users are unavailable.');
+        }
+        return resData.users;
+      })
+      .then((users) => setDirectoryUsers(users))
+      .catch((error: any) => {
+        setDirectoryUsers([]);
+        setDirectoryLoadError(error?.message || 'Live Active Directory users are unavailable.');
+      });
   }, [departmentId, currentUser]);
 
   const dept: BankDepartment = data?.department || {
@@ -163,9 +183,7 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          fullName: memberName,
-          email: memberEmail,
-          title: memberTitle,
+          userId: memberUserId,
           roles: isDeptAdminFlag ? ['DEPARTMENT_ADMIN', memberRole] : [memberRole],
           isDeptAdminFlag,
         }),
@@ -173,13 +191,23 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
       const resData = await res.json();
       if (resData.success) {
         setIsAddMemberOpen(false);
-        setMemberName('');
-        setMemberEmail('');
-        setMemberTitle('');
+        setMemberUserId('');
         loadDepartmentData();
       }
     } catch (err: any) {
       alert(`Failed to add member: ${err.message}`);
+    }
+  };
+
+  const handleDeleteConnection = async (connId: string) => {
+    if (!window.confirm('Delete this connector from the department?')) return;
+    try {
+      const res = await fetchWithAuth(`/api/departments/${dept.id}/connections/${connId}`, { method: 'DELETE' });
+      const resData = await res.json();
+      if (!resData.success) throw new Error(resData.error || 'Delete failed');
+      await loadDepartmentData();
+    } catch (err: any) {
+      alert(`Failed to delete connector: ${err.message}`);
     }
   };
 
@@ -229,17 +257,43 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
     }
   };
 
+  if (isLoading) {
+    return <div className="flex-1 grid place-items-center bg-semantic-page text-sm font-semibold text-semantic-jira-muted-strong">Loading live department data…</div>;
+  }
+
+  if (loadError || !data?.department) {
+    return (
+      <div className="flex-1 grid place-items-center bg-semantic-page p-6">
+        <div className="max-w-md rounded-xl border border-semantic-danger-border bg-semantic-danger-surface p-5 text-center">
+          <AlertTriangle className="mx-auto h-6 w-6 text-semantic-danger" />
+          <h2 className="mt-2 text-sm font-extrabold text-semantic-primary">Department data is unavailable</h2>
+          <p className="mt-1 text-xs text-semantic-jira-muted-strong">{loadError || 'The backend did not return a department record.'}</p>
+          <button onClick={loadDepartmentData} className="mt-4 rounded-lg bg-semantic-primary px-3 py-2 text-xs font-bold text-white">Retry</button>
+        </div>
+      </div>
+    );
+  }
+
+  const totalMembers = data.stats?.totalMembers ?? data.members?.length ?? 0;
+  const connectedConnectors = (data.connections || []).filter((connection: DepartmentConnection) => connection.status === 'CONNECTED');
+  const measuredHealthScores = connectedConnectors
+    .map((connection: DepartmentConnection) => connection.healthScore)
+    .filter((score: unknown): score is number => typeof score === 'number');
+  const averageHealth = measuredHealthScores.length
+    ? Math.round(measuredHealthScores.reduce((total: number, score: number) => total + score, 0) / measuredHealthScores.length)
+    : null;
+
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#F4F6FB] overflow-hidden select-none">
+    <div className="flex-1 flex flex-col h-full bg-semantic-page overflow-hidden select-none">
       {/* Header Banner */}
       <div
-        className="bg-[#FFFFFF] border-b border-[#E2E8F0] px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 shadow-sm"
-        style={{ borderTop: `4px solid ${dept.color || '#0052CC'}` }}
+        className="bg-semantic-panel border-b border-semantic-border px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 shadow-sm"
+        style={{ borderTop: `4px solid ${dept.color || 'var(--color-jira-blue-500)'}` }}
       >
         <div className="flex items-center gap-3.5">
           <button
             onClick={onBack}
-            className="p-2 rounded-lg bg-[#F8FAFC] hover:bg-[#EDF2F7] text-[#5A6A85] hover:text-[#162136] transition-colors border border-[#E2E8F0]"
+            className="p-2 rounded-lg bg-semantic-subtle hover:bg-semantic-border-subtle text-semantic-jira-muted-strong hover:text-semantic-primary transition-colors border border-semantic-border"
             title="Back to All Departments"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -247,25 +301,28 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
 
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shadow-xs"
-            style={{ backgroundColor: dept.color || '#0052CC' }}
+            style={{ backgroundColor: dept.color || 'var(--color-jira-blue-500)' }}
           >
             <Building2 className="w-5 h-5" />
           </div>
 
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0]">
+              <span className="font-mono text-caption font-extrabold uppercase px-2 py-0.5 rounded bg-semantic-neutral-surface text-semantic-secondary border border-semantic-border">
                 {dept.code}
               </span>
-              <h1 className="text-base font-extrabold text-[#162136]">{dept.name}</h1>
+              <h1 className="text-base font-extrabold text-semantic-primary">{dept.name}</h1>
               {isDeptAdmin && (
-                <span className="px-2.5 py-0.5 rounded-full bg-[#E6F7EF] text-[#007860] text-[10px] font-extrabold border border-[#B8EAD1]">
+                <span className="px-2.5 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success text-caption font-extrabold border border-semantic-success-border">
                   ADMIN PRIVILEGES
                 </span>
               )}
             </div>
-            <p className="text-xs text-[#5A6A85] mt-0.5 max-w-2xl truncate">
+            <p className="text-xs text-semantic-jira-muted-strong mt-0.5 max-w-2xl truncate">
               {dept.description || 'Department administration console, RBAC, SLAs and system connectors.'}
+            </p>
+            <p className="text-label text-semantic-jira-muted-strong mt-1">
+              Department Manager: <span className="font-bold text-semantic-primary">{dept.managerName || 'Not assigned'}</span>
             </p>
           </div>
         </div>
@@ -273,16 +330,16 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => onNavigate('cross-tasks')}
-            className="px-3.5 py-2 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#162136] border border-[#E2E8F0] text-xs font-bold flex items-center gap-2 shadow-xs"
+            className="px-3.5 py-2 rounded-lg bg-semantic-subtle hover:bg-semantic-neutral-surface text-semantic-primary border border-semantic-border text-xs font-bold flex items-center gap-2 shadow-xs"
           >
-            <Zap className="w-4 h-4 text-[#00B259]" />
+            <Zap className="w-4 h-4 text-semantic-brand" />
             <span>Launch Cross-Task</span>
           </button>
         </div>
       </div>
 
       {/* Navigation Tabs */}
-      <div className="bg-[#FFFFFF] border-b border-[#E2E8F0] px-6 flex items-center gap-6 text-xs font-bold text-[#5A6A85] shrink-0 overflow-x-auto">
+      <div className="bg-semantic-panel border-b border-semantic-border px-6 flex items-center gap-6 text-xs font-bold text-semantic-jira-muted-strong shrink-0 overflow-x-auto">
         {[
           { id: 'OVERVIEW', label: 'Department Overview', icon: Activity },
           { id: 'MEMBERS', label: `Staff & Roles (${data?.members?.length || 0})`, icon: Users },
@@ -298,13 +355,13 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
               className={`py-3.5 flex items-center gap-2 relative transition-colors ${
-                isActive ? 'text-[#007860] font-extrabold' : 'hover:text-[#162136]'
+                isActive ? 'text-semantic-success font-extrabold' : 'hover:text-semantic-primary'
               }`}
             >
-              <Icon className={`w-4 h-4 ${isActive ? 'text-[#00B259]' : 'text-[#8D99AE]'}`} />
+              <Icon className={`w-4 h-4 ${isActive ? 'text-semantic-brand' : 'text-semantic-jira-icon'}`} />
               <span>{tab.label}</span>
               {isActive && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#00B259] rounded-t-md" />
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-semantic-brand rounded-t-md" />
               )}
             </button>
           );
@@ -316,14 +373,14 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
         <div className="max-w-6xl mx-auto space-y-5">
           {/* Global Alerts / Messages */}
           {blueprintLaunchMsg && (
-            <div className="p-3.5 rounded-lg bg-[#E6F7EF] border border-[#B8EAD1] text-xs font-semibold text-[#007860] flex items-center justify-between shadow-sm">
+            <div className="p-3.5 rounded-lg bg-semantic-success-surface border border-semantic-success-border text-xs font-semibold text-semantic-success flex items-center justify-between shadow-sm">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span>{blueprintLaunchMsg}</span>
               </div>
               <button
                 onClick={() => onNavigate('table')}
-                className="px-2.5 py-1 rounded bg-[#00B259] text-white text-[11px] font-bold"
+                className="px-2.5 py-1 rounded bg-semantic-brand text-white text-label font-bold"
               >
                 View Tasks
               </button>
@@ -335,49 +392,51 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
             <div className="space-y-5">
               {/* Metrics Grid */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-[#FFFFFF] border border-[#E2E8F0] rounded-xl p-4 shadow-xs">
-                  <div className="text-[11px] font-bold text-[#5A6A85] uppercase">Department Staff</div>
-                  <div className="text-xl font-extrabold text-[#162136] mt-1">
-                    {data?.members?.length || 0} Specialists
+                <div className="bg-semantic-panel border border-semantic-border rounded-xl p-4 shadow-xs">
+                  <div className="text-label font-bold text-semantic-jira-muted-strong uppercase">Department Staff</div>
+                  <div className="text-xl font-extrabold text-semantic-primary mt-1">
+                    {totalMembers} Specialists
                   </div>
-                  <div className="text-[11px] text-[#007860] font-semibold mt-1">
-                    {data?.department?.admins?.length || 1} Scoped Admins
+                  <div className="text-label text-semantic-success font-semibold mt-1">
+                    {data.department.admins?.length ?? 0} Scoped Admins
                   </div>
                 </div>
 
-                <div className="bg-[#FFFFFF] border border-[#E2E8F0] rounded-xl p-4 shadow-xs">
-                  <div className="text-[11px] font-bold text-[#5A6A85] uppercase">Integrated Connectors</div>
-                  <div className="text-xl font-extrabold text-[#007860] mt-1">
-                    {data?.connections?.length || 0} Active
+                <div className="bg-semantic-panel border border-semantic-border rounded-xl p-4 shadow-xs">
+                  <div className="text-label font-bold text-semantic-jira-muted-strong uppercase">Integrated Connectors</div>
+                  <div className="text-xl font-extrabold text-semantic-success mt-1">
+                    {connectedConnectors.length} Active
                   </div>
-                  <div className="text-[11px] text-[#5A6A85] mt-1">100% Health Score</div>
+                  <div className="text-label text-semantic-jira-muted-strong mt-1">
+                    {averageHealth == null ? 'No verified health measurement' : `${averageHealth}% measured health`}
+                  </div>
                 </div>
 
-                <div className="bg-[#FFFFFF] border border-[#E2E8F0] rounded-xl p-4 shadow-xs">
-                  <div className="text-[11px] font-bold text-[#5A6A85] uppercase">In-Flight Tasks</div>
-                  <div className="text-xl font-extrabold text-[#0073D3] mt-1">
+                <div className="bg-semantic-panel border border-semantic-border rounded-xl p-4 shadow-xs">
+                  <div className="text-label font-bold text-semantic-jira-muted-strong uppercase">In-Flight Tasks</div>
+                  <div className="text-xl font-extrabold text-semantic-info mt-1">
                     {data?.stats?.openTasksCount || 0} Open
                   </div>
-                  <div className="text-[11px] text-[#5A6A85] mt-1">
+                  <div className="text-label text-semantic-jira-muted-strong mt-1">
                     {data?.stats?.slaBreachedCount || 0} SLA Breaches
                   </div>
                 </div>
 
-                <div className="bg-[#FFFFFF] border border-[#E2E8F0] rounded-xl p-4 shadow-xs">
-                  <div className="text-[11px] font-bold text-[#5A6A85] uppercase">Target SLA Met</div>
-                  <div className="text-xl font-extrabold text-[#162136] mt-1">98.4%</div>
-                  <div className="text-[11px] text-[#007860] font-semibold mt-1">Regulatory Compliant</div>
+                <div className="bg-semantic-panel border border-semantic-border rounded-xl p-4 shadow-xs">
+                  <div className="text-label font-bold text-semantic-jira-muted-strong uppercase">SLA Status</div>
+                  <div className="text-xl font-extrabold text-semantic-primary mt-1">{data.stats?.slaBreachedCount ?? 0} Breaches</div>
+                  <div className="text-label text-semantic-jira-muted-strong mt-1">Calculated from live department tasks</div>
                 </div>
               </div>
 
               {/* Department Admins & Leadership Card */}
-              <div className="bg-[#FFFFFF] border border-[#E2E8F0] rounded-xl p-5 shadow-xs space-y-4">
-                <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
+              <div className="bg-semantic-panel border border-semantic-border rounded-xl p-5 shadow-xs space-y-4">
+                <div className="flex items-center justify-between border-b border-semantic-border pb-3">
                   <div>
-                    <h3 className="font-extrabold text-sm text-[#162136]">
+                    <h3 className="font-extrabold text-sm text-semantic-primary">
                       Department Administrators & Managers
                     </h3>
-                    <p className="text-xs text-[#5A6A85]">
+                    <p className="text-xs text-semantic-jira-muted-strong">
                       Personnel authorized to manage internal {dept.name} settings and assign roles.
                     </p>
                   </div>
@@ -396,36 +455,80 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
                   {data?.department?.admins?.map((adm: any) => (
                     <div
                       key={adm.id}
-                      className="p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between"
+                      className="p-3 bg-semantic-subtle border border-semantic-border rounded-xl flex items-center justify-between"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-[#00B259] text-white flex items-center justify-center font-bold text-xs">
+                        <div className="w-8 h-8 rounded-full bg-semantic-brand text-white flex items-center justify-center font-bold text-xs">
                           {adm.fullName?.[0] || 'A'}
                         </div>
                         <div>
-                          <div className="font-bold text-xs text-[#162136]">{adm.fullName}</div>
-                          <div className="text-[11px] text-[#5A6A85] font-mono">{adm.email}</div>
+                          <div className="font-bold text-xs text-semantic-primary">{adm.fullName}</div>
+                          <div className="text-label text-semantic-jira-muted-strong font-mono">{adm.email}</div>
                         </div>
                       </div>
-                      <span className="px-2 py-0.5 rounded bg-[#E6F7EF] text-[#007860] text-[10px] font-bold border border-[#B8EAD1]">
+                      <span className="px-2 py-0.5 rounded bg-semantic-success-surface text-semantic-success text-caption font-bold border border-semantic-success-border">
                         {adm.role}
                       </span>
                     </div>
                   ))}
                 </div>
+                {!data.department.admins?.length && (
+                  <div className="rounded-lg border border-dashed border-semantic-border bg-semantic-subtle px-4 py-3 text-xs text-semantic-jira-muted-strong">
+                    No active Active Directory administrator is assigned to this department.
+                  </div>
+                )}
+              </div>
+
+              {/* Department Sections */}
+              <div className="bg-semantic-panel border border-semantic-border rounded-xl p-5 shadow-xs space-y-4">
+                <div className="flex items-center justify-between border-b border-semantic-border pb-3">
+                  <div>
+                    <h3 className="font-extrabold text-sm text-semantic-primary">
+                      Department Sections ({dept.sections?.length || 0})
+                    </h3>
+                    <p className="text-xs text-semantic-jira-muted-strong">
+                      Active child sections synchronized from the directory.
+                    </p>
+                  </div>
+                  <span className="text-caption font-bold uppercase tracking-wide text-semantic-info">
+                    {dept.sections?.length ? 'Directory linked' : 'No active sections'}
+                  </span>
+                </div>
+
+                {dept.sections?.length ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {dept.sections.map((section: any) => (
+                      <div key={section.id} className="p-3 bg-semantic-subtle border border-semantic-border rounded-xl">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="font-bold text-xs text-semantic-primary">{section.name}</div>
+                          <span className="px-1.5 py-0.5 rounded bg-semantic-neutral-surface text-semantic-secondary text-micro font-mono">
+                            {section.code}
+                          </span>
+                        </div>
+                        <div className="mt-2 text-label text-semantic-jira-muted-strong">
+                          {section.memberCount || 0} members
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-semantic-border bg-semantic-subtle px-4 py-3 text-xs text-semantic-jira-muted-strong">
+                    No active child sections are present in the directory projection. Run a live AD sync/import to populate them.
+                  </div>
+                )}
               </div>
             </div>
           )}
 
           {/* TAB 2: MEMBERS & ROLES */}
           {activeTab === 'MEMBERS' && (
-            <div className="bg-[#FFFFFF] border border-[#E2E8F0] rounded-xl p-5 shadow-xs space-y-4">
-              <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3.5">
+            <div className="bg-semantic-panel border border-semantic-border rounded-xl p-5 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-semantic-border pb-3.5">
                 <div>
-                  <h3 className="font-extrabold text-sm text-[#162136]">
+                  <h3 className="font-extrabold text-sm text-semantic-primary">
                     Department Staff Directory ({data?.members?.length || 0} Specialists)
                   </h3>
-                  <p className="text-xs text-[#5A6A85]">
+                  <p className="text-xs text-semantic-jira-muted-strong">
                     Internal role assignments and access clearance for {dept.name}.
                   </p>
                 </div>
@@ -442,53 +545,126 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0] text-[#5A6A85] uppercase font-bold text-[10px] tracking-wider">
+                  <thead className="bg-semantic-subtle border-b border-semantic-border text-semantic-jira-muted-strong uppercase font-bold text-caption tracking-wider">
                     <tr>
                       <th className="px-4 py-3">Employee Name</th>
+                      <th className="px-3 py-3">Section</th>
                       <th className="px-3 py-3">Assigned Title</th>
                       <th className="px-3 py-3">RBAC Roles</th>
                       <th className="px-3 py-3">Clearance Tier</th>
                       <th className="px-3 py-3">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#E2E8F0]">
-                    {data?.members?.map((m: BankUser) => (
-                      <tr key={m.id} className="hover:bg-[#F8FAFC] transition-colors">
-                        <td className="px-4 py-3 font-bold text-[#162136]">
-                          <div>{m.fullName}</div>
-                          <div className="text-[11px] text-[#8D99AE] font-mono font-normal">
-                            {m.email}
-                          </div>
-                        </td>
-                        <td className="px-3 py-3 text-[#5A6A85] font-medium">{m.title}</td>
-                        <td className="px-3 py-3">
-                          <div className="flex items-center gap-1 flex-wrap">
-                            {m.roles?.map((r) => (
-                              <span
-                                key={r}
-                                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
-                                  r === 'DEPARTMENT_ADMIN' || r === 'PLATFORM_ADMIN'
-                                    ? 'bg-[#E6F7EF] text-[#007860] border-[#B8EAD1]'
-                                    : 'bg-[#F1F5F9] text-[#475569] border-[#E2E8F0]'
-                                }`}
-                              >
-                                {r}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-3 py-3">
-                          <span className="px-2 py-0.5 rounded-full bg-[#FAF5FF] text-[#722ED1] text-[10px] font-bold border border-[#EFDBFF]">
-                            {m.securityClearance}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3">
-                          <span className="px-2 py-0.5 rounded-full bg-[#E6F7EF] text-[#007860] text-[10px] font-bold">
-                            ACTIVE
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                  <tbody className="divide-y divide-semantic-border">
+                    {data?.members?.map((m: BankUser) => {
+                      const isManager =
+                        m.id === dept.managerId ||
+                        m.roles?.includes('DEPARTMENT_MANAGER') ||
+                        m.roles?.includes('INFOSEC_MANAGER') ||
+                        m.roles?.includes('CISO') ||
+                        /müdir|mudir|direktor|director|rəis|reis|sədr|head/i.test(m.title || '');
+
+                      const isAparici =
+                        !isManager &&
+                        (m.roles?.includes('TEAM_LEAD') || /aparici|aparıcı|lead|baş |bas /i.test(m.title || ''));
+                      const isBoyuk =
+                        !isManager && !isAparici && /boyuk|böyük|senior/i.test(m.title || '');
+                      const isKicik =
+                        !isManager &&
+                        !isAparici &&
+                        !isBoyuk &&
+                        /kicik|kiçik|junior|tecrube|təcrübə|assistent|intern/i.test(m.title || '');
+
+                      return (
+                        <tr
+                          key={m.id}
+                          className={`transition-colors ${
+                            isManager
+                              ? 'bg-semantic-warning-note hover:bg-semantic-warning-legacy'
+                              : isBoyuk
+                              ? 'bg-semantic-info-utility-alt hover:bg-semantic-info-utility'
+                              : 'hover:bg-semantic-subtle'
+                          }`}
+                        >
+                          <td className="px-4 py-3 font-bold text-semantic-primary">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span>{m.fullName}</span>
+                              {isManager && (
+                                <span className="px-2 py-0.5 rounded-full bg-semantic-warning-amber text-semantic-warning-strong text-micro font-extrabold border border-semantic-warning-soft-border tracking-wide uppercase shadow-xs">
+                                  👑 Head / Müdir
+                                </span>
+                              )}
+                              {isAparici && (
+                                <span className="px-2 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success text-micro font-bold border border-semantic-success-border tracking-wide uppercase shadow-xs">
+                                  Aparıcı
+                                </span>
+                              )}
+                              {isBoyuk && (
+                                <span className="px-2 py-0.5 rounded-full bg-semantic-info-utility text-semantic-info-utility-text text-micro font-bold border border-semantic-info-utility-border tracking-wide uppercase shadow-xs">
+                                  Böyük Mütəxəssis
+                                </span>
+                              )}
+                              {isKicik && (
+                                <span className="px-2 py-0.5 rounded-full bg-semantic-subtle text-semantic-muted text-micro font-bold border border-semantic-border tracking-wide uppercase shadow-xs">
+                                  Kiçik Mütəxəssis
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-label text-semantic-jira-icon font-mono font-normal">
+                              {m.email}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-semantic-jira-muted-strong font-medium">
+                            {m.section?.name || dept.sections?.find((section: any) => section.id === m.sectionId)?.name || '—'}
+                          </td>
+                          <td className="px-3 py-3 text-semantic-jira-muted-strong font-medium">
+                            <span className={isManager ? 'font-bold text-semantic-primary' : ''}>
+                              {m.title}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {m.roles?.map((r) => {
+                                const isLeadershipRole =
+                                  r === 'DEPARTMENT_MANAGER' ||
+                                  r === 'INFOSEC_MANAGER' ||
+                                  r === 'CISO' ||
+                                  r === 'DEPARTMENT_ADMIN' ||
+                                  r === 'PLATFORM_ADMIN' ||
+                                  r === 'TEAM_LEAD';
+
+                                return (
+                                  <span
+                                    key={r}
+                                    className={`px-2 py-0.5 rounded text-caption font-mono font-bold border ${
+                                      r === 'DEPARTMENT_MANAGER' || r === 'INFOSEC_MANAGER'
+                                        ? 'bg-semantic-warning-amber text-semantic-warning-strong border-semantic-warning-soft-border'
+                                        : r === 'CISO' || r === 'PLATFORM_ADMIN'
+                                        ? 'bg-semantic-info-utility-alt text-semantic-jira-brand border-semantic-jira-info-border'
+                                        : r === 'DEPARTMENT_ADMIN' || r === 'TEAM_LEAD'
+                                        ? 'bg-semantic-success-surface text-semantic-success border-semantic-success-border'
+                                        : 'bg-semantic-neutral-surface text-semantic-secondary border-semantic-border'
+                                    }`}
+                                  >
+                                    {r}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <span className="px-2 py-0.5 rounded-full bg-semantic-purple-surface text-semantic-purple text-caption font-bold border border-semantic-purple-border">
+                              {m.securityClearance}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3">
+                            <span className="px-2 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success text-caption font-bold">
+                              ACTIVE
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -497,87 +673,89 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
 
           {/* TAB 3: INTERNAL SETTINGS & SLAS */}
           {activeTab === 'SETTINGS' && (
-            <div className="bg-[#FFFFFF] border border-[#E2E8F0] rounded-xl p-5 shadow-xs space-y-5">
-              <div className="border-b border-[#E2E8F0] pb-3">
-                <h3 className="font-extrabold text-sm text-[#162136]">
+            <div className="bg-semantic-panel border border-semantic-border rounded-xl p-5 shadow-xs space-y-5">
+              <div className="border-b border-semantic-border pb-3">
+                <h3 className="font-extrabold text-sm text-semantic-primary">
                   Department Configuration & SLA Targets
                 </h3>
-                <p className="text-xs text-[#5A6A85]">
+                <p className="text-xs text-semantic-jira-muted-strong">
                   Configure response thresholds, auto-assignment pipelines, and dual-control rules for {dept.name}.
                 </p>
               </div>
 
               {settingsSaveMsg && (
-                <div className="p-3 rounded-lg bg-[#E6F7EF] border border-[#B8EAD1] text-xs font-semibold text-[#007860] flex items-center gap-2">
+                <div className="p-3 rounded-lg bg-semantic-success-surface border border-semantic-success-border text-xs font-semibold text-semantic-success flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 shrink-0" />
                   <span>{settingsSaveMsg}</span>
                 </div>
               )}
 
               <form onSubmit={handleSaveSettings} className="space-y-4 text-xs">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0]">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-semantic-subtle rounded-xl border border-semantic-border">
                   <div>
-                    <label className="block font-bold text-[#162136] mb-1">
+                    <label className="block font-bold text-semantic-primary mb-1">
                       Standard SLA Response Target (Hours)
                     </label>
                     <input
                       type="number"
-                      value={settingsForm.defaultSlaHours || 24}
+                      value={settingsForm.defaultSlaHours ?? ''}
                       onChange={(e) =>
                         setSettingsForm({ ...settingsForm, defaultSlaHours: Number(e.target.value) })
                       }
-                      className="w-full px-3 py-2 bg-[#FFFFFF] border border-[#E2E8F0] rounded-lg text-xs font-mono font-bold"
+                      className="w-full px-3 py-2 bg-semantic-panel border border-semantic-border rounded-lg text-xs font-mono font-bold"
+                      placeholder="Not configured"
                     />
-                    <p className="text-[11px] text-[#8D99AE] mt-1">Default turnaround time for standard tasks.</p>
+                    <p className="text-label text-semantic-jira-icon mt-1">Default turnaround time for standard tasks.</p>
                   </div>
 
                   <div>
-                    <label className="block font-bold text-[#162136] mb-1">
+                    <label className="block font-bold text-semantic-primary mb-1">
                       Critical P1 / Blocker SLA Target (Hours)
                     </label>
                     <input
                       type="number"
-                      value={settingsForm.criticalSlaHours || 2}
+                      value={settingsForm.criticalSlaHours ?? ''}
                       onChange={(e) =>
                         setSettingsForm({ ...settingsForm, criticalSlaHours: Number(e.target.value) })
                       }
-                      className="w-full px-3 py-2 bg-[#FFFFFF] border border-[#E2E8F0] rounded-lg text-xs font-mono font-bold text-[#E51739]"
+                      className="w-full px-3 py-2 bg-semantic-panel border border-semantic-border rounded-lg text-xs font-mono font-bold text-semantic-brand-danger"
+                      placeholder="Not configured"
                     />
-                    <p className="text-[11px] text-[#8D99AE] mt-1">Emergency containment & response deadline.</p>
+                    <p className="text-label text-semantic-jira-icon mt-1">Emergency containment & response deadline.</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] space-y-2">
-                    <label className="flex items-center gap-2.5 cursor-pointer font-bold text-[#162136]">
+                  <div className="p-4 bg-semantic-subtle rounded-xl border border-semantic-border space-y-2">
+                    <label className="flex items-center gap-2.5 cursor-pointer font-bold text-semantic-primary">
                       <input
                         type="checkbox"
                         checked={settingsForm.autoAssignEnabled !== false}
                         onChange={(e) =>
                           setSettingsForm({ ...settingsForm, autoAssignEnabled: e.target.checked })
                         }
-                        className="rounded text-[#00B259] focus:ring-0"
+                        className="rounded text-semantic-brand focus:ring-0"
                       />
                       <span>Enable Smart Task Auto-Assignment</span>
                     </label>
-                    <p className="text-[11px] text-[#5A6A85] pl-6">
+                    <p className="text-label text-semantic-jira-muted-strong pl-6">
                       Automatically routes new incoming tasks to on-duty specialists based on workload.
                     </p>
                   </div>
 
-                  <div className="p-4 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] space-y-2">
-                    <label className="flex items-center gap-2.5 cursor-pointer font-bold text-[#162136]">
+                  <div className="p-4 bg-semantic-subtle rounded-xl border border-semantic-border space-y-2">
+                    <label className="flex items-center gap-2.5 cursor-pointer font-bold text-semantic-primary">
                       <input
                         type="checkbox"
                         checked={settingsForm.requireDualApproval !== false}
                         onChange={(e) =>
                           setSettingsForm({ ...settingsForm, requireDualApproval: e.target.checked })
                         }
-                        className="rounded text-[#00B259] focus:ring-0"
+                        className="rounded text-semantic-brand focus:ring-0"
                       />
                       <span>Enforce 4-Eyes Dual-Control Approvals</span>
                     </label>
-                    <p className="text-[11px] text-[#5A6A85] pl-6">
+                    <p className="text-label text-semantic-jira-muted-strong pl-6">
                       Requires two department sign-offs before critical tickets can be resolved.
                     </p>
                   </div>
@@ -603,10 +781,10 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-extrabold text-sm text-[#162136]">
+                  <h3 className="font-extrabold text-sm text-semantic-primary">
                     {dept.name} Task Templates & Turnkey Blueprints
                   </h3>
-                  <p className="text-xs text-[#5A6A85]">
+                  <p className="text-xs text-semantic-jira-muted-strong">
                     Pre-packaged multi-step workflows tailored for {dept.name} operations.
                   </p>
                 </div>
@@ -616,32 +794,32 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
                 {data?.templates?.map((bp: ProjectBlueprint) => (
                   <div
                     key={bp.id}
-                    className="bg-[#FFFFFF] border border-[#E2E8F0] hover:border-[#00B259] rounded-xl p-5 flex flex-col justify-between space-y-3 shadow-xs transition-all"
+                    className="bg-semantic-panel border border-semantic-border hover:border-semantic-brand rounded-xl p-5 flex flex-col justify-between space-y-3 shadow-xs transition-all"
                   >
                     <div>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-[#E6F7EF] text-[#00B259] flex items-center justify-center font-bold">
+                          <div className="w-8 h-8 rounded-lg bg-semantic-success-surface text-semantic-brand flex items-center justify-center font-bold">
                             <FileText className="w-4 h-4" />
                           </div>
                           <div>
-                            <h4 className="font-extrabold text-sm text-[#162136]">{bp.title}</h4>
-                            <span className="text-[11px] font-bold text-[#007860]">{bp.domain}</span>
+                            <h4 className="font-extrabold text-sm text-semantic-primary">{bp.title}</h4>
+                            <span className="text-label font-bold text-semantic-success">{bp.domain}</span>
                           </div>
                         </div>
 
                         {bp.isCrossDepartment && (
-                          <span className="px-2 py-0.5 rounded-full bg-[#FAF5FF] text-[#722ED1] text-[10px] font-bold border border-[#EFDBFF]">
+                          <span className="px-2 py-0.5 rounded-full bg-semantic-purple-surface text-semantic-purple text-caption font-bold border border-semantic-purple-border">
                             CROSS-DEPT
                           </span>
                         )}
                       </div>
 
-                      <p className="text-xs text-[#5A6A85] mt-2.5 leading-relaxed">{bp.description}</p>
+                      <p className="text-xs text-semantic-jira-muted-strong mt-2.5 leading-relaxed">{bp.description}</p>
                     </div>
 
-                    <div className="pt-3 border-t border-[#E2E8F0] flex items-center justify-between text-xs">
-                      <span className="font-mono text-[11px] text-[#5A6A85]">
+                    <div className="pt-3 border-t border-semantic-border flex items-center justify-between text-xs">
+                      <span className="font-mono text-label text-semantic-jira-muted-strong">
                         {bp.defaultTasks?.length || bp.taskCount} Subtasks | {bp.estimatedDays} Days
                       </span>
 
@@ -664,10 +842,10 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-extrabold text-sm text-[#162136]">
+                  <h3 className="font-extrabold text-sm text-semantic-primary">
                     {dept.name} System Connectors & APIs
                   </h3>
-                  <p className="text-xs text-[#5A6A85]">
+                  <p className="text-xs text-semantic-jira-muted-strong">
                     Connected core platforms, identity providers, SIEM, and databases.
                   </p>
                 </div>
@@ -684,12 +862,12 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
 
               {/* Test Result Live Banner */}
               {testResult && (
-                <div className="p-4 rounded-xl bg-[#E6F7EF] border border-[#B8EAD1] text-xs space-y-1.5 shadow-sm animate-fade-in">
-                  <div className="flex items-center gap-2 text-[#007860] font-extrabold">
+                <div className="p-4 rounded-xl bg-semantic-success-surface border border-semantic-success-border text-xs space-y-1.5 shadow-sm animate-fade-in">
+                  <div className="flex items-center gap-2 text-semantic-success font-extrabold">
                     <CheckCircle2 className="w-4 h-4" />
                     <span>{testResult.result.message}</span>
                   </div>
-                  <div className="font-mono text-[11px] text-[#2B3A57] pl-6">
+                  <div className="font-mono text-label text-semantic-brand-ink pl-6">
                     Cipher: {testResult.result.details?.tlsCipher} | Latency: {testResult.result.latencyMs}ms | Verified: {new Date(testResult.result.timestamp).toLocaleTimeString()}
                   </div>
                 </div>
@@ -699,52 +877,55 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
                 {data?.connections?.map((conn: DepartmentConnection) => (
                   <div
                     key={conn.id}
-                    className="bg-[#FFFFFF] border border-[#E2E8F0] rounded-xl p-5 space-y-3.5 shadow-xs hover:border-[#CBD5E1] transition-all"
+                    className="bg-semantic-panel border border-semantic-border rounded-xl p-5 space-y-3.5 shadow-xs hover:border-semantic-border-strong transition-all"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-[#F0F5FF] text-[#0052CC] flex items-center justify-center font-bold border border-[#D6E4FF]">
+                        <div className="w-9 h-9 rounded-xl bg-semantic-jira-soft text-semantic-jira-brand flex items-center justify-center font-bold border border-semantic-jira-soft-border">
                           <Link2 className="w-4 h-4" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <h4 className="font-extrabold text-sm text-[#162136]">{conn.name}</h4>
+                            <h4 className="font-extrabold text-sm text-semantic-primary">{conn.name}</h4>
                           </div>
-                          <div className="text-[11px] text-[#5A6A85] font-semibold">{conn.provider}</div>
+                          <div className="text-label text-semantic-jira-muted-strong font-semibold">{conn.provider}</div>
                         </div>
                       </div>
 
-                      <span className="px-2 py-0.5 rounded-full bg-[#E6F7EF] text-[#007860] font-mono text-[10px] font-extrabold border border-[#B8EAD1]">
+                      <span className="px-2 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success font-mono text-caption font-extrabold border border-semantic-success-border">
                         {conn.status}
                       </span>
                     </div>
 
-                    <p className="text-xs text-[#5A6A85] leading-relaxed">{conn.description}</p>
+                    <p className="text-xs text-semantic-jira-muted-strong leading-relaxed">{conn.description}</p>
 
-                    <div className="p-2.5 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0] font-mono text-[11px] space-y-1 text-[#2B3A57]">
+                    <div className="p-2.5 bg-semantic-subtle rounded-lg border border-semantic-border font-mono text-label space-y-1 text-semantic-brand-ink">
                       <div className="truncate">
-                        <span className="text-[#8D99AE]">Endpoint:</span> {conn.endpointUrl}
+                        <span className="text-semantic-jira-icon">Endpoint:</span> {conn.endpointUrl}
                       </div>
-                      <div className="flex items-center justify-between text-[10px]">
+                      <div className="flex items-center justify-between text-caption">
                         <span>Auth: {conn.authType}</span>
-                        <span className="text-[#007860] font-bold">Latency: {conn.latencyMs || 8}ms</span>
-                        <span>Score: {conn.healthScore || 98}%</span>
+                        <span className="text-semantic-success font-bold">Latency: {conn.latencyMs == null ? 'Not measured' : `${conn.latencyMs}ms`}</span>
+                        <span>Score: {conn.healthScore == null ? 'Not verified' : `${conn.healthScore}%`}</span>
                       </div>
                     </div>
 
                     <div className="flex items-center justify-between pt-1 text-xs">
-                      <span className="text-[10px] text-[#8D99AE]">
-                        Synced {new Date(conn.lastSyncAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      <span className="text-caption text-semantic-jira-icon">
+                        {conn.lastSyncAt ? `Synced ${new Date(conn.lastSyncAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Not synchronized'}
                       </span>
 
-                      <button
-                        onClick={() => handleTestConnection(conn.id)}
-                        disabled={testingConnId === conn.id}
-                        className="px-3 py-1.5 rounded-lg bg-[#E6F7EF] hover:bg-[#B8EAD1] text-[#007860] font-bold text-xs flex items-center gap-1.5 transition-colors border border-[#B8EAD1]"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${testingConnId === conn.id ? 'animate-spin' : ''}`} />
-                        <span>{testingConnId === conn.id ? 'Pinging...' : 'Test Connection'}</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleTestConnection(conn.id)}
+                          disabled={testingConnId === conn.id}
+                          className="px-3 py-1.5 rounded-lg bg-semantic-success-surface hover:bg-semantic-success-border text-semantic-success font-bold text-xs flex items-center gap-1.5 transition-colors border border-semantic-success-border"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${testingConnId === conn.id ? 'animate-spin' : ''}`} />
+                          <span>{testingConnId === conn.id ? 'Checking...' : 'Test Connection'}</span>
+                        </button>
+                        {isDeptAdmin && <button onClick={() => handleDeleteConnection(conn.id)} className="p-1.5 rounded-lg text-semantic-danger hover:bg-semantic-danger-surface" title="Delete connector"><Trash2 className="w-3.5 h-3.5" /></button>}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -756,34 +937,34 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
           {activeTab === 'FLOWS' && (
             <div className="space-y-4">
               {data?.workflows?.map((wf: any) => (
-                <div key={wf.id} className="bg-[#FFFFFF] border border-[#E2E8F0] rounded-xl p-5 space-y-4 shadow-xs">
-                  <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
+                <div key={wf.id} className="bg-semantic-panel border border-semantic-border rounded-xl p-5 space-y-4 shadow-xs">
+                  <div className="flex items-center justify-between border-b border-semantic-border pb-3">
                     <div>
-                      <h3 className="font-extrabold text-sm text-[#162136]">{wf.name}</h3>
-                      <p className="text-xs text-[#5A6A85]">{wf.description}</p>
+                      <h3 className="font-extrabold text-sm text-semantic-primary">{wf.name}</h3>
+                      <p className="text-xs text-semantic-jira-muted-strong">{wf.description}</p>
                     </div>
-                    <span className="px-2.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#475569] font-mono text-[10px] font-bold border border-[#E2E8F0]">
+                    <span className="px-2.5 py-0.5 rounded-full bg-semantic-neutral-surface text-semantic-secondary font-mono text-caption font-bold border border-semantic-border">
                       v{wf.version} State Machine
                     </span>
                   </div>
 
                   {/* Flow Stages */}
-                  <div className="p-4 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] space-y-2">
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-[#5A6A85]">
+                  <div className="p-4 bg-semantic-subtle rounded-xl border border-semantic-border space-y-2">
+                    <div className="text-label font-bold uppercase tracking-wider text-semantic-jira-muted-strong">
                       Process Lifecycle States & Role Transitions
                     </div>
                     <div className="flex items-center gap-3 overflow-x-auto py-2">
                       {wf.states?.map((st: any, idx: number) => (
                         <React.Fragment key={st.id}>
-                          <div className="p-3 bg-[#FFFFFF] rounded-xl border border-[#E2E8F0] space-y-1 min-w-[140px] shadow-2xs">
+                          <div className="p-3 bg-semantic-panel rounded-xl border border-semantic-border space-y-1 min-w-dsFilter shadow-2xs">
                             <div className="flex items-center gap-1.5">
                               <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: st.color }} />
-                              <span className="font-extrabold text-xs text-[#162136]">{st.name}</span>
+                              <span className="font-extrabold text-xs text-semantic-primary">{st.name}</span>
                             </div>
-                            <div className="text-[10px] font-mono text-[#8D99AE] uppercase">{st.category}</div>
+                            <div className="text-caption font-mono text-semantic-jira-icon uppercase">{st.category}</div>
                           </div>
                           {idx < wf.states.length - 1 && (
-                            <ChevronRight className="w-4 h-4 text-[#00B259] shrink-0" />
+                            <ChevronRight className="w-4 h-4 text-semantic-brand shrink-0" />
                           )}
                         </React.Fragment>
                       ))}
@@ -798,57 +979,39 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
 
       {/* Add Member Modal */}
       {isAddMemberOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-4">
-          <div className="bg-[#FFFFFF] border border-[#E2E8F0] rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
-              <h3 className="font-extrabold text-sm text-[#162136]">Add Staff to {dept.name}</h3>
-              <button onClick={() => setIsAddMemberOpen(false)} className="text-[#8D99AE] hover:text-[#162136]">
+        <div className="fixed inset-0 z-dsOverlay flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-4">
+          <div className="bg-semantic-panel border border-semantic-border rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-semantic-border pb-3">
+              <h3 className="font-extrabold text-sm text-semantic-primary">Add Staff to {dept.name}</h3>
+              <button onClick={() => setIsAddMemberOpen(false)} className="text-semantic-jira-icon hover:text-semantic-primary">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleAddMember} className="space-y-3 text-xs">
               <div>
-                <label className="block font-bold text-[#162136] mb-1">Full Name *</label>
-                <input
-                  type="text"
+                <label className="block font-bold text-semantic-primary mb-1">Active Directory employee *</label>
+                <DirectoryAssignmentSelect
+                  kind="user"
+                  value={memberUserId}
+                  onChange={setMemberUserId}
+                  departmentId={dept.id}
+                  excludeUserIds={(data?.members || []).map((member: BankUser) => member.id)}
                   required
-                  value={memberName}
-                  onChange={(e) => setMemberName(e.target.value)}
-                  placeholder="e.g. Samira Mammadova"
-                  className="w-full px-3 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs"
+                  placeholder="Select a live directory record"
+                  searchPlaceholder="Name, section, title or account…"
                 />
+                <p className={`text-label mt-1 ${directoryLoadError ? 'text-semantic-danger' : 'text-semantic-jira-icon'}`}>
+                  {directoryLoadError || 'Only active users confirmed by the last AD synchronization are selectable.'}
+                </p>
               </div>
 
               <div>
-                <label className="block font-bold text-[#162136] mb-1">Corporate Email *</label>
-                <input
-                  type="email"
-                  required
-                  value={memberEmail}
-                  onChange={(e) => setMemberEmail(e.target.value)}
-                  placeholder="s.mammadova@apexbank.int"
-                  className="w-full px-3 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-[#162136] mb-1">Position / Job Title</label>
-                <input
-                  type="text"
-                  value={memberTitle}
-                  onChange={(e) => setMemberTitle(e.target.value)}
-                  placeholder="e.g. Lead Systems Engineer"
-                  className="w-full px-3 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-[#162136] mb-1">Operational Role</label>
+                <label className="block font-bold text-semantic-primary mb-1">Operational Role</label>
                 <select
                   value={memberRole}
                   onChange={(e) => setMemberRole(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs"
+                  className="w-full px-3 py-2 bg-semantic-subtle border border-semantic-border rounded-lg text-xs"
                 >
                   <option value="TEAM_LEAD">Team Lead / Approver</option>
                   <option value="SECURITY_ANALYST">Senior Specialist</option>
@@ -858,27 +1021,27 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
                 </select>
               </div>
 
-              <div className="p-3 bg-[#E6F7EF] rounded-lg border border-[#B8EAD1]">
-                <label className="flex items-center gap-2 cursor-pointer font-bold text-[#007860]">
+              <div className="p-3 bg-semantic-success-surface rounded-lg border border-semantic-success-border">
+                <label className="flex items-center gap-2 cursor-pointer font-bold text-semantic-success">
                   <input
                     type="checkbox"
                     checked={isDeptAdminFlag}
                     onChange={(e) => setIsDeptAdminFlag(e.target.checked)}
-                    className="rounded text-[#00B259] focus:ring-0"
+                    className="rounded text-semantic-brand focus:ring-0"
                   />
                   <span>Grant Department Admin Rights ({dept.code} Admin)</span>
                 </label>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-semantic-border">
                 <button
                   type="button"
                   onClick={() => setIsAddMemberOpen(false)}
-                  className="px-3.5 py-1.5 rounded-lg bg-[#F8FAFC] text-[#5A6A85] font-bold text-xs"
+                  className="px-3.5 py-1.5 rounded-lg bg-semantic-subtle text-semantic-jira-muted-strong font-bold text-xs"
                 >
                   Cancel
                 </button>
-                <button type="submit" className="wrike-btn-primary px-4 py-1.5 text-xs font-bold">
+                <button type="submit" disabled={!memberUserId || Boolean(directoryLoadError)} className="wrike-btn-primary px-4 py-1.5 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50">
                   Save Specialist
                 </button>
               </div>
@@ -889,35 +1052,35 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
 
       {/* Add Connection Modal */}
       {isAddConnOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-4">
-          <div className="bg-[#FFFFFF] border border-[#E2E8F0] rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
-              <h3 className="font-extrabold text-sm text-[#162136]">Add Connector to {dept.name}</h3>
-              <button onClick={() => setIsAddConnOpen(false)} className="text-[#8D99AE] hover:text-[#162136]">
+        <div className="fixed inset-0 z-dsOverlay flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-4">
+          <div className="bg-semantic-panel border border-semantic-border rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-semantic-border pb-3">
+              <h3 className="font-extrabold text-sm text-semantic-primary">Add Connector to {dept.name}</h3>
+              <button onClick={() => setIsAddConnOpen(false)} className="text-semantic-jira-icon hover:text-semantic-primary">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleAddConnection} className="space-y-3 text-xs">
               <div>
-                <label className="block font-bold text-[#162136] mb-1">Connector Name *</label>
+                <label className="block font-bold text-semantic-primary mb-1">Connector Name *</label>
                 <input
                   type="text"
                   required
                   value={connName}
                   onChange={(e) => setConnName(e.target.value)}
                   placeholder="e.g. Cisco Meraki Core VPN"
-                  className="w-full px-3 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs"
+                  className="w-full px-3 py-2 bg-semantic-subtle border border-semantic-border rounded-lg text-xs"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-[#162136] mb-1">System Type</label>
+                  <label className="block font-bold text-semantic-primary mb-1">System Type</label>
                   <select
                     value={connType}
                     onChange={(e) => setConnType(e.target.value)}
-                    className="w-full px-3 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs"
+                    className="w-full px-3 py-2 bg-semantic-subtle border border-semantic-border rounded-lg text-xs"
                   >
                     <option value="ACTIVE_DIRECTORY">Active Directory</option>
                     <option value="SIEM">SIEM Telemetry</option>
@@ -931,35 +1094,35 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-[#162136] mb-1">Provider Vendor</label>
+                  <label className="block font-bold text-semantic-primary mb-1">Provider Vendor</label>
                   <input
                     type="text"
                     value={connProvider}
                     onChange={(e) => setConnProvider(e.target.value)}
                     placeholder="e.g. Cisco Systems"
-                    className="w-full px-3 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs"
+                    className="w-full px-3 py-2 bg-semantic-subtle border border-semantic-border rounded-lg text-xs"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-bold text-[#162136] mb-1">Endpoint URL / API Host *</label>
+                <label className="block font-bold text-semantic-primary mb-1">Endpoint URL / API Host *</label>
                 <input
                   type="text"
                   required
                   value={connUrl}
                   onChange={(e) => setConnUrl(e.target.value)}
                   placeholder="https://api.internal.apexbank.az"
-                  className="w-full px-3 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs font-mono"
+                  className="w-full px-3 py-2 bg-semantic-subtle border border-semantic-border rounded-lg text-xs font-mono"
                 />
               </div>
 
               <div>
-                <label className="block font-bold text-[#162136] mb-1">Authentication Method</label>
+                <label className="block font-bold text-semantic-primary mb-1">Authentication Method</label>
                 <select
                   value={connAuthType}
                   onChange={(e) => setConnAuthType(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs"
+                  className="w-full px-3 py-2 bg-semantic-subtle border border-semantic-border rounded-lg text-xs"
                 >
                   <option value="MTLS_CERTIFICATE">mTLS Certificate (Banking Grade)</option>
                   <option value="API_KEY">Secure API Key</option>
@@ -968,11 +1131,11 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
                 </select>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-semantic-border">
                 <button
                   type="button"
                   onClick={() => setIsAddConnOpen(false)}
-                  className="px-3.5 py-1.5 rounded-lg bg-[#F8FAFC] text-[#5A6A85] font-bold text-xs"
+                  className="px-3.5 py-1.5 rounded-lg bg-semantic-subtle text-semantic-jira-muted-strong font-bold text-xs"
                 >
                   Cancel
                 </button>

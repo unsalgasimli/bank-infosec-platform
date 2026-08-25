@@ -26,11 +26,12 @@ export class SearchService {
     if (!/[=~<>]|\b(?:IN|NOT|AND|OR)\b/i.test(query)) {
       const lower = query.toLowerCase();
       return authorizedTickets.filter((t) => {
+        const tags = Array.isArray(t.tags) ? t.tags : [];
         return (
           t.key.toLowerCase().includes(lower) ||
           t.title.toLowerCase().includes(lower) ||
-          t.description.toLowerCase().includes(lower) ||
-          t.tags.some((tag) => tag.toLowerCase().includes(lower)) ||
+          (t.description || '').toLowerCase().includes(lower) ||
+          tags.some((tag) => tag.toLowerCase().includes(lower)) ||
           t.findingDetails?.cveId?.toLowerCase().includes(lower) ||
           t.findingDetails?.cweId?.toLowerCase().includes(lower)
         );
@@ -50,7 +51,8 @@ export class SearchService {
       const field = containsMatch[1].toLowerCase();
       const expected = containsMatch[2].trim().replace(/^['"]|['"]$/g, '').toLowerCase();
       if (field === 'text') {
-        return [ticket.key, ticket.title, ticket.description, ...ticket.tags].some((value) => value.toLowerCase().includes(expected));
+        const tags = Array.isArray(ticket.tags) ? ticket.tags : [];
+        return [ticket.key, ticket.title, ticket.description || '', ...tags].some((value) => value.toLowerCase().includes(expected));
       }
       return String(SearchService.getFieldValue(ticket, field, user) || '').toLowerCase().includes(expected);
     }
@@ -151,6 +153,12 @@ export class SearchService {
       case 'team':
       case 'teamid':
         return ticket.teamId;
+      case 'department':
+      case 'departmentid':
+        return ticket.departmentId;
+      case 'targetdepartment':
+      case 'targetdepartmentid':
+        return ticket.targetDepartmentId;
       case 'app':
       case 'application':
       case 'applicationid':

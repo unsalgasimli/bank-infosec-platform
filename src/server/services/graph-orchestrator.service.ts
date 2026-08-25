@@ -296,9 +296,9 @@ export class GraphOrchestratorService {
 
     const now = new Date().toISOString();
     const year = new Date().getUTCFullYear();
-    const activeWorkflow = db.data.workflows.find((w) => w.id === workflowId && w.isActive !== false) ||
-      db.data.workflows.find((w) => w.isActive !== false) ||
-      db.data.workflows[0];
+    const activeWorkflow = db.data.workflows.find((w) => w.id === workflowId && w.isActive !== false && w.states?.length) ||
+      db.data.workflows.find((w) => w.isActive !== false && w.states?.length) ||
+      db.data.workflows.find((w) => w.states?.length);
 
     if (!activeWorkflow) {
       throw new WorkflowTemplateError('No active ticket workflow is configured in the system.', 422);

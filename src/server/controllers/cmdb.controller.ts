@@ -1,0 +1,59 @@
+import type { Response } from 'express';
+import type { AuthenticatedRequest } from '../middleware/auth.middleware.js';
+import { CMDBError, CMDBService } from '../services/cmdb.service.js';
+import { CMDBSyncService } from '../services/cmdb-sync.service.js';
+import { db } from '../db/database.js';
+import type { ConfigurationItem } from '../../shared/types/cmdb.js';
+
+export class CMDBController {
+  private static param(value: string | string[] | undefined): string { return Array.isArray(value) ? value[0] || '' : value || ''; }
+  private static execute(res: Response, operation: () => unknown, created = false): void {
+    try { res.status(created ? 201 : 200).json({ success: true, ...(operation() as object) }); }
+    catch (error) { const known = error instanceof CMDBError ? error : error instanceof Error && error.name === 'ZodError' ? new CMDBError(400, error.message) : null; res.status(known?.statusCode || 500).json({ success: false, error: known?.message || 'CMDB operation failed.' }); }
+  }
+  static list = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => { const result = CMDBService.list(req.user!, req.query); return { ...result, cis: result.items }; });
+  static create = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ ci: CMDBService.create(req.body, req.user!) }), true);
+  static get = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ ci: CMDBService.get(this.param(req.params.id)) }));
+  static update = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ ci: CMDBService.update(this.param(req.params.id), req.body, req.user!) }));
+  static merge = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ ci: CMDBService.merge(this.param(req.body.sourceCiId), this.param(req.params.id), req.user!) }));
+  static history = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ events: CMDBService.history(this.param(req.params.id)) }));
+  static duplicates = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ candidates: CMDBService.duplicateCandidates(this.param(req.params.id)) }));
+  static relationships = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => CMDBService.relationships(this.param(req.params.id)));
+  static createRelationship = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ relationship: CMDBService.relationship(this.param(req.params.id), req.body, req.user!) }), true);
+  static deleteRelationship = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => { CMDBService.removeRelationship(this.param(req.params.id), req.user!); return {}; });
+  static graph = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => CMDBService.graph(this.param(req.params.id), req.query));
+  static impact = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => CMDBService.impact(this.param(req.params.id)));
+  static linkRecord = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ link: CMDBService.linkRecord(this.param(req.params.id), req.body, req.user!) }), true);
+  static relatedRecords = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ records: CMDBService.relatedRecords(this.param(req.params.id)) }));
+  static assets = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => { const result = CMDBService.list(req.user!, { ...req.query, assetOnly: 'true' }); return { ...result, assets: result.items }; });
+  static applications = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => { const result = CMDBService.list(req.user!, { ...req.query, applicationOnly: 'true' }); return { ...result, applications: result.items }; });
+  static businessServices = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => { const result = CMDBService.list(req.user!, { ...req.query, businessServiceOnly: 'true' }); return { ...result, businessServices: result.items }; });
+  static types = (_req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ types: CMDBService.types() }));
+  static savedViews = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ views: CMDBService.savedViews(req.user!) }));
+  static saveView = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ view: CMDBService.saveView(req.body, req.user!) }), true);
+  static relationshipTypes = (_req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ relationshipTypes: CMDBService.relationshipTypes() }));
+  static createType = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ type: CMDBService.createType(req.body, req.user!) }), true);
+  static updateType = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ type: CMDBService.updateType(this.param(req.params.id), req.body, req.user!) }));
+  static createRelationshipType = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ relationshipType: CMDBService.createRelationshipType(req.body, req.user!) }), true);
+  static updateRelationshipType = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ relationshipType: CMDBService.updateRelationshipType(this.param(req.params.id), req.body, req.user!) }));
+  static sync = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => CMDBSyncService.sync(this.param(req.params.sourceSystem), req.body, req.user!));
+  static legacyAssets = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => { const result = CMDBService.list(req.user!, { ...req.query, assetOnly: 'true' }); return { assets: result.items.map((ci) => this.assetProjection(ci)) }; });
+  static legacyApplications = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => { const result = CMDBService.list(req.user!, { ...req.query, applicationOnly: 'true' }); return { applications: result.items.map((ci) => this.applicationProjection(ci)) }; });
+  static createLegacyAsset = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ asset: this.assetProjection(CMDBService.create({ name: req.body.name, typeId: this.legacyAssetType(req.body.assetType), hostname: req.body.hostname, ipAddress: req.body.ipAddress, environment: this.cmdbEnvironment(req.body.environment), criticality: this.legacyCriticality(req.body.criticality), technicalOwnerUserId: req.body.ownerId || req.user!.id, departmentId: req.body.departmentId || req.user!.departmentId, operatingSystem: req.body.operatingSystem, source: 'MANUAL', details: { cloudProvider: req.body.cloudProvider, cloudRegion: req.body.cloudRegion } }, req.user!)) }), true);
+  static createLegacyApplication = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ application: this.applicationProjection(CMDBService.create({ name: req.body.name, typeId: 'application', environment: this.cmdbEnvironment(req.body.environment), criticality: this.legacyCriticality(req.body.criticality), businessOwnerUserId: req.body.businessOwnerId || req.user!.id, technicalOwnerUserId: req.body.technicalOwnerId || req.user!.id, departmentId: req.body.departmentId || req.user!.departmentId, source: 'MANUAL', details: { applicationCode: req.body.code, technologyStack: Array.isArray(req.body.techStack) ? req.body.techStack : [], repositoryUrl: Array.isArray(req.body.gitRepositories) ? req.body.gitRepositories[0] : undefined, internetExposure: Boolean(req.body.internetExposed), dataClassification: req.body.dataClassification } }, req.user!)) }), true);
+
+  private static assetProjection(ci: ConfigurationItem) {
+    const owner = db.data.users.find((user) => user.id === ci.technicalOwnerUserId || user.id === ci.ownerUserId);
+    const typeMap: Record<string, string> = { physical_server: 'SERVER', virtual_machine: 'VM', database: 'DATABASE', firewall: 'FIREWALL', network_device: 'NETWORK_DEVICE', cloud_resource: 'CLOUD_RESOURCE', laptop: 'WORKSTATION', desktop: 'WORKSTATION', certificate: 'CERTIFICATE' };
+    return { id: ci.id, name: ci.name, assetType: typeMap[ci.typeId] || 'SERVER', hostname: ci.hostname, ipAddress: ci.ipAddress, environment: this.legacyEnvironment(ci.environment), criticality: this.legacyTier(ci.criticality), internetExposed: Boolean((ci.details as any).internetExposed), businessService: (ci.details as any).businessService, applicationId: (ci.details as any).applicationId, ownerId: owner?.id || '', ownerName: owner?.fullName, operatingSystem: ci.operatingSystem, departmentId: ci.departmentId || '', dataClassification: (ci.details as any).dataClassification || 'INTERNAL', cmdbId: ci.ciNumber, openTicketCount: 0, criticalFindingCount: 0 };
+  }
+  private static applicationProjection(ci: ConfigurationItem) {
+    const details = ci.details as any;
+    return { id: ci.id, code: details.applicationCode || ci.externalReference || ci.ciNumber, name: ci.name, description: ci.description || '', criticality: this.legacyTier(ci.criticality), ownerId: ci.technicalOwnerUserId || ci.ownerUserId, businessOwnerId: ci.businessOwnerUserId || '', technicalOwnerId: ci.technicalOwnerUserId || '', securityLeadId: details.securityLeadId || '', developmentTeamId: details.developmentTeamId || '', environment: this.legacyEnvironment(ci.environment), techStack: Array.isArray(details.technologyStack) ? details.technologyStack : [], gitRepositories: details.repositoryUrl ? [details.repositoryUrl] : [], connectedDatabases: [], connectedApis: [], internetExposed: Boolean(details.internetExposure), dataClassification: details.dataClassification || 'INTERNAL', activeRiskCount: 0, openVulnerabilitiesCount: 0 };
+  }
+  private static legacyEnvironment(value: unknown): 'PRODUCTION' | 'UAT' | 'DR' | 'STAGING' | 'DEVELOPMENT' { const normalized = String(value || 'PRODUCTION').toUpperCase(); return normalized === 'DEV' || normalized === 'DEVELOPMENT' ? 'DEVELOPMENT' : normalized === 'TEST' || normalized === 'UAT' ? 'UAT' : normalized === 'DR' || normalized === 'DR_SITE' ? 'DR' : normalized === 'STAGING' ? 'STAGING' : 'PRODUCTION'; }
+  private static cmdbEnvironment(value: unknown): 'DEV' | 'TEST' | 'UAT' | 'STAGING' | 'PRODUCTION' | 'DR' | 'UNKNOWN' { const normalized = String(value || 'PRODUCTION').toUpperCase(); return normalized === 'DEVELOPMENT' || normalized === 'DEV' ? 'DEV' : normalized === 'TEST' ? 'TEST' : ['UAT', 'STAGING', 'PRODUCTION', 'DR'].includes(normalized) ? normalized as 'UAT' | 'STAGING' | 'PRODUCTION' | 'DR' : 'UNKNOWN'; }
+  private static legacyCriticality(value: unknown): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' { const normalized = String(value || 'MEDIUM').toUpperCase(); return normalized.includes('1') || normalized === 'CRITICAL' ? 'CRITICAL' : normalized.includes('2') || normalized === 'HIGH' ? 'HIGH' : normalized.includes('3') || normalized === 'LOW' ? 'LOW' : 'MEDIUM'; }
+  private static legacyTier(value: unknown): 'TIER_1' | 'TIER_2' | 'TIER_3' { const normalized = String(value || 'MEDIUM').toUpperCase(); return normalized === 'CRITICAL' || normalized === 'HIGH' || normalized === 'TIER_1' ? 'TIER_1' : normalized === 'LOW' || normalized === 'TIER_3' ? 'TIER_3' : 'TIER_2'; }
+  private static legacyAssetType(value: unknown): string { const normalized = String(value || '').toUpperCase(); if (normalized.includes('FIREWALL')) return 'firewall'; if (normalized.includes('NETWORK')) return 'network_device'; if (normalized.includes('DATABASE')) return 'database'; if (normalized.includes('CLOUD')) return 'cloud_resource'; if (normalized.includes('VM') || normalized.includes('KUBERNETES')) return 'virtual_machine'; return 'physical_server'; }
+}

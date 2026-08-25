@@ -4,6 +4,7 @@ import { db } from '../server/db/database.js';
 import { authMiddleware, requireAuthentication } from '../server/middleware/auth.middleware.js';
 import { sameOriginMutationMiddleware } from '../server/middleware/security.middleware.js';
 import { SessionService } from '../server/services/session.service.js';
+import type { BankUser } from '../shared/types/auth.js';
 
 function responseMock() {
   const headers = new Map<string, string>();
@@ -37,7 +38,7 @@ test('server sessions isolate users and reject client-forged identities', () => 
   let secondUser = db.data.users.find((user) => user.id !== firstUser.id);
   const createdFixture = !secondUser;
   if (!secondUser) {
-    secondUser = {
+    const fixtureUser: BankUser = {
       ...JSON.parse(JSON.stringify(firstUser)),
       id: 'usr-session-isolation-fixture',
       username: 'session.isolation.fixture',
@@ -46,17 +47,19 @@ test('server sessions isolate users and reject client-forged identities', () => 
       fullName: 'Session Isolation Fixture',
       roles: ['REQUESTER'],
     };
-    db.data.users.push(secondUser);
+    db.data.users.push(fixtureUser);
+    secondUser = fixtureUser;
   }
-  secondUser.isActive = true;
+  const resolvedSecondUser = secondUser;
+  resolvedSecondUser.isActive = true;
 
   const firstToken = SessionService.create(firstUser.id);
-  const secondToken = SessionService.create(secondUser.id);
+  const secondToken = SessionService.create(resolvedSecondUser.id);
 
   assert.notEqual(firstToken, secondToken);
   assert.equal(firstToken.includes(firstUser.id), false, 'opaque session IDs must not disclose user IDs');
   assert.equal(SessionService.resolve(firstToken), firstUser.id);
-  assert.equal(SessionService.resolve(secondToken), secondUser.id);
+  assert.equal(SessionService.resolve(secondToken), resolvedSecondUser.id);
 
   const forgedRequest: any = {
     headers: {
@@ -68,24 +71,24 @@ test('server sessions isolate users and reject client-forged identities', () => 
   assert.equal(forgedRequest.user, undefined, 'legacy headers must never select a user');
 
   const authenticatedRequest: any = {
-    headers: { cookie: `__Host-aegis_session=${secondToken}` },
+    headers: { cookie: `aegis_session=${secondToken}` },
   };
   authMiddleware(authenticatedRequest, responseMock().response, () => undefined);
-  assert.equal(authenticatedRequest.user?.id, secondUser.id);
+  assert.equal(authenticatedRequest.user?.id, resolvedSecondUser.id);
 
   SessionService.revokeAll();
-  if (createdFixture) db.data.users = db.data.users.filter((user) => user.id !== secondUser.id);
+  if (createdFixture) db.data.users = db.data.users.filter((user) => user.id !== resolvedSecondUser.id);
 });
 
-test('session cookies are host-only, persistent, script-inaccessible, and HTTPS-only', () => {
+test('session cookies are persistent, script-inaccessible, and HTTP-compatible', () => {
   const response = responseMock();
   SessionService.setCookie(response.response, 'opaque-token');
   const cookie = response.getHeader('set-cookie');
 
-  assert.match(cookie || '', /^__Host-aegis_session=/);
+  assert.match(cookie || '', /^aegis_session=/);
   assert.match(cookie || '', /; Path=\//);
   assert.match(cookie || '', /; HttpOnly/);
-  assert.match(cookie || '', /; Secure/);
+  assert.doesNotMatch(cookie || '', /; Secure/);
   assert.match(cookie || '', /; SameSite=Strict/);
   assert.doesNotMatch(cookie || '', /; Domain=/);
   assert.match(cookie || '', /; Max-Age=[1-9]\d*/);
@@ -113,7 +116,7 @@ test('state-changing requests require an exact same-origin browser request', () 
         origin,
         host: '127.0.0.1:4000',
         'x-forwarded-host': '10.145.1.43:5173',
-        'x-forwarded-proto': 'https',
+        'x-forwarded-proto': 'http',
       };
       return headers[name.toLowerCase()];
     },
@@ -122,13 +125,13 @@ test('state-changing requests require an exact same-origin browser request', () 
   const accepted = responseMock();
   let acceptedNext = false;
   sameOriginMutationMiddleware(
-    makeRequest('https://10.145.1.43:5173'),
+    makeRequest('http://10.145.1.43:5173'),
     accepted.response,
     () => { acceptedNext = true; }
   );
   assert.equal(acceptedNext, true);
 
-  for (const origin of [undefined, 'https://evil.example']) {
+  for (const origin of [undefined, 'http://evil.example']) {
     const rejected = responseMock();
     let rejectedNext = false;
     sameOriginMutationMiddleware(makeRequest(origin), rejected.response, () => {

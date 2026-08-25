@@ -108,7 +108,7 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
 
   const getDeptColor = (deptId?: string) => {
     const dept = departments.find((d) => d.id === deptId || d.code === deptId);
-    return dept?.color || '#0052CC';
+    return dept?.color || 'var(--color-jira-blue-500)';
   };
 
   const getDeptCode = (deptId?: string) => {
@@ -117,23 +117,23 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#F4F6FB] overflow-hidden select-none">
+    <div className="flex-1 flex flex-col h-full bg-semantic-page overflow-hidden select-none">
       {/* Header Bar */}
-      <div className="bg-[#FFFFFF] border-b border-[#E2E8F0] px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 shadow-sm">
+      <div className="bg-semantic-panel border-b border-semantic-border px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 shadow-sm">
         <div className="flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-[#FAF5FF] text-[#722ED1] border border-[#EFDBFF] flex items-center justify-center font-bold shadow-xs">
-            <Layers className="w-5 h-5 text-[#722ED1]" />
+          <div className="w-10 h-10 rounded-xl bg-semantic-purple-surface text-semantic-purple border border-semantic-purple-border flex items-center justify-center font-bold shadow-xs">
+            <Layers className="w-5 h-5 text-semantic-purple" />
           </div>
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-lg font-extrabold text-[#162136] tracking-tight">
+              <h1 className="text-lg font-extrabold text-semantic-primary tracking-tight">
                 Cross-Department Task Orchestration Hub
               </h1>
-              <span className="px-2.5 py-0.5 rounded-full bg-[#FAF5FF] text-[#722ED1] text-[10px] font-extrabold border border-[#EFDBFF]">
+              <span className="px-2.5 py-0.5 rounded-full bg-semantic-purple-surface text-semantic-purple text-caption font-extrabold border border-semantic-purple-border">
                 Multi-Dept Pipeline Engine
               </span>
             </div>
-            <p className="text-xs text-[#5A6A85] mt-0.5">
+            <p className="text-xs text-semantic-jira-muted-strong mt-0.5">
               Orchestrate end-to-end tasks spanning HR, IT Operations, Infosec, Core Banking, and GRC with dependency tracking.
             </p>
           </div>
@@ -142,9 +142,9 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => onNavigate('gantt')}
-            className="px-3.5 py-2 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#162136] border border-[#E2E8F0] text-xs font-bold flex items-center gap-2 shadow-xs"
+            className="px-3.5 py-2 rounded-lg bg-semantic-subtle hover:bg-semantic-neutral-surface text-semantic-primary border border-semantic-border text-xs font-bold flex items-center gap-2 shadow-xs"
           >
-            <GitBranch className="w-4 h-4 text-[#0073D3]" />
+            <GitBranch className="w-4 h-4 text-semantic-info" />
             <span>Gantt Dependencies</span>
           </button>
 
@@ -163,14 +163,14 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
         <div className="max-w-6xl mx-auto space-y-5">
           {/* Success Notification */}
           {launchSuccessMsg && (
-            <div className="p-4 rounded-xl bg-[#E6F7EF] border border-[#B8EAD1] text-xs font-semibold text-[#007860] flex items-center justify-between shadow-sm animate-fade-in">
+            <div className="p-4 rounded-xl bg-semantic-success-surface border border-semantic-success-border text-xs font-semibold text-semantic-success flex items-center justify-between shadow-sm animate-fade-in">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span>{launchSuccessMsg}</span>
               </div>
               <button
                 onClick={() => onNavigate('table')}
-                className="px-3 py-1 rounded-lg bg-[#00B259] text-white font-bold text-[11px]"
+                className="px-3 py-1 rounded-lg bg-semantic-brand text-white font-bold text-label"
               >
                 View in Table
               </button>
@@ -178,13 +178,13 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
           )}
 
           {/* Cross-Department Pipeline Blueprints */}
-          <div className="bg-[#FFFFFF] border border-[#E2E8F0] rounded-2xl p-5 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
+          <div className="bg-semantic-panel border border-semantic-border rounded-2xl p-5 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-semantic-border pb-3">
               <div>
-                <h3 className="font-extrabold text-sm text-[#162136]">
+                <h3 className="font-extrabold text-sm text-semantic-primary">
                   Turnkey Cross-Department Pipelines (1-Click Orchestration)
                 </h3>
-                <p className="text-xs text-[#5A6A85]">
+                <p className="text-xs text-semantic-jira-muted-strong">
                   Automated dependency chains connecting multiple bank departments.
                 </p>
               </div>
@@ -194,32 +194,32 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
               {blueprints.map((bp) => (
                 <div
                   key={bp.id}
-                  className="p-5 bg-[#F8FAFC] border border-[#E2E8F0] hover:border-[#722ED1] rounded-xl flex flex-col justify-between space-y-3.5 transition-all shadow-2xs group"
+                  className="p-5 bg-semantic-subtle border border-semantic-border hover:border-semantic-purple rounded-xl flex flex-col justify-between space-y-3.5 transition-all shadow-2xs group"
                 >
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-[#FAF5FF] text-[#722ED1] flex items-center justify-center font-bold">
+                        <div className="w-8 h-8 rounded-lg bg-semantic-purple-surface text-semantic-purple flex items-center justify-center font-bold">
                           <Layers className="w-4 h-4" />
                         </div>
-                        <h4 className="font-extrabold text-sm text-[#162136] group-hover:text-[#722ED1] transition-colors">
+                        <h4 className="font-extrabold text-sm text-semantic-primary group-hover:text-semantic-purple transition-colors">
                           {bp.title}
                         </h4>
                       </div>
-                      <span className="px-2 py-0.5 rounded-full bg-[#E6F7EF] text-[#007860] text-[10px] font-bold border border-[#B8EAD1]">
+                      <span className="px-2 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success text-caption font-bold border border-semantic-success-border">
                         {bp.defaultTasks?.length || bp.taskCount} Steps
                       </span>
                     </div>
 
-                    <p className="text-xs text-[#5A6A85] leading-relaxed line-clamp-2">{bp.description}</p>
+                    <p className="text-xs text-semantic-jira-muted-strong leading-relaxed line-clamp-2">{bp.description}</p>
 
                     {/* Participating Department Badges */}
                     <div className="flex items-center gap-1.5 mt-3 flex-wrap">
-                      <span className="text-[10px] font-bold text-[#8D99AE] uppercase mr-1">Units:</span>
+                      <span className="text-caption font-bold text-semantic-jira-icon uppercase mr-1">Units:</span>
                       {bp.participatingDepartments?.map((dId) => (
                         <span
                           key={dId}
-                          className="px-2 py-0.5 rounded text-[10px] font-mono font-bold text-white shadow-2xs"
+                          className="px-2 py-0.5 rounded text-caption font-mono font-bold text-white shadow-2xs"
                           style={{ backgroundColor: getDeptColor(dId) }}
                         >
                           {getDeptCode(dId)}
@@ -228,8 +228,8 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="pt-3 border-t border-[#E2E8F0] flex items-center justify-between text-xs">
-                    <span className="font-mono text-[11px] text-[#5A6A85]">
+                  <div className="pt-3 border-t border-semantic-border flex items-center justify-between text-xs">
+                    <span className="font-mono text-label text-semantic-jira-muted-strong">
                       Est. Duration: {bp.estimatedDays} Business Days
                     </span>
 
@@ -238,7 +238,7 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
                         setSelectedBlueprintId(bp.id);
                         setIsLaunchModalOpen(true);
                       }}
-                      className="px-3 py-1.5 rounded-lg bg-[#722ED1] hover:bg-[#531DAB] text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+                      className="px-3 py-1.5 rounded-lg bg-semantic-purple hover:bg-semantic-purple-strong text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors"
                     >
                       <Play className="w-3 h-3" />
                       <span>Launch Pipeline</span>
@@ -250,23 +250,23 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
           </div>
 
           {/* Active Cross-Department Pipelines & Live Handoff Matrix */}
-          <div className="bg-[#FFFFFF] border border-[#E2E8F0] rounded-2xl p-5 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
+          <div className="bg-semantic-panel border border-semantic-border rounded-2xl p-5 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-semantic-border pb-3">
               <div>
-                <h3 className="font-extrabold text-sm text-[#162136]">
+                <h3 className="font-extrabold text-sm text-semantic-primary">
                   Active Multi-Department Pipelines & Handoffs ({parentWorkflows.length})
                 </h3>
-                <p className="text-xs text-[#5A6A85]">
+                <p className="text-xs text-semantic-jira-muted-strong">
                   Live status across participating banking squads.
                 </p>
               </div>
             </div>
 
             {parentWorkflows.length === 0 ? (
-              <div className="py-12 text-center text-[#5A6A85] space-y-2">
-                <Layers className="w-8 h-8 mx-auto text-[#CBD5E1]" />
-                <div className="font-bold text-xs text-[#162136]">No active cross-department pipelines yet</div>
-                <p className="text-[11px]">Click "Launch Cross-Task Pipeline" to orchestrate your first multi-dept workflow.</p>
+              <div className="py-12 text-center text-semantic-jira-muted-strong space-y-2">
+                <Layers className="w-8 h-8 mx-auto text-semantic-border-strong" />
+                <div className="font-bold text-xs text-semantic-primary">No active cross-department pipelines yet</div>
+                <p className="text-label">Click "Launch Cross-Task Pipeline" to orchestrate your first multi-dept workflow.</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -278,22 +278,22 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
                   return (
                     <div
                       key={parent.id}
-                      className="p-5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl space-y-4 shadow-2xs"
+                      className="p-5 bg-semantic-subtle border border-semantic-border rounded-xl space-y-4 shadow-2xs"
                     >
                       {/* Pipeline Header */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E2E8F0] pb-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-semantic-border pb-3">
                         <div className="flex items-center gap-2.5">
-                          <span className="font-mono text-xs font-extrabold px-2 py-0.5 rounded bg-[#FAF5FF] text-[#722ED1] border border-[#EFDBFF]">
+                          <span className="font-mono text-xs font-extrabold px-2 py-0.5 rounded bg-semantic-purple-surface text-semantic-purple border border-semantic-purple-border">
                             {parent.key}
                           </span>
-                          <h4 className="font-extrabold text-sm text-[#162136]">{parent.title}</h4>
+                          <h4 className="font-extrabold text-sm text-semantic-primary">{parent.title}</h4>
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <span className="px-2.5 py-0.5 rounded-full bg-[#E6F7EF] text-[#007860] text-[10px] font-bold border border-[#B8EAD1]">
+                          <span className="px-2.5 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success text-caption font-bold border border-semantic-success-border">
                             {parent.statusName}
                           </span>
-                          <span className="font-mono text-[11px] text-[#5A6A85]">
+                          <span className="font-mono text-label text-semantic-jira-muted-strong">
                             {subtasks.length} Subtasks Linked
                           </span>
                         </div>
@@ -313,40 +313,40 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
                               onClick={() => onSelectTicket && onSelectTicket(st)}
                               className={`p-3 rounded-xl border text-xs cursor-pointer transition-all ${
                                 isDone
-                                  ? 'bg-[#FFFFFF] border-[#B8EAD1]'
+                                  ? 'bg-semantic-panel border-semantic-success-border'
                                   : isWaiting
-                                  ? 'bg-[#FFFFFF] border-[#E2E8F0] opacity-75'
-                                  : 'bg-[#FFFFFF] border-[#722ED1] shadow-xs'
+                                  ? 'bg-semantic-panel border-semantic-border opacity-75'
+                                  : 'bg-semantic-panel border-semantic-purple shadow-xs'
                               }`}
                             >
                               <div className="flex items-center justify-between gap-1 mb-1.5">
                                 <span
-                                  className="px-2 py-0.5 rounded text-[9px] font-mono font-bold text-white"
+                                  className="px-2 py-0.5 rounded text-micro font-mono font-bold text-white"
                                   style={{ backgroundColor: deptColor }}
                                 >
                                   {deptCode} (Step {idx + 1})
                                 </span>
 
                                 <span
-                                  className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                                  className={`text-micro font-bold px-1.5 py-0.2 rounded ${
                                     isDone
-                                      ? 'bg-[#E6F7EF] text-[#007860]'
+                                      ? 'bg-semantic-success-surface text-semantic-success'
                                       : isWaiting
-                                      ? 'bg-[#F1F5F9] text-[#8D99AE]'
-                                      : 'bg-[#FAF5FF] text-[#722ED1]'
+                                      ? 'bg-semantic-neutral-surface text-semantic-jira-icon'
+                                      : 'bg-semantic-purple-surface text-semantic-purple'
                                   }`}
                                 >
                                   {isDone ? 'DONE' : isWaiting ? 'PENDING STEP' : 'IN PROGRESS'}
                                 </span>
                               </div>
 
-                              <div className="font-bold text-[#162136] text-xs line-clamp-2 leading-snug">
+                              <div className="font-bold text-semantic-primary text-xs line-clamp-2 leading-snug">
                                 {st.title}
                               </div>
 
-                              <div className="mt-2 pt-1.5 border-t border-[#F1F5F9] flex items-center justify-between text-[10px] font-mono text-[#8D99AE]">
+                              <div className="mt-2 pt-1.5 border-t border-semantic-neutral-surface flex items-center justify-between text-caption font-mono text-semantic-jira-icon">
                                 <span>{st.key}</span>
-                                <span className="text-[#0073D3] font-semibold">Inspect →</span>
+                                <span className="text-semantic-info font-semibold">Inspect →</span>
                               </div>
                             </div>
                           );
@@ -363,21 +363,21 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
 
       {/* Launch Cross-Department Workflow Wizard Modal */}
       {isLaunchModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-4">
-          <div className="bg-[#FFFFFF] border border-[#E2E8F0] rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl animate-scale-in">
-            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
+        <div className="fixed inset-0 z-dsOverlay flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-4">
+          <div className="bg-semantic-panel border border-semantic-border rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl animate-scale-in">
+            <div className="flex items-center justify-between border-b border-semantic-border pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-[#FAF5FF] text-[#722ED1] flex items-center justify-center font-bold">
+                <div className="w-8 h-8 rounded-lg bg-semantic-purple-surface text-semantic-purple flex items-center justify-center font-bold">
                   <Layers className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-extrabold text-[#162136]">Launch Multi-Dept Pipeline</h3>
-                  <p className="text-xs text-[#5A6A85]">Instantiate coordinated tasks across banking units.</p>
+                  <h3 className="text-base font-extrabold text-semantic-primary">Launch Multi-Dept Pipeline</h3>
+                  <p className="text-xs text-semantic-jira-muted-strong">Instantiate coordinated tasks across banking units.</p>
                 </div>
               </div>
               <button
                 onClick={() => setIsLaunchModalOpen(false)}
-                className="text-[#8D99AE] hover:text-[#162136]"
+                className="text-semantic-jira-icon hover:text-semantic-primary"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -385,15 +385,15 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
 
             <form onSubmit={handleLaunchCrossWorkflow} className="space-y-4 text-xs">
               <div>
-                <label className="block font-bold text-[#162136] mb-1.5">Select Pipeline Blueprint</label>
+                <label className="block font-bold text-semantic-primary mb-1.5">Select Pipeline Blueprint</label>
                 <div className="space-y-2">
                   {blueprints.map((bp) => (
                     <label
                       key={bp.id}
                       className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
                         selectedBlueprintId === bp.id
-                          ? 'bg-[#FAF5FF] border-[#722ED1] shadow-xs'
-                          : 'bg-[#F8FAFC] border-[#E2E8F0] hover:bg-[#F1F5F9]'
+                          ? 'bg-semantic-purple-surface border-semantic-purple shadow-xs'
+                          : 'bg-semantic-subtle border-semantic-border hover:bg-semantic-neutral-surface'
                       }`}
                     >
                       <div className="flex items-center gap-2.5">
@@ -403,11 +403,11 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
                           value={bp.id}
                           checked={selectedBlueprintId === bp.id}
                           onChange={(e) => setSelectedBlueprintId(e.target.value)}
-                          className="text-[#722ED1] focus:ring-0"
+                          className="text-semantic-purple focus:ring-0"
                         />
                         <div>
-                          <div className="font-bold text-xs text-[#162136]">{bp.title}</div>
-                          <div className="text-[11px] text-[#5A6A85] mt-0.5">
+                          <div className="font-bold text-xs text-semantic-primary">{bp.title}</div>
+                          <div className="text-label text-semantic-jira-muted-strong mt-0.5">
                             {bp.defaultTasks?.length || bp.taskCount} Subtasks | Units: {bp.participatingDepartments?.map((d) => getDeptCode(d)).join(' → ')}
                           </div>
                         </div>
@@ -418,19 +418,19 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-[#162136] mb-1">Custom Pipeline Title (Optional)</label>
+                <label className="block font-bold text-semantic-primary mb-1">Custom Pipeline Title (Optional)</label>
                 <input
                   type="text"
                   value={customTitle}
                   onChange={(e) => setCustomTitle(e.target.value)}
                   placeholder="e.g. Employee Onboarding: Samir Gasimov (Senior AppSec Engineer)"
-                  className="w-full px-3 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-xs font-medium focus:outline-none focus:border-[#722ED1]"
+                  className="w-full px-3 py-2 bg-semantic-subtle border border-semantic-border rounded-lg text-xs font-medium focus:outline-none focus:border-semantic-purple"
                 />
               </div>
 
-              <div className="p-3.5 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] text-[11px] text-[#5A6A85] space-y-1">
-                <div className="font-bold text-[#162136] flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-[#722ED1]" />
+              <div className="p-3.5 bg-semantic-subtle rounded-xl border border-semantic-border text-label text-semantic-jira-muted-strong space-y-1">
+                <div className="font-bold text-semantic-primary flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-semantic-purple" />
                   <span>Automatic Dependency & SLA Synchronization</span>
                 </div>
                 <p>
@@ -438,18 +438,18 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
                 </p>
               </div>
 
-              <div className="flex justify-end gap-2.5 pt-3 border-t border-[#E2E8F0]">
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-semantic-border">
                 <button
                   type="button"
                   onClick={() => setIsLaunchModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-[#F8FAFC] text-[#5A6A85] font-bold text-xs"
+                  className="px-4 py-2 rounded-lg bg-semantic-subtle text-semantic-jira-muted-strong font-bold text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isLaunching}
-                  className="px-5 py-2 rounded-lg bg-[#722ED1] hover:bg-[#531DAB] text-white font-bold text-xs flex items-center gap-2 shadow-sm"
+                  className="px-5 py-2 rounded-lg bg-semantic-purple hover:bg-semantic-purple-strong text-white font-bold text-xs flex items-center gap-2 shadow-sm"
                 >
                   {isLaunching ? 'Instantiating Tasks...' : 'Execute & Dispatch Pipeline'}
                 </button>

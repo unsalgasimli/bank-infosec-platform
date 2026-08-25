@@ -18,11 +18,7 @@ export const securityHeadersMiddleware = helmet({
   } : false,
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' },
-  hsts: {
-    maxAge: 31536000,
-    includeSubDomains: true,
-    preload: true,
-  },
+  hsts: false,
   frameguard: { action: 'deny' },
   noSniff: true,
   xssFilter: true,

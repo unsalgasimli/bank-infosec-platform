@@ -52,7 +52,7 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({
               <MessageSquare className="w-5 h-5" />
             </div>
             <h4 className="text-xs font-semibold text-slate-700">No notes or comments yet</h4>
-            <p className="text-[11px] text-slate-500 mt-0.5">Start the conversation by adding an internal or team-only note below.</p>
+            <p className="text-label text-slate-500 mt-0.5">Start the conversation by adding an internal or team-only note below.</p>
           </div>
         ) : (
           comments.map((comment) => {
@@ -72,7 +72,7 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-6 h-6 rounded-full bg-[#0052CC] text-white flex items-center justify-center font-bold text-[11px] shadow-xs">
+                    <div className="w-6 h-6 rounded-full bg-semantic-jira-brand text-white flex items-center justify-center font-bold text-label shadow-xs">
                       {comment.authorAvatar ? (
                         <img src={comment.authorAvatar} alt="" className="w-full h-full object-cover rounded-full" />
                       ) : (
@@ -81,7 +81,7 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({
                     </div>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="font-bold text-slate-800">{comment.authorName || 'Security Analyst'}</span>
-                      <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-mono text-[10px] border border-slate-200">
+                      <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-mono text-caption border border-slate-200">
                         {comment.authorRole || 'ANALYST'}
                       </span>
                     </div>
@@ -89,19 +89,19 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({
 
                   <div className="flex items-center gap-2">
                     {isSecurityOnly ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full border border-purple-200">
+                      <span className="inline-flex items-center gap-1 text-caption font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full border border-purple-200">
                         <Lock className="w-3 h-3" /> Security Only
                       </span>
                     ) : isPublic ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full border border-blue-200">
+                      <span className="inline-flex items-center gap-1 text-caption font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full border border-blue-200">
                         <Globe className="w-3 h-3" /> Public
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+                      <span className="inline-flex items-center gap-1 text-caption font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
                         <Shield className="w-3 h-3" /> Internal
                       </span>
                     )}
-                    <span className="text-[11px] text-slate-400 font-mono">
+                    <span className="text-label text-slate-400 font-mono">
                       {new Date(comment.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
@@ -120,12 +120,12 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({
       <form onSubmit={handleSubmit} className="bg-slate-50/60 border border-slate-200 rounded-xl p-4 space-y-3 shadow-xs">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 uppercase tracking-wider">
-            <MessageSquare className="w-4 h-4 text-[#0052CC]" />
+            <MessageSquare className="w-4 h-4 text-semantic-jira-brand" />
             <span>Add Note / Comment</span>
           </div>
 
           <div className="flex items-center gap-2 text-xs">
-            <span className="text-slate-500 text-[11px] font-medium">Visibility:</span>
+            <span className="text-slate-500 text-label font-medium">Visibility:</span>
             <select
               value={visibility}
               onChange={(e) => setVisibility(e.target.value as CommentVisibility)}
@@ -148,7 +148,7 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({
         />
 
         <div className="flex items-center justify-between pt-1">
-          <span className="text-[11px] text-slate-500">
+          <span className="text-label text-slate-500">
             Posting as: <strong className="text-slate-800 font-semibold">{currentUser?.fullName}</strong>
           </span>
           <button

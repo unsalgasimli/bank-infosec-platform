@@ -35,10 +35,14 @@ export class OrchestrationExpressionService {
       case 'IN': return Array.isArray(right) && right.includes(left);
       case 'NOT_IN': return Array.isArray(right) && !right.includes(left);
       case 'CONTAINS': return Array.isArray(left) ? left.includes(right) : String(left ?? '').includes(String(right ?? ''));
+      case 'NOT_CONTAINS': return Array.isArray(left) ? !left.includes(right) : !String(left ?? '').includes(String(right ?? ''));
       case 'GREATER_THAN': return Number(left) > Number(right);
       case 'GREATER_THAN_OR_EQUAL': return Number(left) >= Number(right);
       case 'LESS_THAN': return Number(left) < Number(right);
       case 'LESS_THAN_OR_EQUAL': return Number(left) <= Number(right);
+      case 'NOT_EXISTS': return left === undefined || left === null || left === '';
+      case 'IS_TRUE': return left === true;
+      case 'IS_FALSE': return left === false;
       default: return false;
     }
   }

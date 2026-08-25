@@ -10,7 +10,8 @@ import { TicketLifecycleService } from '../server/services/ticket-lifecycle.serv
 import { calculatePriorityFromImpactUrgency } from '../shared/types/ticket.js';
 
 test('Enterprise Work & Workflow Orchestration Engine', async (t) => {
-  const resetDb = () => db.reset(JSON.parse(JSON.stringify(initialSeedData)));
+  const pristine = structuredClone(db.data);
+  const resetDb = () => db.reset(structuredClone(pristine));
   const adminActor = db.data.users.find((u) => u.roles.includes('CISO')) || db.data.users[0];
   const regularActor = db.data.users.find((u) => u.id === 'usr-appsec-spec') || db.data.users[1] || adminActor;
 

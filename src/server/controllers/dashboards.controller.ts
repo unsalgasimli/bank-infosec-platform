@@ -114,7 +114,16 @@ export class DashboardsController {
     const user = req.user!;
     const allTickets = AuthService.filterAuthorizedTickets(db.data.tickets, user);
 
-    const myTickets = allTickets.filter((t) => t.assigneeId === user.id && t.statusCategory !== 'DONE');
+    const myTickets = allTickets.filter(
+      (t) =>
+        (t.assigneeId === user.id ||
+          (!t.assigneeId &&
+            ((t.targetDepartmentId && t.targetDepartmentId === user.departmentId) ||
+              (t.departmentId && t.departmentId === user.departmentId) ||
+              (t.assignmentGroupId && user.teamIds?.includes(t.assignmentGroupId)) ||
+              t.participatingDepartmentIds?.includes(user.departmentId || '')))) &&
+        t.statusCategory !== 'DONE'
+    );
     const myApprovals = db.data.approvals
       .filter((a) => a.status === 'PENDING')
       .filter((a) => {

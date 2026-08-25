@@ -56,6 +56,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 }) => {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = React.useState(false);
   const [isRovoOpen, setIsRovoOpen] = React.useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false);
 
   // Global Keyboard Shortcuts Listener
   useEffect(() => {
@@ -86,7 +87,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   }, [onOpenCreate]);
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#F4F6FB] text-[#162136] overflow-hidden font-sans">
+    <div className="h-screen w-screen flex flex-col bg-semantic-page text-semantic-primary overflow-hidden font-sans">
       {/* Wrike Top Navigation Header */}
       <TopBar
         onOpenCreate={onOpenCreate}
@@ -97,6 +98,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         onSearchChange={onSearchChange}
         activeDepartmentId={activeDepartmentId}
         onSelectDepartment={onSelectDepartment}
+        onToggleSidebar={() => setIsMobileSidebarOpen((open) => !open)}
       />
 
       {/* Main App Container */}
@@ -112,10 +114,21 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           kbCount={kbArticles.length}
           pendingApprovalsCount={pendingApprovalsCount}
           departmentsCount={departmentsCount}
+          isMobileOpen={isMobileSidebarOpen}
+          onCloseMobile={() => setIsMobileSidebarOpen(false)}
         />
 
+        {isMobileSidebarOpen && (
+          <button
+            type="button"
+            aria-label="Close navigation"
+            onClick={() => setIsMobileSidebarOpen(false)}
+            className="fixed inset-0 top-14 z-dsOverlay bg-slate-950/40 lg:hidden"
+          />
+        )}
+
         {/* Spacious Main Content Area */}
-        <main className="flex-1 flex flex-col overflow-hidden bg-[#F4F6FB]">
+        <main className="min-w-0 flex-1 flex flex-col overflow-hidden bg-semantic-page">
           <div className="flex-1 flex overflow-hidden">
             {children}
           </div>

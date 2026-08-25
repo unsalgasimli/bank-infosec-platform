@@ -17,66 +17,66 @@ export const Badge: React.FC<BadgeProps> = ({ type, value, className = '', size 
       case 'SEVERITY':
         switch (value as TechnicalSeverity) {
           case 'CRITICAL':
-            return 'bg-[#FDE8EB] text-[#CF1322] border-[#FFA39E] font-bold';
+            return 'bg-semantic-danger-surface text-semantic-danger border-semantic-danger-border font-bold';
           case 'HIGH':
-            return 'bg-[#FFF7E6] text-[#D46B08] border-[#FFE7BA] font-semibold';
+            return 'bg-semantic-warning-surface text-semantic-warning border-semantic-warning-border font-semibold';
           case 'MEDIUM':
-            return 'bg-[#FFFBE6] text-[#D48806] border-[#FFE58F] font-semibold';
+            return 'bg-semantic-warning-legacy text-semantic-warning-legacy-text border-semantic-warning-legacy-border font-semibold';
           case 'LOW':
-            return 'bg-[#EBF4FD] text-[#0073D3] border-[#BAE0FD] font-semibold';
+            return 'bg-semantic-info-surface text-semantic-info border-semantic-info-border font-semibold';
           case 'INFORMATIONAL':
           default:
-            return 'bg-[#F1F5F9] text-[#475569] border-[#E2E8F0] font-medium';
+            return 'bg-semantic-neutral-surface text-semantic-secondary border-semantic-border font-medium';
         }
 
       case 'PRIORITY':
         switch (value as BusinessPriority) {
           case 'P1_URGENT':
-            return 'bg-[#FDE8EB] text-[#CF1322] border-[#FFA39E] font-bold';
+            return 'bg-semantic-danger-surface text-semantic-danger border-semantic-danger-border font-bold';
           case 'P2_HIGH':
-            return 'bg-[#FFF7E6] text-[#D46B08] border-[#FFE7BA] font-semibold';
+            return 'bg-semantic-warning-surface text-semantic-warning border-semantic-warning-border font-semibold';
           case 'P3_MEDIUM':
-            return 'bg-[#EBF4FD] text-[#0073D3] border-[#BAE0FD] font-semibold';
+            return 'bg-semantic-info-surface text-semantic-info border-semantic-info-border font-semibold';
           case 'P4_LOW':
           default:
-            return 'bg-[#F1F5F9] text-[#475569] border-[#E2E8F0] font-medium';
+            return 'bg-semantic-neutral-surface text-semantic-secondary border-semantic-border font-medium';
         }
 
       case 'SLA':
         switch (value) {
           case 'SAFE':
           case 'MET':
-            return 'bg-[#E6F7EF] text-[#007860] border-[#B8EAD1] font-bold';
+            return 'bg-semantic-success-surface text-semantic-success border-semantic-success-border font-bold';
           case 'AT_RISK':
-            return 'bg-[#FFF7E6] text-[#D46B08] border-[#FFE7BA] font-bold';
+            return 'bg-semantic-warning-surface text-semantic-warning border-semantic-warning-border font-bold';
           case 'BREACHED':
-            return 'bg-[#FDE8EB] text-[#CF1322] border-[#FFA39E] font-bold';
+            return 'bg-semantic-danger-surface text-semantic-danger border-semantic-danger-border font-bold';
           case 'PAUSED':
-            return 'bg-[#EBF4FD] text-[#0073D3] border-[#BAE0FD] font-semibold';
+            return 'bg-semantic-info-surface text-semantic-info border-semantic-info-border font-semibold';
           default:
-            return 'bg-[#F1F5F9] text-[#475569] border-[#E2E8F0] font-medium';
+            return 'bg-semantic-neutral-surface text-semantic-secondary border-semantic-border font-medium';
         }
 
       case 'CONFIDENTIALITY':
         switch (value as ConfidentialityTier) {
           case 'HIGHLY_RESTRICTED_HR_LEGAL':
-            return 'bg-[#F9F0FF] text-[#531DAB] border-[#EFDBFF] font-bold';
+            return 'bg-semantic-purple-soft text-semantic-purple-strong border-semantic-purple-border font-bold';
           case 'CONFIDENTIAL_SECURITY_ONLY':
-            return 'bg-[#FDE8EB] text-[#CF1322] border-[#FFA39E] font-bold';
+            return 'bg-semantic-danger-surface text-semantic-danger border-semantic-danger-border font-bold';
           case 'RESTRICTED':
-            return 'bg-[#FFF7E6] text-[#D46B08] border-[#FFE7BA] font-semibold';
+            return 'bg-semantic-warning-surface text-semantic-warning border-semantic-warning-border font-semibold';
           case 'INTERNAL':
-            return 'bg-[#F1F5F9] text-[#475569] border-[#E2E8F0] font-medium';
+            return 'bg-semantic-neutral-surface text-semantic-secondary border-semantic-border font-medium';
           case 'PUBLIC':
           default:
-            return 'bg-[#F1F5F9] text-[#475569] border-[#E2E8F0] font-medium';
+            return 'bg-semantic-neutral-surface text-semantic-secondary border-semantic-border font-medium';
         }
 
       case 'PROJECT':
-        return 'bg-[#EBF4FD] text-[#0073D3] border-[#BAE0FD] font-mono font-bold';
+        return 'bg-semantic-info-surface text-semantic-info border-semantic-info-border font-mono font-bold';
 
       default:
-        return 'bg-[#F1F5F9] text-[#475569] border-[#E2E8F0] font-medium';
+        return 'bg-semantic-neutral-surface text-semantic-secondary border-semantic-border font-medium';
     }
   };
 
@@ -92,12 +92,12 @@ export const Badge: React.FC<BadgeProps> = ({ type, value, className = '', size 
         <span
           className={`h-2 w-2 rounded-full ${
             value === 'CRITICAL'
-              ? 'bg-[#E51739]'
+              ? 'bg-semantic-brand-danger'
               : value === 'HIGH'
-              ? 'bg-[#FA8C16]'
+              ? 'bg-semantic-warning-bright'
               : value === 'MEDIUM'
-              ? 'bg-[#FAAD14]'
-              : 'bg-[#0073D3]'
+              ? 'bg-semantic-warning-accent'
+              : 'bg-semantic-info'
           }`}
         />
       )}

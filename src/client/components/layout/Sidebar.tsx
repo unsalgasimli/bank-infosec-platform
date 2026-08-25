@@ -47,6 +47,7 @@ import { Ticket } from '../../../shared/types/ticket.js';
 import {
   NAVIGATION_MODULES,
   NavigationModuleId,
+  NavigationItem,
   DestinationId,
   canUserAccessDestination,
   canUserAccessModule,
@@ -62,6 +63,8 @@ interface SidebarProps {
   kbCount?: number;
   pendingApprovalsCount?: number;
   departmentsCount?: number;
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 // Icon dictionary to render Lucide components dynamically
@@ -117,6 +120,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   kbCount = 0,
   pendingApprovalsCount = 0,
   departmentsCount = 5,
+  isMobileOpen = false,
+  onCloseMobile,
 }) => {
   const { currentUser } = useAuth();
 
@@ -140,9 +145,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
     });
   };
 
-  const getBadgeCount = (badgeKey?: string): number | undefined => {
-    switch (badgeKey) {
+  const getBadgeCount = (item: NavigationItem): number | undefined => {
+    const isMyTask = (t: Ticket) =>
+      t.statusCategory !== 'DONE' &&
+      (t.assigneeId === currentUser?.id ||
+        (!t.assigneeId &&
+          ((t.targetDepartmentId && t.targetDepartmentId === currentUser?.departmentId) ||
+            (t.departmentId && t.departmentId === currentUser?.departmentId) ||
+            (t.assignmentGroupId && currentUser?.teamIds?.includes(t.assignmentGroupId)) ||
+            t.participatingDepartmentIds?.includes(currentUser?.departmentId || ''))));
+
+    switch (item.badgeKey) {
+      case 'my-tasks':
+        return tickets.filter(isMyTask).length;
+      case 'my-requests':
+        return tickets.filter((t) => t.reporterId === currentUser?.id && t.statusCategory !== 'DONE').length;
       case 'tasks':
+        // If it is 'my-tasks' destination, count user's active & queue tasks
+        if (item.id === 'my-tasks') {
+          return tickets.filter(isMyTask).length;
+        }
         return tickets.filter((t) => t.statusCategory !== 'DONE').length;
       case 'approvals':
         return pendingApprovalsCount;
@@ -157,12 +179,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       case 'departments':
         return departmentsCount;
       default:
+        if (item.id === 'my-tasks') {
+          return tickets.filter(isMyTask).length;
+        }
         return undefined;
     }
   };
 
   return (
-    <aside className="w-68 bg-[#FFFFFF] border-r border-[#E2E8F0] flex flex-col justify-between shrink-0 select-none shadow-xs">
+    <aside className={`app-sidebar fixed left-0 top-14 bottom-0 z-dsModal w-68 bg-semantic-panel border-r border-semantic-border flex flex-col justify-between shrink-0 select-none shadow-xs transition-transform duration-200 lg:static lg:translate-x-0 ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
       {/* Scrollable Navigation Modules Container */}
       <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-4">
         {NAVIGATION_MODULES.map((module) => {
@@ -188,16 +213,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {/* Collapsible Module Section Header */}
               <button
                 onClick={() => toggleModule(module.id)}
-                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider text-[#64748B] hover:text-[#0F172A] hover:bg-[#F8FAFC] transition-colors group"
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider text-semantic-muted hover:text-semantic-strongest hover:bg-semantic-subtle transition-colors group"
               >
                 <div className="flex items-center gap-2">
-                  <ModuleIcon className="w-3.5 h-3.5 text-[#94A3B8] group-hover:text-[#64748B] transition-colors" />
+                  <ModuleIcon className="w-3.5 h-3.5 text-semantic-placeholder group-hover:text-semantic-muted transition-colors" />
                   <span>{module.label}</span>
                 </div>
                 {isCollapsed ? (
-                  <ChevronRight className="w-3.5 h-3.5 text-[#94A3B8]" />
+                  <ChevronRight className="w-3.5 h-3.5 text-semantic-placeholder" />
                 ) : (
-                  <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8]" />
+                  <ChevronDown className="w-3.5 h-3.5 text-semantic-placeholder" />
                 )}
               </button>
 
@@ -212,23 +237,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       (item.id === 'projects-tasks' &&
                         ['table', 'board', 'gantt', 'workload', 'calendar'].includes(activeDestination));
 
-                    const count = getBadgeCount(item.badgeKey);
+                    const count = getBadgeCount(item);
 
                     return (
                       <button
                         key={item.id}
-                        onClick={() => onSelectDestination(item.id)}
+                        onClick={() => {
+                          onSelectDestination(item.id);
+                          onCloseMobile?.();
+                        }}
                         className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all group ${
                           isActive
-                            ? 'bg-[#E6F7EF] text-[#007860] font-bold border border-[#B8EAD1]'
-                            : 'text-[#334155] hover:bg-[#F8FAFC] hover:text-[#0F172A]'
+                            ? 'bg-semantic-success-surface text-semantic-success font-bold border border-semantic-success-border'
+                            : 'text-semantic-strong hover:bg-semantic-subtle hover:text-semantic-strongest'
                         }`}
                         title={item.description}
                       >
                         <div className="flex items-center gap-2.5 truncate">
                           <ItemIcon
                             className={`w-4 h-4 shrink-0 ${
-                              isActive ? 'text-[#00B259]' : 'text-[#64748B] group-hover:text-[#334155]'
+                              isActive ? 'text-semantic-brand' : 'text-semantic-muted group-hover:text-semantic-strong'
                             }`}
                           />
                           <span className="truncate">{item.label}</span>
@@ -237,12 +265,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         {/* Optional Numeric Badge */}
                         {count !== undefined && count > 0 && (
                           <span
-                            className={`font-mono text-[11px] px-2 py-0.2 rounded-full border shrink-0 font-bold ${
+                            className={`font-mono text-label px-2 py-0.2 rounded-full border shrink-0 font-bold ${
                               item.id === 'approvals'
-                                ? 'bg-[#FFF7E6] text-[#D46B08] border-[#FFE7BA]'
+                                ? 'bg-semantic-warning-surface text-semantic-warning border-semantic-warning-border'
                                 : isActive
-                                ? 'bg-[#FFFFFF] text-[#007860] border-[#B8EAD1]'
-                                : 'text-[#64748B] bg-[#F1F5F9] border-[#E2E8F0]'
+                                ? 'bg-semantic-panel text-semantic-success border-semantic-success-border'
+                                : 'text-semantic-muted bg-semantic-neutral-surface border-semantic-border'
                             }`}
                           >
                             {count}
@@ -259,22 +287,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Sidebar Footer: Space Settings Shortcut & Version */}
-      <div className="p-3 border-t border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-between text-xs text-[#64748B]">
+      <div className="p-3 border-t border-semantic-border bg-semantic-subtle flex items-center justify-between text-xs text-semantic-muted">
         {canUserAccessDestination(currentUser, 'admin-settings') ? (
           <button
-            onClick={() => onSelectDestination('admin-settings')}
-            className="flex items-center gap-2 text-[#475569] hover:text-[#0F172A] font-bold text-xs transition-colors"
+            onClick={() => {
+              onSelectDestination('admin-settings');
+              onCloseMobile?.();
+            }}
+            className="flex items-center gap-2 text-semantic-secondary hover:text-semantic-strongest font-bold text-xs transition-colors"
           >
-            <Settings className="w-4 h-4 text-[#00B259]" />
+            <Settings className="w-4 h-4 text-semantic-brand" />
             <span>Space Settings</span>
           </button>
         ) : (
-          <div className="flex items-center gap-1.5 text-xs text-[#64748B] font-medium">
-            <span className="w-2 h-2 rounded-full bg-[#00B259]" />
+          <div className="flex items-center gap-1.5 text-xs text-semantic-muted font-medium">
+            <span className="w-2 h-2 rounded-full bg-semantic-brand" />
             <span>Apex Bank GRC</span>
           </div>
         )}
-        <span className="text-xs font-mono font-bold text-[#007860]">v2026.4</span>
+        <span className="text-xs font-mono font-bold text-semantic-success">v2026.4</span>
       </div>
     </aside>
   );

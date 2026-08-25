@@ -13,7 +13,9 @@ const configSchema = z.object({
   
   // Database Configuration
   DATABASE_URL: z.string().optional(),
-  DB_TYPE: z.enum(['postgres', 'memory']).default('memory'),
+  // PostgreSQL is the only durable runtime store. `memory` remains available
+  // only for isolated unit-test processes that do not start the server.
+  DB_TYPE: z.enum(['postgres', 'memory']).default('postgres'),
   DB_HOST: z.string().default('localhost'),
   DB_PORT: z.coerce.number().default(5432),
   DB_USER: z.string().optional(),
@@ -22,6 +24,8 @@ const configSchema = z.object({
   DB_POOL_MIN: z.coerce.number().default(2),
   DB_POOL_MAX: z.coerce.number().default(20),
   DB_SSL: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(false),
+  DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(30000),
+  DB_LOCK_TIMEOUT_MS: z.coerce.number().int().min(100).max(60000).default(5000),
   
   // Redis Cache Configuration
   REDIS_ENABLED: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(false),
@@ -48,7 +52,6 @@ const configSchema = z.object({
   SESSION_ABSOLUTE_TIMEOUT_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(168),
   // Never enable outside an explicitly marked local-development environment.
   DEV_EMPTY_PASSWORD_LOGIN_ENABLED: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(false),
-  REQUIRE_HTTPS_AUTH: z.preprocess((val) => val !== 'false' && val !== false, z.boolean()).default(true),
   CORS_ORIGIN: z.string().default('*'),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(15 * 60 * 1000), // 15 mins
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().default(2000),

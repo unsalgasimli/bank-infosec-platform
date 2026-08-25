@@ -9,8 +9,6 @@ import { WorkflowService } from '../server/services/workflow.service.js';
 import { TicketsController } from '../server/controllers/tickets.controller.js';
 import { BankUser } from '../shared/types/auth.js';
 import { SearchService } from '../server/services/search.service.js';
-import fs from 'node:fs';
-import path from 'node:path';
 
 const mockResponse = () => {
   let statusCode = 200;
@@ -25,12 +23,12 @@ const mockResponse = () => {
 };
 
 test('Enterprise ITSM lifecycle invariants', async (t) => {
-  const originalDatabase = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'data/database.json'), 'utf8'));
+  const originalDatabase = structuredClone(db.data);
   t.after(() => {
     db.data = originalDatabase;
     db.persist();
   });
-  db.reset(JSON.parse(JSON.stringify(initialSeedData)));
+  db.reset(structuredClone(originalDatabase));
 
   const actor = db.data.users.find((user) => user.roles.includes('CISO'))!;
   const baseTicket = db.data.tickets[0];
@@ -61,7 +59,7 @@ test('Enterprise ITSM lifecycle invariants', async (t) => {
   });
 
   await t.test('a ticket can be routed to a department queue and claimed only by one of its members', () => {
-    const targetDepartment = db.data.departments.find((department) => department.id !== actor.departmentId)!;
+    const targetDepartment = db.data.departments.find((department) => department.id !== actor.departmentId && department.isActive !== false)!;
     const queueMember: BankUser = {
       ...actor,
       id: 'usr-department-queue-member',
@@ -98,6 +96,7 @@ test('Enterprise ITSM lifecycle invariants', async (t) => {
     assert.strictEqual(createResponse.getStatus(), 201);
     const queueTicket = createResponse.getPayload().ticket as Ticket;
     assert.strictEqual(queueTicket.targetDepartmentId, targetDepartment.id);
+    assert.strictEqual(queueTicket.departmentId, targetDepartment.id);
     assert.strictEqual(queueTicket.assigneeId, undefined);
     assert.strictEqual(queueTicket.assignmentGroupId, undefined);
 
@@ -175,6 +174,7 @@ test('Enterprise ITSM lifecycle invariants', async (t) => {
       statusId: 'UNDER_REVIEW',
       statusName: 'Under Review',
       statusCategory: 'IN_REVIEW',
+      workflowId: 'wf-secops-default',
       workflowVersion: 2,
       version: 1,
     };

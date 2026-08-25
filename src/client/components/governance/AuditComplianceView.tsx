@@ -55,16 +55,16 @@ export const AuditComplianceView: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-[#F8FAFC] custom-scrollbar select-none">
+    <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-semantic-subtle custom-scrollbar select-none">
       {/* Header Banner */}
-      <div className="wrike-card p-6 bg-gradient-to-r from-[#FFFFFF] via-[#F8FAFC] to-[#E6F7EF]/30 border border-[#E2E8F0] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="wrike-card p-6 bg-gradient-to-r from-semantic-panel via-semantic-subtle to-semantic-success-surface/30 border border-semantic-border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-[#007860] text-white flex items-center justify-center font-bold shadow-md">
+          <div className="w-12 h-12 rounded-xl bg-semantic-success text-white flex items-center justify-center font-bold shadow-md">
             <FileCheck className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-[#162136]">Audit & Regulatory Compliance</h1>
-            <p className="text-xs text-[#64748B] mt-0.5">
+            <h1 className="text-xl font-bold text-semantic-primary">Audit & Regulatory Compliance</h1>
+            <p className="text-xs text-semantic-muted mt-0.5">
               Continuous regulatory control assurance, gap remediation workflows, and append-only audit trail logs.
             </p>
           </div>
@@ -79,47 +79,47 @@ export const AuditComplianceView: React.FC = () => {
         </button>
       </div>
 
-      <div className="wrike-card p-4 text-xs text-[#64748B] border border-[#E2E8F0]">
+      <div className="wrike-card p-4 text-xs text-semantic-muted border border-semantic-border">
         Compliance scores and certification claims are not shown until they are received from an approved control-assessment integration. The audit trail below contains only persisted system activity.
       </div>
 
       {/* Verified Immutable Audit Trail Table */}
       <div className="wrike-card p-5 space-y-4 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E2E8F0] pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-semantic-border pb-3">
           <div>
-            <h2 className="font-bold text-sm text-[#162136]">
+            <h2 className="font-bold text-sm text-semantic-primary">
               Verified Append-Only Audit Trail ({filteredEvents.length} Events)
             </h2>
-            <p className="text-xs text-[#64748B] mt-0.5">Immutable record of ticket transitions, comments, and authorizations.</p>
+            <p className="text-xs text-semantic-muted mt-0.5">Immutable record of ticket transitions, comments, and authorizations.</p>
           </div>
 
           <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 absolute left-3 top-2 text-[#94A3B8]" />
+            <Search className="w-4 h-4 absolute left-3 top-2 text-semantic-placeholder" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search audit trail..."
-              className="w-full bg-[#FFFFFF] border border-[#CBD5E1] rounded-lg pl-9 pr-3 py-1.5 text-xs text-[#162136] outline-none"
+              className="w-full bg-semantic-panel border border-semantic-border-strong rounded-lg pl-9 pr-3 py-1.5 text-xs text-semantic-primary outline-none"
             />
           </div>
         </div>
 
-        <div className="divide-y divide-[#E2E8F0] text-xs font-mono">
+        <div className="divide-y divide-semantic-border text-xs font-mono">
           {filteredEvents.length === 0 ? (
-            <div className="py-8 text-center text-[#64748B] italic">No audit events found.</div>
+            <div className="py-8 text-center text-semantic-muted italic">No audit events found.</div>
           ) : (
             filteredEvents.slice(0, 10).map((evt) => (
-              <div key={evt.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-[#F8FAFC] px-2 rounded transition-colors">
+              <div key={evt.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-semantic-subtle px-2 rounded transition-colors">
                 <div className="flex items-center gap-2.5 font-sans">
-                  <span className="px-2 py-0.5 rounded bg-[#EBF4FD] text-[#0073D3] font-mono text-[10px] font-bold border border-[#BAE0FD]">
+                  <span className="px-2 py-0.5 rounded bg-semantic-info-surface text-semantic-info font-mono text-caption font-bold border border-semantic-info-border">
                     {evt.action}
                   </span>
-                  <span className="font-bold text-[#162136]">{evt.actorName}</span>
-                  <span className="text-[#64748B] text-[11px]">({evt.actorRole})</span>
-                  {evt.entityKey && <span className="font-mono font-bold text-[#0073D3]">[{evt.entityKey}]</span>}
+                  <span className="font-bold text-semantic-primary">{evt.actorName}</span>
+                  <span className="text-semantic-muted text-label">({evt.actorRole})</span>
+                  {evt.entityKey && <span className="font-mono font-bold text-semantic-info">[{evt.entityKey}]</span>}
                 </div>
-                <div className="text-[11px] text-[#64748B] font-mono">
+                <div className="text-label text-semantic-muted font-mono">
                   {new Date(evt.timestamp).toLocaleString()} • IP: {evt.ipAddress}
                 </div>
               </div>

@@ -85,23 +85,23 @@ export const WrikeGanttView: React.FC<WrikeGanttViewProps> = ({
   });
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#FFFFFF] overflow-hidden select-none">
+    <div className="flex-1 flex flex-col h-full bg-semantic-panel overflow-hidden select-none">
       {/* Wrike Gantt Header */}
-      <div className="bg-[#FFFFFF] border-b border-[#DCE1EB] px-5 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 shadow-wrike-sm">
+      <div className="bg-semantic-panel border-b border-semantic-surface-alt px-5 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 shadow-wrike-sm">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#EBF4FD] text-[#0073D3] border border-[#BAE0FD] flex items-center justify-center font-bold text-xs">
-            <Calendar className="w-4 h-4 text-[#0073D3]" />
+          <div className="w-8 h-8 rounded-lg bg-semantic-info-surface text-semantic-info border border-semantic-info-border flex items-center justify-center font-bold text-xs">
+            <Calendar className="w-4 h-4 text-semantic-info" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-[#162136]">
+              <h2 className="text-sm font-bold text-semantic-primary">
                 Wrike Interactive Gantt Chart & Schedule
               </h2>
-              <span className="px-2 py-0.5 rounded-full bg-[#EBF4FD] text-[#0073D3] text-[10px] font-bold border border-[#BAE0FD]">
+              <span className="px-2 py-0.5 rounded-full bg-semantic-info-surface text-semantic-info text-caption font-bold border border-semantic-info-border">
                 Real-Time Backend Synced
               </span>
             </div>
-            <p className="text-[11px] text-[#657694]">
+            <p className="text-label text-semantic-jira-muted-alt">
               Manage critical paths, SLA milestone deadlines, and task dependency sequences.
             </p>
           </div>
@@ -114,8 +114,8 @@ export const WrikeGanttView: React.FC<WrikeGanttViewProps> = ({
             onClick={() => setHighlightCriticalPath(!highlightCriticalPath)}
             className={`px-3 py-1.5 rounded-md text-xs font-semibold border transition-colors flex items-center gap-1.5 ${
               highlightCriticalPath
-                ? 'bg-[#FDE8EB] text-[#CF1322] border-[#FFA39E]'
-                : 'bg-[#F8FAFC] text-[#657694] border-[#DCE1EB]'
+                ? 'bg-semantic-danger-surface text-semantic-danger border-semantic-danger-border'
+                : 'bg-semantic-subtle text-semantic-jira-muted-alt border-semantic-surface-alt'
             }`}
           >
             <Flame className="w-3.5 h-3.5" />
@@ -123,13 +123,13 @@ export const WrikeGanttView: React.FC<WrikeGanttViewProps> = ({
           </button>
 
           {/* Zoom controls */}
-          <div className="flex items-center bg-[#F8FAFC] border border-[#DCE1EB] rounded-md p-0.5 text-xs">
+          <div className="flex items-center bg-semantic-subtle border border-semantic-surface-alt rounded-md p-0.5 text-xs">
             {(['DAYS', 'WEEKS', 'MONTHS'] as const).map((z) => (
               <button
                 key={z}
                 onClick={() => setTimeZoom(z)}
-                className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
-                  timeZoom === z ? 'bg-[#0073D3] text-white font-semibold shadow-sm' : 'text-[#657694] hover:text-[#162136]'
+                className={`px-2.5 py-1 rounded text-label font-medium transition-colors ${
+                  timeZoom === z ? 'bg-semantic-info text-white font-semibold shadow-sm' : 'text-semantic-jira-muted-alt hover:text-semantic-primary'
                 }`}
               >
                 {z}
@@ -150,11 +150,11 @@ export const WrikeGanttView: React.FC<WrikeGanttViewProps> = ({
       {/* Main Gantt Body */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Task List Pane */}
-        <div className="w-72 bg-[#FFFFFF] border-r border-[#DCE1EB] flex flex-col shrink-0 overflow-y-auto custom-scrollbar">
-          <div className="p-2.5 bg-[#F8FAFC] border-b border-[#DCE1EB] font-bold text-[11px] uppercase tracking-wider text-[#657694] sticky top-0 z-10">
+        <div className="w-72 bg-semantic-panel border-r border-semantic-surface-alt flex flex-col shrink-0 overflow-y-auto custom-scrollbar">
+          <div className="p-2.5 bg-semantic-subtle border-b border-semantic-surface-alt font-bold text-label uppercase tracking-wider text-semantic-jira-muted-alt sticky top-0 z-dsContent">
             Work Breakdown / Task ({ganttTasks.length})
           </div>
-          <div className="divide-y divide-[#EBF0F7]">
+          <div className="divide-y divide-semantic-table">
             {ganttTasks.map((task) => {
               const matchedTicket = tickets.find((t) => t.id === task.id);
               const isCrit = criticalPathIds.includes(task.id);
@@ -163,18 +163,18 @@ export const WrikeGanttView: React.FC<WrikeGanttViewProps> = ({
                 <div
                   key={task.id}
                   onClick={() => matchedTicket && onSelectTicket(matchedTicket)}
-                  className="p-2.5 hover:bg-[#F8FAFC] cursor-pointer transition-colors flex items-center justify-between gap-2 h-14"
+                  className="p-2.5 hover:bg-semantic-subtle cursor-pointer transition-colors flex items-center justify-between gap-2 h-14"
                 >
                   <div className="truncate">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-mono font-bold text-[11px] text-[#0073D3]">{task.ticketKey}</span>
+                      <span className="font-mono font-bold text-label text-semantic-info">{task.ticketKey}</span>
                       {isCrit && (
-                        <span className="w-2 h-2 rounded-full bg-[#E51739]" title="Critical Path" />
+                        <span className="w-2 h-2 rounded-full bg-semantic-brand-danger" title="Critical Path" />
                       )}
                     </div>
-                    <div className="text-xs font-semibold text-[#162136] truncate">{task.title}</div>
+                    <div className="text-xs font-semibold text-semantic-primary truncate">{task.title}</div>
                   </div>
-                  <ChevronRight className="w-3.5 h-3.5 text-[#BFC7D9] shrink-0" />
+                  <ChevronRight className="w-3.5 h-3.5 text-semantic-dark-muted shrink-0" />
                 </div>
               );
             })}
@@ -182,9 +182,9 @@ export const WrikeGanttView: React.FC<WrikeGanttViewProps> = ({
         </div>
 
         {/* Right Timeline Canvas Pane */}
-        <div className="flex-1 flex flex-col overflow-x-auto overflow-y-auto custom-scrollbar relative bg-[#FFFFFF]">
+        <div className="flex-1 flex flex-col overflow-x-auto overflow-y-auto custom-scrollbar relative bg-semantic-panel">
           {/* Calendar Header Row */}
-          <div className="flex border-b border-[#DCE1EB] bg-[#F8FAFC] sticky top-0 z-10 min-w-[1120px]">
+          <div className="flex border-b border-semantic-surface-alt bg-semantic-subtle sticky top-0 z-dsContent min-w-dsTimeline">
             {timelineDays.map((day, idx) => {
               const isToday = day.toDateString() === new Date().toDateString();
               const isWeekend = day.getDay() === 0 || day.getDay() === 6;
@@ -192,12 +192,12 @@ export const WrikeGanttView: React.FC<WrikeGanttViewProps> = ({
               return (
                 <div
                   key={idx}
-                  className={`w-10 text-center py-2 border-r border-[#EBF0F7] shrink-0 text-[10px] ${
+                  className={`w-10 text-center py-2 border-r border-semantic-table shrink-0 text-caption ${
                     isToday
-                      ? 'bg-[#E6F7EF] font-bold text-[#007860]'
+                      ? 'bg-semantic-success-surface font-bold text-semantic-success'
                       : isWeekend
-                      ? 'bg-[#F2F5FA] text-[#8F9CAE]'
-                      : 'text-[#657694]'
+                      ? 'bg-semantic-page-muted text-semantic-muted-alt'
+                      : 'text-semantic-jira-muted-alt'
                   }`}
                 >
                   <div>{day.toLocaleDateString('en-US', { weekday: 'narrow' })}</div>
@@ -208,7 +208,7 @@ export const WrikeGanttView: React.FC<WrikeGanttViewProps> = ({
           </div>
 
           {/* Timeline Grid & Task Bars */}
-          <div className="wrike-gantt-grid min-w-[1120px] flex-1 divide-y divide-[#EBF0F7] relative">
+          <div className="wrike-gantt-grid min-w-dsTimeline flex-1 divide-y divide-semantic-table relative">
             {ganttTasks.map((task, index) => {
               const startOffset = Math.min(20, Math.max(2, (index * 3) % 18));
               const durationWidth = Math.min(18, Math.max(4, 6 + (index % 4) * 2));
@@ -226,21 +226,21 @@ export const WrikeGanttView: React.FC<WrikeGanttViewProps> = ({
                     }}
                     className={`absolute h-7 rounded-md shadow-sm flex items-center justify-between px-2.5 text-xs text-white font-semibold cursor-pointer transition-all hover:brightness-105 ${
                       isCritical && highlightCriticalPath
-                        ? 'bg-gradient-to-r from-[#E51739] to-[#FA8C16] border border-[#CF1322]'
+                        ? 'bg-gradient-to-r from-semantic-brand-danger to-semantic-warning-bright border border-semantic-danger'
                         : task.statusCategory === 'DONE'
-                        ? 'bg-[#00B259] border border-[#00964B]'
-                        : 'bg-[#0073D3] border border-[#005CAD]'
+                        ? 'bg-semantic-brand border border-semantic-brandHover'
+                        : 'bg-semantic-info border border-semantic-info-hover'
                     }`}
                   >
-                    <span className="truncate max-w-[140px] text-[11px]">{task.ticketKey}: {task.title}</span>
-                    <span className="font-mono text-[10px] opacity-90">{task.progressPercent}%</span>
+                    <span className="truncate max-w-[140px] text-label">{task.ticketKey}: {task.title}</span>
+                    <span className="font-mono text-caption opacity-90">{task.progressPercent}%</span>
                   </div>
 
                   {/* Milestone Diamond on Critical items */}
                   {task.isMilestone && (
                     <div
                       style={{ left: `${(startOffset + durationWidth) * 40 - 12}px` }}
-                      className="absolute w-6 h-6 rotate-45 bg-[#FA8C16] border-2 border-white shadow-sm flex items-center justify-center z-10"
+                      className="absolute w-6 h-6 rotate-45 bg-semantic-warning-bright border-2 border-white shadow-sm flex items-center justify-center z-dsContent"
                       title="SLA Milestone Target"
                     />
                   )}

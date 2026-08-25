@@ -31,9 +31,12 @@ export type UniversalWorkType =
 
 export type WorkflowLifecycle = 'DRAFT' | 'REVIEW' | 'PUBLISHED' | 'DEPRECATED' | 'ARCHIVED';
 export type TemplateScope = 'COMPANY' | 'DEPARTMENT' | 'PERSONAL';
+export type WorkflowCatalogTemplateKind = 'WORKFLOW' | 'BASIC_TICKET';
 export type TriggerType = 'MANUAL' | 'RECORD_EVENT' | 'DATE_EVENT' | 'SCHEDULE' | 'EXTERNAL_EVENT' | 'DEVOPS_EVENT' | 'HR_EVENT' | 'IT_EVENT';
 export type WorkflowNodeType =
   | 'START'
+  | 'INPUT'
+  | 'TICKET_INPUT'
   | 'TASK'
   | 'APPROVAL'
   | 'INFORMATION_REQUEST'
@@ -64,7 +67,11 @@ export type ConditionOperator =
   | 'IN'
   | 'NOT_IN'
   | 'CONTAINS'
+  | 'NOT_CONTAINS'
   | 'EXISTS'
+  | 'NOT_EXISTS'
+  | 'IS_TRUE'
+  | 'IS_FALSE'
   | 'GREATER_THAN'
   | 'GREATER_THAN_OR_EQUAL'
   | 'LESS_THAN'
@@ -240,6 +247,8 @@ export interface AssignmentConfiguration {
     | 'ON_CALL'
     | 'RULE_ENGINE'
     | 'UNASSIGNED_TEAM_QUEUE';
+  /** The department / branch that owns this human activity. */
+  departmentId?: string;
   groupId?: string;
   assigneeId?: string;
   role?: BankRole;
@@ -249,8 +258,10 @@ export interface AssignmentConfiguration {
 }
 
 export interface ApprovalConfiguration {
-  approverSource: ApproverResolverType | 'MANAGERS_MANAGER' | 'APPLICATION_OWNER' | 'CI_OWNER' | 'DYNAMIC_EXPRESSION';
+  approverSource: ApproverResolverType | 'DEPARTMENT_MEMBERS' | 'MANAGERS_MANAGER' | 'APPLICATION_OWNER' | 'CI_OWNER' | 'DYNAMIC_EXPRESSION';
   approvalMode: ApprovalMode;
+  /** Limits department-based approval routing to this department / branch. */
+  departmentId?: string;
   specificUserIds?: string[];
   groupId?: string;
   role?: BankRole;
@@ -302,6 +313,7 @@ export interface WorkflowNodeDefinition {
   action?: { connectorId?: string; credentialReferenceId?: string; actionKey: string; inputMapping?: Record<string, string>; idempotencyKeyTemplate?: string; dryRunSupported?: boolean };
   notification?: { event: string; recipients: string[]; templateKey: string; deduplicationWindowMinutes?: number };
   subworkflow?: { workflowDefinitionId: string; version?: number; inputMapping?: Record<string, string> };
+  inputConfig?: { fields: FormFieldDefinition[]; submitButtonLabel?: string; prompt?: string };
   outputSchema?: WorkflowVariableDefinition[];
   retryPolicy?: RetryPolicy;
   compensation?: CompensationConfiguration;
@@ -329,6 +341,8 @@ export interface WorkflowDefinition {
   defaultWorkType: UniversalWorkType;
   lifecycle: WorkflowLifecycle;
   scope: TemplateScope;
+  /** Required for DEPARTMENT scope; enforced from the authenticated owner. */
+  departmentId?: string;
   ownerId: string;
   maintainerIds: string[];
   latestVersion: number;
@@ -368,6 +382,7 @@ export interface WorkflowCatalogTemplate {
   domain: EnterpriseDomain;
   category: string;
   scope: TemplateScope;
+  departmentId?: string;
   ownerId: string;
   maintainerIds: string[];
   tags: string[];
@@ -383,6 +398,14 @@ export interface WorkflowCatalogTemplate {
   lastUsedAt?: string;
   lifecycle: WorkflowLifecycle;
   changeLog: string;
+  /** How this intake is presented to non-technical users. */
+  kind?: WorkflowCatalogTemplateKind;
+  /** Human-friendly group inherited from the source service catalogue. */
+  catalogGroup?: string;
+  /** Request type used to render the template-specific intake form. */
+  requestTypeId?: string;
+  /** Server-calculated catalog management permission for the current actor. */
+  canDelete?: boolean;
 }
 
 export interface WorkflowPolicySet {
@@ -640,7 +663,11 @@ export interface ExecutionEvent {
     | 'DEAD_LETTER_CREATED'
     | 'DEAD_LETTER_REQUEUED'
     | 'WORK_ITEM_CREATED'
+    | 'WORK_ITEM_CLAIMED'
     | 'WORK_ITEM_COMPLETED'
+    | 'TASK_CONFIRMED'
+    | 'INFORMATION_SHARED'
+    | 'COMMENT_ADDED'
     | 'APPROVAL_CREATED'
     | 'APPROVAL_DECIDED'
     | 'ROUTING_RESOLVED'

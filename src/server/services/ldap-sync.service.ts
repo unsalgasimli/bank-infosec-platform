@@ -1,5 +1,5 @@
 import { StrictReadOnlyLdapClient } from '../utils/readonly-ldap-client.js';
-import { BankUser, BankRole, SecurityClearanceLevel, BankDepartment } from '../../shared/types/auth.js';
+import { BankUser, BankRole, SecurityClearanceLevel, BankDepartment, BankDepartmentSection } from '../../shared/types/auth.js';
 import { db } from '../db/database.js';
 import { config } from '../config/index.js';
 import { logger } from './logger.service.js';
@@ -12,11 +12,23 @@ import {
   isGenuineEmployeeOrIntern,
   parseMemberOfGroups,
   toSafeString,
+  normalizeDirectoryText,
+  normalizeDirectoryKey,
+  LDAP_NON_HUMAN_ACCOUNT_FILTERS,
+  isServiceAccount,
   getDepartmentColor,
   getDepartmentIcon,
 } from './ldap-directory.data.js';
 
 export type { LDAPRawEntry, DepartmentMappingResult };
+
+export const LDAP_HUMAN_ACCOUNT_FILTER = [
+  '(&(objectCategory=person)(objectClass=user)',
+  '(!(userAccountControl:1.2.840.113556.1.4.803:=2))',
+  '(!(sAMAccountName=*$))',
+  ...LDAP_NON_HUMAN_ACCOUNT_FILTERS,
+  ')',
+].join('');
 
 export interface LDAPSyncReport {
   timestamp: string;
@@ -71,6 +83,10 @@ export class LDAPSyncService {
     return isGenuineEmployeeOrIntern(entry, parsedGroups, sAMAccountName);
   }
 
+  public static isServiceAccount(entry: LDAPRawEntry): boolean {
+    return isServiceAccount(entry);
+  }
+
   /**
    * Queries real Active Directory Domain Controller for live, non-disabled domain users.
    * Enforces LDAPS protocol, strict read-only execution, and paged results.
@@ -86,10 +102,9 @@ export class LDAPSyncService {
     const baseDn = options?.baseDn || config.LDAP_BASE_DN;
     const bindUser = options?.bindUser || config.LDAP_BIND_USER;
     const bindPassword = resolveSecret(options?.bindPassword || config.LDAP_BIND_PASSWORD || '');
-    // Standard Active Directory filter that strictly excludes disabled accounts (UAC bit 2) and machine accounts
-    const searchFilter =
-      options?.searchFilter ||
-      '(&(objectCategory=person)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2))(!(sAMAccountName=*$)))';
+    // Server-side filter excludes disabled, machine, and known non-human
+    // service-account families before any records enter the sync pipeline.
+    const searchFilter = options?.searchFilter || LDAP_HUMAN_ACCOUNT_FILTER;
 
     if (!config.LDAP_ENABLED && !options?.url) {
       return {
@@ -137,7 +152,12 @@ export class LDAPSyncService {
           'department',
           'company',
           'distinguishedName',
+          'manager',
           'memberOf',
+          'description',
+          'employeeType',
+          'objectClass',
+          'servicePrincipalName',
           'userAccountControl',
           'accountExpires',
           'whenCreated',
@@ -150,7 +170,13 @@ export class LDAPSyncService {
         const validUsers = (searchRes.searchEntries as LDAPRawEntry[]).filter((entry) => {
           if (!entry.sAMAccountName && !entry.userPrincipalName) return false;
           if (this.isAccountDisabled(entry)) return false;
-          return true;
+          const rawUsername = toSafeString(entry.sAMAccountName || entry.userPrincipalName);
+          const sAMAccountName = rawUsername.includes('\\')
+            ? rawUsername.split('\\')[1]
+            : rawUsername.includes('@')
+              ? rawUsername.split('@')[0]
+              : rawUsername;
+          return this.isGenuineEmployeeOrIntern(entry, this.parseMemberOfGroups(entry.memberOf), sAMAccountName);
         });
 
         logger.info({ count: validUsers.length }, 'Successfully queried Active Directory live domain users!');
@@ -207,7 +233,7 @@ export class LDAPSyncService {
     const baseDn = options?.baseDn || config.LDAP_BASE_DN;
     const bindUser = options?.bindUser || config.LDAP_BIND_USER;
     const bindPassword = resolveSecret(options?.bindPassword || config.LDAP_BIND_PASSWORD || '');
-    const searchFilter = '(&(objectCategory=person)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2))(!(sAMAccountName=*$)))';
+    const searchFilter = LDAP_HUMAN_ACCOUNT_FILTER;
 
     if (!url.startsWith('ldaps://') || !baseDn || !bindUser || !bindPassword) {
       return {
@@ -276,25 +302,37 @@ export class LDAPSyncService {
   /**
    * Scans and removes duplicate user entries across database and fixes all relational keys
    */
-  public static deduplicateUsers(): { removedCount: number; duplicateUsernames: string[] } {
+  public static deduplicateUsers(options: { persist?: boolean } = {}): { removedCount: number; duplicateUsernames: string[] } {
     const users = db.data.users || [];
-    const seenByUsername = new Map<string, BankUser>();
+    const seenByIdentityKey = new Map<string, BankUser>();
     const duplicateUsernames: string[] = [];
     const uniqueUsers: BankUser[] = [];
     const idRemap = new Map<string, string>(); // oldId -> canonicalId
 
     for (const u of users) {
-      const usernameKey = (u.username || u.sAMAccountName || '').toLowerCase().trim();
-      const emailKey = (u.email || '').toLowerCase().trim();
-      const lookupKey = usernameKey || emailKey;
+      // Canonicalize persisted identity columns before uniqueness checks.
+      // This keeps username/sAMAccountName/email stable across AD casing and
+      // Unicode/whitespace variants.
+      if (u.username) u.username = normalizeDirectoryKey(u.username);
+      if (u.sAMAccountName) u.sAMAccountName = normalizeDirectoryKey(u.sAMAccountName);
+      if (u.email) u.email = normalizeDirectoryKey(u.email);
+
+      const identityKeys = Array.from(
+        new Set(
+          [u.username, u.sAMAccountName, u.email]
+            .map((value) => normalizeDirectoryKey(value))
+            .filter(Boolean)
+        )
+      );
+      const lookupKey = identityKeys[0] || '';
 
       if (!lookupKey) {
         uniqueUsers.push(u);
         continue;
       }
 
-      if (seenByUsername.has(lookupKey)) {
-        const canonical = seenByUsername.get(lookupKey)!;
+      const canonical = identityKeys.map((key) => seenByIdentityKey.get(key)).find(Boolean);
+      if (canonical) {
         duplicateUsernames.push(lookupKey);
         idRemap.set(u.id, canonical.id);
 
@@ -314,7 +352,7 @@ export class LDAPSyncService {
           new Set([...(canonical.ownedRiskIds || []), ...(u.ownedRiskIds || [])])
         );
       } else {
-        seenByUsername.set(lookupKey, u);
+        for (const key of identityKeys) seenByIdentityKey.set(key, u);
         uniqueUsers.push(u);
       }
     }
@@ -350,7 +388,7 @@ export class LDAPSyncService {
         }
       }
 
-      db.persist();
+      if (options.persist !== false) db.persist();
       logger.info({ removedCount, duplicateUsernames }, 'Deduplication completed: purged duplicate users and fixed foreign key references');
     }
 
@@ -375,10 +413,6 @@ export class LDAPSyncService {
     const queryResult = await this.queryLdapDirectory(options.ldapOptions);
     const ldapEntries = queryResult.users;
 
-    const dedupPre = queryResult.isLiveLdap
-      ? this.deduplicateUsers()
-      : { removedCount: 0, duplicateUsernames: [] };
-
     const domain = config.LDAP_DOMAIN.toLowerCase();
     const baseDn = config.LDAP_BASE_DN;
 
@@ -393,13 +427,13 @@ export class LDAPSyncService {
       updatedCount: 0,
       disabledCount: 0,
       reEnabledCount: 0,
-      duplicatesRemovedCount: dedupPre.removedCount,
+      duplicatesRemovedCount: 0,
       departmentCounts: {},
       addedUsers: [],
       updatedUsers: [],
       disabledUsers: [],
       reEnabledUsers: [],
-      duplicateUsernames: dedupPre.duplicateUsernames,
+      duplicateUsernames: [],
       errors: queryResult.error ? [queryResult.error] : [],
     };
 
@@ -425,9 +459,18 @@ export class LDAPSyncService {
 
     report.totalLdapUsers = validLdapEntries.length;
 
-    const existingUsers = db.data.users || [];
-    const ldapUsernamesSeen = new Set<string>();
-    const syncedDepartmentIds = new Set<string>();
+    // All projection, relationship repair, de-duplication, and lifecycle
+    // changes commit together. A failed sync therefore leaves the previous
+    // durable directory projection untouched.
+    db.transaction(() => {
+      const dedupPre = this.deduplicateUsers({ persist: false });
+      report.duplicatesRemovedCount += dedupPre.removedCount;
+      report.duplicateUsernames.push(...dedupPre.duplicateUsernames);
+
+      const existingUsers = db.data.users || [];
+      const ldapUsernamesSeen = new Set<string>();
+      const syncedDepartmentIds = new Set<string>();
+      const syncedSectionIds = new Set<string>();
 
     // 3. Process each genuine LDAP User
     for (const entry of validLdapEntries) {
@@ -437,16 +480,16 @@ export class LDAPSyncService {
       let sAMAccountName = rawUsername;
       if (rawUsername.includes('\\')) sAMAccountName = rawUsername.split('\\')[1];
       else if (rawUsername.includes('@')) sAMAccountName = rawUsername.split('@')[0];
-      sAMAccountName = sAMAccountName.toLowerCase();
+      sAMAccountName = normalizeDirectoryKey(sAMAccountName);
 
       ldapUsernamesSeen.add(sAMAccountName);
 
-      const email = (toSafeString(entry.mail) || toSafeString(entry.userPrincipalName) || `${sAMAccountName}@${domain}`).toLowerCase();
-      const givenName = toSafeString(entry.givenName);
-      const sn = toSafeString(entry.sn);
-      const displayName = toSafeString(entry.displayName) || `${givenName} ${sn}`.trim() || sAMAccountName;
-      const title = toSafeString(entry.title) || 'Bank Specialist';
-      const rawDept = toSafeString(entry.department);
+      const email = normalizeDirectoryKey(toSafeString(entry.mail) || toSafeString(entry.userPrincipalName) || `${sAMAccountName}@${domain}`);
+      const givenName = normalizeDirectoryText(entry.givenName);
+      const sn = normalizeDirectoryText(entry.sn);
+      const displayName = normalizeDirectoryText(entry.displayName) || `${givenName} ${sn}`.trim() || sAMAccountName;
+      const title = normalizeDirectoryText(entry.title) || 'Bank Specialist';
+      const rawDept = normalizeDirectoryText(entry.department);
       const groups = this.parseMemberOfGroups(entry.memberOf);
       const isDisabledInLdap = this.isAccountDisabled(entry);
       const targetIsActive = !isDisabledInLdap;
@@ -460,8 +503,9 @@ export class LDAPSyncService {
       const targetDeptName = deptMapping.departmentName;
       syncedDepartmentIds.add(targetDeptId);
 
-      // Auto-register department in db.data.departments if newly discovered from Active Directory
+      // Auto-register or refresh department in db.data.departments
       let deptRecord = (db.data.departments || []).find((d) => d.id === targetDeptId);
+      if (!db.data.departmentSections) db.data.departmentSections = [];
       if (!deptRecord) {
         deptRecord = {
           id: targetDeptId,
@@ -489,9 +533,49 @@ export class LDAPSyncService {
           directorySource: 'ACTIVE_DIRECTORY',
         };
         db.data.departments.push(deptRecord);
+      } else {
+        // Refresh department name and code if it was previously corrupted or generic
+        if (
+          targetDeptName &&
+          targetDeptName !== 'Ümumi Bank Xidmətləri və Əməliyyatlar' &&
+          deptRecord.name === 'Ümumi Bank Xidmətləri və Əməliyyatlar'
+        ) {
+          deptRecord.name = targetDeptName;
+          deptRecord.code = deptMapping.departmentCode;
+          deptRecord.color = getDepartmentColor(targetDeptName);
+          deptRecord.icon = getDepartmentIcon(targetDeptName);
+          deptRecord.divisionId = deptMapping.divisionId;
+        }
       }
       deptRecord.directorySource = 'ACTIVE_DIRECTORY';
       deptRecord.isActive = true;
+
+      let sectionRecord: BankDepartmentSection | undefined;
+      if (deptMapping.sectionId && deptMapping.sectionName && deptMapping.sectionCode) {
+        syncedSectionIds.add(deptMapping.sectionId);
+        sectionRecord = (db.data.departmentSections || []).find((section) => section.id === deptMapping.sectionId);
+        if (!sectionRecord) {
+          sectionRecord = {
+            id: deptMapping.sectionId,
+            departmentId: targetDeptId,
+            name: deptMapping.sectionName,
+            code: deptMapping.sectionCode,
+            isActive: true,
+            memberCount: 0,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            directorySource: 'ACTIVE_DIRECTORY',
+          };
+          db.data.departmentSections.push(sectionRecord);
+        } else {
+          sectionRecord.departmentId = targetDeptId;
+          sectionRecord.name = deptMapping.sectionName;
+          sectionRecord.code = deptMapping.sectionCode;
+          sectionRecord.isActive = true;
+          sectionRecord.directorySource = 'ACTIVE_DIRECTORY';
+          sectionRecord.updatedAt = new Date().toISOString();
+        }
+      }
 
       // Update Department metrics
       if (!report.departmentCounts[targetDeptId]) {
@@ -509,14 +593,15 @@ export class LDAPSyncService {
       // Check if user exists in local database
       const existingUser = existingUsers.find(
         (u) =>
-          u.username.toLowerCase() === sAMAccountName ||
-          (u.sAMAccountName && u.sAMAccountName.toLowerCase() === sAMAccountName) ||
-          u.email.toLowerCase() === email
+          normalizeDirectoryKey(u.username) === sAMAccountName ||
+          normalizeDirectoryKey(u.sAMAccountName) === sAMAccountName ||
+          normalizeDirectoryKey(u.email) === email
       );
 
       const userRoles: BankRole[] = deptMapping.roles;
       const userClearance = deptMapping.securityClearance;
       const userDeptId = targetDeptId;
+      const userSectionId = sectionRecord?.id;
       const userDivId = deptMapping.divisionId;
       const userTeams = deptMapping.teamIds;
 
@@ -531,6 +616,7 @@ export class LDAPSyncService {
           fullName: displayName,
           title,
           departmentId: userDeptId,
+          sectionId: userSectionId,
           divisionId: userDivId,
           teamIds: userTeams,
           roles: userRoles,
@@ -576,14 +662,24 @@ export class LDAPSyncService {
           existingUser.title = title;
         }
 
-        if (existingUser.departmentId !== userDeptId && rawDept) {
+        if (existingUser.departmentId !== userDeptId) {
           changes.push(`departmentId: ${existingUser.departmentId} -> ${userDeptId}`);
           existingUser.departmentId = userDeptId;
           existingUser.divisionId = userDivId;
         }
 
+        if (existingUser.sectionId !== userSectionId) {
+          changes.push(`sectionId: ${existingUser.sectionId || '(none)'} -> ${userSectionId || '(none)'}`);
+          existingUser.sectionId = userSectionId;
+        }
+
+        // Preserve special platform admin roles if assigned
+        const preservedRoles: BankRole[] = [];
+        if (existingUser.roles?.includes('PLATFORM_ADMIN')) preservedRoles.push('PLATFORM_ADMIN');
+        if (existingUser.roles?.includes('CISO')) preservedRoles.push('CISO');
+        existingUser.roles = Array.from(new Set([...userRoles, ...preservedRoles]));
+
         existingUser.teamIds = userTeams;
-        existingUser.roles = userRoles;
         existingUser.securityClearance = userClearance;
 
         // Account status synchronization (Added / Disabled users fix)
@@ -608,12 +704,8 @@ export class LDAPSyncService {
           });
         }
 
-        // Synchronize distribution groups and dynamic roles
+        // Synchronize distribution groups
         existingUser.distributionGroups = groups;
-        existingUser.roles = userRoles;
-        existingUser.securityClearance = userClearance;
-        existingUser.teamIds = userTeams;
-
         existingUser.ldapDomain = config.LDAP_DOMAIN;
         existingUser.ldapBindStatus = 'BOUND';
         existingUser.directorySource = 'ACTIVE_DIRECTORY';
@@ -627,6 +719,53 @@ export class LDAPSyncService {
           });
         }
       }
+    }
+
+    // Resolve the AD `manager` DN only after every user has been upserted.
+    const userByDn = new Map(
+      db.data.users
+        .filter((user) => user.distinguishedName)
+        .map((user) => [normalizeDirectoryKey(user.distinguishedName), user] as const)
+    );
+    for (const entry of validLdapEntries) {
+      const rawUsername = toSafeString(entry.sAMAccountName || entry.userPrincipalName);
+      const username = normalizeDirectoryKey(rawUsername.includes('\\') ? rawUsername.split('\\')[1] : rawUsername.includes('@') ? rawUsername.split('@')[0] : rawUsername);
+      const employee = db.data.users.find((user) => normalizeDirectoryKey(user.username) === username || normalizeDirectoryKey(user.sAMAccountName) === username);
+      if (!employee) continue;
+      const managerDn = normalizeDirectoryKey(entry.manager);
+      if (!managerDn) continue;
+      const manager = userByDn.get(managerDn);
+      employee.managerId = manager?.id;
+      if (manager && manager.departmentId === employee.departmentId) {
+        const department = db.data.departments.find((item) => item.id === employee.departmentId);
+        if (department && !department.managerId) department.managerId = manager.id;
+      }
+    }
+
+    // Direct Leadership Resolution (Assign department.managerId based on explicit Head / Müdir titles)
+    for (const dept of db.data.departments || []) {
+      const deptMembers = db.data.users.filter((u) => u.departmentId === dept.id && u.isActive);
+      const headUser = deptMembers.find(
+        (u) =>
+          u.roles.includes('INFOSEC_MANAGER') ||
+          u.roles.includes('DEPARTMENT_MANAGER') ||
+          u.roles.includes('CISO') ||
+          /müdir|mudir|direktor|director|rəis|reis|sədr|head|manager/i.test(u.title || '')
+      );
+      if (headUser && (!dept.managerId || !db.data.users.some((u) => u.id === dept.managerId && u.departmentId === dept.id))) {
+        dept.managerId = headUser.id;
+      }
+      if (headUser && (!dept.adminUserIds || !dept.adminUserIds.includes(headUser.id))) {
+        dept.adminUserIds = Array.from(new Set([...(dept.adminUserIds || []), headUser.id]));
+      }
+    }
+
+    for (const section of db.data.departmentSections || []) {
+      if (section.directorySource === 'ACTIVE_DIRECTORY' && !syncedSectionIds.has(section.id)) {
+        section.isActive = false;
+        section.updatedAt = new Date().toISOString();
+      }
+      section.memberCount = db.data.users.filter((user) => user.sectionId === section.id && user.isActive).length;
     }
 
     // 4. Safe Account Lifecycle Synchronization with Circuit-Breaker Protection
@@ -645,7 +784,7 @@ export class LDAPSyncService {
       report.errors.push('Safety circuit breaker tripped: Suspiciously low AD account count returned.');
     } else {
       for (const u of db.data.users) {
-        const key = (u.username || u.sAMAccountName || '').toLowerCase();
+        const key = normalizeDirectoryKey(u.username || u.sAMAccountName);
         if (u.directorySource === 'ACTIVE_DIRECTORY' && !ldapUsernamesSeen.has(key) && u.isActive) {
           u.isActive = false;
           report.disabledCount++;
@@ -659,8 +798,9 @@ export class LDAPSyncService {
     }
 
     // 5. Post-Sync Deduplication verification
-    const dedupPost = this.deduplicateUsers();
+    const dedupPost = this.deduplicateUsers({ persist: false });
     report.duplicatesRemovedCount += dedupPost.removedCount;
+    report.duplicateUsernames.push(...dedupPost.duplicateUsernames);
 
     // 6. Keep only departments confirmed by the current live directory result
     // active for assignment. Historical records remain retained for audit/ticket
@@ -677,8 +817,8 @@ export class LDAPSyncService {
       dept.memberCount = activeCount || dept.memberCount || 0;
     }
 
-    // 8. Persist changes to disk / PostgreSQL
-    db.persist();
+    // 8. Commit the complete directory projection atomically.
+    });
 
     report.executionDurationMs = Date.now() - startTime;
     this.lastSyncReport = report;

@@ -7,19 +7,26 @@ import {
   Bell,
   Boxes,
   Braces,
+  Building2,
   CalendarClock,
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronUp,
   CircleStop,
+  ClipboardEdit,
   Clock3,
   Code2,
   Copy,
   Diamond,
+  Eye,
+  EyeOff,
+  FileText,
   GitBranch,
   Grid3X3,
   Layers3,
   Loader2,
+  LockKeyhole,
   Maximize2,
   Network,
   PanelLeft,
@@ -31,6 +38,7 @@ import {
   Search,
   Send,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Split,
   Square,
@@ -46,17 +54,24 @@ import {
 } from "lucide-react";
 import type {
   FormFieldDefinition,
+  FormFieldType,
   RequestTypeDefinition,
   SimulationResult,
   WorkflowCatalogTemplate,
   WorkflowEdgeDefinition,
   WorkflowNodeDefinition,
   WorkflowNodeType,
+  TemplateScope,
   WorkflowVersion,
 } from "../../../shared/types/orchestration.js";
+import { validateWorkflowPreflight } from "../../../shared/utils/workflow-preflight.js";
 import { useAuth } from "../../context/AuthContext.js";
+import { AccessibleDatePicker } from "../common/AccessibleDatePicker.js";
+import { CustomSelect, type SelectOption } from "../common/CustomSelect.js";
 
 type WorkspaceTab = "CATALOG" | "BUILDER" | "EXECUTIONS" | "ANALYTICS";
+type BuilderSidebarTab = "NODES" | "VARIABLES";
+type BuilderOperation = "SAVE" | "TEST" | "PUBLISH";
 type CatalogPayload = {
   sections: Array<{ name: string; templates: WorkflowCatalogTemplate[] }>;
   templates: WorkflowCatalogTemplate[];
@@ -77,6 +92,13 @@ const nodePalette: Array<{
   icon: React.ElementType;
   color: string;
 }> = [
+  {
+    group: "Human work",
+    type: "INPUT",
+    label: "Ticket input",
+    icon: ClipboardEdit,
+    color: "#059669",
+  },
   {
     group: "Human work",
     type: "TASK",
@@ -163,13 +185,6 @@ const nodePalette: Array<{
   },
   {
     group: "Termination",
-    type: "SUCCESS_END",
-    label: "Success end",
-    icon: CheckCircle2,
-    color: "#16A34A",
-  },
-  {
-    group: "Termination",
     type: "REJECTED_END",
     label: "Rejected end",
     icon: CircleStop,
@@ -184,10 +199,19 @@ const nodePalette: Array<{
   },
 ];
 
+// Every author receives these two anchors with a new workflow. They explain
+// the graph boundary and are intentionally not author-configurable nodes.
+const isFixedEndpoint = (node: Pick<WorkflowNodeDefinition, "type">) =>
+  node.type === "START" || node.type === "SUCCESS_END";
+
 const apiError = async (response: Response, fallback: string) => {
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload.success === false)
-    throw new Error(payload.error || fallback);
+  if (!response.ok || payload.success === false) {
+    const err: any = new Error(payload.error || fallback);
+    err.payload = payload;
+    err.preflight = payload.preflight || payload.details;
+    throw err;
+  }
   return payload;
 };
 
@@ -217,8 +241,22 @@ const localCondition = (
     if (entry.operator === "NOT_EQUALS") return left !== right;
     if (entry.operator === "EXISTS")
       return left !== undefined && left !== null && left !== "";
+    if (entry.operator === "NOT_EXISTS")
+      return left === undefined || left === null || left === "";
+    if (entry.operator === "IS_TRUE") return left === true;
+    if (entry.operator === "IS_FALSE") return left === false;
     if (entry.operator === "IN")
       return Array.isArray(right) && right.includes(left);
+    if (entry.operator === "NOT_IN")
+      return Array.isArray(right) && !right.includes(left);
+    if (entry.operator === "CONTAINS")
+      return Array.isArray(left) ? left.includes(right) : String(left ?? "").includes(String(right ?? ""));
+    if (entry.operator === "NOT_CONTAINS")
+      return Array.isArray(left) ? !left.includes(right) : !String(left ?? "").includes(String(right ?? ""));
+    if (entry.operator === "GREATER_THAN") return Number(left) > Number(right);
+    if (entry.operator === "GREATER_THAN_OR_EQUAL") return Number(left) >= Number(right);
+    if (entry.operator === "LESS_THAN") return Number(left) < Number(right);
+    if (entry.operator === "LESS_THAN_OR_EQUAL") return Number(left) <= Number(right);
     return true;
   };
   return evaluate(condition);
@@ -228,6 +266,10 @@ export const UniversalWorkflowWorkspace: React.FC<{
   onRefreshTickets?: () => void;
 }> = ({ onRefreshTickets }) => {
   const { currentUser, fetchWithAuth } = useAuth();
+  const companyTemplateRoles = ["PLATFORM_ADMIN", "CISO", "INFOSEC_ADMIN"];
+  const canCreateWorkflow = Boolean(currentUser?.isActive);
+  const canCreateCompanyTemplate = Boolean(currentUser?.roles.some((role: string) => companyTemplateRoles.includes(role)));
+  const canCreateDepartmentTemplate = Boolean(currentUser?.departmentId && canCreateWorkflow);
   const [tab, setTab] = useState<WorkspaceTab>(() => {
     const stored = sessionStorage.getItem(
       "orchestration-workspace-tab",
@@ -243,6 +285,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
     templates: [],
     requestTypes: [],
   });
+  const [directory, setDirectory] = useState<any>({ users: [], departments: [], groups: [], roles: [] });
   const [instances, setInstances] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any>(null);
   const [query, setQuery] = useState("");
@@ -250,6 +293,9 @@ export const UniversalWorkflowWorkspace: React.FC<{
   const [error, setError] = useState("");
   const [selectedTemplate, setSelectedTemplate] =
     useState<TemplateDetail | null>(null);
+  const [templatePendingDeletion, setTemplatePendingDeletion] =
+    useState<WorkflowCatalogTemplate | null>(null);
+  const [deletingTemplate, setDeletingTemplate] = useState(false);
   const [selectedExecution, setSelectedExecution] =
     useState<RuntimeExecution | null>(null);
   const [launchRequestType, setLaunchRequestType] =
@@ -270,20 +316,44 @@ export const UniversalWorkflowWorkspace: React.FC<{
     sourceNodeId: string;
     x: number;
     y: number;
+    outcome?: "TRUE" | "FALSE";
   } | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string>("");
   const [zoom, setZoom] = useState(0.8);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [collapsedStageIds, setCollapsedStageIds] = useState<string[]>([]);
   const [clipboardNodes, setClipboardNodes] = useState<
     WorkflowNodeDefinition[]
   >([]);
   const [nodeSearch, setNodeSearch] = useState("");
+  const [builderSidebarTab, setBuilderSidebarTab] =
+    useState<BuilderSidebarTab>("NODES");
   const [history, setHistory] = useState<WorkflowVersion[]>([]);
   const [future, setFuture] = useState<WorkflowVersion[]>([]);
   const [preflight, setPreflight] = useState<any>(null);
+
+  const livePreflight = useMemo(() => {
+    if (!builderVersion) return null;
+    return validateWorkflowPreflight(builderVersion, {
+      actor: currentUser || undefined,
+      departments: directory?.departments,
+      users: directory?.users,
+      teams: directory?.teams,
+    });
+  }, [builderVersion, currentUser, directory]);
+
+  const activePreflight = tab === "BUILDER" ? (livePreflight || preflight) : preflight;
+
+  useEffect(() => {
+    if (activePreflight?.valid && error === "Workflow cannot be published until preflight errors are resolved.") {
+      setError("");
+    }
+  }, [activePreflight?.valid, error]);
+
   const [simulation, setSimulation] = useState<SimulationResult | null>(null);
   const [builderBusy, setBuilderBusy] = useState(false);
+  const [builderOperation, setBuilderOperation] = useState<BuilderOperation | null>(null);
+  const [workflowMetadata, setWorkflowMetadata] = useState<{ name: string; scope: TemplateScope }>({ name: "", scope: "PERSONAL" });
+  const [metadataError, setMetadataError] = useState("");
   const canvasRef = useRef<HTMLDivElement>(null);
   const panOrigin = useRef<{
     pointerX: number;
@@ -296,22 +366,25 @@ export const UniversalWorkflowWorkspace: React.FC<{
     setLoading(true);
     setError("");
     try {
-      const [catalogResponse, instanceResponse, analyticsResponse] =
+      const [catalogResponse, instanceResponse, analyticsResponse, directoryResponse] =
         await Promise.all([
           fetchWithAuth(
             `/api/orchestration/catalog${query ? `?q=${encodeURIComponent(query)}` : ""}`,
           ),
           fetchWithAuth("/api/orchestration/instances"),
           fetchWithAuth("/api/orchestration/analytics"),
+          fetchWithAuth("/api/orchestration/directory"),
         ]);
-      const [catalogData, instanceData, analyticsData] = await Promise.all([
+      const [catalogData, instanceData, analyticsData, directoryData] = await Promise.all([
         apiError(catalogResponse, "Catalog failed"),
         apiError(instanceResponse, "Runtime list failed"),
         apiError(analyticsResponse, "Analytics failed"),
+        apiError(directoryResponse, "LDAP routing directory failed"),
       ]);
       setCatalog(catalogData);
       setInstances(instanceData.instances || []);
       setAnalytics(analyticsData.analytics || null);
+      setDirectory(directoryData);
     } catch (reason: any) {
       setError(reason.message);
     } finally {
@@ -369,18 +442,147 @@ export const UniversalWorkflowWorkspace: React.FC<{
   };
 
   const openLaunch = async (template: WorkflowCatalogTemplate) => {
-    const requestType =
+    let requestType =
+      (template.requestTypeId
+        ? catalog.requestTypes.find((item) => item.id === template.requestTypeId)
+        : undefined) ||
       catalog.requestTypes.find(
         (item) => item.workflowDefinitionId === template.workflowDefinitionId,
       ) ||
-      catalog.requestTypes.find((item) => item.id === "request-standard-task")!;
-    setLaunchRequestType(requestType);
-    setLaunchValues({ summary: "", requesterId: currentUser?.id || "" });
+      catalog.requestTypes.find((item) => item.id === "request-standard-task");
     try {
-      const response = await fetchWithAuth(
-        `/api/orchestration/request-types/${requestType.id}/form`,
+      const detailResponse = await fetchWithAuth(
+        `/api/orchestration/catalog/${template.id}`,
       );
-      setLaunchForm(await apiError(response, "Intake form failed"));
+      const detail = (await apiError(
+        detailResponse,
+        "Template launch failed",
+      )) as TemplateDetail;
+
+      let form: any = null;
+      if (requestType) {
+        const formResponse = await fetchWithAuth(
+          `/api/orchestration/request-types/${requestType.id}/form`,
+        );
+        if (formResponse.ok) {
+          form = await formResponse.json();
+        }
+      }
+
+      const inputNode = detail.version?.nodes?.find((n: any) =>
+        ["INPUT", "TICKET_INPUT"].includes(n.type),
+      );
+      if (inputNode?.inputConfig?.fields?.length) {
+        const customFields = inputNode.inputConfig.fields;
+        const baseFields: FormFieldDefinition[] = [
+          {
+            id: "summary",
+            key: "summary",
+            label: "Request title",
+            type: "TEXT",
+            required: true,
+            placeholder: "Brief title of the request",
+          },
+          {
+            id: "description",
+            key: "description",
+            label: "Description / Details",
+            type: "TEXTAREA",
+            placeholder: "Provide additional context or instructions...",
+          },
+          {
+            id: "requesterId",
+            key: "requesterId",
+            label: "Requester",
+            type: "USER",
+            required: true,
+          },
+          {
+            id: "departmentId",
+            key: "departmentId",
+            label: "Requester department / branch",
+            type: "DEPARTMENT",
+            required: true,
+          },
+        ];
+        const allFields = [
+          ...baseFields.filter(
+            (bf) => !customFields.some((cf: any) => cf.key === bf.key),
+          ),
+          ...customFields,
+        ];
+        form = {
+          version: {
+            sections: [
+              {
+                id: "input-section-main",
+                title: inputNode.title || "Request details",
+                description:
+                  inputNode.description ||
+                  "Fill in the required information to launch this workflow.",
+                fields: allFields,
+              },
+            ],
+          },
+        };
+        if (!requestType) {
+          requestType = {
+            id: `request-${template.workflowDefinitionId}`,
+            key: `req-${template.workflowDefinitionId}`,
+            name: template.title,
+            description: template.purpose,
+            domain: template.domain,
+            workType: "SERVICE_REQUEST",
+            category: template.category,
+            iconName: template.iconName,
+            formDefinitionId: `form-${template.workflowDefinitionId}`,
+            formVersion: 1,
+            workflowDefinitionId: template.workflowDefinitionId,
+            workflowVersion: template.publishedWorkflowVersion,
+            policySetId: "policy-general-v1",
+            supportedChannels: [
+              "EMPLOYEE_PORTAL",
+              "AGENT",
+              "MANAGER",
+              "ADMIN",
+              "API",
+            ],
+            visibility: "INTERNAL",
+            isActive: true,
+            tags: template.tags,
+          };
+        }
+      } else if (!form && requestType) {
+        const formResponse = await fetchWithAuth(
+          `/api/orchestration/request-types/${requestType.id}/form`,
+        );
+        form = await apiError(formResponse, "Intake form failed");
+      }
+
+      if (!form) {
+        throw new Error("This published template has no active request form.");
+      }
+
+      const initialValues: Record<string, any> = {
+        summary: "",
+        description: "",
+        requesterId: currentUser?.id || "",
+        departmentId: currentUser?.departmentId || "",
+      };
+      if (inputNode?.inputConfig?.fields) {
+        for (const field of inputNode.inputConfig.fields) {
+          if (field.defaultValue !== undefined) {
+            initialValues[field.key] = field.defaultValue;
+          } else if (field.type === "CHECKBOX") {
+            initialValues[field.key] = false;
+          }
+        }
+      }
+
+      setLaunchRequestType(requestType || null);
+      setLaunchValues(initialValues);
+      setLaunchForm(form);
+      setSelectedTemplate(detail);
     } catch (reason: any) {
       setError(reason.message);
       setLaunchRequestType(null);
@@ -414,6 +616,26 @@ export const UniversalWorkflowWorkspace: React.FC<{
       setTab("BUILDER");
     } catch (reason: any) {
       setError(reason.message);
+    }
+  };
+
+  const deleteTemplate = async () => {
+    if (!templatePendingDeletion) return;
+    setDeletingTemplate(true);
+    setError("");
+    try {
+      const response = await fetchWithAuth(
+        `/api/orchestration/catalog/${templatePendingDeletion.id}`,
+        { method: "DELETE" },
+      );
+      await apiError(response, "Workflow template deletion failed");
+      setSelectedTemplate(null);
+      setTemplatePendingDeletion(null);
+      await load();
+    } catch (reason: any) {
+      setError(reason.message);
+    } finally {
+      setDeletingTemplate(false);
     }
   };
 
@@ -491,7 +713,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
     }
   };
 
-  const completeWorkItem = async (workItemId: string) => {
+  const completeWorkItem = async (workItemId: string, output: Record<string, unknown> = { completedFrom: "runtime-workspace" }) => {
     if (!selectedExecution) return;
     try {
       const response = await fetchWithAuth(
@@ -499,9 +721,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            output: { completedFrom: "runtime-workspace" },
-          }),
+          body: JSON.stringify({ output }),
         },
       );
       const data = await apiError(response, "Work item completion failed");
@@ -510,6 +730,42 @@ export const UniversalWorkflowWorkspace: React.FC<{
     } catch (reason: any) {
       setError(reason.message);
     }
+  };
+
+  const claimWorkItem = async (workItemId: string) => {
+    if (!selectedExecution) return;
+    try {
+      const response = await fetchWithAuth(`/api/orchestration/instances/${selectedExecution.instance.id}/work-items/${workItemId}/claim`, { method: "POST" });
+      const data = await apiError(response, "Work item claim failed");
+      setSelectedExecution(data.execution);
+      await load();
+    } catch (reason: any) { setError(reason.message); }
+  };
+
+  const decideApproval = async (chainId: string, stepId: string, decision: "APPROVED" | "REJECTED") => {
+    if (!selectedExecution) return;
+    const comments = decision === "REJECTED" ? window.prompt("Rejection reason (required):") || "" : window.prompt("Optional decision comment:") || "";
+    if (decision === "REJECTED" && !comments.trim()) { setError("A rejection reason is required."); return; }
+    try {
+      const response = await fetchWithAuth(`/api/orchestration/instances/${selectedExecution.instance.id}/approvals/${chainId}/decision`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stepId, decision, comments }),
+      });
+      const data = await apiError(response, "Approval decision failed");
+      setSelectedExecution(data.execution);
+      await load();
+    } catch (reason: any) { setError(reason.message); }
+  };
+
+  const addExecutionComment = async (body: string) => {
+    if (!selectedExecution) return;
+    try {
+      const response = await fetchWithAuth(`/api/orchestration/instances/${selectedExecution.instance.id}/comments`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }),
+      });
+      const data = await apiError(response, "Comment failed");
+      setSelectedExecution(data.execution);
+      await load();
+    } catch (reason: any) { setError(reason.message); }
   };
 
   const requeueDeadLetter = async (deadLetterId: string) => {
@@ -563,17 +819,43 @@ export const UniversalWorkflowWorkspace: React.FC<{
       title: palette?.label || type,
       stageId,
       position: { x, y },
-      ...(type === "TASK"
-        ? { assignment: { strategy: "UNASSIGNED_TEAM_QUEUE" as const } }
+      ...(["INPUT", "TICKET_INPUT"].includes(type)
+        ? {
+            title: "Ticket Input Form",
+            description: "Initial intake information collected when launching this ticket/workflow.",
+            inputConfig: {
+              fields: [
+                {
+                  id: `cf-${Date.now()}-1`,
+                  key: "accessScope",
+                  label: "Access Scope",
+                  type: "SELECT" as const,
+                  required: true,
+                  options: [
+                    { value: "READ_ONLY", label: "Read Only" },
+                    { value: "READ_WRITE", label: "Read and Write" },
+                  ],
+                },
+                {
+                  id: `cf-${Date.now()}-2`,
+                  key: "isUrgent",
+                  label: "Is Urgent / High Priority?",
+                  type: "CHECKBOX" as const,
+                  required: false,
+                },
+              ],
+            },
+          }
+        : {}),
+      ...(["TASK", "INFORMATION_REQUEST"].includes(type)
+        ? { assignment: { strategy: "UNASSIGNED_TEAM_QUEUE" as const, departmentId: currentUser?.departmentId } }
         : {}),
       ...(type === "APPROVAL"
         ? {
             approval: {
-              approverSource: "ROLE" as const,
+              approverSource: "DEPARTMENT_MEMBERS" as const,
               approvalMode: "ANY_ONE" as const,
-              role: "APPROVER" as const,
-              timeoutMinutes: 480,
-              reminderMinutes: 120,
+              departmentId: currentUser?.departmentId,
               commentsMandatoryOnReject: true,
               allowDelegation: true,
               preventSelfApproval: true,
@@ -614,11 +896,44 @@ export const UniversalWorkflowWorkspace: React.FC<{
       ),
     });
   };
+  const addVariable = () => {
+    if (!builderVersion) return;
+    const key = `variable_${builderVersion.variables.length + 1}`;
+    commitBuilder({
+      ...builderVersion,
+      variables: [
+        ...builderVersion.variables,
+        { key, type: "STRING", required: false, description: "" },
+      ],
+    });
+    setBuilderSidebarTab("VARIABLES");
+  };
+  const updateVariable = (index: number, patch: Record<string, unknown>) => {
+    if (!builderVersion) return;
+    commitBuilder({
+      ...builderVersion,
+      variables: builderVersion.variables.map((variable, variableIndex) =>
+        variableIndex === index ? { ...variable, ...patch } : variable,
+      ),
+    });
+  };
+  const removeVariable = (index: number) => {
+    if (!builderVersion) return;
+    commitBuilder({
+      ...builderVersion,
+      variables: builderVersion.variables.filter(
+        (_, variableIndex) => variableIndex !== index,
+      ),
+    });
+  };
   const removeNode = () => {
     if (!builderVersion || (!selectedNodeId && !selectedNodeIds.length)) return;
     const ids = new Set(
-      selectedNodeIds.length ? selectedNodeIds : [selectedNodeId],
+      (selectedNodeIds.length ? selectedNodeIds : [selectedNodeId]).filter(
+        (id) => !isFixedEndpoint(builderVersion.nodes.find((node) => node.id === id) || { type: "TASK" }),
+      ),
     );
+    if (!ids.size) return;
     commitBuilder({
       ...builderVersion,
       nodes: builderVersion.nodes.filter((item) => !ids.has(item.id)),
@@ -637,9 +952,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
   const duplicateNode = () => {
     if (!builderVersion) return;
     const sources = builderVersion.nodes.filter((item) =>
-      (selectedNodeIds.length ? selectedNodeIds : [selectedNodeId]).includes(
-        item.id,
-      ),
+      !isFixedEndpoint(item) && (selectedNodeIds.length ? selectedNodeIds : [selectedNodeId]).includes(item.id),
     );
     if (!sources.length) return;
     const suffix = Date.now();
@@ -669,7 +982,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
     setSelectedNodeId(copies[0].id);
     setSelectedNodeIds(copies.map((copy) => copy.id));
   };
-  const connectNodes = (sourceNodeId: string, destinationNodeId: string) => {
+  const connectNodes = (sourceNodeId: string, destinationNodeId: string, outcomeHint?: "TRUE" | "FALSE") => {
     if (!builderVersion) return false;
     const source = builderVersion.nodes.find((node) => node.id === sourceNodeId);
     const destination = builderVersion.nodes.find(
@@ -685,6 +998,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
       return false;
     }
     if (
+      source.type !== "CONDITION" &&
       builderVersion.edges.some(
         (edge) =>
           edge.sourceNodeId === sourceNodeId &&
@@ -701,12 +1015,20 @@ export const UniversalWorkflowWorkspace: React.FC<{
     let outcome: string | undefined;
     let branchLabel: string | undefined;
     if (source.type === "CONDITION") {
-      if (!outgoing.some((edge) => edge.outcome === "TRUE")) {
+      if (outcomeHint === "TRUE" && outgoing.some((edge) => edge.outcome === "TRUE")) {
+        setError("The Yes branch is already connected. Select the No branch or remove the existing Yes connection.");
+        return false;
+      }
+      if (outcomeHint === "FALSE" && outgoing.some((edge) => edge.outcome === "FALSE")) {
+        setError("The No branch is already connected. Select the Yes branch or remove the existing No connection.");
+        return false;
+      }
+      if (outcomeHint === "TRUE" || (!outcomeHint && !outgoing.some((edge) => edge.outcome === "TRUE"))) {
         outcome = "TRUE";
-        branchLabel = "True";
-      } else if (!outgoing.some((edge) => edge.outcome === "FALSE")) {
+        branchLabel = "Yes";
+      } else if (outcomeHint === "FALSE" || !outgoing.some((edge) => edge.outcome === "FALSE")) {
         outcome = "FALSE";
-        branchLabel = "False";
+        branchLabel = "No";
       } else {
         setError(
           "A condition can have one True and one False connection. Remove or edit an existing branch first.",
@@ -731,6 +1053,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
   const beginConnection = (
     event: React.PointerEvent<HTMLButtonElement>,
     nodeId: string,
+    outcome?: "TRUE" | "FALSE",
   ) => {
     event.preventDefault();
     event.stopPropagation();
@@ -742,14 +1065,14 @@ export const UniversalWorkflowWorkspace: React.FC<{
     const x = (event.clientX - rect.left - pan.x) / zoom;
     const y = (event.clientY - rect.top - pan.y) / zoom;
     setConnectFrom(nodeId);
-    setConnectionDraft({ sourceNodeId: nodeId, x, y });
+    setConnectionDraft({ sourceNodeId: nodeId, x, y, outcome });
     setSelectedNodeId(nodeId);
     setSelectedNodeIds([nodeId]);
   };
   const finishConnection = (destinationNodeId: string) => {
     const sourceNodeId = connectionDraft?.sourceNodeId || connectFrom;
     if (!sourceNodeId) return;
-    connectNodes(sourceNodeId, destinationNodeId);
+    connectNodes(sourceNodeId, destinationNodeId, connectionDraft?.outcome);
   };
   const cancelConnection = () => {
     setConnectFrom("");
@@ -776,6 +1099,8 @@ export const UniversalWorkflowWorkspace: React.FC<{
   };
 
   const selectNode = (nodeId: string, additive = false) => {
+    cancelConnection();
+    setSelectedEdgeId("");
     setSelectedNodeId(nodeId);
     setSelectedNodeIds((current) =>
       additive
@@ -794,7 +1119,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
         : [];
     setClipboardNodes(
       builderVersion.nodes
-        .filter((node) => ids.includes(node.id))
+        .filter((node) => ids.includes(node.id) && !isFixedEndpoint(node))
         .map((node) => structuredClone(node)),
     );
   };
@@ -831,6 +1156,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
     const selected = builderVersion.nodes.filter((node) =>
       selectedNodeIds.includes(node.id),
     );
+    if (selected.length < 2) return;
     const anchor =
       axis === "HORIZONTAL"
         ? selected.reduce((sum, node) => sum + node.position.y, 0) /
@@ -888,13 +1214,6 @@ export const UniversalWorkflowWorkspace: React.FC<{
     setZoom(nextZoom);
     setPan({ x: 50 - minX * nextZoom, y: 50 - minY * nextZoom });
   };
-  const toggleStage = (stageId: string) =>
-    setCollapsedStageIds((current) =>
-      current.includes(stageId)
-        ? current.filter((id) => id !== stageId)
-        : [...current, stageId],
-    );
-
   // Keep the pointer interaction independent of native HTML drag events. This
   // lets an author either drag an output port onto any node or click an output
   // port and then an input port. The edge is committed only after the target
@@ -945,6 +1264,12 @@ export const UniversalWorkflowWorkspace: React.FC<{
         event.shiftKey ? redo() : undo();
       } else if (
         (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "s"
+      ) {
+        event.preventDefault();
+        openWorkflowMetadata("SAVE");
+      } else if (
+        (event.ctrlKey || event.metaKey) &&
         event.key.toLowerCase() === "y"
       ) {
         event.preventDefault();
@@ -963,10 +1288,11 @@ export const UniversalWorkflowWorkspace: React.FC<{
         pasteSelection();
       } else if (
         (event.key === "Delete" || event.key === "Backspace") &&
-        (selectedNodeId || selectedNodeIds.length)
+        (selectedEdgeId || selectedNodeId || selectedNodeIds.length)
       ) {
         event.preventDefault();
-        removeNode();
+        if (selectedEdgeId) removeSelectedEdge();
+        else removeNode();
       } else if (
         (event.ctrlKey || event.metaKey) &&
         event.key.toLowerCase() === "d"
@@ -982,19 +1308,21 @@ export const UniversalWorkflowWorkspace: React.FC<{
     builderVersion,
     selectedNodeId,
     selectedNodeIds,
+    selectedEdgeId,
     clipboardNodes,
     history,
     future,
+    builderDefinition,
   ]);
 
-  const saveDraft = async () => {
+  const saveDraft = async (definitionOverride = builderDefinition) => {
     if (!builderVersion) return;
     setBuilderBusy(true);
     setError("");
     try {
       const payload = {
         workflowDefinitionId: builderDefinition?.id,
-        definition: builderDefinition,
+        definition: definitionOverride,
         version: { ...builderVersion, status: "DRAFT" },
       };
       const response = await fetchWithAuth(
@@ -1011,23 +1339,25 @@ export const UniversalWorkflowWorkspace: React.FC<{
       setPreflight(data.preflight);
       setHistory([]);
       setFuture([]);
+      return data;
     } catch (reason: any) {
       setError(reason.message);
+      if (reason.preflight) setPreflight(reason.preflight);
     } finally {
       setBuilderBusy(false);
     }
   };
-  const testWorkflow = async () => {
-    if (!builderDefinition || !builderVersion) return;
+  const testWorkflow = async (definitionId = builderDefinition?.id, versionNumber = builderVersion?.version) => {
+    if (!definitionId || !versionNumber) return;
     setBuilderBusy(true);
     try {
       const response = await fetchWithAuth(
-        `/api/orchestration/definitions/${builderDefinition.id}/simulate`,
+        `/api/orchestration/definitions/${definitionId}/simulate`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            version: builderVersion.version,
+            version: versionNumber,
             context: {
               summary: "Test Workflow",
               requesterId: currentUser?.id,
@@ -1049,16 +1379,17 @@ export const UniversalWorkflowWorkspace: React.FC<{
       setPreflight(data.simulation.preflight);
     } catch (reason: any) {
       setError(reason.message);
+      if (reason.preflight) setPreflight(reason.preflight);
     } finally {
       setBuilderBusy(false);
     }
   };
-  const publish = async () => {
-    if (!builderDefinition || !builderVersion) return;
+  const publish = async (definitionId = builderDefinition?.id, versionNumber = builderVersion?.version) => {
+    if (!definitionId || !versionNumber) return;
     setBuilderBusy(true);
     try {
       const response = await fetchWithAuth(
-        `/api/orchestration/definitions/${builderDefinition.id}/versions/${builderVersion.version}/publish`,
+        `/api/orchestration/definitions/${definitionId}/versions/${versionNumber}/publish`,
         { method: "POST" },
       );
       const data = await apiError(response, "Publish failed");
@@ -1067,9 +1398,48 @@ export const UniversalWorkflowWorkspace: React.FC<{
       await load();
     } catch (reason: any) {
       setError(reason.message);
+      if (reason.preflight) setPreflight(reason.preflight);
     } finally {
       setBuilderBusy(false);
     }
+  };
+
+  const openWorkflowMetadata = (operation: BuilderOperation) => {
+    if (!builderVersion) return;
+    setMetadataError("");
+    setWorkflowMetadata({
+      name: builderDefinition?.name || "New Workflow",
+      scope: builderDefinition?.scope || "PERSONAL",
+    });
+    setBuilderOperation(operation);
+  };
+
+  const confirmWorkflowMetadata = async () => {
+    if (!builderOperation || !builderVersion) return;
+    const name = workflowMetadata.name.trim();
+    if (!name) {
+      setMetadataError("Workflow name is required.");
+      return;
+    }
+    if (workflowMetadata.scope === "COMPANY" && !canCreateCompanyTemplate) {
+      setMetadataError("You are not authorized to create a company workflow.");
+      return;
+    }
+    if (workflowMetadata.scope === "DEPARTMENT" && !canCreateDepartmentTemplate) {
+      setMetadataError("You are not authorized to create a department workflow.");
+      return;
+    }
+    const definition = {
+      ...(builderDefinition || blankDefinition(currentUser?.id || "")),
+      name,
+      scope: workflowMetadata.scope,
+    };
+    const operation = builderOperation;
+    const saved = await saveDraft(definition);
+    if (!saved) return;
+    setBuilderOperation(null);
+    if (operation === "TEST") await testWorkflow(saved.definition.id, saved.version.version);
+    if (operation === "PUBLISH") await publish(saved.definition.id, saved.version.version);
   };
 
   const selectedNode = builderVersion?.nodes.find(
@@ -1090,93 +1460,73 @@ export const UniversalWorkflowWorkspace: React.FC<{
   const visibleNodes =
     builderVersion?.nodes.filter(
       (item) =>
-        !collapsedStageIds.includes(item.stageId || "") &&
-        (!nodeSearch ||
-          item.title.toLowerCase().includes(nodeSearch.toLowerCase())),
+        !nodeSearch || item.title.toLowerCase().includes(nodeSearch.toLowerCase()),
     ) || [];
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#F4F6FB] text-[#162136]">
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#E6F7EF] text-[#007860]">
-            <Workflow className="h-5 w-5" />
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-semantic-page text-semantic-primary">
+      <header className="shrink-0 border-b border-slate-200 bg-white px-5 py-3 sm:px-6">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-semantic-success-border bg-semantic-success-surface text-semantic-success shadow-sm">
+              <Workflow className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="mb-0.5 text-caption font-extrabold uppercase tracking-[0.12em] text-semantic-success">
+                Work management
+              </div>
+              <h1 className="truncate text-base font-bold tracking-tight text-semantic-primary">
+                Universal Work Orchestration
+              </h1>
+              <p className="mt-0.5 max-w-2xl truncate text-xs text-slate-500">
+                Govern requests, approvals, automation and enterprise processes from one place.
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-base font-bold">
-              Universal Work Orchestration
-            </h1>
-            <p className="text-xs text-slate-500">
-              One engine for requests, work items, approvals, automations, and
-              long-running enterprise processes
-            </p>
+          <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap xl:self-auto">
+            <button
+              onClick={() => {
+                const workflow = blankWorkflow(currentUser?.id || "");
+                setBuilderDefinition(blankDefinition(currentUser?.id || ""));
+                setBuilderVersion(workflow);
+                setSelectedStageId("stage-main");
+                setSelectedNodeId("node-start");
+                setSelectedNodeIds(["node-start"]);
+                setTab("BUILDER");
+              }}
+              className="wrike-btn-primary h-9 gap-2 whitespace-nowrap px-3.5 text-sm"
+              title="Create a workflow draft"
+            >
+              <Sparkles className="h-4 w-4" />
+              <span>New workflow</span>
+            </button>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              setLaunchRequestType(
-                catalog.requestTypes.find(
-                  (item) => item.id === "request-standard-task",
-                ) || null,
-              );
-              setLaunchValues({
-                summary: "",
-                description: "",
-                requesterId: currentUser?.id || "",
-              });
-              const request = catalog.requestTypes.find(
-                (item) => item.id === "request-standard-task",
-              );
-              if (request)
-                void fetchWithAuth(
-                  `/api/orchestration/request-types/${request.id}/form`,
-                )
-                  .then((res) => apiError(res, "Form failed"))
-                  .then(setLaunchForm);
-            }}
-            className="wrike-btn-secondary flex items-center gap-2 px-3 py-2"
-          >
-            <Plus className="h-4 w-4" /> Quick Work Item
-          </button>
-          <button
-            onClick={() => {
-              const workflow = blankWorkflow(currentUser?.id || "");
-              setBuilderDefinition(blankDefinition(currentUser?.id || ""));
-              setBuilderVersion(workflow);
-              setSelectedStageId("stage-main");
-              setSelectedNodeId("node-start");
-              setSelectedNodeIds(["node-start"]);
-              setTab("BUILDER");
-            }}
-            className="wrike-btn-primary flex items-center gap-2 px-3 py-2"
-          >
-            <Sparkles className="h-4 w-4" /> Create Workflow
-          </button>
         </div>
       </header>
 
-      <nav className="flex h-12 shrink-0 items-center gap-1 border-b border-slate-200 bg-white px-6">
-        {(
-          [
-            ["CATALOG", "Workflow Catalog", Boxes],
-            ["BUILDER", "Workflow Builder", GitBranch],
-            ["EXECUTIONS", "Running Work", Activity],
-            ["ANALYTICS", "Analytics", BarChart3],
-          ] as const
-        ).map(([value, label, Icon]) => (
-          <button
-            key={value}
-            onClick={() => setTab(value)}
-            className={`flex h-full items-center gap-2 border-b-2 px-4 text-sm font-semibold ${tab === value ? "border-[#00B259] text-[#007860]" : "border-transparent text-slate-500 hover:text-slate-900"}`}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
+      <nav className="flex h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-slate-200 bg-white px-5 sm:px-6">
+        <div className="flex h-full items-center gap-1">
+          {(
+            [
+              ["CATALOG", "Workflow Catalog", Boxes],
+              ["BUILDER", "Workflow Builder", GitBranch],
+              ["EXECUTIONS", "Running Work", Activity],
+              ["ANALYTICS", "Analytics", BarChart3],
+            ] as const
+          ).map(([value, label, Icon]) => (
+            <button
+              key={value}
+              onClick={() => setTab(value)}
+              className={`flex h-full items-center gap-2 whitespace-nowrap border-b-2 px-3.5 text-sm font-semibold transition-colors ${tab === value ? "border-semantic-brand text-semantic-success" : "border-transparent text-slate-500 hover:text-slate-900"}`}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          ))}
+        </div>
         <button
           onClick={() => void load()}
-          className="ml-auto rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+          className="ml-auto shrink-0 rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
           title="Refresh"
         >
           <RefreshCw className="h-4 w-4" />
@@ -1194,7 +1544,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
       )}
       {loading ? (
         <div className="flex flex-1 items-center justify-center text-sm text-slate-500">
-          <Loader2 className="mr-2 h-5 w-5 animate-spin text-[#00B259]" />
+          <Loader2 className="mr-2 h-5 w-5 animate-spin text-semantic-brand" />
           Loading orchestration platform…
         </div>
       ) : tab === "CATALOG" ? (
@@ -1211,6 +1561,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
             void openTemplate(item, "BUILDER")
           }
           onClone={(item: WorkflowCatalogTemplate) => void cloneTemplate(item)}
+          onDelete={(item: WorkflowCatalogTemplate) => setTemplatePendingDeletion(item)}
         />
       ) : tab === "BUILDER" ? (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -1230,6 +1581,22 @@ export const UniversalWorkflowWorkspace: React.FC<{
               className="w-52 rounded border border-transparent px-2 py-1 font-semibold outline-none hover:border-slate-200 focus:border-blue-300"
               placeholder="Workflow name"
             />
+            <select
+              value={builderDefinition?.scope || "PERSONAL"}
+              onChange={(event) =>
+                setBuilderDefinition((current: any) => ({
+                  ...(current || {}),
+                  scope: event.target.value as TemplateScope,
+                }))
+              }
+              className="rounded border border-slate-200 bg-white px-2 py-1.5 text-label font-semibold text-slate-700 outline-none focus:border-emerald-500"
+              aria-label="Template scope"
+              title="Template visibility and creation scope"
+            >
+              <option value="PERSONAL">Personal template</option>
+              <option value="DEPARTMENT" disabled={!canCreateDepartmentTemplate}>Department template</option>
+              <option value="COMPANY" disabled={!canCreateCompanyTemplate}>Company template</option>
+            </select>
             <div className="ml-auto flex items-center gap-2">
               <button
                 onClick={undo}
@@ -1246,7 +1613,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                 <Undo2 className="h-4 w-4 scale-x-[-1]" />
               </button>
               <button
-                onClick={saveDraft}
+                onClick={() => openWorkflowMetadata("SAVE")}
                 disabled={builderBusy}
                 className="wrike-btn-secondary flex items-center gap-1.5 px-3 py-1.5"
               >
@@ -1254,20 +1621,17 @@ export const UniversalWorkflowWorkspace: React.FC<{
                 Save Draft
               </button>
               <button
-                onClick={testWorkflow}
-                disabled={!builderDefinition || builderBusy}
+                onClick={() => openWorkflowMetadata("TEST")}
+                disabled={!builderVersion || builderBusy}
                 className="wrike-btn-secondary flex items-center gap-1.5 px-3 py-1.5"
               >
                 <TestTube2 className="h-3.5 w-3.5" />
                 Test
               </button>
               <button
-                onClick={publish}
+                onClick={() => openWorkflowMetadata("PUBLISH")}
                 disabled={
-                  !builderDefinition ||
                   !builderVersion ||
-                  builderVersion.status === "PUBLISHED" ||
-                  preflight?.summary?.errors > 0 ||
                   builderBusy
                 }
                 className="wrike-btn-primary flex items-center gap-1.5 px-3 py-1.5"
@@ -1279,46 +1643,24 @@ export const UniversalWorkflowWorkspace: React.FC<{
           </div>
           <div className="flex min-h-0 flex-1">
             <aside className="w-64 shrink-0 overflow-y-auto border-r border-slate-200 bg-white p-3">
-              <div className="mb-3 grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1 text-[11px] font-bold">
-                <button className="rounded bg-white px-2 py-1.5 shadow-xs">
+              <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 text-label font-bold">
+                <button
+                  onClick={() => setBuilderSidebarTab("NODES")}
+                  className={`rounded px-2 py-1.5 ${builderSidebarTab === "NODES" ? "bg-white shadow-xs text-slate-900" : "text-slate-500"}`}
+                >
                   Nodes
                 </button>
-                <button className="px-2 py-1.5 text-slate-500">Stages</button>
-                <button className="px-2 py-1.5 text-slate-500">
+                <button
+                  onClick={() => setBuilderSidebarTab("VARIABLES")}
+                  className={`rounded px-2 py-1.5 ${builderSidebarTab === "VARIABLES" ? "bg-white shadow-xs text-slate-900" : "text-slate-500"}`}
+                >
                   Variables
                 </button>
               </div>
-              {builderVersion?.stages.length ? (
-                <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-2">
-                  <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Stage visibility
-                  </div>
-                  {builderVersion.stages.map((stage) => (
-                    <button
-                      key={stage.id}
-                      onClick={() => {
-                        setSelectedStageId(stage.id);
-                        toggleStage(stage.id);
-                      }}
-                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[11px] hover:bg-white"
-                    >
-                      <ChevronDown
-                        className={`h-3 w-3 transition ${collapsedStageIds.includes(stage.id) ? "-rotate-90" : ""}`}
-                      />
-                      <span className="min-w-0 flex-1 truncate font-semibold">
-                        {stage.title}
-                      </span>
-                      <span className="text-slate-400">
-                        {stage.nodeIds.length}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              {[...new Set(nodePalette.map((item) => item.group))].map(
+              {builderSidebarTab === "NODES" && [...new Set(nodePalette.map((item) => item.group))].map(
                 (group) => (
                   <div key={group} className="mb-4">
-                    <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <div className="mb-1.5 text-caption font-bold uppercase tracking-wider text-slate-400">
                       {group}
                     </div>
                     <div className="space-y-1">
@@ -1349,9 +1691,17 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   </div>
                 ),
               )}
+              {builderSidebarTab === "VARIABLES" && builderVersion && (
+                <VariableEditor
+                  variables={builderVersion.variables}
+                  onAdd={addVariable}
+                  onChange={updateVariable}
+                  onRemove={removeVariable}
+                />
+              )}
             </aside>
             <div
-              className="relative min-w-0 flex-1 cursor-grab overflow-hidden bg-[#F8FAFC] active:cursor-grabbing"
+              className="relative min-w-0 flex-1 cursor-grab overflow-hidden bg-semantic-subtle active:cursor-grabbing"
               ref={canvasRef}
               onPointerDown={(event) => {
                 if (
@@ -1360,6 +1710,10 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   )
                 )
                   return;
+                cancelConnection();
+                setSelectedEdgeId("");
+                setSelectedNodeId("");
+                setSelectedNodeIds([]);
                 panOrigin.current = {
                   pointerX: event.clientX,
                   pointerY: event.clientY,
@@ -1409,7 +1763,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
                 }}
               />
-              <div className="absolute left-3 top-3 z-20 flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+              <div className="absolute left-3 top-3 z-dsSticky flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
                 <Search className="ml-1 h-3.5 w-3.5 text-slate-400" />
                 <input
                   value={nodeSearch}
@@ -1445,7 +1799,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   <Maximize2 className="h-4 w-4" />
                 </button>
               </div>
-              <div className="absolute left-3 top-14 z-20 flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+              <div className="absolute left-3 top-14 z-dsSticky flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
                 <button
                   onClick={copySelection}
                   disabled={!selectedNodeIds.length && !selectedNodeId}
@@ -1457,7 +1811,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                 <button
                   onClick={pasteSelection}
                   disabled={!clipboardNodes.length}
-                  className="rounded px-2 py-1.5 text-[10px] font-bold hover:bg-slate-100 disabled:opacity-30"
+                  className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100 disabled:opacity-30"
                   title="Paste (Ctrl+V)"
                 >
                   Paste
@@ -1465,20 +1819,20 @@ export const UniversalWorkflowWorkspace: React.FC<{
                 <button
                   onClick={() => alignSelection("HORIZONTAL")}
                   disabled={selectedNodeIds.length < 2}
-                  className="rounded px-2 py-1.5 text-[10px] font-bold hover:bg-slate-100 disabled:opacity-30"
+                  className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100 disabled:opacity-30"
                 >
                   Align H
                 </button>
                 <button
                   onClick={() => alignSelection("VERTICAL")}
                   disabled={selectedNodeIds.length < 2}
-                  className="rounded px-2 py-1.5 text-[10px] font-bold hover:bg-slate-100 disabled:opacity-30"
+                  className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100 disabled:opacity-30"
                 >
                   Align V
                 </button>
                 <button
                   onClick={fitToScreen}
-                  className="rounded px-2 py-1.5 text-[10px] font-bold hover:bg-slate-100"
+                  className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100"
                 >
                   Fit
                 </button>
@@ -1491,18 +1845,6 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   }}
                 >
                   <svg className="absolute inset-0 h-full w-full overflow-visible">
-                    <defs>
-                      <marker
-                        id="workflow-edge-arrow"
-                        markerWidth="8"
-                        markerHeight="8"
-                        refX="7"
-                        refY="4"
-                        orient="auto"
-                      >
-                        <path d="M 0 0 L 8 4 L 0 8 z" fill="currentColor" />
-                      </marker>
-                    </defs>
                     {builderVersion.edges.map((workflowEdge) => {
                       const from = builderVersion.nodes.find(
                         (item) => item.id === workflowEdge.sourceNodeId,
@@ -1511,38 +1853,51 @@ export const UniversalWorkflowWorkspace: React.FC<{
                         (item) => item.id === workflowEdge.destinationNodeId,
                       );
                       if (!from || !to) return null;
+                      const isDecisionEdge = from.type === "CONDITION" && ["TRUE", "FALSE"].includes(workflowEdge.outcome || "");
+                      const isYesBranch = workflowEdge.outcome === "TRUE";
                       const x1 = from.position.x + 180,
-                        y1 = from.position.y + 45,
+                        y1 = from.position.y + (isDecisionEdge ? (isYesBranch ? 27 : 63) : 45),
                         x2 = to.position.x,
                         y2 = to.position.y + 45;
+                      const edgeStroke = isDecisionEdge
+                        ? isYesBranch ? "#059669" : "#D97706"
+                        : selectedEdgeId === workflowEdge.id ? "var(--color-brand-500)" : "var(--color-neutral-400)";
+                      const edgeLabel = workflowEdge.branchLabel || (isDecisionEdge ? isYesBranch ? "Yes" : "No" : undefined);
+                      const labelX = x1 + Math.max(44, Math.min(88, (x2 - x1) * 0.32));
+                      const labelY = y1 + (isDecisionEdge ? (isYesBranch ? -13 : 16) : -9);
+                      const labelWidth = edgeLabel ? Math.max(34, edgeLabel.length * 6.4 + 18) : 0;
                       return (
                         <g key={workflowEdge.id}>
                           <path
                             d={`M ${x1} ${y1} C ${x1 + 55} ${y1}, ${x2 - 55} ${y2}, ${x2} ${y2}`}
                             fill="none"
-                            stroke={selectedEdgeId === workflowEdge.id ? "#00B259" : "#94A3B8"}
-                            strokeWidth={selectedEdgeId === workflowEdge.id ? "4" : "2"}
-                            markerEnd="url(#workflow-edge-arrow)"
-                            className="pointer-events-auto cursor-pointer"
-                            style={{ color: selectedEdgeId === workflowEdge.id ? "#00B259" : "#64748B" }}
+                            stroke="transparent"
+                            strokeWidth="18"
+                            className="cursor-pointer"
+                            style={{ pointerEvents: "stroke" }}
                             onPointerDown={(event) => event.stopPropagation()}
                             onClick={(event) => {
                               event.stopPropagation();
+                              cancelConnection();
                               setSelectedEdgeId(workflowEdge.id);
                               setSelectedNodeId("");
                               setSelectedNodeIds([]);
                             }}
                           />
-                          <circle cx={x2} cy={y2} r="4" fill="#64748B" />
-                          {workflowEdge.branchLabel && (
-                            <text
-                              x={(x1 + x2) / 2}
-                              y={(y1 + y2) / 2 - 8}
-                              textAnchor="middle"
-                              className="fill-slate-500 text-[11px] font-bold"
-                            >
-                              {workflowEdge.branchLabel}
-                            </text>
+                          <path
+                            d={`M ${x1} ${y1} C ${x1 + 55} ${y1}, ${x2 - 55} ${y2}, ${x2} ${y2}`}
+                            fill="none"
+                            stroke={edgeStroke}
+                            strokeWidth={selectedEdgeId === workflowEdge.id ? "4" : "2"}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="pointer-events-none"
+                          />
+                          {edgeLabel && (
+                            <g className="pointer-events-none">
+                              <rect x={labelX - labelWidth / 2} y={labelY - 10} width={labelWidth} height="19" rx="9.5" fill="white" stroke={isDecisionEdge ? edgeStroke : "#CBD5E1"} strokeWidth="1" />
+                              <text x={labelX} y={labelY + 3.5} textAnchor="middle" className={isDecisionEdge ? "text-label font-bold" : "fill-slate-500 text-label font-bold"} fill={isDecisionEdge ? edgeStroke : undefined}>{edgeLabel}</text>
+                            </g>
                           )}
                         </g>
                       );
@@ -1553,19 +1908,18 @@ export const UniversalWorkflowWorkspace: React.FC<{
                       );
                       if (!source) return null;
                       const x1 = source.position.x + 180;
-                      const y1 = source.position.y + 45;
+                      const y1 = source.position.y + (source.type === "CONDITION" && connectionDraft.outcome === "TRUE" ? 27 : source.type === "CONDITION" && connectionDraft.outcome === "FALSE" ? 63 : 45);
                       const x2 = connectionDraft.x;
                       const y2 = connectionDraft.y;
                       return (
                         <path
                           d={`M ${x1} ${y1} C ${x1 + 55} ${y1}, ${x2 - 55} ${y2}, ${x2} ${y2}`}
                           fill="none"
-                          stroke="#00B259"
+                          stroke="var(--color-brand-500)"
                           strokeDasharray="7 5"
                           strokeWidth="3"
-                          markerEnd="url(#workflow-edge-arrow)"
+                          strokeLinecap="round"
                           className="pointer-events-none"
-                          style={{ color: "#00B259" }}
                         />
                       );
                     })()}
@@ -1583,6 +1937,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                     const selected =
                       selectedNodeIds.includes(workflowNode.id) ||
                       selectedNodeId === workflowNode.id;
+                    const fixedEndpoint = isFixedEndpoint(workflowNode);
                     return (
                       <div
                         key={workflowNode.id}
@@ -1590,6 +1945,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                         data-workflow-node-id={workflowNode.id}
                         draggable
                         onDragEnd={(event) => {
+                          cancelConnection();
                           const rect =
                             canvasRef.current?.getBoundingClientRect();
                           if (!rect || !builderVersion) return;
@@ -1648,7 +2004,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                             event.shiftKey || event.ctrlKey || event.metaKey,
                           );
                         }}
-                        className={`absolute w-[180px] rounded-xl border-2 bg-white p-3 shadow-sm transition ${selected ? "border-[#00B259] shadow-md ring-2 ring-emerald-100" : "border-slate-200 hover:border-slate-300"}`}
+                        className={`absolute w-[180px] rounded-xl border-2 bg-white p-3 shadow-sm transition ${fixedEndpoint ? "border-slate-200 bg-slate-50" : ""} ${selected ? "border-semantic-brand shadow-md ring-2 ring-emerald-100" : "border-slate-200 hover:border-slate-300"}`}
                         style={{
                           left: workflowNode.position.x,
                           top: workflowNode.position.y,
@@ -1658,7 +2014,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                           <button
                             type="button"
                             aria-label={`Connect into ${workflowNode.title}`}
-                            className="absolute -left-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-white bg-slate-400 transition hover:scale-110 hover:bg-[#00B259]"
+                            className="absolute -left-3 top-1/2 z-dsContent h-6 w-6 -translate-y-1/2 rounded-full border-2 border-white bg-slate-400 shadow-sm transition hover:scale-110 hover:bg-semantic-brand"
                             title={
                               connectFrom
                                 ? `Connect ${connectFrom} to ${workflowNode.title}`
@@ -1683,42 +2039,71 @@ export const UniversalWorkflowWorkspace: React.FC<{
                             <div className="truncate text-xs font-bold">
                               {workflowNode.title}
                             </div>
-                            <div className="mt-0.5 truncate text-[10px] capitalize text-slate-500">
+                            <div className="mt-0.5 truncate text-caption capitalize text-slate-500">
                               {route ||
                                 workflowNode.type
                                   .replaceAll("_", " ")
                                   .toLowerCase()}
                             </div>
                             {workflowNode.timeoutMinutes && (
-                              <div className="mt-1 text-[10px] font-semibold text-amber-600">
+                              <div className="mt-1 text-caption font-semibold text-amber-600">
                                 Due: {workflowNode.timeoutMinutes}m
                               </div>
                             )}
+                            {fixedEndpoint && (
+                              <div className="mt-1 text-caption font-semibold text-slate-400">Required workflow endpoint</div>
+                            )}
                           </div>
                         </div>
-                        {(!workflowNode.type.endsWith("_END")) && (
-                        <button
-                          type="button"
-                          data-workflow-output-port="true"
-                          aria-label={`Connect from ${workflowNode.title}`}
-                          onPointerDown={(event) => beginConnection(event, workflowNode.id)}
-                          className={`absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-white ${connectFrom === workflowNode.id ? "bg-[#00B259]" : "bg-slate-400"}`}
-                          title="Drag to another node, or click then choose an input port"
-                        />
-                        )}
+                        {!workflowNode.type.endsWith("_END") && (workflowNode.type === "CONDITION" ? (
+                          <>
+                            <span className="pointer-events-none absolute right-4 z-dsContent -translate-y-1/2 rounded bg-emerald-50 px-1.5 py-0.5 text-caption font-bold text-emerald-700" style={{ top: "30%" }}>Yes</span>
+                            <button
+                              type="button"
+                              data-workflow-output-port="true"
+                              aria-label={`Connect Yes branch from ${workflowNode.title}`}
+                              onPointerDown={(event) => beginConnection(event, workflowNode.id, "TRUE")}
+                              onClick={(event) => event.stopPropagation()}
+                              className={`absolute -right-3 z-dsContent h-6 w-6 -translate-y-1/2 rounded-full border-2 border-white bg-emerald-500 shadow-sm transition hover:scale-110 ${connectionDraft?.sourceNodeId === workflowNode.id && connectionDraft.outcome === "TRUE" ? "ring-2 ring-emerald-200" : ""}`}
+                              style={{ top: "30%" }}
+                              title="Yes branch — connect when the rule is true"
+                            />
+                            <span className="pointer-events-none absolute right-4 z-dsContent -translate-y-1/2 rounded bg-amber-50 px-1.5 py-0.5 text-caption font-bold text-amber-700" style={{ top: "70%" }}>No</span>
+                            <button
+                              type="button"
+                              data-workflow-output-port="true"
+                              aria-label={`Connect No branch from ${workflowNode.title}`}
+                              onPointerDown={(event) => beginConnection(event, workflowNode.id, "FALSE")}
+                              onClick={(event) => event.stopPropagation()}
+                              className={`absolute -right-3 z-dsContent h-6 w-6 -translate-y-1/2 rounded-full border-2 border-white bg-amber-500 shadow-sm transition hover:scale-110 ${connectionDraft?.sourceNodeId === workflowNode.id && connectionDraft.outcome === "FALSE" ? "ring-2 ring-amber-200" : ""}`}
+                              style={{ top: "70%" }}
+                              title="No branch — connect when the rule is false"
+                            />
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            data-workflow-output-port="true"
+                            aria-label={`Connect from ${workflowNode.title}`}
+                            onPointerDown={(event) => beginConnection(event, workflowNode.id)}
+                            onClick={(event) => event.stopPropagation()}
+                            className={`absolute -right-3 top-1/2 z-dsContent h-6 w-6 -translate-y-1/2 rounded-full border-2 border-white shadow-sm ${connectFrom === workflowNode.id ? "bg-semantic-brand" : "bg-slate-400"}`}
+                            title="Drag to another node, or click then choose an input port"
+                          />
+                        ))}
                       </div>
                     );
                   })}
                 </div>
               )}
-              <div className="absolute bottom-3 left-3 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-500 shadow-sm">
+              <div className="absolute bottom-3 left-3 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-caption font-semibold text-slate-500 shadow-sm">
                 {builderVersion?.nodes.length || 0} nodes ·{" "}
                 {builderVersion?.edges.length || 0} edges ·{" "}
                 {Math.round(zoom * 100)}%
               </div>
               {connectionDraft && (
-                <div className="absolute bottom-12 left-3 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[10px] font-semibold text-emerald-800 shadow-sm">
-                  Connecting from {builderVersion?.nodes.find((node) => node.id === connectionDraft.sourceNodeId)?.title || "node"}
+                <div className="absolute bottom-12 left-3 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-caption font-semibold text-emerald-800 shadow-sm">
+                  Connecting from {builderVersion?.nodes.find((node) => node.id === connectionDraft.sourceNodeId)?.title || "node"}{connectionDraft.outcome === "TRUE" ? " · Yes branch" : connectionDraft.outcome === "FALSE" ? " · No branch" : ""}
                   <button
                     type="button"
                     onClick={cancelConnection}
@@ -1749,16 +2134,19 @@ export const UniversalWorkflowWorkspace: React.FC<{
               {selectedNode ? (
                 <NodeInspector
                   node={selectedNode}
+                  workflow={builderVersion}
+                  directory={directory}
                   onChange={updateNode}
                   onDuplicate={duplicateNode}
                   onRemove={removeNode}
+                  currentUser={currentUser}
                 />
               ) : selectedEdge ? (
                 <div>
                   <div className="mb-4 flex items-center justify-between">
                     <div>
                       <div className="text-xs font-bold text-slate-800">Connection</div>
-                      <div className="mt-0.5 text-[11px] text-slate-500">
+                      <div className="mt-0.5 text-label text-slate-500">
                         {builderVersion?.nodes.find((node) => node.id === selectedEdge.sourceNodeId)?.title || selectedEdge.sourceNodeId}
                         {" → "}
                         {builderVersion?.nodes.find((node) => node.id === selectedEdge.destinationNodeId)?.title || selectedEdge.destinationNodeId}
@@ -1774,7 +2162,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
-                  <label className="mb-3 block text-[11px] font-semibold text-slate-600">
+                  <label className="mb-3 block text-label font-semibold text-slate-600">
                     Branch label
                     <input
                       value={selectedEdge.branchLabel || ""}
@@ -1785,7 +2173,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                       className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs outline-none focus:border-emerald-500"
                     />
                   </label>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-[11px] text-slate-600">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-label text-slate-600">
                     Connections run finish-to-start. Branch outcomes are determined by the source node and validated before publishing.
                   </div>
                 </div>
@@ -1801,27 +2189,53 @@ export const UniversalWorkflowWorkspace: React.FC<{
                     Pre-flight
                   </h3>
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${preflight?.summary?.errors ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}
+                    className={`rounded-full px-2 py-0.5 text-caption font-bold ${
+                      activePreflight?.summary?.errors
+                        ? "bg-red-100 text-red-700"
+                        : activePreflight?.summary?.warnings
+                          ? "bg-amber-100 text-amber-700"
+                          : "bg-emerald-100 text-emerald-700"
+                    }`}
                   >
-                    {preflight
-                      ? `${preflight.summary.errors} Errors`
+                    {activePreflight
+                      ? activePreflight.summary.errors === 0
+                        ? "0 Errors"
+                        : `${activePreflight.summary.errors} Error${activePreflight.summary.errors > 1 ? "s" : ""}`
                       : "Save to validate"}
                   </span>
                 </div>
-                {preflight?.issues?.slice(0, 8).map((issue: any) => (
+                {activePreflight && activePreflight.summary?.errors === 0 && (
+                  <div className="mb-2 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/70 p-2 text-label text-emerald-800">
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                    <span>All graph connections and preflight rules passed.</span>
+                  </div>
+                )}
+                {activePreflight?.issues?.slice(0, 8).map((issue: any, index: number) => (
                   <button
-                    key={`${issue.code}-${issue.nodeId}`}
+                    key={`${issue.code}-${issue.nodeId || index}-${index}`}
                     onClick={() => {
                       if (!issue.nodeId) return;
                       setSelectedNodeId(issue.nodeId);
                       setSelectedNodeIds([issue.nodeId]);
                     }}
-                    className="mb-1.5 flex w-full gap-2 rounded-lg border border-slate-200 p-2 text-left text-[11px]"
+                    className={`mb-1.5 flex w-full gap-2 rounded-lg border p-2 text-left text-label transition ${
+                      issue.severity === "ERROR"
+                        ? "border-red-200 bg-red-50/50 text-red-800 hover:bg-red-50"
+                        : issue.severity === "WARNING"
+                          ? "border-amber-200 bg-amber-50/50 text-amber-800 hover:bg-amber-50"
+                          : "border-blue-200 bg-blue-50/50 text-blue-800 hover:bg-blue-50"
+                    }`}
                   >
                     <span
-                      className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${issue.severity === "ERROR" ? "bg-red-500" : issue.severity === "WARNING" ? "bg-amber-500" : "bg-blue-500"}`}
+                      className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
+                        issue.severity === "ERROR"
+                          ? "bg-red-500"
+                          : issue.severity === "WARNING"
+                            ? "bg-amber-500"
+                            : "bg-blue-500"
+                      }`}
                     />
-                    <span>{issue.message}</span>
+                    <span className="flex-1">{issue.message}</span>
                   </button>
                 ))}
               </div>
@@ -1831,7 +2245,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                     <Play className="h-4 w-4" />
                     Dry-run execution preview
                   </div>
-                  <div className="space-y-1 text-[11px] text-blue-900">
+                  <div className="space-y-1 text-label text-blue-900">
                     <div>
                       {simulation.selectedNodeIds.length} nodes selected
                     </div>
@@ -1853,8 +2267,11 @@ export const UniversalWorkflowWorkspace: React.FC<{
           instances={instances}
           execution={selectedExecution}
           onOpen={(id: string) => void openExecution(id)}
-          onComplete={(id: string) => void completeWorkItem(id)}
+          onComplete={(id: string, output: Record<string, unknown>) => void completeWorkItem(id, output)}
+          onClaim={(id: string) => void claimWorkItem(id)}
+          onDecision={(chainId: string, stepId: string, decision: "APPROVED" | "REJECTED") => void decideApproval(chainId, stepId, decision)}
           onRetry={(id: string) => void requeueDeadLetter(id)}
+          onComment={(body: string) => void addExecutionComment(body)}
         />
       ) : (
         <AnalyticsView analytics={analytics} />
@@ -1869,10 +2286,39 @@ export const UniversalWorkflowWorkspace: React.FC<{
           onClone={() => void cloneTemplate(selectedTemplate.template)}
         />
       )}
+      {templatePendingDeletion && (
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="delete-workflow-template-title">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 id="delete-workflow-template-title" className="text-lg font-bold text-slate-900">Remove workflow template?</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  “{templatePendingDeletion.title}” will no longer appear in the catalog or accept new requests.
+                </p>
+              </div>
+            </div>
+            <p className="mt-4 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+              Existing workflow runs and their audit evidence are retained.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setTemplatePendingDeletion(null)} disabled={deletingTemplate} className="wrike-btn-secondary px-3 py-2 text-xs disabled:opacity-50">Cancel</button>
+              <button type="button" onClick={() => void deleteTemplate()} disabled={deletingTemplate} className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60">
+                {deletingTemplate && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Remove template
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {launchRequestType && launchForm && (
         <DynamicIntakeModal
           requestType={launchRequestType}
           form={launchForm}
+          directory={directory}
+          currentUser={currentUser}
           values={launchValues}
           setValues={setLaunchValues}
           onClose={() => {
@@ -1883,9 +2329,101 @@ export const UniversalWorkflowWorkspace: React.FC<{
           busy={launching}
         />
       )}
+      {builderOperation && (
+        <WorkflowMetadataModal
+          operation={builderOperation}
+          metadata={workflowMetadata}
+          setMetadata={setWorkflowMetadata}
+          error={metadataError}
+          canCreateCompanyTemplate={canCreateCompanyTemplate}
+          canCreateDepartmentTemplate={canCreateDepartmentTemplate}
+          busy={builderBusy}
+          onClose={() => {
+            if (!builderBusy) setBuilderOperation(null);
+          }}
+          onConfirm={() => void confirmWorkflowMetadata()}
+        />
+      )}
     </div>
   );
 };
+
+const WorkflowMetadataModal = ({
+  operation,
+  metadata,
+  setMetadata,
+  error,
+  canCreateCompanyTemplate,
+  canCreateDepartmentTemplate,
+  busy,
+  onClose,
+  onConfirm,
+}: any) => {
+  const operationLabel = operation === "SAVE" ? "Save draft" : operation === "TEST" ? "Save and test" : "Save and publish";
+  const scopes: Array<{ value: TemplateScope; label: string; description: string; enabled: boolean }> = [
+    { value: "PERSONAL", label: "User level", description: "Only you can use and manage this workflow.", enabled: true },
+    { value: "DEPARTMENT", label: "Department / branch", description: "Available within your department or branch.", enabled: canCreateDepartmentTemplate },
+    { value: "COMPANY", label: "Company level", description: "Available across the company.", enabled: canCreateCompanyTemplate },
+  ];
+  return (
+    <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="workflow-metadata-title">
+      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-caption font-bold uppercase tracking-wider text-semantic-success">Workflow details</div>
+            <h2 id="workflow-metadata-title" className="mt-1 text-lg font-bold text-slate-900">Name and visibility</h2>
+            <p className="mt-1 text-sm text-slate-500">Choose who can use this workflow before continuing.</p>
+          </div>
+          <button type="button" onClick={onClose} disabled={busy} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="Close"><X className="h-5 w-5" /></button>
+        </div>
+        <label className="mt-5 block">
+          <span className="mini-label">Workflow name</span>
+          <input
+            autoFocus
+            value={metadata.name}
+            onChange={(event) => setMetadata((current: any) => ({ ...current, name: event.target.value }))}
+            onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); onConfirm(); } }}
+            className="wrike-input mt-1 w-full"
+            placeholder="e.g. Access review workflow"
+          />
+        </label>
+        <fieldset className="mt-5">
+          <legend className="mini-label">Workflow level</legend>
+          <div className="mt-2 space-y-2">
+            {scopes.map((scope) => (
+              <button
+                type="button"
+                key={scope.value}
+                disabled={!scope.enabled || busy}
+                onClick={() => setMetadata((current: any) => ({ ...current, scope: scope.value }))}
+                className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition ${metadata.scope === scope.value ? "border-semantic-brand bg-emerald-50 ring-1 ring-semantic-brand/20" : "border-slate-200 bg-white hover:border-slate-300"} ${!scope.enabled ? "cursor-not-allowed opacity-45" : ""}`}
+              >
+                <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${metadata.scope === scope.value ? "border-semantic-brand bg-semantic-brand text-white" : "border-slate-300"}`}>
+                  {metadata.scope === scope.value && <Check className="h-3 w-3" />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold text-slate-800">{scope.label}</span>
+                  <span className="mt-0.5 block text-xs text-slate-500">{scope.enabled ? scope.description : "You do not have permission for this level."}</span>
+                </span>
+                {!scope.enabled && <LockKeyhole className="h-4 w-4 shrink-0 text-slate-400" />}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        {error && <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">{error}</p>}
+        <div className="mt-6 flex justify-end gap-2">
+          <button type="button" onClick={onClose} disabled={busy} className="wrike-btn-secondary px-3 py-2 text-xs">Cancel</button>
+          <button type="button" onClick={onConfirm} disabled={busy} className="wrike-btn-primary flex items-center gap-2 px-3 py-2 text-xs disabled:opacity-60">
+            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {operationLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const workflowCatalogTemplatesForDisplay = (templates: WorkflowCatalogTemplate[]) => templates.filter((template) => !(template.kind === "BASIC_TICKET" && template.catalogGroup?.startsWith("IT ·")));
 
 const CatalogView = ({
   catalog,
@@ -1895,105 +2433,147 @@ const CatalogView = ({
   onLaunch,
   onEdit,
   onClone,
+  onDelete,
 }: any) => (
   <div className="flex-1 overflow-y-auto p-6">
     <div className="mx-auto max-w-[1500px]">
-      <div className="mb-6 flex items-end justify-between">
-        <div>
-          <h2 className="text-xl font-bold">Workflow Catalog</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Start governed work from a published, immutable workflow version.
-          </p>
-        </div>
-        <label className="flex w-80 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-xs">
-          <Search className="h-4 w-4 text-slate-400" />
+      <div className="mb-8 flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-slate-500">
+          Start a governed request from an approved workflow template.
+        </p>
+        <label className="flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-xs transition focus-within:border-emerald-400 focus-within:ring-4 focus-within:ring-emerald-50 sm:w-[420px]">
+          <Search className="h-4 w-4 shrink-0 text-slate-400" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search workflows, domains, owners, nodes…"
-            className="w-full border-0 bg-transparent text-sm outline-none"
+            aria-label="Search workflow templates"
+            className="w-full border-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
           />
         </label>
       </div>
       {catalog.sections.map((section: any) => (
-        <section key={section.name} className="mb-8">
-          <div className="mb-3 flex items-center gap-2">
-            <h3 className="text-sm font-bold">{section.name}</h3>
-            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-              {section.templates.length}
-            </span>
+        <section key={section.name} className="mb-10">
+          <div className="mb-4 flex items-end justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900">{section.name}</h3>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-caption font-bold text-slate-600">
+                  {workflowCatalogTemplatesForDisplay(section.templates).length}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                {section.name === "Company Templates"
+                  ? "Centrally governed workflows available across the organization."
+                  : section.name === "Department / Branch Templates"
+                    ? "Templates managed for your department or branch."
+                    : "Personal templates you can reuse and refine."}
+              </p>
+            </div>
           </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {section.templates.map((template: WorkflowCatalogTemplate) => (
+          <div className="grid gap-5 lg:grid-cols-2">
+            {[...workflowCatalogTemplatesForDisplay(section.templates)]
+              .sort((left: WorkflowCatalogTemplate, right: WorkflowCatalogTemplate) => `${left.kind === "WORKFLOW" ? "1" : "2"}-${left.catalogGroup || ""}-${left.title}`.localeCompare(`${right.kind === "WORKFLOW" ? "1" : "2"}-${right.catalogGroup || ""}-${right.title}`))
+              .map((template: WorkflowCatalogTemplate) => (
               <article
                 key={template.id}
-                className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-xs transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+                className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-xs transition duration-200 hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md"
               >
                 <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#E6F7EF] text-[#007860]">
-                    <Workflow className="h-5 w-5" />
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-semantic-success-surface text-semantic-success ring-1 ring-emerald-100">
+                    <Workflow className="h-4 w-4" />
                   </div>
                   <div className="min-w-0">
-                    <h4 className="truncate text-sm font-bold">
+                    <h4 className="truncate text-sm font-bold text-slate-900">
                       {template.title}
                     </h4>
-                    <p className="mt-1 line-clamp-2 min-h-8 text-xs leading-4 text-slate-500">
+                    <p title={template.purpose} className="mt-0.5 line-clamp-1 text-xs leading-5 text-slate-500">
                       {template.purpose}
                     </p>
                   </div>
-                  <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                  <span className="ml-auto shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-caption font-bold text-slate-600">
                     v{template.publishedWorkflowVersion}
                   </span>
                 </div>
-                <div className="my-4 grid grid-cols-5 gap-1 rounded-xl bg-slate-50 p-2 text-center">
+                <div className="my-3.5 grid grid-cols-4 divide-x divide-slate-200 rounded-xl border border-slate-100 bg-slate-50/80 py-2.5 text-center">
                   <Metric
                     value={formatDuration(template.estimatedDurationMinutes)}
                     label="Duration"
                   />
-                  <Metric value={template.stageCount} label="Stages" />
                   <Metric value={template.departmentCount} label="Teams" />
                   <Metric value={template.approvalCount} label="Approvals" />
                   <Metric value={template.automationCount} label="Auto" />
                 </div>
-                <div className="mb-3 flex items-center justify-between text-[10px] font-semibold text-slate-500">
-                  <span className="rounded-full bg-blue-50 px-2 py-1 text-blue-700">
-                    {template.domain.replaceAll("_", " ")}
+                <div className="mb-2.5 flex items-center justify-between gap-3 text-caption font-semibold text-slate-500">
+                  <span className="min-w-0 truncate rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">
+                    {template.scope === "COMPANY" ? "Company" : template.scope === "DEPARTMENT" ? "Department / Branch" : "User"} · {template.domain.replaceAll("_", " ")}
                   </span>
                   <span>
                     {template.runCount.toLocaleString()} runs ·{" "}
                     {template.successRate}% success
                   </span>
                 </div>
-                <div className="flex gap-2">
+                <div className="mb-2.5 flex flex-wrap gap-1.5 text-micro font-bold uppercase tracking-wide">
+                  <span className={`rounded-full px-2 py-0.5 ${template.kind === "WORKFLOW" ? "bg-violet-50 text-violet-700" : "bg-emerald-50 text-emerald-700"}`}>
+                    {template.kind === "WORKFLOW" ? "Approval workflow" : "Help Desk task"}
+                  </span>
+                  {template.catalogGroup && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">{template.catalogGroup}</span>}
+                </div>
+                <div className="flex gap-1.5">
                   <button
                     onClick={() => onPreview(template)}
-                    className="wrike-btn-secondary flex-1 px-2 py-1.5 text-xs"
+                    className="wrike-btn-secondary h-9 flex-1 px-2 text-xs"
                   >
                     Preview
                   </button>
                   <button
                     onClick={() => onLaunch(template)}
-                    className="wrike-btn-primary flex-1 px-2 py-1.5 text-xs"
+                    className="wrike-btn-primary h-9 flex-1 px-2 text-xs"
                   >
                     Launch
                   </button>
                   <button
                     onClick={() => onClone(template)}
-                    className="rounded-lg border border-slate-200 px-2.5 text-slate-500 hover:bg-slate-50"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
                     title="Clone as an editable draft"
                   >
                     <Copy className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => onEdit(template)}
-                    className="rounded-lg border border-slate-200 px-2.5 text-slate-500 hover:bg-slate-50"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
                     title="Open published definition"
                   >
                     <Code2 className="h-4 w-4" />
                   </button>
+                  {template.canDelete && (
+                    <button
+                      onClick={() => onDelete(template)}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50"
+                      title="Remove template from catalog"
+                      aria-label={`Remove ${template.title} from catalog`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </article>
-            ))}
+                ))}
+            {!workflowCatalogTemplatesForDisplay(section.templates).length && (
+              <div className="flex min-h-28 items-center gap-4 rounded-2xl border border-dashed border-slate-300 bg-white/70 px-5 py-5 text-left">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+                  <Layers3 className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">
+                    No published templates yet
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Create a governed draft for {section.name.toLowerCase()} and publish an immutable version when it is ready.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       ))}
@@ -2004,7 +2584,7 @@ const CatalogView = ({
 const Metric = ({ value, label }: any) => (
   <div>
     <div className="text-xs font-bold text-slate-800">{value}</div>
-    <div className="text-[9px] uppercase tracking-wide text-slate-400">
+    <div className="text-micro uppercase tracking-wide text-slate-400">
       {label}
     </div>
   </div>
@@ -2017,11 +2597,11 @@ const TemplatePreview = ({
   onEdit,
   onClone,
 }: any) => (
-  <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/30 backdrop-blur-[1px]">
+  <div className="fixed inset-0 z-dsOverlay flex justify-end bg-slate-950/30 backdrop-blur-[1px]">
     <div className="flex h-full w-[620px] flex-col bg-white shadow-2xl">
       <header className="flex items-start justify-between border-b border-slate-200 p-6">
         <div>
-          <div className="mb-2 text-xs font-bold uppercase tracking-wider text-[#007860]">
+          <div className="mb-2 text-xs font-bold uppercase tracking-wider text-semantic-success">
             {detail.template.category} · v{detail.version.version}
           </div>
           <h2 className="text-xl font-bold">{detail.template.title}</h2>
@@ -2034,40 +2614,17 @@ const TemplatePreview = ({
         </button>
       </header>
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="mb-6 grid grid-cols-5 gap-2 rounded-xl bg-slate-50 p-3">
+        <div className="mb-6 grid grid-cols-4 gap-2 rounded-xl bg-slate-50 p-3">
           <Metric
             value={formatDuration(detail.template.estimatedDurationMinutes)}
             label="Duration"
           />
-          <Metric value={detail.version.stages.length} label="Stages" />
           <Metric value={detail.template.departmentCount} label="Teams" />
           <Metric value={detail.template.approvalCount} label="Approvals" />
           <Metric value={detail.template.automationCount} label="Automations" />
         </div>
-        <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">
-          Lifecycle stages
-        </h3>
-        <div className="space-y-2">
-          {detail.version.stages.map((stage: any, index: number) => (
-            <div
-              key={stage.id}
-              className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"
-            >
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-xs font-bold">
-                {index + 1}
-              </span>
-              <div>
-                <div className="text-sm font-bold">{stage.title}</div>
-                <div className="text-xs text-slate-500">
-                  {stage.nodeIds.length} activities ·{" "}
-                  {stage.trigger.replaceAll("_", " ").toLowerCase()}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
         <div
-          className={`mt-6 rounded-xl border p-3 text-sm ${detail.preflight.valid ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"}`}
+          className={`rounded-xl border p-3 text-sm ${detail.preflight.valid ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"}`}
         >
           <div className="flex items-center gap-2 font-bold">
             {detail.preflight.valid ? (
@@ -2099,21 +2656,41 @@ const TemplatePreview = ({
 const DynamicIntakeModal = ({
   requestType,
   form,
+  directory,
+  currentUser,
   values,
   setValues,
   onClose,
   onSubmit,
   busy,
 }: any) => {
+  const bindSessionIdentity = requestType.id === "request-usb-access";
+  useEffect(() => {
+    if (!bindSessionIdentity || !currentUser?.id) return;
+    setValues((current: Record<string, any>) => {
+      if (
+        current.requesterId === currentUser.id &&
+        current.departmentId === currentUser.departmentId
+      ) {
+        return current;
+      }
+      return {
+        ...current,
+        requesterId: currentUser.id,
+        departmentId: currentUser.departmentId,
+      };
+    });
+  }, [bindSessionIdentity, currentUser?.departmentId, currentUser?.id, setValues]);
+
   const sections = form.version.sections.filter((section: any) =>
     localCondition(section.visibilityCondition, values),
   );
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-6 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-[760px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+    <div className="fixed inset-0 z-dsToast flex items-center justify-center bg-slate-950/50 p-6 backdrop-blur-sm">
+      <div className="flex max-h-dsModal w-[760px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         <header className="flex items-start justify-between border-b border-slate-200 p-5">
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-[#007860]">
+            <div className="text-caption font-bold uppercase tracking-wider text-semantic-success">
               Quick Work Item · {requestType.domain.replaceAll("_", " ")}
             </div>
             <h2 className="mt-1 text-lg font-bold">{requestType.name}</h2>
@@ -2122,7 +2699,9 @@ const DynamicIntakeModal = ({
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Close request form"
             className="rounded-lg p-2 hover:bg-slate-100"
           >
             <X className="h-5 w-5" />
@@ -2150,6 +2729,9 @@ const DynamicIntakeModal = ({
                       field={formField}
                       value={values[formField.key]}
                       values={values}
+                      directory={directory}
+                      currentUser={currentUser}
+                      bindSessionIdentity={bindSessionIdentity}
                       required={
                         formField.required ||
                         (formField.requiredCondition &&
@@ -2168,7 +2750,7 @@ const DynamicIntakeModal = ({
           ))}
         </div>
         <footer className="flex items-center justify-between border-t border-slate-200 p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold text-[#007860]">
+          <div className="flex items-center gap-2 text-xs font-semibold text-semantic-success">
             <ShieldCheck className="h-4 w-4" />
             Routing, priority, calendar and targets resolve automatically.
           </div>
@@ -2199,12 +2781,18 @@ const DynamicField = ({
   field,
   value,
   values,
+  directory,
+  currentUser,
+  bindSessionIdentity,
   required,
   onChange,
 }: {
   field: FormFieldDefinition;
   value: any;
   values: Record<string, any>;
+  directory: any;
+  currentUser: any;
+  bindSessionIdentity: boolean;
   required: boolean;
   onChange: (value: any) => void;
 }) => {
@@ -2222,45 +2810,163 @@ const DynamicField = ({
           option.parentValue === values[field.dependsOnFieldKey!],
       )
     : field.options;
-  const readOnly = field.writable === false;
+  const readOnly = (field as any).writable === false;
+  const fieldId = `workflow-field-${field.id}`.replace(/[^a-zA-Z0-9_-]/g, "-");
+  const labelId = `${fieldId}-label`;
+  const requester =
+    directory.users.find((user: any) => user.id === currentUser?.id) || currentUser;
+  const department = directory.departments.find(
+    (entry: any) => entry.id === currentUser?.departmentId,
+  );
+  const isSessionIdentity =
+    bindSessionIdentity && ["requesterId", "departmentId"].includes(field.key);
+  const userOptions: SelectOption[] = directory.users.map((user: any) => ({
+    value: user.id,
+    label: user.fullName,
+    sublabel: [
+      user.sectionName || directory.departments.find((entry: any) => entry.id === user.departmentId)?.name,
+      user.title,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    badge: user.sAMAccountName || user.username,
+    icon: (
+      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-50 text-caption font-black text-semantic-success">
+        {String(user.fullName || user.username || "U")
+          .split(" ")
+          .slice(0, 2)
+          .map((part: string) => part[0])
+          .join("")
+          .toUpperCase()}
+      </span>
+    ),
+  }));
+  const departmentOptions: SelectOption[] = directory.departments.map(
+    (entry: any) => ({
+      value: entry.id,
+      label: entry.name,
+      sublabel: entry.parentName || entry.type?.replaceAll("_", " "),
+      badge: entry.code,
+      icon: <Building2 className="h-4 w-4 text-semantic-success" />,
+    }),
+  );
+  const choiceOptions: SelectOption[] = (options || []).map((option) => ({
+    value: option.value,
+    label: option.label,
+  }));
+
   return (
-    <label className={full ? "col-span-2" : ""}>
-      <span className="mb-1 block text-xs font-bold text-slate-700">
+    <div className={full ? "col-span-2" : ""}>
+      <span id={labelId} className="mb-1 block text-xs font-bold text-slate-700">
         {field.label}
         {required && <span className="text-red-500"> *</span>}
       </span>
       {field.description && (
-        <span className="mb-1 block text-[11px] text-slate-500">
+        <span className="mb-1 block text-label text-slate-500">
           {field.description}
         </span>
       )}
-      {field.type === "CHECKBOX" ? (
+      {isSessionIdentity ? (
+        <div
+          role="group"
+          aria-labelledby={labelId}
+          className="flex min-h-[46px] items-center gap-3 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50/90 to-white px-3 py-2 shadow-sm"
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-semantic-success shadow-sm ring-1 ring-emerald-100">
+            {field.key === "requesterId" ? (
+              <Users className="h-4 w-4" />
+            ) : (
+              <Building2 className="h-4 w-4" />
+            )}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-bold text-slate-800">
+              {field.key === "requesterId"
+                ? requester?.fullName || currentUser?.fullName || value
+                : department?.name || currentUser?.departmentId || value}
+            </span>
+            <span className="block truncate text-label font-medium text-slate-500">
+              {field.key === "requesterId"
+                ? requester?.title || currentUser?.title || "Authenticated LDAP user"
+                : "Authenticated user's department / branch"}
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-1 rounded-full bg-white px-2 py-1 text-caption font-bold uppercase tracking-wide text-semantic-success ring-1 ring-emerald-200">
+            <LockKeyhole className="h-3 w-3" />
+            LDAP session
+          </span>
+        </div>
+      ) : field.type === "USER" ? (
+        <CustomSelect
+          id={fieldId}
+          value={value || ""}
+          onChange={onChange}
+          options={userOptions}
+          disabled={readOnly}
+          required={required}
+          ariaLabelledBy={labelId}
+          placeholder="Select LDAP user…"
+          searchPlaceholder="Search by name, title, department or username…"
+          size="lg"
+        />
+      ) : field.type === "DEPARTMENT" ? (
+        <CustomSelect
+          id={fieldId}
+          value={value || ""}
+          onChange={onChange}
+          options={departmentOptions}
+          disabled={readOnly}
+          required={required}
+          ariaLabelledBy={labelId}
+          placeholder="Select department / branch…"
+          searchPlaceholder="Search department, branch or code…"
+          size="lg"
+        />
+      ) : field.type === "CHECKBOX" ? (
         <button
           type="button"
           disabled={readOnly}
+          aria-labelledby={labelId}
+          aria-pressed={Boolean(value)}
           onClick={() => onChange(!value)}
           className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm ${value ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-white text-slate-600"}`}
         >
           <span
-            className={`flex h-4 w-4 items-center justify-center rounded border ${value ? "border-[#00B259] bg-[#00B259] text-white" : "border-slate-300"}`}
+            className={`flex h-4 w-4 items-center justify-center rounded border ${value ? "border-semantic-brand bg-semantic-brand text-white" : "border-slate-300"}`}
           >
             {value && <Check className="h-3 w-3" />}
           </span>
           {value ? "Yes" : "No"}
         </button>
-      ) : ["SELECT", "RADIO", "MULTI_SELECT"].includes(field.type) &&
+      ) : ["SELECT", "RADIO"].includes(field.type) && options?.length ? (
+        <CustomSelect
+          id={fieldId}
+          value={value || ""}
+          onChange={onChange}
+          options={
+            required
+              ? choiceOptions
+              : [{ value: "", label: "No selection" }, ...choiceOptions]
+          }
+          disabled={readOnly}
+          required={required}
+          ariaLabelledBy={labelId}
+          placeholder="Select…"
+          searchPlaceholder="Search options…"
+          size="lg"
+        />
+      ) : field.type === "MULTI_SELECT" &&
         options?.length ? (
         <select
+          id={fieldId}
+          aria-labelledby={labelId}
           disabled={readOnly}
-          multiple={field.type === "MULTI_SELECT"}
-          value={field.type === "MULTI_SELECT" ? value || [] : value || ""}
+          required={required}
+          multiple
+          value={value || []}
           onChange={(event) =>
             onChange(
-              field.type === "MULTI_SELECT"
-                ? [...event.target.selectedOptions].map(
-                    (option) => option.value,
-                  )
-                : event.target.value,
+              [...event.target.selectedOptions].map((option) => option.value),
             )
           }
           className="wrike-input w-full"
@@ -2274,7 +2980,10 @@ const DynamicField = ({
         </select>
       ) : ["RICH_TEXT", "TEXTAREA", "TABLE"].includes(field.type) ? (
         <textarea
+          id={fieldId}
+          aria-labelledby={labelId}
           readOnly={readOnly}
+          required={required}
           value={
             typeof value === "string"
               ? value
@@ -2287,15 +2996,36 @@ const DynamicField = ({
           placeholder={field.placeholder}
           className="wrike-input w-full resize-y"
         />
+      ) : field.type === "DATE" ? (
+        <AccessibleDatePicker
+          id={fieldId}
+          value={value || ""}
+          onChange={onChange}
+          disabled={readOnly}
+          required={required}
+          min={
+            typeof field.validation?.min === "string"
+              ? field.validation.min
+              : undefined
+          }
+          max={
+            typeof field.validation?.max === "string"
+              ? field.validation.max
+              : undefined
+          }
+          placeholder={field.placeholder || "YYYY-MM-DD"}
+          ariaLabelledBy={labelId}
+        />
       ) : (
         <input
+          id={fieldId}
+          aria-labelledby={labelId}
           readOnly={readOnly}
+          required={required}
           type={
             field.type === "NUMBER" || field.type === "MONEY"
               ? "number"
-              : field.type === "DATE"
-                ? "date"
-                : field.type === "DATETIME"
+              : field.type === "DATETIME"
                   ? "datetime-local"
                   : "text"
           }
@@ -2311,15 +3041,743 @@ const DynamicField = ({
           className="wrike-input w-full"
         />
       )}
+    </div>
+  );
+};
+
+const VariableEditor = ({ variables, onAdd, onChange, onRemove }: any) => (
+  <div>
+    <div className="mb-3 flex items-center justify-between">
+      <div>
+        <div className="text-xs font-bold text-slate-800">Workflow variables</div>
+        <p className="mt-0.5 text-caption text-slate-500">Validated context available to conditions and actions.</p>
+      </div>
+      <button type="button" onClick={onAdd} className="rounded-md border border-emerald-200 bg-emerald-50 p-1.5 text-emerald-700" title="Add variable">
+        <Plus className="h-4 w-4" />
+      </button>
+    </div>
+    <div className="space-y-2">
+      {variables.map((variable: any, index: number) => (
+        <div key={`${variable.key}-${index}`} className="rounded-lg border border-slate-200 p-2.5">
+          <div className="mb-2 flex gap-2">
+            <input value={variable.key} onChange={(event) => onChange(index, { key: event.target.value.replace(/[^A-Za-z0-9_]/g, "_") })} className="wrike-input min-w-0 flex-1 text-xs" placeholder="variable_key" />
+            <button type="button" onClick={() => onRemove(index)} className="rounded p-1 text-red-500 hover:bg-red-50" title="Remove variable">
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <select value={variable.type} onChange={(event) => onChange(index, { type: event.target.value })} className="wrike-input mb-2 w-full text-xs">
+            {["STRING", "NUMBER", "BOOLEAN", "DATE", "DATETIME", "MONEY", "USER_REF", "GROUP_REF", "RECORD_REF", "LIST", "OBJECT"].map((type) => <option key={type}>{type}</option>)}
+          </select>
+          <input value={variable.description || ""} onChange={(event) => onChange(index, { description: event.target.value || undefined })} className="wrike-input mb-2 w-full text-xs" placeholder="Description" />
+          <label className="flex items-center gap-2 text-label font-semibold text-slate-600"><input type="checkbox" checked={Boolean(variable.required)} onChange={(event) => onChange(index, { required: event.target.checked })} /> Required</label>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const DurationField = ({ label, value, onChange }: { label: string; value?: number; onChange: (value: number | undefined) => void }) => {
+  const initialUnit = value && value % 1440 === 0 ? "DAYS" : value && value % 60 === 0 ? "HOURS" : "MINUTES";
+  const [unit, setUnit] = useState<"DAYS" | "HOURS" | "MINUTES">(initialUnit);
+  const multipliers = { DAYS: 1440, HOURS: 60, MINUTES: 1 };
+  return (
+    <label className="mb-3 block">
+      <span className="mini-label">{label} <span className="font-normal text-slate-400">(optional)</span></span>
+      <div className="mt-1 grid grid-cols-2 gap-2">
+        <input type="number" min="1" value={value === undefined ? "" : value / multipliers[unit]} onChange={(event) => onChange(event.target.value === "" ? undefined : Math.max(1, Number(event.target.value)) * multipliers[unit])} className="wrike-input min-w-0" placeholder="Duration" aria-label={`${label} duration`} />
+        <select value={unit} onChange={(event) => setUnit(event.target.value as "DAYS" | "HOURS" | "MINUTES")} className="wrike-input min-w-0" aria-label={`${label} unit`}>
+          <option value="DAYS">Days</option><option value="HOURS">Hours</option><option value="MINUTES">Minutes</option>
+        </select>
+      </div>
     </label>
   );
 };
 
-const NodeInspector = ({ node, onChange, onDuplicate, onRemove }: any) => (
+const InputNodeFormEditor = ({
+  node,
+  onChange,
+  directory,
+  currentUser,
+}: {
+  node: WorkflowNodeDefinition;
+  onChange: (patch: Partial<WorkflowNodeDefinition>) => void;
+  directory: any;
+  currentUser: any;
+}) => {
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewValues, setPreviewValues] = useState<Record<string, any>>({
+    summary: "Sample Ticket Request",
+    description: "Business purpose and justification",
+    requesterId: currentUser?.id || "",
+    departmentId: currentUser?.departmentId || "",
+  });
+  const [expandedFieldId, setExpandedFieldId] = useState<string | null>(null);
+
+  const customFields = node.inputConfig?.fields || [];
+
+  const updateFields = (fields: FormFieldDefinition[]) => {
+    onChange({
+      inputConfig: {
+        ...(node.inputConfig || {}),
+        fields,
+      },
+    });
+  };
+
+  const addCustomField = (type: FormFieldType = "SELECT") => {
+    const nextIndex = customFields.length + 1;
+    const defaultLabels: Record<string, string> = {
+      CHECKBOX: `Confirmation Checkbox ${nextIndex}`,
+      SELECT: `Option Selection ${nextIndex}`,
+      MULTI_SELECT: `Multi Choice ${nextIndex}`,
+      TEXT: `Text Field ${nextIndex}`,
+      TEXTAREA: `Details ${nextIndex}`,
+      NUMBER: `Quantity / Count ${nextIndex}`,
+      DATE: `Due / Expiry Date ${nextIndex}`,
+      USER: `Assigned User ${nextIndex}`,
+      DEPARTMENT: `Target Department ${nextIndex}`,
+    };
+    const label = defaultLabels[type] || `Custom Field ${nextIndex}`;
+    const key = `field_${type.toLowerCase()}_${Date.now().toString(36)}`;
+    const newField: FormFieldDefinition = {
+      id: `cf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      key,
+      label,
+      type,
+      required: false,
+      placeholder: type === "TEXT" ? "Enter value..." : undefined,
+      ...(type === "SELECT" || type === "MULTI_SELECT"
+        ? {
+            options: [
+              { value: "OPTION_1", label: "Option 1" },
+              { value: "OPTION_2", label: "Option 2" },
+            ],
+          }
+        : {}),
+    };
+    updateFields([...customFields, newField]);
+    setExpandedFieldId(newField.id);
+  };
+
+  const modifyField = (index: number, patch: Partial<FormFieldDefinition>) => {
+    const updated = customFields.map((f, i) => (i === index ? { ...f, ...patch } : f));
+    updateFields(updated);
+  };
+
+  const removeField = (index: number) => {
+    const updated = customFields.filter((_, i) => i !== index);
+    updateFields(updated);
+  };
+
+  const moveField = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= customFields.length) return;
+    const copy = [...customFields];
+    const [moved] = copy.splice(index, 1);
+    copy.splice(target, 0, moved);
+    updateFields(copy);
+  };
+
+  const addOption = (fieldIndex: number) => {
+    const field = customFields[fieldIndex];
+    const options = field.options || [];
+    const optIndex = options.length + 1;
+    const newOption = { value: `VALUE_${optIndex}`, label: `Option ${optIndex}` };
+    modifyField(fieldIndex, { options: [...options, newOption] });
+  };
+
+  const updateOption = (fieldIndex: number, optIndex: number, patch: { value?: string; label?: string }) => {
+    const field = customFields[fieldIndex];
+    const options = (field.options || []).map((opt, i) => (i === optIndex ? { ...opt, ...patch } : opt));
+    modifyField(fieldIndex, { options });
+  };
+
+  const removeOption = (fieldIndex: number, optIndex: number) => {
+    const field = customFields[fieldIndex];
+    const options = (field.options || []).filter((_, i) => i !== optIndex);
+    modifyField(fieldIndex, { options });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50/80 to-teal-50/50 p-3 text-xs shadow-sm">
+        <div className="flex items-center gap-2 font-bold text-emerald-900">
+          <ShieldCheck className="h-4 w-4 text-emerald-700 shrink-0" />
+          <span>Standard Base Ticket Fields</span>
+        </div>
+        <p className="mt-1 text-label leading-relaxed text-emerald-800">
+          Every ticket workflow always includes standard base fields:
+        </p>
+        <div className="mt-2.5 grid grid-cols-2 gap-1.5 text-caption">
+          <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200/80 bg-white/90 px-2 py-1 font-semibold text-slate-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            <span>Title / Summary (<span className="text-red-500 font-bold">*</span>)</span>
+          </div>
+          <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200/80 bg-white/90 px-2 py-1 font-semibold text-slate-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            <span>Description / Details</span>
+          </div>
+          <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200/80 bg-white/90 px-2 py-1 font-semibold text-slate-700">
+            <LockKeyhole className="h-2.5 w-2.5 text-emerald-600" />
+            <span>Requester (LDAP)</span>
+          </div>
+          <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200/80 bg-white/90 px-2 py-1 font-semibold text-slate-700">
+            <LockKeyhole className="h-2.5 w-2.5 text-emerald-600" />
+            <span>Department / Branch</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+              <span>Custom Intake Fields</span>
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-caption font-bold text-emerald-800">
+                {customFields.length}
+              </span>
+            </h4>
+            <p className="text-caption text-slate-500">
+              Add dropdowns, checkboxes, text fields, dates, or options.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowPreview(!showPreview)}
+            className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-label font-bold transition ${
+              showPreview
+                ? "border border-emerald-300 bg-emerald-50 text-emerald-800"
+                : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            {showPreview ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            <span>{showPreview ? "Hide Preview" : "Live Preview"}</span>
+          </button>
+        </div>
+
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => addCustomField("SELECT")}
+            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-caption font-bold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 transition"
+          >
+            <Plus className="h-3 w-3 text-emerald-600" />
+            <span>+ Dropdown</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => addCustomField("CHECKBOX")}
+            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-caption font-bold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 transition"
+          >
+            <Plus className="h-3 w-3 text-emerald-600" />
+            <span>+ Checkbox</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => addCustomField("TEXT")}
+            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-caption font-bold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 transition"
+          >
+            <Plus className="h-3 w-3 text-emerald-600" />
+            <span>+ Text</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => addCustomField("DATE")}
+            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-caption font-bold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 transition"
+          >
+            <Plus className="h-3 w-3 text-emerald-600" />
+            <span>+ Date</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => addCustomField("MULTI_SELECT")}
+            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-caption font-bold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 transition"
+          >
+            <Plus className="h-3 w-3 text-emerald-600" />
+            <span>+ Multi-Select</span>
+          </button>
+        </div>
+
+        {customFields.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-300 p-4 text-center">
+            <p className="text-xs text-slate-500 font-medium">No custom fields added yet.</p>
+            <p className="mt-1 text-caption text-slate-400">
+              Only standard Title and Description will be asked upon launch. Click the buttons above to add checkboxes, dropdowns, or custom fields.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {customFields.map((field, index) => {
+              const isExpanded = expandedFieldId === field.id || expandedFieldId === null;
+              return (
+                <div
+                  key={field.id || index}
+                  className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 shadow-sm transition hover:border-slate-300"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200 text-caption font-bold text-slate-700">
+                        {index + 1}
+                      </span>
+                      <span className="truncate text-xs font-bold text-slate-800">
+                        {field.label || "Untitled Field"}
+                      </span>
+                      <span className="rounded bg-emerald-100/80 px-1.5 py-0.5 text-micro font-bold text-emerald-800">
+                        {field.type}
+                      </span>
+                      {field.required && (
+                        <span className="rounded bg-red-100 px-1.5 py-0.5 text-micro font-bold text-red-700">
+                          Required
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => moveField(index, -1)}
+                        disabled={index === 0}
+                        className="rounded p-1 text-slate-400 hover:bg-slate-200 disabled:opacity-30"
+                        title="Move Up"
+                      >
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveField(index, 1)}
+                        disabled={index === customFields.length - 1}
+                        className="rounded p-1 text-slate-400 hover:bg-slate-200 disabled:opacity-30"
+                        title="Move Down"
+                      >
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedFieldId(expandedFieldId === field.id ? "" : field.id)}
+                        className="rounded p-1 text-slate-500 hover:bg-slate-200"
+                        title={isExpanded ? "Collapse" : "Expand"}
+                      >
+                        {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeField(index)}
+                        className="rounded p-1 text-red-500 hover:bg-red-50"
+                        title="Remove Field"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="mt-3 pt-3 border-t border-slate-200 space-y-2.5">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="mini-label">Field Label</span>
+                          <input
+                            type="text"
+                            value={field.label}
+                            onChange={(e) => {
+                              const newLabel = e.target.value;
+                              modifyField(index, {
+                                label: newLabel,
+                                key: field.key.startsWith("field_")
+                                  ? newLabel.toLowerCase().replace(/[^a-z0-9_]/g, "_") || field.key
+                                  : field.key,
+                              });
+                            }}
+                            placeholder="e.g. Access Scope"
+                            className="wrike-input mt-1 w-full text-xs"
+                          />
+                        </div>
+                        <div>
+                          <span className="mini-label">Field Type</span>
+                          <select
+                            value={field.type}
+                            onChange={(e) => {
+                              const nextType = e.target.value as FormFieldType;
+                              modifyField(index, {
+                                type: nextType,
+                                ...(nextType === "SELECT" || nextType === "MULTI_SELECT"
+                                  ? {
+                                      options: field.options?.length
+                                        ? field.options
+                                        : [
+                                            { value: "OPT_1", label: "Option 1" },
+                                            { value: "OPT_2", label: "Option 2" },
+                                          ],
+                                    }
+                                  : {}),
+                              });
+                            }}
+                            className="wrike-input mt-1 w-full text-xs font-medium"
+                          >
+                            <option value="CHECKBOX">Checkbox (Yes / No toggle)</option>
+                            <option value="SELECT">Dropdown (Single choice select)</option>
+                            <option value="MULTI_SELECT">Multi-Select Dropdown</option>
+                            <option value="TEXT">Short Text</option>
+                            <option value="TEXTAREA">Long Text / Textarea</option>
+                            <option value="NUMBER">Number</option>
+                            <option value="DATE">Date Picker</option>
+                            <option value="USER">LDAP User Selector</option>
+                            <option value="DEPARTMENT">Department Selector</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="mini-label">Context Key (Variable Name)</span>
+                          <input
+                            type="text"
+                            value={field.key}
+                            onChange={(e) =>
+                              modifyField(index, {
+                                key: e.target.value.replace(/[^A-Za-z0-9_]/g, "_"),
+                              })
+                            }
+                            placeholder="e.g. accessScope"
+                            className="wrike-input mt-1 w-full text-xs font-mono"
+                          />
+                        </div>
+                        <div>
+                          <span className="mini-label">Placeholder / Help Text</span>
+                          <input
+                            type="text"
+                            value={field.placeholder || ""}
+                            onChange={(e) =>
+                              modifyField(index, {
+                                placeholder: e.target.value || undefined,
+                              })
+                            }
+                            placeholder="Optional placeholder..."
+                            className="wrike-input mt-1 w-full text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(field.required)}
+                            onChange={(e) => modifyField(index, { required: e.target.checked })}
+                            className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span>Required Field</span>
+                        </label>
+                      </div>
+
+                      {(field.type === "SELECT" || field.type === "MULTI_SELECT" || field.type === "RADIO") && (
+                        <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2.5">
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-label font-bold text-slate-800">
+                              Dropdown Choices ({field.options?.length || 0})
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => addOption(index)}
+                              className="flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-caption font-bold text-emerald-700 hover:bg-emerald-100"
+                            >
+                              <Plus className="h-3 w-3" />
+                              <span>Add Option</span>
+                            </button>
+                          </div>
+                          <div className="space-y-1.5">
+                            {(field.options || []).map((option, optIdx) => (
+                              <div key={optIdx} className="flex items-center gap-1.5">
+                                <input
+                                  type="text"
+                                  value={option.label}
+                                  onChange={(e) => {
+                                    const nextLabel = e.target.value;
+                                    updateOption(index, optIdx, {
+                                      label: nextLabel,
+                                      value: option.value.startsWith("OPT_") || option.value.startsWith("VALUE_")
+                                        ? nextLabel.toUpperCase().replace(/[^A-Z0-9_]/g, "_") || option.value
+                                        : option.value,
+                                    });
+                                  }}
+                                  placeholder="Option Display Label"
+                                  className="wrike-input flex-1 text-xs py-1"
+                                />
+                                <input
+                                  type="text"
+                                  value={option.value}
+                                  onChange={(e) =>
+                                    updateOption(index, optIdx, {
+                                      value: e.target.value.replace(/[^A-Za-z0-9_]/g, "_"),
+                                    })
+                                  }
+                                  placeholder="Value"
+                                  className="wrike-input w-28 text-xs font-mono py-1"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removeOption(index, optIdx)}
+                                  className="rounded p-1 text-red-500 hover:bg-red-50"
+                                  title="Remove Option"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ))}
+                            {(!field.options || field.options.length === 0) && (
+                              <p className="text-caption text-amber-700 bg-amber-50 rounded p-1.5 font-medium">
+                                ⚠ Please add at least one choice option for this dropdown.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {showPreview && (
+        <div className="rounded-2xl border-2 border-emerald-500/40 bg-slate-50 p-4 shadow-md">
+          <div className="mb-3 flex items-center justify-between border-b border-slate-200 pb-2">
+            <div>
+              <span className="text-caption font-bold uppercase tracking-wider text-emerald-700">
+                Launch Intake Preview
+              </span>
+              <h4 className="text-sm font-bold text-slate-900">{node.title || "Ticket Request"}</h4>
+              <p className="text-label text-slate-500">{node.description || "Initial ticket intake fields"}</p>
+            </div>
+            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-caption font-bold text-emerald-800">
+              Interactive Test
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 bg-white p-3.5 rounded-xl border border-slate-200">
+            <div className="col-span-2">
+              <span className="mb-1 block text-xs font-bold text-slate-700">
+                Request Title <span className="text-red-500">*</span>
+              </span>
+              <input
+                type="text"
+                value={previewValues.summary}
+                onChange={(e) => setPreviewValues({ ...previewValues, summary: e.target.value })}
+                className="wrike-input w-full text-xs"
+              />
+            </div>
+            <div className="col-span-2">
+              <span className="mb-1 block text-xs font-bold text-slate-700">Description / Details</span>
+              <textarea
+                rows={2}
+                value={previewValues.description}
+                onChange={(e) => setPreviewValues({ ...previewValues, description: e.target.value })}
+                className="wrike-input w-full text-xs resize-y"
+              />
+            </div>
+            {customFields.map((field) => (
+              <DynamicField
+                key={field.id}
+                field={field}
+                value={previewValues[field.key]}
+                values={previewValues}
+                directory={directory}
+                currentUser={currentUser}
+                bindSessionIdentity={true}
+                required={Boolean(field.required)}
+                onChange={(val) => setPreviewValues({ ...previewValues, [field.key]: val })}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+type ConditionValueKind = "BOOLEAN" | "NUMBER" | "DATE" | "SELECT" | "USER" | "DEPARTMENT" | "GROUP" | "LIST" | "TEXT";
+type ConditionChoice = { value: string; label: string };
+type ConditionFieldChoice = {
+  id: string;
+  label: string;
+  source: "CONTEXT" | "NODE_OUTPUT";
+  path: string;
+  nodeId?: string;
+  kind: ConditionValueKind;
+  choices?: ConditionChoice[];
+};
+
+const conditionKindForFormField = (field: FormFieldDefinition): ConditionValueKind => {
+  if (field.type === "CHECKBOX") return "BOOLEAN";
+  if (["NUMBER", "MONEY"].includes(field.type)) return "NUMBER";
+  if (["DATE", "DATETIME"].includes(field.type)) return "DATE";
+  if (["SELECT", "RADIO"].includes(field.type)) return "SELECT";
+  if (field.type === "MULTI_SELECT") return "LIST";
+  if (field.type === "USER") return "USER";
+  if (field.type === "DEPARTMENT") return "DEPARTMENT";
+  if (field.type === "GROUP") return "GROUP";
+  return "TEXT";
+};
+
+const conditionKindForVariable = (type: string): ConditionValueKind => {
+  if (type === "BOOLEAN") return "BOOLEAN";
+  if (["NUMBER", "MONEY"].includes(type)) return "NUMBER";
+  if (["DATE", "DATETIME"].includes(type)) return "DATE";
+  if (type === "USER_REF") return "USER";
+  if (type === "GROUP_REF") return "GROUP";
+  if (type === "RECORD_REF") return "DEPARTMENT";
+  if (type === "LIST") return "LIST";
+  return "TEXT";
+};
+
+const conditionFieldsForWorkflow = (workflow: WorkflowVersion | null | undefined, directory: any, selectedNodeId: string): ConditionFieldChoice[] => {
+  const system: ConditionFieldChoice[] = [
+    { id: "system-requester-manager", label: "Requester · is department manager", source: "CONTEXT", path: "requesterIsDepartmentManager", kind: "BOOLEAN" },
+    { id: "system-requester-department", label: "Requester · department / branch", source: "CONTEXT", path: "departmentId", kind: "DEPARTMENT", choices: directory.departments.map((item: any) => ({ value: item.id, label: item.name })) },
+    { id: "system-requester-manager-id", label: "Requester · manager assigned", source: "CONTEXT", path: "requester.managerId", kind: "USER", choices: directory.users.map((item: any) => ({ value: item.id, label: item.fullName })) },
+    { id: "system-requester-role", label: "Requester · role", source: "CONTEXT", path: "requester.roles", kind: "LIST", choices: directory.roles.map((role: string) => ({ value: role, label: role.replaceAll("_", " ") })) },
+    { id: "system-requester-group", label: "Requester · group / team", source: "CONTEXT", path: "requester.groups", kind: "LIST", choices: directory.groups.map((item: any) => ({ value: item.id, label: item.name })) },
+    { id: "system-current-assignee", label: "Workflow · current assignee", source: "CONTEXT", path: "currentAssigneeId", kind: "USER", choices: directory.users.map((item: any) => ({ value: item.id, label: item.fullName })) },
+  ];
+  if (!workflow) return system;
+  const variables: ConditionFieldChoice[] = workflow.variables.map((variable) => ({ id: `variable-${variable.key}`, label: `Workflow variable · ${variable.key}`, source: "CONTEXT", path: variable.key, kind: conditionKindForVariable(variable.type) }));
+  const intakeFields: ConditionFieldChoice[] = workflow.nodes.flatMap((workflowNode) => (workflowNode.inputConfig?.fields || []).map((field) => ({
+    id: `field-${workflowNode.id}-${field.key}`,
+    label: `Request form · ${field.label}`,
+    source: "CONTEXT" as const,
+    path: field.key,
+    kind: conditionKindForFormField(field),
+    choices: field.options?.map((option) => ({ value: option.value, label: option.label })),
+  })));
+  const upstreamNodeIds = new Set<string>();
+  const pendingNodeIds = [selectedNodeId];
+  while (pendingNodeIds.length) {
+    const destinationNodeId = pendingNodeIds.pop()!;
+    for (const edge of workflow.edges.filter((candidate) => candidate.destinationNodeId === destinationNodeId)) {
+      if (!upstreamNodeIds.has(edge.sourceNodeId)) {
+        upstreamNodeIds.add(edge.sourceNodeId);
+        pendingNodeIds.push(edge.sourceNodeId);
+      }
+    }
+  }
+  const outputs: ConditionFieldChoice[] = workflow.nodes
+    .filter((workflowNode) => upstreamNodeIds.has(workflowNode.id))
+    .flatMap((workflowNode) => (workflowNode.outputSchema || []).map((output) => ({
+      id: `output-${workflowNode.id}-${output.key}`,
+      label: `Node output · ${workflowNode.title} · ${output.key}`,
+      source: "NODE_OUTPUT" as const,
+      nodeId: workflowNode.id,
+      path: output.key,
+      kind: conditionKindForVariable(output.type),
+    })));
+  return [...system, ...variables, ...intakeFields, ...outputs]
+    .filter((item, index, all) => all.findIndex((candidate) => candidate.source === item.source && candidate.path === item.path && candidate.nodeId === item.nodeId) === index);
+};
+
+const conditionOperatorsFor = (kind: ConditionValueKind) => {
+  const common = [{ value: "EXISTS", label: "is filled" }, { value: "NOT_EXISTS", label: "is empty" }];
+  if (kind === "BOOLEAN") return [{ value: "IS_TRUE", label: "is Yes" }, { value: "IS_FALSE", label: "is No" }];
+  if (kind === "LIST") return [{ value: "CONTAINS", label: "contains" }, { value: "NOT_CONTAINS", label: "does not contain" }, ...common];
+  if (kind === "NUMBER" || kind === "DATE") return [{ value: "EQUALS", label: "equals" }, { value: "NOT_EQUALS", label: "does not equal" }, { value: "GREATER_THAN", label: "is greater than" }, { value: "LESS_THAN", label: "is less than" }, ...common];
+  return [{ value: "EQUALS", label: "equals" }, { value: "NOT_EQUALS", label: "does not equal" }, ...common];
+};
+
+const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRemove, currentUser }: any) => {
+  if (isFixedEndpoint(node)) {
+    return (
+      <div>
+        <div className="mb-3 flex items-center gap-2 text-semantic-success">
+          <LockKeyhole className="h-4 w-4" />
+          <span className="text-caption font-bold uppercase tracking-wider">Fixed endpoint</span>
+        </div>
+        <h3 className="text-sm font-bold">{node.type === "START" ? "Start" : "Complete"}</h3>
+        <p className="mt-2 text-xs leading-5 text-slate-500">
+          This default node marks where the workflow begins or completes. It is protected from deletion and duplication, but you can move it and connect it on the canvas.
+        </p>
+      </div>
+    );
+  }
+  const isHumanNode = ["TASK", "INFORMATION_REQUEST"].includes(node.type);
+  const departmentUsers = directory.users.filter((user: any) => !node.assignment?.departmentId || user.departmentId === node.assignment.departmentId);
+  const approvalDepartmentUsers = directory.users.filter((user: any) => !node.approval?.departmentId || user.departmentId === node.approval.departmentId);
+  const departmentOptions: SelectOption[] = [
+    {
+      value: "",
+      label: "All departments / branches",
+      sublabel: "Clear the selected department / branch",
+      badge: "ALL",
+    },
+    ...directory.departments.map((department: any) => ({
+      value: department.id,
+      label: department.name,
+      sublabel: department.code ? `Department / branch · ${department.code}` : "Department / branch",
+      badge: department.code,
+    })),
+  ];
+  const employeeOptions: SelectOption[] = departmentUsers.map((user: any) => ({
+    value: user.id,
+    label: user.fullName,
+    sublabel: [user.title, user.departmentId].filter(Boolean).join(" · "),
+    badge: user.roles?.[0]?.replaceAll("_", " "),
+  }));
+  const approvalUserOptions: SelectOption[] = approvalDepartmentUsers.map((user: any) => ({
+    value: user.id,
+    label: user.fullName,
+    sublabel: [user.title, user.departmentId].filter(Boolean).join(" · "),
+    badge: user.roles?.[0]?.replaceAll("_", " "),
+  }));
+  const rawCondition = node.condition?.clauses?.[0] && !("clauses" in node.condition.clauses[0]) ? node.condition.clauses[0] : undefined;
+  const conditionFields = conditionFieldsForWorkflow(workflow, directory, node.id);
+  const conditionField: ConditionFieldChoice | undefined = conditionFields.find((field) => field.source === rawCondition?.left?.source && field.path === rawCondition?.left?.path && field.nodeId === rawCondition?.left?.nodeId)
+    || (rawCondition?.left?.path ? { id: `legacy-${rawCondition.left.path}`, label: `Saved variable · ${rawCondition.left.path}`, source: rawCondition.left.source === "NODE_OUTPUT" ? "NODE_OUTPUT" : "CONTEXT", path: rawCondition.left.path, nodeId: rawCondition.left.nodeId, kind: "TEXT" as const } : undefined)
+    || conditionFields[0];
+  const conditionOperators = conditionField ? conditionOperatorsFor(conditionField.kind) : [];
+  const selectedOperator = conditionOperators.some((item) => item.value === rawCondition?.operator) ? rawCondition!.operator : conditionOperators[0]?.value || "EQUALS";
+  const requiresLiteral = !["EXISTS", "NOT_EXISTS", "IS_TRUE", "IS_FALSE"].includes(selectedOperator);
+  const rawLiteral = rawCondition?.right?.source === "LITERAL" ? rawCondition.right.value : "";
+  const literalChoices = conditionField?.choices || [];
+  const conditionFieldOptions: SelectOption[] = conditionFields.map((field) => {
+    const isWorkflowVariable = field.label.startsWith("Workflow variable ·");
+    return {
+      value: field.id,
+      label: field.label,
+      sublabel: field.source === "NODE_OUTPUT"
+        ? "Completed upstream node output"
+        : isWorkflowVariable
+          ? "Workflow variable available at runtime"
+          : "Requester or current workflow context",
+      badge: field.source === "NODE_OUTPUT" ? "OUTPUT" : isWorkflowVariable ? "VARIABLE" : "CONTEXT",
+    };
+  });
+  const conditionOperatorOptions: SelectOption[] = conditionOperators.map((operator) => ({
+    value: operator.value,
+    label: operator.label,
+    sublabel: `For ${conditionField?.kind?.toLowerCase() || "this"} values`,
+  }));
+  const conditionLiteralOptions: SelectOption[] = [
+    ...(!literalChoices.some((choice) => choice.value === rawLiteral) && rawLiteral !== ""
+      ? [{ value: String(rawLiteral), label: String(rawLiteral), sublabel: "Saved value" }]
+      : []),
+    ...literalChoices.map((choice) => ({ value: choice.value, label: choice.label })),
+  ];
+  const updateCondition = (field: ConditionFieldChoice | undefined, operator = selectedOperator, literal: unknown = rawLiteral) => {
+    if (!field) return;
+    const needsLiteral = !["EXISTS", "NOT_EXISTS", "IS_TRUE", "IS_FALSE"].includes(operator);
+    onChange({
+      condition: {
+        combinator: "ALL",
+        clauses: [{
+          left: { source: field.source, path: field.path, ...(field.nodeId ? { nodeId: field.nodeId } : {}) },
+          operator,
+          ...(needsLiteral ? { right: { source: "LITERAL", value: literal } } : {}),
+        }],
+      },
+    });
+  };
+  return (
   <div>
     <div className="mb-4 flex items-center justify-between">
       <div>
-        <div className="text-[10px] font-bold uppercase tracking-wider text-[#007860]">
+        <div className="text-caption font-bold uppercase tracking-wider text-semantic-success">
           {node.type.replaceAll("_", " ")}
         </div>
         <h3 className="text-sm font-bold">Node configuration</h3>
@@ -2356,90 +3814,145 @@ const NodeInspector = ({ node, onChange, onDuplicate, onRemove }: any) => (
         className="wrike-input mt-1 w-full resize-y"
       />
     </label>
-    {["TASK", "INFORMATION_REQUEST"].includes(node.type) && (
+    {["INPUT", "TICKET_INPUT"].includes(node.type) && (
+      <InputNodeFormEditor
+        node={node}
+        onChange={onChange}
+        directory={directory}
+        currentUser={currentUser}
+      />
+    )}
+    {isHumanNode && (
       <>
         <label className="mb-3 block">
-          <span className="mini-label">Assignment strategy</span>
-          <select
-            value={node.assignment?.strategy || "UNASSIGNED_TEAM_QUEUE"}
-            onChange={(event) =>
+          <span className="mini-label">Department / branch</span>
+          <CustomSelect
+            id={`workflow-node-department-${node.id}`}
+            value={node.assignment?.departmentId || ""}
+            onChange={(departmentId) =>
               onChange({
                 assignment: {
                   ...(node.assignment || {}),
-                  strategy: event.target.value,
+                  departmentId: departmentId || undefined,
+                  assigneeId: undefined,
                 },
               })
             }
-            className="wrike-input mt-1 w-full"
-          >
-            <option value="UNASSIGNED_TEAM_QUEUE">Unassigned team queue</option>
-            <option value="ROLE_BASED">Role based</option>
-            <option value="REQUESTER_MANAGER">Requester manager</option>
-            <option value="EMPLOYEE_MANAGER">Employee manager</option>
-            <option value="DEPARTMENT_OWNER">Department owner</option>
-            <option value="SERVICE_OWNER">Service owner</option>
-            <option value="APPLICATION_OWNER">Application owner</option>
-            <option value="CI_OWNER">Configuration item owner</option>
-            <option value="FIXED_GROUP">Fixed group</option>
-            <option value="FIXED_PERSON">Fixed person</option>
-            <option value="SKILL_BASED">Skill based</option>
-            <option value="ROUND_ROBIN">Round robin</option>
-            <option value="LOWEST_WORKLOAD">Lowest workload</option>
-            <option value="ON_CALL">On-call roster</option>
-            <option value="RULE_ENGINE">Rule engine</option>
-          </select>
-        </label>
-        <label className="mb-3 block">
-          <span className="mini-label">Assignment group ID</span>
-          <input
-            value={node.assignment?.groupId || ""}
-            onChange={(event) =>
-              onChange({
-                assignment: {
-                  ...(node.assignment || {}),
-                  groupId: event.target.value,
-                },
-              })
-            }
-            className="wrike-input mt-1 w-full"
-            placeholder="team-it-infra"
+            options={departmentOptions}
+            placeholder="Select department / branch…"
+            searchPlaceholder="Search department or branch…"
+            className="mt-1"
           />
         </label>
+        <label className="mb-3 block">
+          <span className="mini-label">Assign type</span>
+          <select
+            value={node.assignment?.strategy || "UNASSIGNED_TEAM_QUEUE"}
+            onChange={(event) => onChange({ assignment: { ...(node.assignment || {}), strategy: event.target.value, assigneeId: undefined } })}
+            className="wrike-input mt-1 w-full"
+          >
+            <option value="DEPARTMENT_OWNER">Department / branch manager</option>
+            <option value="FIXED_PERSON">Specific department employee</option>
+            <option value="UNASSIGNED_TEAM_QUEUE">Anyone in this department / branch</option>
+          </select>
+        </label>
+        {node.assignment?.strategy === "FIXED_PERSON" && (
+          <label className="mb-3 block">
+            <span className="mini-label">Department employee</span>
+            <CustomSelect
+              id={`workflow-node-employee-${node.id}`}
+              value={node.assignment?.assigneeId || ""}
+              onChange={(assigneeId) => onChange({ assignment: { ...(node.assignment || {}), assigneeId: assigneeId || undefined } })}
+              options={employeeOptions}
+              placeholder={node.assignment?.departmentId ? "Select employee…" : "Select a department first…"}
+              searchPlaceholder="Search employee, title or role…"
+              disabled={!node.assignment?.departmentId}
+              className="mt-1"
+            />
+          </label>
+        )}
+        <div className={`mb-3 rounded-lg border p-3 text-label leading-4 ${node.type === "TASK" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-teal-200 bg-teal-50 text-teal-900"}`}>
+          {node.type === "TASK"
+            ? "The assigned person confirms this task through a “I confirm” dialog; that decision is recorded in the workflow audit trail."
+            : "Information request creates a persisted, authorized response work item. The workflow pauses until the recipient submits the requested information."}
+        </div>
       </>
     )}
     {node.type === "APPROVAL" && (
       <>
         <label className="mb-3 block">
-          <span className="mini-label">Approver source</span>
+          <span className="mini-label">Department / branch</span>
+          <CustomSelect
+            id={`workflow-approval-department-${node.id}`}
+            value={node.approval?.departmentId || ""}
+            onChange={(departmentId) =>
+              onChange({
+                approval: {
+                  ...node.approval,
+                  departmentId: departmentId || undefined,
+                  specificUserIds: undefined,
+                },
+              })
+            }
+            options={departmentOptions}
+            placeholder="Requester’s department / branch"
+            searchPlaceholder="Search department or branch…"
+            className="mt-1"
+          />
+        </label>
+        <label className="mb-3 block">
+          <span className="mini-label">Assign approval to</span>
           <select
-            value={node.approval?.approverSource || "ROLE"}
+            value={node.approval?.approverSource || "DEPARTMENT_MEMBERS"}
             onChange={(event) =>
               onChange({
                 approval: {
                   ...node.approval,
                   approverSource: event.target.value,
+                  specificUserIds: undefined,
+                  role: undefined,
                 },
               })
             }
             className="wrike-input mt-1 w-full"
           >
-            {[
-              "SPECIFIC_USER",
-              "ROLE",
-              "REQUESTER_MANAGER",
-              "MANAGERS_MANAGER",
-              "DEPARTMENT_HEAD",
-              "SERVICE_OWNER",
-              "APPLICATION_OWNER",
-              "ASSET_OWNER",
-              "CI_OWNER",
-              "CAB_BOARD",
-              "DYNAMIC_EXPRESSION",
-            ].map((value) => (
-              <option key={value}>{value}</option>
-            ))}
+            <option value="DEPARTMENT_MEMBERS">Anyone in department / branch</option>
+            <option value="DEPARTMENT_HEAD">Department / branch head</option>
+            <option value="SPECIFIC_USER">Specific user</option>
+            {node.approval?.approverSource && !["DEPARTMENT_MEMBERS", "DEPARTMENT_HEAD", "SPECIFIC_USER"].includes(node.approval.approverSource) && (
+              <option value={node.approval.approverSource}>{node.approval.approverSource.replaceAll("_", " ")} (legacy)</option>
+            )}
           </select>
         </label>
+        {node.approval?.approverSource === "SPECIFIC_USER" && (
+          <label className="mb-3 block">
+            <span className="mini-label">Specific user</span>
+            <CustomSelect
+              id={`workflow-approval-user-${node.id}`}
+              value={node.approval?.specificUserIds?.[0] || ""}
+              onChange={(assigneeId) => onChange({ approval: { ...node.approval, specificUserIds: assigneeId ? [assigneeId] : [] } })}
+              options={approvalUserOptions}
+              placeholder={node.approval?.departmentId ? "Select user in this department…" : "Select user…"}
+              searchPlaceholder="Search user, title or role…"
+              className="mt-1"
+            />
+          </label>
+        )}
+        {node.approval?.approverSource === "ROLE" && (
+          <label className="mb-3 block">
+            <span className="mini-label">LDAP-derived approver role</span>
+            <select value={node.approval?.role || ""} onChange={(event) => onChange({ approval: { ...node.approval, role: event.target.value || undefined } })} className="wrike-input mt-1 w-full">
+              <option value="">Select role…</option>
+              {directory.roles.map((role: string) => <option key={role} value={role}>{role.replaceAll("_", " ")}</option>)}
+            </select>
+          </label>
+        )}
+        {node.approval?.approverSource === "DYNAMIC_EXPRESSION" && (
+          <label className="mb-3 block">
+            <span className="mini-label">Context user path</span>
+            <input value={node.approval?.dynamicPath || ""} onChange={(event) => onChange({ approval: { ...node.approval, dynamicPath: event.target.value } })} className="wrike-input mt-1 w-full" placeholder="currentAssigneeId" />
+          </label>
+        )}
         <label className="mb-3 block">
           <span className="mini-label">Approval strategy</span>
           <select
@@ -2462,39 +3975,21 @@ const NodeInspector = ({ node, onChange, onDuplicate, onRemove }: any) => (
             <option>PARALLEL</option>
           </select>
         </label>
-        <label className="mb-3 block">
-          <span className="mini-label">Timeout (minutes)</span>
-          <input
-            type="number"
-            value={node.approval?.timeoutMinutes || ""}
-            onChange={(event) =>
-              onChange({
-                approval: {
-                  ...node.approval,
-                  timeoutMinutes: Number(event.target.value),
-                },
-              })
-            }
-            className="wrike-input mt-1 w-full"
-          />
-        </label>
-        <label className="mb-3 block">
-          <span className="mini-label">Reminder interval (minutes)</span>
-          <input
-            type="number"
-            value={node.approval?.reminderMinutes || ""}
-            onChange={(event) =>
-              onChange({
-                approval: {
-                  ...node.approval,
-                  reminderMinutes: Number(event.target.value),
-                },
-              })
-            }
-            className="wrike-input mt-1 w-full"
-          />
-        </label>
-        <div className="mb-3 grid grid-cols-2 gap-2 text-[11px] font-semibold text-slate-600">
+        <DurationField
+          label="Approval timeout"
+          value={node.approval?.timeoutMinutes}
+          onChange={(timeoutMinutes) =>
+            onChange({ approval: { ...node.approval, timeoutMinutes } })
+          }
+        />
+        <DurationField
+          label="Reminder interval"
+          value={node.approval?.reminderMinutes}
+          onChange={(reminderMinutes) =>
+            onChange({ approval: { ...node.approval, reminderMinutes } })
+          }
+        />
+        <div className="mb-3 grid grid-cols-2 gap-2 text-label font-semibold text-slate-600">
           {[
             ["commentsMandatoryOnReject", "Reject comment"],
             ["allowDelegation", "Delegation"],
@@ -2536,25 +4031,19 @@ const NodeInspector = ({ node, onChange, onDuplicate, onRemove }: any) => (
             <option>NEXT_BUSINESS_TIME</option>
           </select>
         </label>
-        <label className="mb-3 block">
-          <span className="mini-label">Duration / offset (minutes)</span>
-          <input
-            type="number"
-            value={
-              node.timer?.durationMinutes ?? node.timer?.offsetMinutes ?? ""
-            }
-            onChange={(event) =>
-              onChange({
-                timer: {
-                  ...node.timer,
-                  durationMinutes: Number(event.target.value),
-                  offsetMinutes: Number(event.target.value),
-                },
-              })
-            }
-            className="wrike-input mt-1 w-full"
-          />
-        </label>
+        <DurationField
+          label="Duration / offset"
+          value={node.timer?.durationMinutes ?? node.timer?.offsetMinutes}
+          onChange={(minutes) =>
+            onChange({
+              timer: {
+                ...node.timer,
+                durationMinutes: minutes,
+                offsetMinutes: minutes,
+              },
+            })
+          }
+        />
         {node.timer?.mode === "CONTEXT_DATE_RELATIVE" && (
           <label className="mb-3 block">
             <span className="mini-label">Context date path</span>
@@ -2577,37 +4066,19 @@ const NodeInspector = ({ node, onChange, onDuplicate, onRemove }: any) => (
         <label className="mb-3 block">
           <span className="mini-label">Join strategy</span>
           <select
-            value={node.join?.strategy || "ALL"}
+            value={node.join?.strategy === "ANY" ? "ANY" : "ALL"}
             onChange={(event) =>
-              onChange({ join: { ...node.join, strategy: event.target.value } })
+              onChange({ join: { strategy: event.target.value } })
             }
             className="wrike-input mt-1 w-full"
           >
-            <option>ALL</option>
-            <option>ANY</option>
-            <option>QUORUM</option>
-            <option>N_OF_M</option>
+            <option value="ALL">ALL — AND: bütün qollar tamamlanmalıdır</option>
+            <option value="ANY">ANY — OR: istənilən bir qol kifayətdir</option>
           </select>
         </label>
-        {["QUORUM", "N_OF_M"].includes(node.join?.strategy) && (
-          <label className="mb-3 block">
-            <span className="mini-label">Required branches</span>
-            <input
-              type="number"
-              min="1"
-              value={node.join?.requiredCount || ""}
-              onChange={(event) =>
-                onChange({
-                  join: {
-                    ...node.join,
-                    requiredCount: Number(event.target.value),
-                  },
-                })
-              }
-              className="wrike-input mt-1 w-full"
-            />
-          </label>
-        )}
+        <p className="-mt-1 mb-3 text-label leading-4 text-slate-500">
+          ALL növbəti node-a AND məntiqi ilə, ANY isə OR məntiqi ilə keçir.
+        </p>
       </>
     )}
     {[
@@ -2669,96 +4140,75 @@ const NodeInspector = ({ node, onChange, onDuplicate, onRemove }: any) => (
     )}
     {node.type === "CONDITION" && (
       <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-        <div className="mini-label mb-2">Safe condition builder</div>
-        <div className="grid gap-2">
-          <input
-            value={node.condition?.clauses?.[0]?.left?.path || ""}
-            onChange={(event) =>
-              onChange({
-                condition: {
-                  combinator: "ALL",
-                  clauses: [
-                    {
-                      left: { source: "CONTEXT", path: event.target.value },
-                      operator:
-                        node.condition?.clauses?.[0]?.operator || "EQUALS",
-                      right: node.condition?.clauses?.[0]?.right || {
-                        source: "LITERAL",
-                        value: "",
-                      },
-                    },
-                  ],
-                },
-              })
-            }
-            className="wrike-input"
-            placeholder="Context path, e.g. risk"
-          />
-          <select
-            value={node.condition?.clauses?.[0]?.operator || "EQUALS"}
-            onChange={(event) =>
-              onChange({
-                condition: {
-                  combinator: "ALL",
-                  clauses: [
-                    {
-                      ...(node.condition?.clauses?.[0] || {
-                        left: { source: "CONTEXT", path: "" },
-                      }),
-                      operator: event.target.value,
-                      right: node.condition?.clauses?.[0]?.right || {
-                        source: "LITERAL",
-                        value: "",
-                      },
-                    },
-                  ],
-                },
-              })
-            }
-            className="wrike-input"
-          >
-            <option>EQUALS</option>
-            <option>NOT_EQUALS</option>
-            <option>IN</option>
-            <option>CONTAINS</option>
-            <option>EXISTS</option>
-            <option>GREATER_THAN</option>
-            <option>LESS_THAN</option>
-          </select>
-          <input
-            value={String(node.condition?.clauses?.[0]?.right?.value ?? "")}
-            onChange={(event) =>
-              onChange({
-                condition: {
-                  combinator: "ALL",
-                  clauses: [
-                    {
-                      ...(node.condition?.clauses?.[0] || {
-                        left: { source: "CONTEXT", path: "" },
-                        operator: "EQUALS",
-                      }),
-                      right: { source: "LITERAL", value: event.target.value },
-                    },
-                  ],
-                },
-              })
-            }
-            className="wrike-input"
-            placeholder="Comparison value"
-          />
+        <div className="mini-label mb-1">Decision rule</div>
+        <p className="mb-3 text-caption leading-4 text-slate-500">Choose data that exists at runtime. The server evaluates this rule; the canvas only displays the saved decision.</p>
+        <div className="grid gap-3">
+          <label>
+            <span className="mini-label">1. Check this data</span>
+            <CustomSelect
+              id={`condition-field-${node.id}`}
+              value={conditionField?.id || ""}
+              onChange={(fieldId) => {
+              const nextField = conditionFields.find((field) => field.id === fieldId);
+              const nextOperator = nextField ? conditionOperatorsFor(nextField.kind)[0]?.value || "EQUALS" : "EQUALS";
+              updateCondition(nextField, nextOperator, nextField?.choices?.[0]?.value || "");
+              }}
+              options={conditionFieldOptions}
+              placeholder="Select workflow data…"
+              searchPlaceholder="Search requester, form field or output…"
+              className="mt-1"
+            />
+          </label>
+          <label>
+            <span className="mini-label">2. Apply this rule</span>
+            <CustomSelect
+              id={`condition-operator-${node.id}`}
+              value={selectedOperator}
+              onChange={(operator) => updateCondition(conditionField, operator, literalChoices.some((choice) => choice.value === rawLiteral) ? rawLiteral : literalChoices[0]?.value || "")}
+              options={conditionOperatorOptions}
+              searchable={false}
+              className="mt-1"
+            />
+          </label>
+          {requiresLiteral && (literalChoices.length ? (
+            <label>
+              <span className="mini-label">3. Compare with</span>
+              <CustomSelect
+                id={`condition-value-${node.id}`}
+                value={String(rawLiteral ?? "")}
+                onChange={(literal) => updateCondition(conditionField, selectedOperator, literal)}
+                options={conditionLiteralOptions}
+                placeholder="Select a permitted value…"
+                searchable={literalChoices.length > 7}
+                searchPlaceholder="Search permitted values…"
+                className="mt-1"
+              />
+            </label>
+          ) : (
+            <label>
+              <span className="mini-label">3. Compare with</span>
+              <input type={conditionField?.kind === "NUMBER" ? "number" : conditionField?.kind === "DATE" ? "date" : "text"} value={String(rawLiteral ?? "")} onChange={(event) => updateCondition(conditionField, selectedOperator, conditionField?.kind === "NUMBER" && event.target.value !== "" ? Number(event.target.value) : event.target.value)} className="wrike-input mt-1 w-full" placeholder={conditionField?.kind === "TEXT" ? "Enter the text to compare" : "Enter comparison value"} />
+            </label>
+          ))}
         </div>
+        <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-2 text-caption leading-4 text-blue-800">Connect each path from its own port: <strong className="text-emerald-700">Yes</strong> (green, top) and <strong className="text-amber-700">No</strong> (amber, bottom). Only one of these branches runs.</div>
       </div>
     )}
-    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-500">
+    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-label text-slate-500">
       Node ID: <code>{node.id}</code>
       <br />
-      Select the connection handle, then another node, to create a semantic
-      edge.
+      For decisions, drag from the labeled Yes or No port, then choose the next
+      node. The branch outcome is saved with the edge.
     </div>
   </div>
 );
+};
 
-const RuntimeView = ({ instances, execution, onOpen, onComplete, onRetry }: any) => (
+const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDecision, onRetry, onComment }: any) => {
+  const [comment, setComment] = useState("");
+  const [confirmationItem, setConfirmationItem] = useState<any>(null);
+  const [informationResponse, setInformationResponse] = useState("");
+  return (
   <div className="flex min-h-0 flex-1">
     <aside className="w-80 shrink-0 overflow-y-auto border-r border-slate-200 bg-white p-4">
       <h2 className="mb-3 text-sm font-bold">Workflow executions</h2>
@@ -2767,7 +4217,7 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onRetry }: any)
           <button
             key={instance.id}
             onClick={() => onOpen(instance.id)}
-            className={`w-full rounded-xl border p-3 text-left ${execution?.instance?.id === instance.id ? "border-[#00B259] bg-emerald-50" : "border-slate-200 hover:bg-slate-50"}`}
+            className={`w-full rounded-xl border p-3 text-left ${execution?.instance?.id === instance.id ? "border-semantic-brand bg-emerald-50" : "border-slate-200 hover:bg-slate-50"}`}
           >
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-blue-700">
@@ -2778,7 +4228,7 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onRetry }: any)
             <div className="mt-1 truncate text-sm font-semibold">
               {instance.title}
             </div>
-            <div className="mt-1 text-[10px] uppercase text-slate-400">
+            <div className="mt-1 text-caption uppercase text-slate-400">
               {instance.domain.replaceAll("_", " ")} · Workflow v
               {instance.workflowVersion}
             </div>
@@ -2805,11 +4255,7 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onRetry }: any)
             </div>
             <StatusPill status={execution.instance.status} />
           </div>
-          <div className="mb-6 grid grid-cols-5 gap-3">
-            <RuntimeMetric
-              label="Current stage"
-              value={execution.currentStage?.title || "Complete"}
-            />
+          <div className="mb-6 grid grid-cols-4 gap-3">
             <RuntimeMetric
               label="Progress"
               value={`${execution.progress.completed} / ${execution.progress.total}`}
@@ -2841,38 +4287,61 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onRetry }: any)
           </div>
           <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
             <section className="rounded-2xl border border-slate-200 bg-white p-5">
-              <h3 className="mb-4 text-sm font-bold">Stage timeline</h3>
-              <div className="space-y-1">
-                {execution.stages.map((stage: any, index: number) => (
-                  <div
-                    key={stage.id}
-                    className={`rounded-xl border p-3 ${stage.status === "CURRENT" ? "border-blue-200 bg-blue-50" : stage.status === "COMPLETED" ? "border-emerald-200 bg-emerald-50" : "border-slate-200"}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`flex h-7 w-7 items-center justify-center rounded-full ${stage.status === "COMPLETED" ? "bg-emerald-600 text-white" : stage.status === "CURRENT" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"}`}
-                      >
-                        {stage.status === "COMPLETED" ? (
-                          <Check className="h-4 w-4" />
-                        ) : (
-                          index + 1
-                        )}
-                      </span>
-                      <div className="flex-1">
-                        <div className="text-sm font-bold">{stage.title}</div>
-                        <div className="text-xs text-slate-500">
-                          {stage.progressLabel}
-                        </div>
-                      </div>
-                      {stage.status === "CURRENT" && (
-                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
-                          Current
-                        </span>
-                      )}
+              <h3 className="mb-3 text-sm font-bold">Workflow progress</h3>
+              <div className="rounded-xl bg-slate-50 p-4">
+                <div className="flex items-end justify-between gap-4">
+                  <div>
+                    <div className="text-2xl font-bold text-slate-900">
+                      {execution.progress.completed} / {execution.progress.total}
                     </div>
+                    <div className="mt-1 text-xs text-slate-500">Activities completed</div>
                   </div>
-                ))}
+                  <StatusPill status={execution.instance.status} />
+                </div>
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className="h-full rounded-full bg-emerald-500 transition-all"
+                    style={{ width: `${execution.progress.total ? Math.round((execution.progress.completed / execution.progress.total) * 100) : 0}%` }}
+                  />
+                </div>
               </div>
+
+              {execution.instance?.context && Object.keys(execution.instance.context).length > 0 && (
+                <div className="mt-4 border-t border-slate-100 pt-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <ClipboardEdit className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>Ticket Intake Data</span>
+                    </h4>
+                    <span className="text-caption text-slate-400 font-semibold">
+                      Validated Launch Parameters
+                    </span>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2 rounded-xl bg-slate-50 p-3 text-xs">
+                    {Object.entries(execution.instance.context).map(([key, value]) => {
+                      if (["currentStageId", "activeNodeIds"].includes(key)) return null;
+                      return (
+                        <div key={key} className="rounded-lg bg-white p-2 border border-slate-200/70">
+                          <span className="text-caption font-bold text-slate-500 capitalize">
+                            {key.replace(/([A-Z])/g, " $1").replaceAll("_", " ")}
+                          </span>
+                          <div className="mt-0.5 truncate font-semibold text-slate-800">
+                            {typeof value === "boolean" ? (
+                              <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-caption font-bold ${value ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>
+                                {value ? "Yes / Confirmed" : "No"}
+                              </span>
+                            ) : typeof value === "object" && value !== null ? (
+                              JSON.stringify(value)
+                            ) : (
+                              String(value || "—")
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </section>
             <aside className="space-y-4">
               <section className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -2883,8 +4352,9 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onRetry }: any)
                       (item: any) =>
                         !["COMPLETED", "CANCELLED"].includes(item.status),
                     )
-                    .map((item: any) => (
-                      <div
+                    .map((item: any) => {
+                      const isInformationRequest = execution.nodes.some((node: any) => node.id === item.nodeInstanceId && node.nodeType === "INFORMATION_REQUEST");
+                      return <div
                         key={item.id}
                         className="rounded-xl border border-slate-200 p-3"
                       >
@@ -2894,18 +4364,21 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onRetry }: any)
                         <div className="mt-1 text-sm font-semibold">
                           {item.title}
                         </div>
-                        <div className="mt-1 text-[10px] text-slate-500">
+                        <div className="mt-1 text-caption text-slate-500">
                           {item.assignmentGroupId || "Workflow owner queue"} ·{" "}
                           {item.status}
                         </div>
+                        {item.status !== "IN_PROGRESS" && (
+                          <button onClick={() => onClaim(item.id)} className="wrike-btn-secondary mt-3 w-full py-1.5 text-xs">Claim work</button>
+                        )}
                         <button
-                          onClick={() => onComplete(item.id)}
-                          className="wrike-btn-primary mt-3 w-full py-1.5 text-xs"
+                          onClick={() => { setInformationResponse(""); setConfirmationItem({ ...item, isInformationRequest }); }}
+                          className="wrike-btn-primary mt-2 w-full py-1.5 text-xs"
                         >
-                          Mark complete
+                          {isInformationRequest ? "Provide response" : "I confirm"}
                         </button>
-                      </div>
-                    ))}
+                      </div>;
+                    })}
                   {!execution.workItems.some(
                     (item: any) =>
                       !["COMPLETED", "CANCELLED"].includes(item.status),
@@ -2916,11 +4389,32 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onRetry }: any)
                   )}
                 </div>
               </section>
-              {execution.deadLetters?.some((entry: any) => entry.status !== "RESOLVED") && <section className="rounded-2xl border border-red-200 bg-red-50 p-4"><h3 className="mb-3 text-sm font-bold text-red-800">Failed automation recovery</h3><div className="space-y-2">{execution.deadLetters.filter((entry: any) => entry.status !== "RESOLVED").map((entry: any) => <div key={entry.id} className="rounded-xl border border-red-200 bg-white p-3"><div className="text-xs font-bold">{entry.actionKey}</div><div className="mt-1 line-clamp-2 text-[10px] text-red-700">{entry.error}</div><button onClick={() => onRetry(entry.id)} className="wrike-btn-secondary mt-2 w-full py-1.5 text-xs">Requeue safely</button></div>)}</div></section>}
+              {execution.approvals?.filter((chain: any) => chain.status === "PENDING").length > 0 && (
+                <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <h3 className="mb-3 text-sm font-bold text-amber-900">Pending approvals</h3>
+                  <div className="space-y-3">
+                    {execution.approvals.filter((chain: any) => chain.status === "PENDING").map((chain: any) => (
+                      <div key={chain.id} className="rounded-xl border border-amber-200 bg-white p-3">
+                        <div className="text-xs font-bold">{chain.title}</div>
+                        {chain.steps.filter((step: any) => step.status === "PENDING").map((step: any) => (
+                          <div key={step.id} className="mt-2 rounded-lg bg-slate-50 p-2">
+                            <div className="text-caption text-slate-600">{step.assignedApproverName || step.requiredRole || "Eligible approval queue"}</div>
+                            <div className="mt-2 flex gap-2">
+                              <button onClick={() => onDecision(chain.id, step.id, "APPROVED")} className="flex-1 rounded bg-emerald-600 px-2 py-1.5 text-caption font-bold text-white">Approve</button>
+                              <button onClick={() => onDecision(chain.id, step.id, "REJECTED")} className="flex-1 rounded bg-red-600 px-2 py-1.5 text-caption font-bold text-white">Reject + comment</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+              {execution.deadLetters?.some((entry: any) => entry.status !== "RESOLVED") && <section className="rounded-2xl border border-red-200 bg-red-50 p-4"><h3 className="mb-3 text-sm font-bold text-red-800">Failed automation recovery</h3><div className="space-y-2">{execution.deadLetters.filter((entry: any) => entry.status !== "RESOLVED").map((entry: any) => <div key={entry.id} className="rounded-xl border border-red-200 bg-white p-3"><div className="text-xs font-bold">{entry.actionKey}</div><div className="mt-1 line-clamp-2 text-caption text-red-700">{entry.error}</div><button onClick={() => onRetry(entry.id)} className="wrike-btn-secondary mt-2 w-full py-1.5 text-xs">Requeue safely</button></div>)}</div></section>}
               <section className="rounded-2xl border border-slate-200 bg-white p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-sm font-bold">Governed lifecycle</h3>
-                  <span className="text-[10px] font-bold text-slate-400">
+                  <span className="text-caption font-bold text-slate-400">
                     {execution.notifications?.length || 0} notices
                   </span>
                 </div>
@@ -2930,11 +4424,11 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onRetry }: any)
                       key={clock.id}
                       className="rounded-lg border border-slate-200 p-2"
                     >
-                      <div className="flex items-center justify-between text-[11px] font-bold">
+                      <div className="flex items-center justify-between text-label font-bold">
                         <span>{clock.label}</span>
                         <StatusPill status={clock.status} />
                       </div>
-                      <div className="mt-1 text-[10px] text-slate-500">
+                      <div className="mt-1 text-caption text-slate-500">
                         Target {new Date(clock.targetAt).toLocaleString()} ·{" "}
                         {clock.elapsedMinutes}/{clock.targetMinutes}m
                       </div>
@@ -2952,7 +4446,7 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onRetry }: any)
                     {execution.relations.slice(0, 5).map((relation: any) => (
                       <div
                         key={relation.id}
-                        className="mb-1 text-[10px] text-slate-600"
+                        className="mb-1 text-caption text-slate-600"
                       >
                         <span className="font-bold">
                           {relation.relationType.replaceAll("_", " ")}
@@ -2967,6 +4461,21 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onRetry }: any)
                 )}
               </section>
               <section className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-bold">Participants & comments</h3>
+                  <span className="text-caption font-bold text-slate-400">{execution.participants?.length || 0} participants</span>
+                </div>
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  {execution.participants?.map((participant: any) => <span key={participant.id} className="rounded-full bg-slate-100 px-2 py-1 text-caption font-semibold text-slate-700" title={participant.title}>{participant.fullName}</span>)}
+                </div>
+                <div className="max-h-40 space-y-2 overflow-y-auto">
+                  {execution.comments?.map((entry: any) => <div key={entry.id} className="rounded-lg bg-slate-50 p-2"><div className="text-caption font-bold text-slate-700">{entry.authorName} · {new Date(entry.createdAt).toLocaleString()}</div><p className="mt-1 whitespace-pre-wrap text-label text-slate-600">{entry.body}</p></div>)}
+                  {!execution.comments?.length && <p className="text-xs text-slate-400">No comments yet.</p>}
+                </div>
+                <textarea value={comment} onChange={(event) => setComment(event.target.value)} rows={2} maxLength={5000} className="wrike-input mt-3 w-full resize-y" placeholder="Add an auditable update or decision context…" />
+                <button type="button" disabled={!comment.trim()} onClick={() => { const body = comment.trim(); if (!body) return; onComment(body); setComment(""); }} className="wrike-btn-primary mt-2 w-full py-1.5 text-xs disabled:opacity-50">Add comment</button>
+              </section>
+              <section className="rounded-2xl border border-slate-200 bg-white p-4">
                 <h3 className="mb-3 text-sm font-bold">
                   Immutable audit timeline
                 </h3>
@@ -2979,10 +4488,10 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onRetry }: any)
                         key={event.id}
                         className="border-l-2 border-slate-200 pl-3"
                       >
-                        <div className="text-[11px] font-bold">
+                        <div className="text-label font-bold">
                           {event.type.replaceAll("_", " ")}
                         </div>
-                        <div className="text-[10px] text-slate-400">
+                        <div className="text-caption text-slate-400">
                           {new Date(event.timestamp).toLocaleString()} ·{" "}
                           {event.actorName}
                         </div>
@@ -2999,15 +4508,36 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onRetry }: any)
         Select a workflow execution.
       </div>
     )}
+    {confirmationItem && (
+      <div className="fixed inset-0 z-dsOverlay flex items-center justify-center bg-slate-950/35 p-4" role="dialog" aria-modal="true" aria-labelledby="task-confirmation-title">
+        <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700"><CheckCircle2 className="h-5 w-5" /></div>
+            <div>
+              <h3 id="task-confirmation-title" className="text-base font-bold text-slate-900">{confirmationItem.isInformationRequest ? "Provide requested information" : "Confirm task"}</h3>
+              <p className="mt-1 text-sm text-slate-600">{confirmationItem.isInformationRequest ? `Respond to “${confirmationItem.title}”. Your response will be retained in the workflow timeline.` : `Are you confirming that “${confirmationItem.title}” has been completed?`}</p>
+            </div>
+          </div>
+          {confirmationItem.isInformationRequest ? (
+            <textarea value={informationResponse} onChange={(event) => setInformationResponse(event.target.value)} rows={4} maxLength={5000} className="wrike-input mt-4 w-full resize-y" placeholder="Provide the requested information…" />
+          ) : <p className="mt-4 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-500">Your confirmation is recorded with your authenticated identity in the workflow audit trail.</p>}
+          <div className="mt-5 flex justify-end gap-2">
+            <button onClick={() => setConfirmationItem(null)} className="wrike-btn-secondary px-3 py-2 text-xs">Cancel</button>
+            <button disabled={confirmationItem.isInformationRequest && !informationResponse.trim()} onClick={() => { onComplete(confirmationItem.id, confirmationItem.isInformationRequest ? { response: informationResponse.trim(), respondedFrom: "runtime-workspace" } : { confirmation: "APPROVED", confirmedFrom: "runtime-workspace" }); setConfirmationItem(null); }} className="wrike-btn-primary px-3 py-2 text-xs disabled:opacity-50">{confirmationItem.isInformationRequest ? "Submit response" : "I confirm"}</button>
+          </div>
+        </div>
+      </div>
+    )}
   </div>
-);
+  );
+};
 
 const AnalyticsView = ({ analytics }: any) => (
   <div className="flex-1 overflow-y-auto p-6">
     <div className="mx-auto max-w-6xl">
       <h2 className="text-xl font-bold">Workflow analytics</h2>
       <p className="mt-1 text-sm text-slate-500">
-        Operational performance across workflow, stage, node, approval, and
+        Operational performance across workflow, node, approval, and
         automation execution.
       </p>
       <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-8">
@@ -3055,7 +4585,7 @@ const AnalyticsView = ({ analytics }: any) => (
               </div>
               <div className="h-1.5 rounded-full bg-slate-100">
                 <div
-                  className="h-full rounded-full bg-[#00B259]"
+                  className="h-full rounded-full bg-semantic-brand"
                   style={{ width: `${Math.min(100, item.runCount / 5)}%` }}
                 />
               </div>
@@ -3131,7 +4661,7 @@ const RuntimeMetric = ({ label, value, alert }: any) => (
   <div
     className={`rounded-2xl border bg-white p-4 ${alert ? "border-amber-200" : "border-slate-200"}`}
   >
-    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+    <div className="text-caption font-bold uppercase tracking-wider text-slate-400">
       {label}
     </div>
     <div
@@ -3143,7 +4673,7 @@ const RuntimeMetric = ({ label, value, alert }: any) => (
 );
 const StatusPill = ({ status }: any) => (
   <span
-    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${status === "COMPLETED" ? "bg-emerald-100 text-emerald-700" : status === "FAILED" || status === "REJECTED" ? "bg-red-100 text-red-700" : status === "WAITING" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}
+    className={`rounded-full px-2 py-0.5 text-caption font-bold ${status === "COMPLETED" ? "bg-emerald-100 text-emerald-700" : status === "FAILED" || status === "REJECTED" ? "bg-red-100 text-red-700" : status === "WAITING" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}
   >
     {status}
   </span>

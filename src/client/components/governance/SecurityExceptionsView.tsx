@@ -87,25 +87,25 @@ export const SecurityExceptionsView: React.FC<SecurityExceptionsViewProps> = ({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-[#F4F5F7] custom-scrollbar">
+    <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-semantic-jira-surface custom-scrollbar">
       {/* Header */}
-      <div className="bg-[#FFFFFF] border border-[#DFE1E6] rounded-md p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+      <div className="bg-semantic-panel border border-semantic-jira-border rounded-md p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded bg-[#FFFAE6] text-[#FF8B00] border border-[#FFE380]">
+          <div className="p-2.5 rounded bg-semantic-warning-soft text-semantic-warning-bright border border-semantic-warning-border-strong">
             <CheckCircle2 className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-[#172B4D] tracking-tight">
+            <h1 className="text-xl font-bold text-semantic-jira-primary tracking-tight">
               Security Policy Exceptions & Risk Acceptances
             </h1>
-            <p className="text-xs text-[#5E6C84] mt-0.5">
+            <p className="text-xs text-semantic-jira-muted mt-0.5">
               Time-bound regulatory exemptions with validated compensating controls and dual-control sign-off.
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2.5">
-          <span className="px-3 py-1 bg-[#FFFAE6] text-[#FF8B00] border border-[#FFE380] rounded font-mono text-xs font-bold">
+          <span className="px-3 py-1 bg-semantic-warning-soft text-semantic-warning-bright border border-semantic-warning-border-strong rounded font-mono text-xs font-bold">
             {exceptionTickets.length} Active Exceptions
           </span>
           <button
@@ -119,7 +119,7 @@ export const SecurityExceptionsView: React.FC<SecurityExceptionsViewProps> = ({
       </div>
 
       {/* Filter tabs and search */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#DFE1E6] pb-2 text-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-semantic-jira-border pb-2 text-xs">
         <div className="flex items-center gap-1">
           {[
             { id: 'ALL', label: 'All Exceptions' },
@@ -132,8 +132,8 @@ export const SecurityExceptionsView: React.FC<SecurityExceptionsViewProps> = ({
               onClick={() => setStatusFilter(tab.id as any)}
               className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
                 statusFilter === tab.id
-                  ? 'bg-[#0052CC] text-white font-semibold shadow-sm'
-                  : 'bg-[#FFFFFF] text-[#5E6C84] hover:text-[#172B4D] border border-[#DFE1E6]'
+                  ? 'bg-semantic-jira-brand text-white font-semibold shadow-sm'
+                  : 'bg-semantic-panel text-semantic-jira-muted hover:text-semantic-jira-primary border border-semantic-jira-border'
               }`}
             >
               {tab.label}
@@ -142,7 +142,7 @@ export const SecurityExceptionsView: React.FC<SecurityExceptionsViewProps> = ({
         </div>
 
         <div className="relative w-full sm:w-64">
-          <Search className="w-3.5 h-3.5 text-[#5E6C84] absolute left-2.5 top-2" />
+          <Search className="w-3.5 h-3.5 text-semantic-jira-muted absolute left-2.5 top-2" />
           <input
             type="text"
             value={search}
@@ -156,7 +156,7 @@ export const SecurityExceptionsView: React.FC<SecurityExceptionsViewProps> = ({
       {/* Exception List */}
       <div className="space-y-3">
         {filteredExceptions.length === 0 ? (
-          <div className="py-16 text-center text-[#5E6C84] text-xs italic bg-[#FFFFFF] rounded-md border border-[#DFE1E6]">
+          <div className="py-16 text-center text-semantic-jira-muted text-xs italic bg-semantic-panel rounded-md border border-semantic-jira-border">
             No policy exceptions found matching this filter.
           </div>
         ) : (
@@ -166,19 +166,19 @@ export const SecurityExceptionsView: React.FC<SecurityExceptionsViewProps> = ({
               <div
                 key={t.id}
                 onClick={() => onSelectTicket(t)}
-                className="p-4 bg-[#FFFFFF] border border-[#DFE1E6] hover:border-[#0052CC] rounded-md cursor-pointer transition-colors space-y-2.5 shadow-sm group"
+                className="p-4 bg-semantic-panel border border-semantic-jira-border hover:border-semantic-jira-brand rounded-md cursor-pointer transition-colors space-y-2.5 shadow-sm group"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 flex-wrap">
                     <Badge type="PROJECT" value={t.projectCode} />
-                    <span className="font-mono font-bold text-[#172B4D] text-xs group-hover:text-[#0052CC] transition-colors">
+                    <span className="font-mono font-bold text-semantic-jira-primary text-xs group-hover:text-semantic-jira-brand transition-colors">
                       {t.key}
                     </span>
-                    <span className="jira-lozenge jira-lozenge-inprogress text-[10px]">
+                    <span className="jira-lozenge jira-lozenge-inprogress text-caption">
                       {t.statusName}
                     </span>
                     {exc?.requestedControlId && (
-                      <span className="px-1.5 py-0.2 rounded bg-[#FFFFFF] text-[#FF8B00] font-mono text-[10px] border border-[#FFE380]">
+                      <span className="px-1.5 py-0.2 rounded bg-semantic-panel text-semantic-warning-bright font-mono text-caption border border-semantic-warning-border-strong">
                         {exc.requestedControlId}
                       </span>
                     )}
@@ -186,19 +186,19 @@ export const SecurityExceptionsView: React.FC<SecurityExceptionsViewProps> = ({
                   <SLARing remainingMinutes={t.slaRemainingMinutes} state={t.slaState} size="sm" />
                 </div>
 
-                <h3 className="text-xs font-semibold text-[#172B4D] group-hover:text-[#0052CC] leading-snug">
+                <h3 className="text-xs font-semibold text-semantic-jira-primary group-hover:text-semantic-jira-brand leading-snug">
                   {t.title}
                 </h3>
 
                 {exc && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-[#FFFFFF] rounded border border-[#DFE1E6] text-xs">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-semantic-panel rounded border border-semantic-jira-border text-xs">
                     <div>
-                      <span className="text-[#5E6C84] font-bold text-[10px] uppercase">Business Justification:</span>
-                      <p className="text-[#172B4D] mt-0.5 text-[11px] leading-relaxed">{exc.businessJustification}</p>
+                      <span className="text-semantic-jira-muted font-bold text-caption uppercase">Business Justification:</span>
+                      <p className="text-semantic-jira-primary mt-0.5 text-label leading-relaxed">{exc.businessJustification}</p>
                     </div>
                     <div>
-                      <span className="text-[#006644] font-bold text-[10px] uppercase">Compensating Controls:</span>
-                      <p className="text-[#172B4D] mt-0.5 text-[11px] leading-relaxed">{exc.compensatingControls}</p>
+                      <span className="text-semantic-success font-bold text-caption uppercase">Compensating Controls:</span>
+                      <p className="text-semantic-jira-primary mt-0.5 text-label leading-relaxed">{exc.compensatingControls}</p>
                     </div>
                   </div>
                 )}
@@ -210,21 +210,21 @@ export const SecurityExceptionsView: React.FC<SecurityExceptionsViewProps> = ({
 
       {/* Request Exception Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-[2px] p-4">
-          <div className="bg-[#FFFFFF] border border-[#DFE1E6] rounded-md max-w-lg w-full p-5 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#DFE1E6] pb-3">
+        <div className="fixed inset-0 z-dsOverlay flex items-center justify-center bg-black/65 backdrop-blur-[2px] p-4">
+          <div className="bg-semantic-panel border border-semantic-jira-border rounded-md max-w-lg w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-semantic-jira-border pb-3">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-[#0052CC]" />
-                <h3 className="text-sm font-bold text-[#172B4D]">Request Security Policy Exception</h3>
+                <CheckCircle2 className="w-4 h-4 text-semantic-jira-brand" />
+                <h3 className="text-sm font-bold text-semantic-jira-primary">Request Security Policy Exception</h3>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="text-[#5E6C84] hover:text-[#172B4D]">
+              <button onClick={() => setIsModalOpen(false)} className="text-semantic-jira-muted hover:text-semantic-jira-primary">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleCreateException} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[#5E6C84] mb-1">Exception Title:</label>
+                <label className="block text-semantic-jira-muted mb-1">Exception Title:</label>
                 <input
                   type="text"
                   value={title}
@@ -237,7 +237,7 @@ export const SecurityExceptionsView: React.FC<SecurityExceptionsViewProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#5E6C84] mb-1">Policy Control Mandate:</label>
+                  <label className="block text-semantic-jira-muted mb-1">Policy Control Mandate:</label>
                   <select
                     value={controlId}
                     onChange={(e) => setControlId(e.target.value)}
@@ -250,7 +250,7 @@ export const SecurityExceptionsView: React.FC<SecurityExceptionsViewProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[#5E6C84] mb-1">Requested Duration:</label>
+                  <label className="block text-semantic-jira-muted mb-1">Requested Duration:</label>
                   <select
                     value={expiryDays}
                     onChange={(e) => setExpiryDays(Number(e.target.value))}
@@ -264,7 +264,7 @@ export const SecurityExceptionsView: React.FC<SecurityExceptionsViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-[#5E6C84] mb-1">Business Justification & Impact:</label>
+                <label className="block text-semantic-jira-muted mb-1">Business Justification & Impact:</label>
                 <textarea
                   value={justification}
                   onChange={(e) => setJustification(e.target.value)}
@@ -275,7 +275,7 @@ export const SecurityExceptionsView: React.FC<SecurityExceptionsViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-[#5E6C84] mb-1">Validated Compensating Controls:</label>
+                <label className="block text-semantic-jira-muted mb-1">Validated Compensating Controls:</label>
                 <textarea
                   value={compensatingControls}
                   onChange={(e) => setCompensatingControls(e.target.value)}
@@ -285,7 +285,7 @@ export const SecurityExceptionsView: React.FC<SecurityExceptionsViewProps> = ({
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#DFE1E6]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-semantic-jira-border">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}

@@ -8,9 +8,26 @@ import { SLAService } from '../services/sla.service.js';
 import { AuditService } from '../services/audit.service.js';
 import { AutomationService } from '../services/automation.service.js';
 import { SearchService } from '../services/search.service.js';
-import { Ticket } from '../../shared/types/ticket.js';
+import type { Ticket, TicketCategoryOption, TicketIntakeCategoryOption } from '../../shared/types/ticket.js';
 import { TicketLifecycleService } from '../services/ticket-lifecycle.service.js';
 import { TicketRelationshipType, TicketTaskStatus } from '../../shared/types/itsm.js';
+import { config } from '../config/index.js';
+import { pgClient } from '../db/postgres/client.js';
+import { CMDBService } from '../services/cmdb.service.js';
+import { isGenuineEmployeeOrIntern } from '../services/ldap-directory.data.js';
+import { WorkflowOrchestrationService } from '../services/workflow-orchestration.service.js';
+
+const memoryTicketCategories = [
+  'GENERAL_REQUEST', 'GENERAL_TASK', 'IT_SUPPORT', 'ACCESS_REQUEST', 'HARDWARE_SOFTWARE', 'NETWORK_INFRASTRUCTURE',
+  'CHANGE_REQUEST', 'INCIDENT_MANAGEMENT', 'PROJECT_DELIVERY', 'FINANCE_PROCUREMENT', 'HR_OPERATIONS', 'COMPLIANCE_LEGAL',
+  'BUSINESS_OPERATIONS', 'SECURITY_REVIEW', 'VULNERABILITY', 'INCIDENT', 'SECURITY_EXCEPTION', 'RISK_ACCEPTANCE',
+  'AUDIT_FINDING', 'IAM_REQUEST', 'DLP_ALERT', 'THIRD_PARTY_ASSESSMENT',
+];
+
+const memoryTicketCategoryOptions = (): TicketCategoryOption[] => memoryTicketCategories.map((code) => ({
+  code: code as TicketCategoryOption['code'],
+  label: code.replaceAll('_', ' ').toLocaleLowerCase('az').replace(/\b\w/g, (letter) => letter.toLocaleUpperCase('az')),
+}));
 
 const TICKET_EDITABLE_FIELDS = new Set([
   'title',
@@ -60,6 +77,110 @@ const TICKET_ADMIN_FIELDS = new Set([
 ]);
 
 export class TicketsController {
+  /**
+   * Minimal, server-authenticated contract for the new-work modal.  The client
+   * never supplies a requester identity and only receives AD-confirmed routing
+   * choices.  Supplying `targetId` returns the bounded assignee list for that
+   * department or team.
+   */
+  public static async intakeOptions(req: AuthenticatedRequest, res: Response): Promise<void> {
+    const user = req.user!;
+    db.reload();
+
+    const departments = (db.data.departments || [])
+      .filter((department) => department.isActive !== false && department.directorySource === 'ACTIVE_DIRECTORY');
+    const departmentIds = new Set(departments.map((department) => department.id));
+    const sections = (db.data.departmentSections || [])
+      .filter((section) => section.isActive !== false && section.directorySource === 'ACTIVE_DIRECTORY' && departmentIds.has(section.departmentId));
+    const teams = (db.data.teams || []).filter((team) => departmentIds.has(team.departmentId));
+    const targetId = typeof req.query.targetId === 'string' ? req.query.targetId.trim() : '';
+    const targetDepartment = departments.find((department) => department.id === targetId);
+    const targetTeam = teams.find((team) => team.id === targetId);
+    const targetDepartmentId = targetTeam?.departmentId || targetDepartment?.id;
+
+    const assignees = targetDepartmentId
+      ? (db.data.users || [])
+          .filter((candidate) =>
+            candidate.isActive &&
+            candidate.directorySource === 'ACTIVE_DIRECTORY' &&
+            isGenuineEmployeeOrIntern(candidate, candidate.distributionGroups || [], candidate.sAMAccountName || candidate.username) &&
+            departmentIds.has(candidate.departmentId) &&
+            (candidate.departmentId === targetDepartmentId || Boolean(targetTeam && candidate.teamIds?.includes(targetTeam.id)))
+          )
+          .sort((left, right) => left.fullName.localeCompare(right.fullName, 'az'))
+          .map(({ id, fullName, title, departmentId, sectionId, teamIds }) => ({
+            id,
+            fullName,
+            title,
+            departmentId,
+            sectionId,
+            sectionName: sections.find((section) => section.id === sectionId)?.name,
+            sectionCode: sections.find((section) => section.id === sectionId)?.code,
+            teamIds,
+          }))
+      : [];
+
+    const directoryReady = departments.length > 0 && (db.data.users || []).some((candidate) =>
+      candidate.isActive && candidate.directorySource === 'ACTIVE_DIRECTORY' &&
+      isGenuineEmployeeOrIntern(candidate, candidate.distributionGroups || [], candidate.sAMAccountName || candidate.username) &&
+      departmentIds.has(candidate.departmentId)
+    );
+    const canAssignDirect = user.roles.some((role) =>
+      ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'TEAM_LEAD', 'SECURITY_ANALYST', 'SOC_ANALYST', 'APPSEC_ANALYST', 'VULN_ANALYST', 'GRC_ANALYST', 'DLP_ANALYST'].includes(role)
+    );
+
+    const categories: TicketIntakeCategoryOption[] = config.DB_TYPE === 'postgres'
+      ? (await pgClient.query<{ code: TicketCategoryOption['code']; displayName: string; description: string }>(
+          'SELECT code, display_name AS "displayName", description FROM ticket_categories WHERE is_active = TRUE ORDER BY sort_order ASC, code ASC'
+        )).rows.map((row) => ({
+          code: row.code,
+          label: row.displayName,
+          description: row.description || undefined,
+        }))
+      : memoryTicketCategoryOptions().map((category) => ({ ...category, kind: 'CATEGORY' as const }));
+
+    // Keep the 71 catalog-backed basic tasks available as searchable intake
+    // categories. catalogPayload performs the normal baseline/bootstrap check;
+    // the raw template list is used here because listCatalog intentionally
+    // hides these cards from the workflow catalog.
+    WorkflowOrchestrationService.catalogPayload(user);
+    const helpDeskDepartment = departments.find((department) =>
+      department.code.toLocaleLowerCase('az').includes('it') || department.name.toLocaleLowerCase('az').includes('help desk')
+    );
+    const basicTaskCategories = db.data.workflowCatalogTemplates
+      .filter((template) => template.kind === 'BASIC_TICKET' && template.catalogGroup?.startsWith('IT ·') && template.requestTypeId)
+      .sort((left, right) => (left.catalogGroup || '').localeCompare(right.catalogGroup || '', 'az') || left.title.localeCompare(right.title, 'az'))
+      .map((template) => ({
+        code: template.requestTypeId!,
+        label: template.title,
+        description: `${template.catalogGroup} · Help Desk task`,
+        kind: 'BASIC_TICKET' as const,
+        requestTypeId: template.requestTypeId,
+        catalogGroup: template.catalogGroup,
+        targetDepartmentId: helpDeskDepartment?.id,
+      }));
+    const categoryCodes = new Set(categories.map((category) => category.code));
+    categories.push(...basicTaskCategories.filter((category) => !categoryCodes.has(category.code)));
+
+    res.json({
+      success: true,
+      intake: {
+        requester: { id: user.id, fullName: user.fullName, title: user.title, departmentId: user.departmentId },
+        canAssignDirect,
+        directory: {
+          ready: directoryReady,
+          message: directoryReady ? undefined : 'Canlı Active Directory sinxronizasiyası tələb olunur. İcraçı və növbə seçimi əlçatan deyil.',
+        },
+        departments: departments.map(({ id, name, code }) => ({ id, name, code })),
+        sections: sections.map(({ id, departmentId, name, code }) => ({ id, departmentId, name, code })),
+        teams: teams.map(({ id, departmentId, name, code }) => ({ id, departmentId, name, code })),
+        assignees,
+        slaPolicies: (db.data.slaPolicies || []).map(({ id, name, description, isDefault }) => ({ id, name, description, isDefault })),
+         categories,
+      },
+    });
+  }
+
   public static list(req: AuthenticatedRequest, res: Response): void {
     const user = req.user!;
     const jql = req.query.jql as string;
@@ -104,7 +225,7 @@ export class TicketsController {
     ticket.slaPausedReason = sla.pausedReason;
 
     // Fetch related records
-    const comments = db.data.comments
+    const comments = (db.data.comments || [])
       .filter((c) => c.ticketId === ticket.id)
       .filter((c) => {
         return AuthService.canAccessResource({
@@ -116,16 +237,17 @@ export class TicketsController {
       });
 
     // The object-store key is an internal capability, never ticket-detail data.
-    const attachments = db.data.attachments
+    const attachments = (db.data.attachments || [])
       .filter((attachment) => attachment.ticketId === ticket.id)
       .map(({ storageKey: _storageKey, ...attachment }) => attachment);
     const auditEvents = AuditService.getEventsForEntity(ticket.id);
-    const approvalChain = db.data.approvals.find((a) => a.ticketId === ticket.id);
+    const approvalChain = (db.data.approvals || []).find((a) => a.ticketId === ticket.id);
     const transitions = WorkflowService.getAvailableTransitions(ticket, user);
 
     // Linked application and asset details
-    const application = db.data.applications.find((a) => a.id === ticket.applicationId);
-    const asset = db.data.assets.find((a) => a.id === ticket.assetId);
+    const application = (db.data.applications || []).find((a) => a.id === ticket.applicationId);
+    const asset = (db.data.assets || []).find((a) => a.id === ticket.assetId);
+    const cmdb = CMDBService.ticketContext(ticket.id);
     const lifecycle = TicketLifecycleService.getBundle(ticket, user);
 
     // Log restricted case view
@@ -146,6 +268,7 @@ export class TicketsController {
       attachments,
       auditEvents,
       approvalChain,
+      cmdb,
       transitions,
       application,
       asset,
@@ -156,12 +279,20 @@ export class TicketsController {
   public static create(req: AuthenticatedRequest, res: Response): void {
     try {
       const user = req.user!;
-      const canAssign = user.roles.some((role) =>
+      const canAssignDirectUser = user.roles.some((role) =>
         ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'TEAM_LEAD', 'SECURITY_ANALYST', 'SOC_ANALYST', 'APPSEC_ANALYST', 'VULN_ANALYST', 'GRC_ANALYST', 'DLP_ANALYST'].includes(role)
       );
-      const rawBody = canAssign
-        ? req.body
-        : { ...req.body, assigneeId: undefined, assignmentGroupId: undefined, targetDepartmentId: undefined };
+      if (req.body.assigneeId && !canAssignDirectUser && req.body.assigneeId !== user.id) {
+        res.status(403).json({ success: false, error: 'You are not allowed to assign work to another user.' });
+        return;
+      }
+      const requestedAssigneeId = canAssignDirectUser || req.body.assigneeId === user.id ? req.body.assigneeId : undefined;
+      const rawBody = {
+        ...req.body,
+        assigneeId: requestedAssigneeId,
+        targetDepartmentId: req.body.targetDepartmentId,
+        assignmentGroupId: req.body.assignmentGroupId,
+      };
       const body = TicketLifecycleService.validateAndNormalizeCreateInput(rawBody, user);
 
       const projectCode = body.projectCode || 'SEC';
@@ -180,8 +311,9 @@ export class TicketsController {
       const technicalSeverity = body.technicalSeverity || 'MEDIUM';
       const slaDeadlines = TicketLifecycleService.calculateSlaDeadlines(slaPolicyId, technicalSeverity, now);
 
-      const assigneeId = canAssign ? body.assigneeId : undefined;
-      const targetDepartmentId = canAssign ? body.targetDepartmentId : undefined;
+      const assigneeId = body.assigneeId || undefined;
+      const targetDepartmentId = body.targetDepartmentId || undefined;
+      const departmentId = targetDepartmentId || body.departmentId || user.departmentId;
 
       const newTicket: Ticket = {
         id: `tick-${uuidv4().substring(0, 8)}`,
@@ -222,7 +354,7 @@ export class TicketsController {
         ownerId: body.ownerId || body.securityOwnerId || user.id,
         securityOwnerId: body.securityOwnerId || user.id,
         teamId: body.teamId,
-        departmentId: body.departmentId || user.departmentId,
+        departmentId,
         targetDepartmentId,
         applicationId: body.applicationId || undefined,
         assetId: body.assetId || undefined,
@@ -259,6 +391,15 @@ export class TicketsController {
         db.data.tickets = [];
       }
       db.data.tickets.unshift(newTicket);
+      // Ticket → CI uses the generic association model. The old assetId and
+      // applicationId remain compatibility fields, not a second CMDB model.
+      const affectedCiIds: string[] = Array.isArray(req.body.affectedCiIds)
+        ? [...new Set((req.body.affectedCiIds as unknown[]).filter((id): id is string => {
+            if (typeof id !== 'string') return false;
+            return id.trim().length > 0;
+          }))]
+        : [];
+      for (const ciId of affectedCiIds) CMDBService.linkTicketOnCreate(ciId, newTicket.id, user);
       TicketLifecycleService.initializeSlaMetrics(newTicket);
 
       // Audit log
@@ -277,10 +418,14 @@ export class TicketsController {
       db.persist();
       res.status(201).json({ success: true, ticket: newTicket });
     } catch (err: any) {
-      const validationError = err?.name === 'ZodError' || /does not exist|inactive/.test(err?.message || '');
+      const validationError = err?.name === 'ZodError' || /does not exist|inactive|required|invalid/i.test(err?.message || '');
+      const errorMessage =
+        err?.issues?.[0]?.message ||
+        err?.message ||
+        (validationError ? 'Ticket validation failed.' : 'Internal Server Error');
       res.status(validationError ? 400 : 500).json({
         success: false,
-        error: validationError ? 'Ticket validation failed.' : err.message || 'Internal Server Error',
+        error: errorMessage,
         details: validationError ? err.issues || err.message : undefined,
       });
     }
@@ -307,11 +452,18 @@ export class TicketsController {
       return;
     }
 
-    const isDepartmentMember = Boolean(ticket.targetDepartmentId && ticket.targetDepartmentId === user.departmentId);
-    const isTeamMember = Boolean(
-      !ticket.targetDepartmentId && ticket.assignmentGroupId && user.teamIds.includes(ticket.assignmentGroupId)
+    const isDepartmentMember = Boolean(
+      (ticket.targetDepartmentId && ticket.targetDepartmentId === user.departmentId) ||
+      (!ticket.targetDepartmentId && ticket.departmentId && ticket.departmentId === user.departmentId) ||
+      ticket.participatingDepartmentIds?.includes(user.departmentId || '')
     );
-    if (!isDepartmentMember && !isTeamMember) {
+    const isTeamMember = Boolean(
+      ticket.assignmentGroupId && user.teamIds?.includes(ticket.assignmentGroupId)
+    );
+    const isPlatformPrivileged = user.roles.some((r) =>
+      ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER'].includes(r)
+    );
+    if (!isDepartmentMember && !isTeamMember && !isPlatformPrivileged) {
       res.status(403).json({ success: false, error: 'Only a member of the assigned department or team can claim this ticket.' });
       return;
     }
@@ -599,8 +751,20 @@ export class TicketsController {
     const ticket = TicketsController.getAuthorizedTicket(req, res, 'WRITE');
     if (!ticket) return;
     try {
-      const task = TicketLifecycleService.updateTask(ticket, String(req.params.taskId), req.body.status as TicketTaskStatus, req.user!);
+      const updates = typeof req.body === 'object' && req.body !== null ? req.body : { status: req.body };
+      const task = TicketLifecycleService.updateTask(ticket, String(req.params.taskId), updates, req.user!);
       res.json({ success: true, task });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  public static createSubTicket(req: AuthenticatedRequest, res: Response): void {
+    const ticket = TicketsController.getAuthorizedTicket(req, res, 'WRITE');
+    if (!ticket) return;
+    try {
+      const result = TicketLifecycleService.createSubTicket(ticket, req.body, req.user!);
+      res.status(201).json({ success: true, ...result });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
     }
@@ -672,14 +836,7 @@ export class TicketsController {
       return;
     }
 
-    const canBulkUpdate = user.roles.some((role) =>
-      ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'TEAM_LEAD', 'SECURITY_ANALYST', 'SOC_ANALYST', 'APPSEC_ANALYST', 'VULN_ANALYST', 'GRC_ANALYST', 'DLP_ANALYST'].includes(role)
-    );
-    if (!canBulkUpdate) {
-      res.status(403).json({ success: false, error: 'An agent role is required for bulk ticket changes.' });
-      return;
-    }
-    if (!['ASSIGN', 'SET_PRIORITY', 'SET_SEVERITY', 'ADD_TAG'].includes(action)) {
+    if (!['ASSIGN', 'SET_PRIORITY', 'SET_SEVERITY', 'ADD_TAG', 'RESOLVE', 'MARK_RESOLVED'].includes(action)) {
       res.status(400).json({ success: false, error: 'Unsupported bulk action.' });
       return;
     }
@@ -713,6 +870,17 @@ export class TicketsController {
           break;
         case 'ADD_TAG':
           if (!ticket.tags.includes(value)) ticket.tags.push(value);
+          break;
+        case 'RESOLVE':
+        case 'MARK_RESOLVED':
+          ticket.statusId = 'RESOLVED';
+          ticket.statusName = 'Resolved';
+          ticket.statusCategory = 'DONE';
+          ticket.resolvedAt = now;
+          ticket.slaState = 'MET';
+          ticket.resolutionCode = 'FIXED';
+          ticket.resolutionSummary = typeof value === 'string' && value ? value : 'Marked as resolved via bulk table action';
+          TicketLifecycleService.refreshSlaMetrics(ticket);
           break;
       }
 

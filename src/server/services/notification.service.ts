@@ -28,7 +28,7 @@ export class NotificationService {
     return { notifications: userNotifs, unreadCount };
   }
 
-  public static create(params: CreateNotificationParams): AppNotification {
+  public static create(params: CreateNotificationParams, persist = true): AppNotification {
     if (!db.data.notifications) {
       db.data.notifications = [];
     }
@@ -48,7 +48,7 @@ export class NotificationService {
     };
 
     db.data.notifications.unshift(newNotif);
-    db.persist();
+    if (persist) db.persist();
     return newNotif;
   }
 

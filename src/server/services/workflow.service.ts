@@ -16,7 +16,7 @@ export class WorkflowService {
     const workflow = WorkflowService.getWorkflowById(ticket.workflowId);
     if (!workflow) return [];
 
-    const transitions = workflow.transitions.filter((t) => t.fromStateId === ticket.statusId);
+    const transitions = (workflow.transitions || []).filter((t) => t.fromStateId === ticket.statusId);
 
     // Platform Admin and CISO can execute any transition
     if (user.roles.includes('PLATFORM_ADMIN') || user.roles.includes('CISO')) {
@@ -25,7 +25,7 @@ export class WorkflowService {
 
     // Filter by allowed roles
     return transitions.filter((t) => {
-      return t.allowedRoles.some((role) => user.roles.includes(role));
+      return (t.allowedRoles || []).some((role) => user.roles.includes(role));
     });
   }
 
@@ -54,7 +54,7 @@ export class WorkflowService {
       return { success: false, error: 'Workflow not found for this ticket.' };
     }
 
-    const transition = workflow.transitions.find((t) => t.id === transitionId);
+    const transition = (workflow.transitions || []).find((t) => t.id === transitionId);
     if (!transition) {
       return { success: false, error: 'Invalid transition ID.' };
     }
@@ -68,11 +68,11 @@ export class WorkflowService {
 
     // Role verification
     const isSuper = user.roles.includes('PLATFORM_ADMIN') || user.roles.includes('CISO');
-    const hasRole = transition.allowedRoles.some((r) => user.roles.includes(r));
+    const hasRole = (transition.allowedRoles || []).some((r) => user.roles.includes(r));
     if (!isSuper && !hasRole) {
       return {
         success: false,
-        error: `User does not have any of the required roles: ${transition.allowedRoles.join(', ')}`,
+        error: `User does not have any of the required roles: ${(transition.allowedRoles || []).join(', ')}`,
       };
     }
 

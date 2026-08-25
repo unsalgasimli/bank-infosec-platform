@@ -3,6 +3,7 @@ import { AuthenticatedRequest } from '../middleware/auth.middleware.js';
 import { db } from '../db/database.js';
 import { AuditService } from '../services/audit.service.js';
 import { v4 as uuidv4 } from 'uuid';
+import { isGenuineEmployeeOrIntern } from '../services/ldap-directory.data.js';
 
 export class AssetsController {
   public static listAssets(req: AuthenticatedRequest, res: Response): void {
@@ -235,7 +236,10 @@ export class KBController {
 export class AdminController {
   public static getMetadata(req: AuthenticatedRequest, res: Response): void {
     db.reload();
-    const directoryUsers = db.data.users.filter((user) => user.directorySource === 'ACTIVE_DIRECTORY');
+    const directoryUsers = db.data.users.filter((user) =>
+      user.directorySource === 'ACTIVE_DIRECTORY' &&
+      isGenuineEmployeeOrIntern(user, user.distributionGroups || [], user.sAMAccountName || user.username)
+    );
     const activeDirectoryDepartmentIds = new Set(directoryUsers.map((user) => user.departmentId));
     res.json({
       success: true,

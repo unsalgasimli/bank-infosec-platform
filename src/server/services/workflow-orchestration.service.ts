@@ -3,13 +3,16 @@ import { v4 as uuidv4 } from 'uuid';
 import type { BankRole, BankUser } from '../../shared/types/auth.js';
 import type {
   AssignmentConfiguration,
+  BusinessCalendar,
   FormFieldDefinition,
+  NotificationPolicy,
   PreflightResult,
   RequestTypeDefinition,
   SimulationResult,
   WorkflowCatalogTemplate,
   WorkflowDefinition,
   WorkflowNodeDefinition,
+  WorkflowPolicySet,
   WorkflowVersion,
 } from '../../shared/types/orchestration.js';
 import { calculatePriorityFromImpactUrgency } from '../../shared/types/ticket.js';
@@ -17,25 +20,98 @@ import { db } from '../db/database.js';
 import { ApprovalService } from './approval.service.js';
 import { BusinessCalendarService, OrchestrationExpressionService } from './orchestration-expression.service.js';
 import { WorkflowPreflightService } from './workflow-preflight.service.js';
+import { UsbAccessTemplateService } from './usb-access-template.service.js';
+import { WebsiteAccessTemplateService } from './website-access-template.service.js';
+import { StandardTaskTemplateService } from './standard-task-template.service.js';
+import { ItServiceDeskTemplateService } from './it-service-desk-template.service.js';
+import { SLAService } from './sla.service.js';
 
 export class OrchestrationError extends Error {
   constructor(message: string, public readonly statusCode = 400, public readonly details?: unknown) { super(message); }
 }
 
 const designerRoles: BankRole[] = ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'IT_ADMIN', 'HR_ADMIN', 'CORE_BANK_ADMIN', 'LEGAL_ADMIN'];
+const companyTemplateRoles: BankRole[] = ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN'];
+const departmentTemplateRoles: BankRole[] = ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'IT_ADMIN', 'HR_ADMIN', 'CORE_BANK_ADMIN', 'LEGAL_ADMIN'];
 
 export class WorkflowOrchestrationService {
   public static canDesign(actor: BankUser): boolean {
-    return actor.roles.some((role) => designerRoles.includes(role));
+    return actor.isActive;
+  }
+
+  private static isCompanyAdmin(actor: BankUser): boolean {
+    return actor.roles.some((role) => companyTemplateRoles.includes(role));
+  }
+
+  private static canUseScope(actor: BankUser, scope: WorkflowDefinition['scope']): boolean {
+    if (!this.canDesign(actor)) return false;
+    if (scope === 'COMPANY') return this.isCompanyAdmin(actor);
+    if (scope === 'DEPARTMENT') return Boolean(actor.departmentId) && actor.roles.some((role) => departmentTemplateRoles.includes(role));
+    return true;
+  }
+
+  private static canViewDefinition(definition: WorkflowDefinition, actor: BankUser): boolean {
+    if (this.isCompanyAdmin(actor) || definition.scope === 'COMPANY') return true;
+    if (definition.scope === 'DEPARTMENT') return Boolean(definition.departmentId && definition.departmentId === actor.departmentId);
+    return definition.ownerId === actor.id || definition.maintainerIds.includes(actor.id);
+  }
+
+  private static canEditDefinition(definition: WorkflowDefinition, actor: BankUser): boolean {
+    if (this.isCompanyAdmin(actor) || definition.ownerId === actor.id) return true;
+    return definition.scope === 'DEPARTMENT' && definition.departmentId === actor.departmentId && actor.roles.some((role) => departmentTemplateRoles.includes(role));
+  }
+
+  /**
+   * A fresh directory-backed installation has no fabricated workflows, but a
+   * first real template still needs a pinned policy, business calendar and
+   * notification recipient policy to execute.  These are neutral platform
+   * configuration records, not sample users or sample tickets.
+   */
+  private static ensureRuntimeBaseline() {
+    const calendarId = 'calendar-bank-baku';
+    if (!db.data.businessCalendarsV2.some((calendar) => calendar.id === calendarId)) {
+      const calendar: BusinessCalendar = { id: calendarId, name: 'Bank Baku business calendar', timezone: 'Asia/Baku', workdays: [1, 2, 3, 4, 5], businessStart: '09:00', businessEnd: '18:00', holidays: [], is24x7: false };
+      db.data.businessCalendarsV2.push(calendar);
+    }
+    const notificationId = 'notification-workflow-participants-v1';
+    if (!db.data.notificationPoliciesV2.some((policy) => policy.id === notificationId)) {
+      const policy: NotificationPolicy = {
+        id: notificationId,
+        name: 'Workflow participant updates',
+        eventTypes: ['APPROVAL_CREATED', 'APPROVAL_DECIDED', 'APPROVAL_REMINDER', 'WORK_ITEM_CREATED', 'WORK_ITEM_CLAIMED', 'WORK_ITEM_COMPLETED', 'COMMENT_ADDED', 'WORKFLOW_COMPLETED', 'WORKFLOW_FAILED', 'SLA_WARNING', 'SLA_BREACHED'],
+        recipientResolvers: ['REQUESTER', 'ASSIGNEE', 'ASSIGNMENT_GROUP', 'APPROVER'],
+        channels: ['IN_APP'], templateKey: 'workflow-participant-update', deduplicationWindowMinutes: 5, enabled: true,
+      };
+      db.data.notificationPoliciesV2.push(policy);
+    }
+    const participantPolicy = db.data.notificationPoliciesV2.find((policy) => policy.id === notificationId)!;
+    participantPolicy.eventTypes = [...new Set([...participantPolicy.eventTypes, 'APPROVAL_CREATED', 'APPROVAL_DECIDED', 'APPROVAL_REMINDER', 'WORK_ITEM_CREATED', 'WORK_ITEM_CLAIMED', 'WORK_ITEM_COMPLETED', 'COMMENT_ADDED', 'WORKFLOW_COMPLETED', 'WORKFLOW_FAILED', 'SLA_WARNING', 'SLA_BREACHED'])];
+    const requiredResolvers: NotificationPolicy['recipientResolvers'] = ['REQUESTER', 'ASSIGNEE', 'ASSIGNMENT_GROUP', 'APPROVER'];
+    participantPolicy.recipientResolvers = [...new Set<NotificationPolicy['recipientResolvers'][number]>([...participantPolicy.recipientResolvers, ...requiredResolvers])];
+    const policyId = 'policy-general-v1';
+    if (!db.data.workflowPolicySets.some((policy) => policy.id === policyId && policy.version === 1)) {
+      const policy: WorkflowPolicySet = {
+        id: policyId, key: 'general-workflow', name: 'General workflow policy', domain: 'GENERAL', version: 1, status: 'PUBLISHED', routingRuleIds: [], businessCalendarId: calendarId,
+        priorityMechanism: 'IMPACT_URGENCY', priorityRules: [], notificationPolicyId: notificationId,
+        permissionPolicy: { visibility: 'INTERNAL' }, escalationPolicy: { warningPercent: 75, escalationBeforeBreachMinutes: 60, recipientPaths: [] },
+      };
+      db.data.workflowPolicySets.push(policy);
+    }
+    SLAService.ensurePoliciesInstalled();
+    StandardTaskTemplateService.ensureInstalled();
+    UsbAccessTemplateService.ensureInstalled();
+    WebsiteAccessTemplateService.ensureInstalled();
+    ItServiceDeskTemplateService.ensureInstalled();
   }
 
   public static listCatalog(actor: BankUser, query = '', category = ''): WorkflowCatalogTemplate[] {
     const normalized = query.trim().toLowerCase();
     return db.data.workflowCatalogTemplates.filter((template) => {
-      if (template.lifecycle !== 'PUBLISHED' && !this.canDesign(actor)) return false;
+      if (template.lifecycle !== 'PUBLISHED') return false;
       if (category && template.category !== category) return false;
-      if (!normalized) return true;
       const definition = db.data.workflowDefinitions.find((item) => item.id === template.workflowDefinitionId);
+      if (!definition || definition.lifecycle !== 'PUBLISHED' || !this.canViewDefinition(definition, actor)) return false;
+      if (!normalized) return true;
       const version = definition && this.getVersion(definition.id, template.publishedWorkflowVersion);
       const owner = db.data.users.find((user) => user.id === template.ownerId);
       const searchable = [template.title, template.purpose, template.domain, template.category, owner?.fullName, ...(template.tags || []), ...(version?.nodes.map((node) => node.title) || [])].join(' ').toLowerCase();
@@ -44,22 +120,60 @@ export class WorkflowOrchestrationService {
   }
 
   public static catalogPayload(actor: BankUser, query = '') {
-    const templates = this.listCatalog(actor, query);
-    const sections = ['Recommended', 'Recently Used', 'Favorites', 'IT & Operations', 'Development & DevOps', 'Information Security', 'HR & Employee Lifecycle', 'Finance', 'Procurement', 'Legal', 'Facilities'];
+    const needsBootstrap =
+      !db.data.workflowPolicySets.some((policy) => policy.id === 'policy-general-v1' && policy.version === 1) ||
+      !db.data.notificationPoliciesV2.some((policy) => policy.id === 'notification-workflow-participants-v1' && policy.eventTypes.includes('COMMENT_ADDED')) ||
+      !db.data.workflowCatalogTemplates.some((template) => template.id === 'template-usb-access') ||
+      !db.data.workflowCatalogTemplates.some((template) => template.id === 'template-website-access') ||
+      !db.data.workflowCatalogTemplates.some((template) => template.id === 'template-it-mail-not-received') ||
+      !db.data.workflowCatalogTemplates.some((template) => template.id === 'template-it-network-software-installation') ||
+      !db.data.workflowCatalogTemplates.some((template) => template.id === 'template-standard-task') ||
+      !db.data.requestTypesV2.some((requestType) => requestType.id === 'request-standard-task' && requestType.isActive) ||
+      !db.data.slaPolicies?.length;
+    if (needsBootstrap) {
+      db.transaction(() => {
+        this.ensureRuntimeBaseline();
+      });
+    }
+    const templates = this.listCatalog(actor, query).map((template) => {
+      const definition = this.getDefinition(template.workflowDefinitionId);
+      return {
+        ...template,
+        canDelete: this.canDesign(actor) && this.canEditDefinition(definition, actor) && this.canUseScope(actor, definition.scope),
+      };
+    });
+    const sections = [
+      { name: 'Company Templates', scope: 'COMPANY' as const },
+      { name: 'Department / Branch Templates', scope: 'DEPARTMENT' as const },
+      { name: 'User Templates', scope: 'PERSONAL' as const },
+    ];
     return {
-      sections: sections.map((name) => ({
-        name,
-        templates: name === 'Recommended'
-          ? templates.slice(0, 6)
-          : name === 'Recently Used'
-            ? [...templates].filter((item) => item.lastUsedAt).sort((a, b) => String(b.lastUsedAt).localeCompare(String(a.lastUsedAt))).slice(0, 6)
-            : name === 'Favorites'
-              ? templates.filter((item) => item.favoriteUserIds.includes(actor.id))
-              : templates.filter((item) => item.category === name),
-      })).filter((section) => section.templates.length > 0 || ['Recommended', 'Favorites'].includes(section.name)),
+      sections: sections.map((section) => ({
+        name: section.name,
+        scope: section.scope,
+        templates: templates.filter((item) => item.scope === section.scope),
+      })),
       templates,
       requestTypes: db.data.requestTypesV2.filter((requestType) => requestType.isActive),
     };
+  }
+
+  public static directoryOptions(actor: BankUser) {
+    if (!actor.isActive) throw new OrchestrationError('Inactive users cannot access directory routing options.', 403);
+    const sections = db.data.departmentSections || [];
+    const users = db.data.users
+      .filter((user) => user.isActive && user.directorySource === 'ACTIVE_DIRECTORY')
+      .map((user) => ({ id: user.id, fullName: user.fullName, title: user.title, departmentId: user.departmentId, sectionId: user.sectionId, sectionName: sections.find((section) => section.id === user.sectionId)?.name, teamIds: user.teamIds, roles: user.roles, managerId: user.managerId }));
+    const departments = db.data.departments
+      .filter((department) => department.isActive !== false)
+      .map((department) => ({ id: department.id, name: department.name, code: department.code, managerId: department.managerId }));
+    const teamIds = new Set(users.flatMap((user) => user.teamIds));
+    const groups = [...teamIds].sort().map((id) => ({
+      id,
+      name: db.data.teams.find((team) => team.id === id)?.name || id.replace(/^team-/, '').replaceAll('-', ' '),
+    }));
+    const roles = [...new Set(users.flatMap((user) => user.roles))].sort();
+    return { users, departments, sections: sections.filter((section) => section.isActive !== false), groups, roles };
   }
 
   public static getDefinition(id: string): WorkflowDefinition {
@@ -76,17 +190,19 @@ export class WorkflowOrchestrationService {
     return snapshot;
   }
 
-  public static getTemplate(id: string): { template: WorkflowCatalogTemplate; definition: WorkflowDefinition; version: WorkflowVersion; preflight: PreflightResult } {
+  public static getTemplate(id: string, actor?: BankUser): { template: WorkflowCatalogTemplate; definition: WorkflowDefinition; version: WorkflowVersion; preflight: PreflightResult } {
     const template = db.data.workflowCatalogTemplates.find((item) => item.id === id);
     if (!template) throw new OrchestrationError('Catalog template not found.', 404);
     const definition = this.getDefinition(template.workflowDefinitionId);
+    if (template.lifecycle !== 'PUBLISHED' || definition.lifecycle !== 'PUBLISHED') throw new OrchestrationError('This workflow template is no longer available.', 404);
+    if (actor && !this.canViewDefinition(definition, actor)) throw new OrchestrationError('You are not authorized to view this workflow template.', 403);
     const version = this.getVersion(definition.id, template.publishedWorkflowVersion);
     return { template, definition, version, preflight: WorkflowPreflightService.validate(version) };
   }
 
   public static compareVersions(definitionId: string, fromVersion: number, toVersion: number, actor: BankUser) {
     const definition = this.getDefinition(definitionId);
-    if (!this.canDesign(actor) && definition.lifecycle !== 'PUBLISHED') throw new OrchestrationError('Workflow comparison is not authorized.', 403);
+    if (!this.canDesign(actor) || !this.canViewDefinition(definition, actor)) throw new OrchestrationError('Workflow comparison is not authorized.', 403);
     const from = this.getVersion(definitionId, fromVersion);
     const to = this.getVersion(definitionId, toVersion);
     const fromNodes = new Map(from.nodes.map((node) => [node.id, node]));
@@ -116,7 +232,7 @@ export class WorkflowOrchestrationService {
 
   public static cloneTemplate(templateId: string, actor: BankUser, mode: 'CLONE' | 'FORK' = 'CLONE') {
     if (!this.canDesign(actor)) throw new OrchestrationError('Workflow designer permission is required.', 403);
-    const source = this.getTemplate(templateId);
+    const source = this.getTemplate(templateId, actor);
     const suffix = uuidv4().slice(0, 8);
     const draft = this.saveDraft({
       definition: {
@@ -149,7 +265,7 @@ export class WorkflowOrchestrationService {
   public static setLifecycle(definitionId: string, lifecycle: WorkflowDefinition['lifecycle'], actor: BankUser) {
     if (!this.canDesign(actor)) throw new OrchestrationError('Workflow designer permission is required.', 403);
     const definition = this.getDefinition(definitionId);
-    if (definition.ownerId !== actor.id && !actor.roles.some((role) => ['PLATFORM_ADMIN', 'CISO'].includes(role))) throw new OrchestrationError('Only the owner or platform administrator may change lifecycle.', 403);
+    if (!this.canEditDefinition(definition, actor) || !this.canUseScope(actor, definition.scope)) throw new OrchestrationError('Only an authorized owner or scoped template administrator may change lifecycle.', 403);
     const allowed: Record<WorkflowDefinition['lifecycle'], WorkflowDefinition['lifecycle'][]> = { DRAFT: ['REVIEW', 'ARCHIVED'], REVIEW: ['DRAFT', 'PUBLISHED', 'ARCHIVED'], PUBLISHED: ['DEPRECATED'], DEPRECATED: ['PUBLISHED', 'ARCHIVED'], ARCHIVED: [] };
     if (!allowed[definition.lifecycle].includes(lifecycle)) throw new OrchestrationError(`Lifecycle transition ${definition.lifecycle} â†’ ${lifecycle} is not allowed.`, 409);
     definition.lifecycle = lifecycle;
@@ -160,8 +276,37 @@ export class WorkflowOrchestrationService {
     return { definition, template };
   }
 
+  /**
+   * Removes a template from the catalog without deleting the immutable
+   * versions or runtime evidence that may still be referenced by audits.
+   */
+  public static deleteTemplate(templateId: string, actor: BankUser) {
+    if (!this.canDesign(actor)) throw new OrchestrationError('Workflow designer permission is required.', 403);
+    return db.transaction(() => {
+      const template = db.data.workflowCatalogTemplates.find((item) => item.id === templateId);
+      if (!template) throw new OrchestrationError('Catalog template not found.', 404);
+      const definition = this.getDefinition(template.workflowDefinitionId);
+      if (!this.canEditDefinition(definition, actor) || !this.canUseScope(actor, definition.scope)) {
+        throw new OrchestrationError('Only an authorized owner or scoped template administrator may delete this workflow template.', 403);
+      }
+
+      const archivedAt = new Date().toISOString();
+      definition.lifecycle = 'ARCHIVED';
+      definition.updatedAt = archivedAt;
+      template.lifecycle = 'ARCHIVED';
+      for (const requestType of db.data.requestTypesV2.filter((item) => item.workflowDefinitionId === definition.id)) {
+        requestType.isActive = false;
+      }
+      return { templateId: template.id, archivedAt };
+    });
+  }
+
   public static getRequestType(id: string): RequestTypeDefinition {
-    const requestType = db.data.requestTypesV2.find((item) => item.id === id && item.isActive);
+    let requestType = db.data.requestTypesV2.find((item) => item.id === id && item.isActive);
+    if (!requestType) {
+      this.ensureRuntimeBaseline();
+      requestType = db.data.requestTypesV2.find((item) => item.id === id && item.isActive);
+    }
     if (!requestType) throw new OrchestrationError('Request type not found.', 404);
     return requestType;
   }
@@ -269,6 +414,34 @@ export class WorkflowOrchestrationService {
   }
 
   public static resolveAssignment(configuration: AssignmentConfiguration | undefined, context: Record<string, unknown>, node: WorkflowNodeDefinition, requesterId: string): { groupId?: string; assigneeId?: string; explanation: string } {
+    const directAssigneeId = typeof context.assigneeId === 'string' && context.assigneeId ? context.assigneeId : undefined;
+    const directGroupId = typeof context.targetDepartmentId === 'string' && context.targetDepartmentId
+      ? context.targetDepartmentId
+      : typeof context.assignmentGroupId === 'string' && context.assignmentGroupId
+        ? context.assignmentGroupId
+        : undefined;
+
+    if (directAssigneeId || directGroupId) {
+      let assigneeId = directAssigneeId;
+      let groupId = directGroupId;
+      if (assigneeId) {
+        const user = db.data.users.find((candidate) => candidate.id === assigneeId && candidate.isActive);
+        if (!user) {
+          assigneeId = undefined;
+        } else if (!groupId) {
+          groupId = user.teamIds[0] || user.departmentId;
+        }
+      }
+      const group = db.data.departments.find((d) => d.id === groupId) || db.data.teams.find((t) => t.id === groupId);
+      const assignee = db.data.users.find((u) => u.id === assigneeId);
+      const explanation = assignee
+        ? `Assigned directly to ${assignee.fullName}${group ? ` (${group.name})` : ''} as specified in intake.`
+        : group
+          ? `Routed directly to ${group.name} queue as specified in intake.`
+          : `Assigned based on intake routing context.`;
+      return { groupId, assigneeId, explanation };
+    }
+
     const fallbackGroupId = node.stageId?.includes('onboard') || node.stageId?.includes('offboard') ? 'team-hr-ops' : undefined;
     if (!configuration) return { groupId: fallbackGroupId, explanation: fallbackGroupId ? `Assigned to HR Operations because stage “${node.stageId}” is an employee lifecycle stage.` : `No explicit routing policy matched; “${node.title}” remains in the workflow owner queue.` };
     let groupId = configuration.groupId;
@@ -277,7 +450,7 @@ export class WorkflowOrchestrationService {
     if (configuration.strategy === 'REQUESTER_MANAGER') assigneeId = requester?.managerId;
     if (configuration.strategy === 'EMPLOYEE_MANAGER') assigneeId = String(OrchestrationExpressionService.getPath(context, 'managerId') || OrchestrationExpressionService.getPath(context, 'employee.managerId') || '');
     if (configuration.strategy === 'DEPARTMENT_OWNER') {
-      const departmentId = String(OrchestrationExpressionService.getPath(context, 'departmentId') || requester?.departmentId || '');
+      const departmentId = String(configuration.departmentId || OrchestrationExpressionService.getPath(context, 'departmentId') || requester?.departmentId || '');
       assigneeId = db.data.departments.find((department) => department.id === departmentId)?.managerId;
     }
     if (configuration.strategy === 'FIXED_PERSON' && configuration.expressionPath) assigneeId = String(OrchestrationExpressionService.getPath(context, configuration.expressionPath) || configuration.assigneeId || '');
@@ -290,6 +463,18 @@ export class WorkflowOrchestrationService {
       assigneeId = db.data.assets.find((asset) => asset.id === assetId)?.ownerId;
     }
     if (configuration.strategy === 'ROLE_BASED' && configuration.role) assigneeId = db.data.users.find((user) => user.isActive && user.roles.includes(configuration.role!))?.id;
+    if (configuration.strategy === 'UNASSIGNED_TEAM_QUEUE' && configuration.role) {
+      const eligible = db.data.users.filter((user) => user.isActive && user.roles.includes(configuration.role!));
+      if (!groupId) {
+        const sharedTeams = eligible.reduce<string[] | undefined>((shared, user) => shared === undefined ? [...user.teamIds] : shared.filter((teamId) => user.teamIds.includes(teamId)), undefined);
+        groupId = sharedTeams?.[0] || eligible.find((user) => user.teamIds.length > 0)?.teamIds[0];
+      }
+    }
+    // A department-scoped queue is a valid human-work destination even when
+    // it is not backed by a named team. The corresponding authorization paths
+    // use the department membership, so designers can safely select “Anyone
+    // in this department / branch” from the builder without a hidden team ID.
+    if (configuration.strategy === 'UNASSIGNED_TEAM_QUEUE' && !groupId && configuration.departmentId) groupId = configuration.departmentId;
     if (configuration.strategy === 'ON_CALL' && groupId) assigneeId = db.data.teams.find((team) => team.id === groupId)?.leadId;
     if (configuration.strategy === 'SKILL_BASED' && groupId) assigneeId = db.data.users.find((user) => user.isActive && user.teamIds.includes(groupId!))?.id;
     if (configuration.strategy === 'RULE_ENGINE') {
@@ -298,6 +483,12 @@ export class WorkflowOrchestrationService {
         const resolved: { groupId?: string; assigneeId?: string; explanation: string } = this.resolveAssignment(rule.assignment, context, node, requesterId);
         return { ...resolved, explanation: `${rule.explanation} ${resolved.explanation}` };
       }
+      // The platform's generic work template must retain a real destination
+      // even when no optional assignment rule matches. Routing it back to the
+      // authenticated requester is deterministic and avoids an invisible,
+      // unclaimable owner queue.
+      const requesterFallback = db.data.users.find((user) => user.id === requesterId && user.isActive);
+      if (requesterFallback) return { assigneeId: requesterFallback.id, groupId: requesterFallback.teamIds[0] || requesterFallback.departmentId, explanation: `No rule matched; routed to requester ${requesterFallback.fullName}.` };
     }
     if (['ROUND_ROBIN', 'LOWEST_WORKLOAD'].includes(configuration.strategy) && groupId) {
       const candidates = db.data.users.filter((user) => user.isActive && user.teamIds.includes(groupId!));
@@ -309,7 +500,7 @@ export class WorkflowOrchestrationService {
       if (!user) assigneeId = undefined;
       else if (!groupId) groupId = user.teamIds[0];
     }
-    const group = db.data.teams.find((team) => team.id === groupId);
+    const group = db.data.teams.find((team) => team.id === groupId) || db.data.departments.find((department) => department.id === groupId);
     const assignee = db.data.users.find((user) => user.id === assigneeId);
     const capability = configuration.capability ? ` using capability “${configuration.capability}”` : '';
     const explanation = assignee
@@ -324,8 +515,13 @@ export class WorkflowOrchestrationService {
     const approval = node.approval;
     if (!approval) return [];
     let users: BankUser[] = [];
+    const requester = db.data.users.find((user) => user.id === requesterId);
+    const approvalDepartmentId = approval.departmentId || String(context.departmentId || '') || requester?.departmentId;
     if (approval.specificUserIds?.length) users = db.data.users.filter((user) => approval.specificUserIds!.includes(user.id) && user.isActive);
     if (!users.length && approval.groupId) users = db.data.users.filter((user) => user.isActive && user.teamIds.includes(approval.groupId!));
+    if (!users.length && approval.approverSource === 'DEPARTMENT_MEMBERS') {
+      users = db.data.users.filter((user) => user.isActive && user.departmentId === approvalDepartmentId);
+    }
     if (!users.length && approval.approverSource === 'DYNAMIC_EXPRESSION' && approval.dynamicPath) {
       const ids = OrchestrationExpressionService.getPath(context, approval.dynamicPath);
       users = db.data.users.filter((user) => user.isActive && (Array.isArray(ids) ? ids.includes(user.id) : ids === user.id));
@@ -336,7 +532,7 @@ export class WorkflowOrchestrationService {
       users = db.data.users.filter((user) => user.isActive && user.id === manager?.managerId);
     }
     if (!users.length) {
-      const ticketLike: any = { requesterId, reporterId: requesterId, departmentId: String(context.departmentId || ''), applicationId: context.applicationId, assetId: context.assetId };
+      const ticketLike: any = { requesterId, reporterId: requesterId, departmentId: approvalDepartmentId || '', applicationId: context.applicationId, assetId: context.assetId };
       const resolver = approval.approverSource === 'APPLICATION_OWNER' || approval.approverSource === 'CI_OWNER' ? (approval.approverSource === 'APPLICATION_OWNER' ? 'SERVICE_OWNER' : 'ASSET_OWNER') : approval.approverSource;
       if (['SPECIFIC_USER', 'ROLE', 'REQUESTER_MANAGER', 'DEPARTMENT_HEAD', 'SERVICE_OWNER', 'ASSET_OWNER', 'CAB_BOARD'].includes(resolver)) users = ApprovalService.resolveApprovers(resolver as any, ticketLike, approval.role);
     }
@@ -439,8 +635,27 @@ export class WorkflowOrchestrationService {
   public static saveDraft(input: { definition?: Partial<WorkflowDefinition>; version: Omit<WorkflowVersion, 'id' | 'workflowDefinitionId' | 'version' | 'checksum' | 'createdAt' | 'createdByUserId'>; workflowDefinitionId?: string }, actor: BankUser) {
     if (!this.canDesign(actor)) throw new OrchestrationError('Workflow designer permission is required.', 403);
     return db.transaction(() => {
+      this.ensureRuntimeBaseline();
       let definition: WorkflowDefinition;
-      if (input.workflowDefinitionId) definition = this.getDefinition(input.workflowDefinitionId);
+      const requestedScope = input.definition?.scope || 'PERSONAL';
+      if (!this.canUseScope(actor, requestedScope)) throw new OrchestrationError(`You are not authorized to create a ${requestedScope.toLowerCase()} workflow template.`, 403);
+      if (input.workflowDefinitionId) {
+        definition = this.getDefinition(input.workflowDefinitionId);
+        if (!this.canEditDefinition(definition, actor)) throw new OrchestrationError('Only the owner, scoped department administrator, or company administrator may edit this workflow.', 403);
+        if (input.definition?.scope && input.definition.scope !== definition.scope) {
+          definition.scope = input.definition.scope;
+          definition.departmentId = definition.scope === 'DEPARTMENT' ? actor.departmentId : undefined;
+        }
+        if (input.definition) {
+          definition.key = input.definition.key || definition.key;
+          definition.name = input.definition.name || definition.name;
+          definition.description = input.definition.description ?? definition.description;
+          definition.domain = input.definition.domain || definition.domain;
+          definition.defaultWorkType = input.definition.defaultWorkType || definition.defaultWorkType;
+          definition.tags = input.definition.tags || definition.tags;
+          definition.iconName = input.definition.iconName || definition.iconName;
+        }
+      }
       else {
         const now = new Date().toISOString();
         definition = {
@@ -450,12 +665,11 @@ export class WorkflowOrchestrationService {
           description: input.definition?.description || '',
           domain: input.definition?.domain || 'GENERAL',
           defaultWorkType: input.definition?.defaultWorkType || 'TASK',
-          lifecycle: 'DRAFT', scope: input.definition?.scope || 'PERSONAL', ownerId: actor.id, maintainerIds: [actor.id], latestVersion: 0,
+          lifecycle: 'DRAFT', scope: requestedScope, departmentId: requestedScope === 'DEPARTMENT' ? actor.departmentId : undefined, ownerId: actor.id, maintainerIds: [actor.id], latestVersion: 0,
           tags: input.definition?.tags || [], iconName: input.definition?.iconName || 'Workflow', createdAt: now, updatedAt: now,
         };
         db.data.workflowDefinitions.push(definition);
       }
-      if (definition.ownerId !== actor.id && !actor.roles.some((role) => ['PLATFORM_ADMIN', 'CISO'].includes(role))) throw new OrchestrationError('Only the owner or platform administrator may edit this workflow.', 403);
       const nextVersion = Math.max(0, ...db.data.workflowVersions.filter((item) => item.workflowDefinitionId === definition.id).map((item) => item.version)) + 1;
       const payload = { ...input.version, status: 'DRAFT' as const };
       const checksum = `sha256-${crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex')}`;
@@ -471,6 +685,7 @@ export class WorkflowOrchestrationService {
     if (!this.canDesign(actor)) throw new OrchestrationError('Workflow designer permission is required.', 403);
     return db.transaction(() => {
       const definition = this.getDefinition(definitionId);
+      if (!this.canEditDefinition(definition, actor) || !this.canUseScope(actor, definition.scope)) throw new OrchestrationError('You are not authorized to publish this workflow scope.', 403);
       const version = this.getVersion(definitionId, versionNumber);
       const preflight = WorkflowPreflightService.validate(version, actor);
       if (!preflight.valid) throw new OrchestrationError('Workflow cannot be published until preflight errors are resolved.', 422, preflight);
@@ -481,15 +696,117 @@ export class WorkflowOrchestrationService {
       definition.updatedAt = version.publishedAt;
       let template = db.data.workflowCatalogTemplates.find((item) => item.workflowDefinitionId === definition.id);
       if (!template) {
-        template = { id: `template-${definition.key}`, workflowDefinitionId: definition.id, publishedWorkflowVersion: version.version, title: definition.name, purpose: definition.description, domain: definition.domain, category: 'Recommended', scope: definition.scope, ownerId: definition.ownerId, maintainerIds: definition.maintainerIds, tags: definition.tags, iconName: definition.iconName, estimatedDurationMinutes: 1440, stageCount: version.stages.length, departmentCount: new Set(version.nodes.map((node) => node.assignment?.groupId).filter(Boolean)).size || 1, approvalCount: version.nodes.filter((node) => node.type === 'APPROVAL').length, automationCount: version.nodes.filter((node) => node.action).length, runCount: 0, successRate: 0, favoriteUserIds: [], lifecycle: 'PUBLISHED', changeLog: version.changeLog };
+        template = { id: `template-${definition.key}`, workflowDefinitionId: definition.id, publishedWorkflowVersion: version.version, title: definition.name, purpose: definition.description, domain: definition.domain, category: 'Recommended', scope: definition.scope, departmentId: definition.departmentId, ownerId: definition.ownerId, maintainerIds: definition.maintainerIds, tags: definition.tags, iconName: definition.iconName, estimatedDurationMinutes: 1440, stageCount: version.stages.length, departmentCount: new Set(version.nodes.map((node) => node.assignment?.groupId).filter(Boolean)).size || 1, approvalCount: version.nodes.filter((node) => node.type === 'APPROVAL').length, automationCount: version.nodes.filter((node) => node.action).length, runCount: 0, successRate: 0, favoriteUserIds: [], lifecycle: 'PUBLISHED', changeLog: version.changeLog };
         db.data.workflowCatalogTemplates.push(template);
       } else {
         template.publishedWorkflowVersion = version.version;
+        template.title = definition.name;
+        template.purpose = definition.description;
+        template.domain = definition.domain;
+        template.tags = definition.tags;
+        template.iconName = definition.iconName;
         template.stageCount = version.stages.length;
         template.approvalCount = version.nodes.filter((node) => node.type === 'APPROVAL').length;
         template.automationCount = version.nodes.filter((node) => node.action).length;
         template.changeLog = version.changeLog;
         template.lifecycle = 'PUBLISHED';
+        template.scope = definition.scope;
+        template.departmentId = definition.departmentId;
+      }
+      const inputNode = version.nodes.find((node) => ['INPUT', 'TICKET_INPUT'].includes(node.type));
+      if (inputNode) {
+        db.data.formDefinitionsV2 ||= [];
+        db.data.formVersions ||= [];
+        db.data.requestTypesV2 ||= [];
+        const formId = `form-${definition.key}`;
+        const formVersionId = `${formId}-v${version.version}`;
+        const requestTypeId = `request-${definition.key}`;
+        const customFields: FormFieldDefinition[] = inputNode.inputConfig?.fields || [];
+        const baseFields: FormFieldDefinition[] = [
+          { id: `${definition.key}-summary`, key: 'summary', label: 'Request title', type: 'TEXT', required: true, validation: { min: 3, max: 160 }, placeholder: 'Brief summary of the request' },
+          { id: `${definition.key}-description`, key: 'description', label: 'Description / Details', type: 'TEXTAREA', placeholder: 'Provide any additional context or instructions...' },
+          { id: `${definition.key}-requester`, key: 'requesterId', label: 'Requester', type: 'USER', required: true },
+          { id: `${definition.key}-department`, key: 'departmentId', label: 'Requester department / branch', type: 'DEPARTMENT', required: true },
+        ];
+        const combinedFields = [
+          ...baseFields.filter((bf) => !customFields.some((cf) => cf.key === bf.key)),
+          ...customFields,
+        ];
+        let formDef = db.data.formDefinitionsV2.find((f) => f.id === formId);
+        if (!formDef) {
+          formDef = {
+            id: formId,
+            key: `form-${definition.key}`,
+            title: `${definition.name} Request Form`,
+            description: inputNode.description || definition.description,
+            domain: definition.domain,
+            lifecycle: 'PUBLISHED',
+            latestVersion: version.version,
+            ownerId: definition.ownerId,
+            maintainerIds: definition.maintainerIds,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          db.data.formDefinitionsV2.push(formDef);
+        } else {
+          formDef.latestVersion = version.version;
+          formDef.updatedAt = new Date().toISOString();
+        }
+        const existingFormVer = db.data.formVersions.find((fv) => fv.formDefinitionId === formId && fv.version === version.version);
+        const formVerObj: any = {
+          id: formVersionId,
+          formDefinitionId: formId,
+          version: version.version,
+          status: 'PUBLISHED',
+          sections: [
+            {
+              id: `${formId}-section-main`,
+              title: inputNode.title || 'Request details',
+              description: inputNode.description || 'Fill in the required information to launch this workflow.',
+              fields: combinedFields,
+            },
+          ],
+          changeLog: `Generated from Ticket Input node in workflow version ${version.version}`,
+          createdByUserId: actor.id,
+          createdAt: new Date().toISOString(),
+        };
+        if (existingFormVer) {
+          Object.assign(existingFormVer, formVerObj);
+        } else {
+          db.data.formVersions.push(formVerObj);
+        }
+        version.formDefinitionId = formId;
+        version.formVersion = version.version;
+        let reqType = db.data.requestTypesV2.find((r) => r.workflowDefinitionId === definition.id);
+        if (!reqType) {
+          reqType = {
+            id: requestTypeId,
+            key: `req-${definition.key}`,
+            name: definition.name,
+            description: definition.description,
+            domain: definition.domain,
+            workType: definition.defaultWorkType,
+            category: 'Workflows',
+            iconName: definition.iconName,
+            formDefinitionId: formId,
+            formVersion: version.version,
+            workflowDefinitionId: definition.id,
+            workflowVersion: version.version,
+            policySetId: version.policySetId,
+            supportedChannels: ['EMPLOYEE_PORTAL', 'AGENT', 'MANAGER', 'ADMIN', 'API'],
+            visibility: 'INTERNAL',
+            isActive: true,
+            tags: definition.tags,
+          };
+          db.data.requestTypesV2.push(reqType);
+        } else {
+          reqType.formDefinitionId = formId;
+          reqType.formVersion = version.version;
+          reqType.workflowVersion = version.version;
+          reqType.name = definition.name;
+          reqType.description = definition.description;
+          reqType.isActive = true;
+        }
       }
       return { definition, version, template, preflight };
     });

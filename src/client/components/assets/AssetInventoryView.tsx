@@ -85,18 +85,18 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-[#F4F5F7] custom-scrollbar">
+    <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-semantic-jira-surface custom-scrollbar">
       {/* Header */}
-      <div className="bg-[#FFFFFF] border border-[#DFE1E6] rounded-md p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+      <div className="bg-semantic-panel border border-semantic-jira-border rounded-md p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded bg-[#DEEBFF] text-[#0052CC] border border-[#B3D4FF]">
+          <div className="p-2.5 rounded bg-semantic-jira-brand-surface text-semantic-jira-brand border border-semantic-jira-info-border">
             <Database className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-[#172B4D] tracking-tight">
+            <h1 className="text-xl font-bold text-semantic-jira-primary tracking-tight">
               CMDB Infrastructure & Asset Inventory
             </h1>
-            <p className="text-xs text-[#5E6C84] mt-0.5">
+            <p className="text-xs text-semantic-jira-muted mt-0.5">
               Production Kubernetes clusters, database nodes, DMZ firewalls, cloud subscriptions, and PAM bastions.
             </p>
           </div>
@@ -108,7 +108,7 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
             disabled={isScanning}
             className="jira-btn-secondary"
           >
-            <Radio className={`w-3.5 h-3.5 ${isScanning ? 'animate-pulse text-[#FF8B00]' : 'text-[#0052CC]'}`} />
+            <Radio className={`w-3.5 h-3.5 ${isScanning ? 'animate-pulse text-semantic-warning-bright' : 'text-semantic-jira-brand'}`} />
             <span>{isScanning ? 'Scanning...' : 'Discovery Scan'}</span>
           </button>
           <button
@@ -122,14 +122,14 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
       </div>
 
       {scanMessage && (
-        <div className="p-3 bg-[#FFFFFF] border border-[#B3D4FF] text-[#0052CC] rounded text-xs font-mono flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-[#006644] shrink-0" />
+        <div className="p-3 bg-semantic-panel border border-semantic-jira-info-border text-semantic-jira-brand rounded text-xs font-mono flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-semantic-success shrink-0" />
           <span>{scanMessage}</span>
         </div>
       )}
 
       {/* Filter Tabs & Search */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#DFE1E6] pb-2 text-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-semantic-jira-border pb-2 text-xs">
         <div className="flex items-center gap-1">
           {[
             { id: 'ALL', label: 'All Assets' },
@@ -142,8 +142,8 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
               onClick={() => setEnvFilter(tab.id)}
               className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
                 envFilter === tab.id
-                  ? 'bg-[#0052CC] text-white font-semibold shadow-sm'
-                  : 'bg-[#FFFFFF] text-[#5E6C84] hover:text-[#172B4D] border border-[#DFE1E6]'
+                  ? 'bg-semantic-jira-brand text-white font-semibold shadow-sm'
+                  : 'bg-semantic-panel text-semantic-jira-muted hover:text-semantic-jira-primary border border-semantic-jira-border'
               }`}
             >
               {tab.label}
@@ -152,7 +152,7 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
         </div>
 
         <div className="relative w-full sm:w-64">
-          <Search className="w-3.5 h-3.5 text-[#5E6C84] absolute left-2.5 top-2" />
+          <Search className="w-3.5 h-3.5 text-semantic-jira-muted absolute left-2.5 top-2" />
           <input
             type="text"
             value={search}
@@ -164,9 +164,9 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
       </div>
 
       {/* Table */}
-      <div className="bg-[#FFFFFF] border border-[#DFE1E6] rounded-md overflow-hidden shadow-sm">
+      <div className="bg-semantic-panel border border-semantic-jira-border rounded-md overflow-hidden shadow-sm">
         <table className="w-full text-left text-xs border-collapse jira-table">
-          <thead className="bg-[#FFFFFF] border-b border-[#DFE1E6] text-[#5E6C84] uppercase font-semibold text-[10px] tracking-wider">
+          <thead className="bg-semantic-panel border-b border-semantic-jira-border text-semantic-jira-muted uppercase font-semibold text-caption tracking-wider">
             <tr>
               <th className="px-4 py-3">Asset Name & CMDB Ref</th>
               <th className="px-3 py-3">Type</th>
@@ -177,44 +177,44 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
               <th className="px-3 py-3 text-right">Critical Findings</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#DFE1E6]">
+          <tbody className="divide-y divide-semantic-jira-border">
             {filteredAssets.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-[#5E6C84] italic">
+                <td colSpan={7} className="px-4 py-12 text-center text-semantic-jira-muted italic">
                   No infrastructure assets matched the current filter.
                 </td>
               </tr>
             ) : (
               filteredAssets.map((ast) => (
-                <tr key={ast.id} className="hover:bg-[#EBECF0] transition-colors group">
+                <tr key={ast.id} className="hover:bg-semantic-jira-hover transition-colors group">
                   <td className="px-4 py-3">
-                    <div className="font-mono font-bold text-[#172B4D] text-xs group-hover:text-[#0052CC] transition-colors">
+                    <div className="font-mono font-bold text-semantic-jira-primary text-xs group-hover:text-semantic-jira-brand transition-colors">
                       {ast.name}
                     </div>
-                    <div className="text-[10px] text-[#7A869A] font-mono">CMDB: {ast.cmdbId}</div>
+                    <div className="text-caption text-semantic-jira-muted-light font-mono">CMDB: {ast.cmdbId}</div>
                   </td>
-                  <td className="px-3 py-3 font-mono text-[#172B4D]">
-                    <span className="px-2 py-0.5 rounded bg-[#FFFFFF] text-[#172B4D] border border-[#DFE1E6] text-[10px]">
+                  <td className="px-3 py-3 font-mono text-semantic-jira-primary">
+                    <span className="px-2 py-0.5 rounded bg-semantic-panel text-semantic-jira-primary border border-semantic-jira-border text-caption">
                       {ast.assetType}
                     </span>
                   </td>
-                  <td className="px-3 py-3 font-mono text-[#172B4D] text-xs">
-                    <div className="font-medium text-[#172B4D]">{ast.hostname}</div>
-                    <div className="text-[#5E6C84] text-[10px]">{ast.ipAddress || 'Internal Private IP'}</div>
+                  <td className="px-3 py-3 font-mono text-semantic-jira-primary text-xs">
+                    <div className="font-medium text-semantic-jira-primary">{ast.hostname}</div>
+                    <div className="text-semantic-jira-muted text-caption">{ast.ipAddress || 'Internal Private IP'}</div>
                   </td>
-                  <td className="px-3 py-3 text-[#172B4D] text-[11px]">
+                  <td className="px-3 py-3 text-semantic-jira-primary text-label">
                     {ast.operatingSystem || 'Linux RHEL 9'}
                   </td>
                   <td className="px-3 py-3">
-                    <span className="px-2 py-0.5 rounded bg-[#DEEBFF] text-[#0052CC] border border-[#B3D4FF] text-[10px] font-mono font-bold">
+                    <span className="px-2 py-0.5 rounded bg-semantic-jira-brand-surface text-semantic-jira-brand border border-semantic-jira-info-border text-caption font-mono font-bold">
                       {ast.environment}
                     </span>
                   </td>
-                  <td className="px-3 py-3 text-[#172B4D] font-medium text-[11px]">
+                  <td className="px-3 py-3 text-semantic-jira-primary font-medium text-label">
                     {ast.ownerName}
                   </td>
                   <td className="px-3 py-3 text-right font-mono font-bold">
-                    <span className={ast.criticalFindingCount && ast.criticalFindingCount > 0 ? 'text-[#DE350B]' : 'text-[#5E6C84]'}>
+                    <span className={ast.criticalFindingCount && ast.criticalFindingCount > 0 ? 'text-semantic-danger-strong' : 'text-semantic-jira-muted'}>
                       {ast.criticalFindingCount || 0}
                     </span>
                   </td>
@@ -227,14 +227,14 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
 
       {/* Add Asset Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-[2px] p-4">
-          <div className="bg-[#FFFFFF] border border-[#DFE1E6] rounded-md max-w-lg w-full p-5 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#DFE1E6] pb-3">
+        <div className="fixed inset-0 z-dsOverlay flex items-center justify-center bg-black/65 backdrop-blur-[2px] p-4">
+          <div className="bg-semantic-panel border border-semantic-jira-border rounded-md max-w-lg w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-semantic-jira-border pb-3">
               <div className="flex items-center gap-2">
-                <Database className="w-4 h-4 text-[#0052CC]" />
-                <h3 className="text-sm font-bold text-[#172B4D]">Add CMDB Infrastructure Asset</h3>
+                <Database className="w-4 h-4 text-semantic-jira-brand" />
+                <h3 className="text-sm font-bold text-semantic-jira-primary">Add CMDB Infrastructure Asset</h3>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="text-[#5E6C84] hover:text-[#172B4D]">
+              <button onClick={() => setIsModalOpen(false)} className="text-semantic-jira-muted hover:text-semantic-jira-primary">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -242,7 +242,7 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
             <form onSubmit={handleCreateAsset} className="space-y-3 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#5E6C84] mb-1">Asset Name:</label>
+                  <label className="block text-semantic-jira-muted mb-1">Asset Name:</label>
                   <input
                     type="text"
                     value={name}
@@ -253,7 +253,7 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
                   />
                 </div>
                 <div>
-                  <label className="block text-[#5E6C84] mb-1">Hostname (FQDN):</label>
+                  <label className="block text-semantic-jira-muted mb-1">Hostname (FQDN):</label>
                   <input
                     type="text"
                     value={hostname}
@@ -267,7 +267,7 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#5E6C84] mb-1">IP Address:</label>
+                  <label className="block text-semantic-jira-muted mb-1">IP Address:</label>
                   <input
                     type="text"
                     value={ipAddress}
@@ -277,7 +277,7 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
                   />
                 </div>
                 <div>
-                  <label className="block text-[#5E6C84] mb-1">Asset Type:</label>
+                  <label className="block text-semantic-jira-muted mb-1">Asset Type:</label>
                   <select
                     value={assetType}
                     onChange={(e) => setAssetType(e.target.value as any)}
@@ -294,7 +294,7 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#5E6C84] mb-1">Environment:</label>
+                  <label className="block text-semantic-jira-muted mb-1">Environment:</label>
                   <select
                     value={environment}
                     onChange={(e) => setEnvironment(e.target.value as any)}
@@ -306,7 +306,7 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[#5E6C84] mb-1">Criticality:</label>
+                  <label className="block text-semantic-jira-muted mb-1">Criticality:</label>
                   <select
                     value={criticality}
                     onChange={(e) => setCriticality(e.target.value as any)}
@@ -320,7 +320,7 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
               </div>
 
               <div>
-                <label className="block text-[#5E6C84] mb-1">Operating System & Runtime:</label>
+                <label className="block text-semantic-jira-muted mb-1">Operating System & Runtime:</label>
                 <input
                   type="text"
                   value={operatingSystem}
@@ -330,7 +330,7 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
               </div>
 
               <div>
-                <label className="block text-[#5E6C84] mb-1">Owner Team / Squad:</label>
+                <label className="block text-semantic-jira-muted mb-1">Owner Team / Squad:</label>
                 <input
                   type="text"
                   value={ownerName}
@@ -339,7 +339,7 @@ export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#DFE1E6]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-semantic-jira-border">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}

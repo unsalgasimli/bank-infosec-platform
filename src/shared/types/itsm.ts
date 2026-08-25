@@ -211,8 +211,10 @@ export interface TicketAIRecommendation {
 }
 
 export interface TicketLifecycleBundle {
-  relationships: Array<TicketRelationship & { relatedTicket?: Pick<Ticket, 'id' | 'key' | 'title' | 'statusName'> }>;
+  relationships: Array<TicketRelationship & { relatedTicket?: Pick<Ticket, 'id' | 'key' | 'title' | 'statusName' | 'statusCategory' | 'assigneeId' | 'technicalSeverity' | 'businessPriority'> }>;
   tasks: TicketTask[];
+  subTickets: Array<Pick<Ticket, 'id' | 'key' | 'title' | 'statusName' | 'statusCategory' | 'assigneeId' | 'departmentId' | 'targetDepartmentId' | 'technicalSeverity' | 'businessPriority' | 'createdAt'>>;
+  parentTicket?: Pick<Ticket, 'id' | 'key' | 'title' | 'statusName' | 'statusCategory' | 'assigneeId' | 'requesterId' | 'departmentId'>;
   worklogs: TicketWorklog[];
   slaMetrics: TicketSLAInstance[];
   satisfaction?: TicketSatisfaction;

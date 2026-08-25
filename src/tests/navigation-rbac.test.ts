@@ -8,6 +8,10 @@ import {
 } from '../shared/types/navigation.js';
 import { BankUser } from '../shared/types/auth.js';
 
+test('Manage Department route opens the department admin portal', () => {
+  assert.deepStrictEqual(resolveLegacyRoute('dept-admin'), { destinationId: 'dept-admin' });
+});
+
 test('🛡️ Enterprise Banking ITSM/GRC Navigation & RBAC Test Suite', async (t) => {
   const cisoUser: BankUser = {
     id: 'usr-ciso',
@@ -157,7 +161,16 @@ test('🛡️ Enterprise Banking ITSM/GRC Navigation & RBAC Test Suite', async (
     assert.strictEqual(buildUrl('service-incidents'), '/service-management/incidents');
     assert.strictEqual(buildUrl('risk-management'), '/security-grc/risk-management');
     assert.strictEqual(buildUrl('audit-compliance'), '/security-grc/audit-compliance');
-    assert.strictEqual(buildUrl('relationship-map'), '/assets-cmdb/relationship-map');
     assert.strictEqual(buildUrl('admin-settings'), '/administration/settings');
+  });
+
+  await t.test('7. Sidebar badges: My Tasks has dedicated my-tasks badgeKey', () => {
+    const myWork = NAVIGATION_MODULES.find((m) => m.id === 'my-work')!;
+    const myTasksItem = myWork.items.find((i) => i.id === 'my-tasks')!;
+    assert.strictEqual(myTasksItem.badgeKey, 'my-tasks');
+
+    const workMgmt = NAVIGATION_MODULES.find((m) => m.id === 'work-management')!;
+    const projectTasksItem = workMgmt.items.find((i) => i.id === 'projects-tasks')!;
+    assert.strictEqual(projectTasksItem.badgeKey, undefined);
   });
 });

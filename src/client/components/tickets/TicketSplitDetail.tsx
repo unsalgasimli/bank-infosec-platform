@@ -54,12 +54,14 @@ interface TicketSplitDetailProps {
   application?: BankApplication;
   asset?: BankAsset;
   lifecycle?: TicketLifecycleBundle;
+  cmdb?: Array<{ ci: any; relationship: string; impact: any }>;
   onBack: () => void;
   onTransition: (transitionId: string, comment?: string, requiredFieldUpdates?: Record<string, any>) => Promise<void>;
   onAddComment: (content: string, visibility: CommentVisibility) => Promise<void>;
   onApprovalDecision: (stepId: string, decision: ApprovalDecision, comments: string) => Promise<void>;
   onUpdateTicket: (updates: Partial<Ticket>) => Promise<void>;
   onRefresh: () => Promise<void> | void;
+  onNavigateToTicket?: (ticketId: string) => void;
 }
 
 export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
@@ -72,12 +74,14 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
   application,
   asset,
   lifecycle,
+  cmdb,
   onBack,
   onTransition,
   onAddComment,
   onApprovalDecision,
   onUpdateTicket,
   onRefresh,
+  onNavigateToTicket,
 }) => {
   const { allUsers, currentUser, fetchWithAuth } = useAuth();
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'LIFECYCLE' | 'ACTIVITY' | 'COMMENTS' | 'EVIDENCE' | 'APPROVALS' | 'AUDIT'>('OVERVIEW');
@@ -95,11 +99,14 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
   const securityOwner = allUsers.find((u) => u.id === ticket.securityOwnerId);
   const canClaim = Boolean(
     currentUser &&
-    !ticket.assigneeId &&
-    ticket.statusCategory !== 'DONE' &&
-    ticket.statusCategory !== 'CANCELLED' &&
-    (ticket.targetDepartmentId === currentUser.departmentId ||
-      Boolean(!ticket.targetDepartmentId && ticket.assignmentGroupId && currentUser.teamIds.includes(ticket.assignmentGroupId)))
+      !ticket.assigneeId &&
+      ticket.statusCategory !== 'DONE' &&
+      ticket.statusCategory !== 'CANCELLED' &&
+      ((ticket.targetDepartmentId && ticket.targetDepartmentId === currentUser.departmentId) ||
+        (!ticket.targetDepartmentId && ticket.departmentId && ticket.departmentId === currentUser.departmentId) ||
+        ticket.participatingDepartmentIds?.includes(currentUser.departmentId || '') ||
+        Boolean(ticket.assignmentGroupId && currentUser.teamIds?.includes(ticket.assignmentGroupId)) ||
+        currentUser.roles.some((r) => ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER'].includes(r)))
   );
 
   const handleCopyKey = () => {
@@ -173,9 +180,9 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
   ];
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#F4F6FB] overflow-hidden">
+    <div className="flex-1 flex flex-col h-full bg-semantic-page overflow-hidden">
       {/* Top Action Header Bar */}
-      <div className="bg-white border-b border-[#E2E8F0] px-6 py-3 flex items-center justify-between z-10 shrink-0 shadow-sm">
+      <div className="bg-white border-b border-semantic-border px-6 py-3 flex items-center justify-between z-dsContent shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
@@ -224,7 +231,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
             <button
               key={trans.id}
               onClick={() => handleTransitionClick(trans)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#0052CC] hover:bg-[#0747A6] active:bg-[#003884] text-white text-xs font-semibold shadow-xs transition-all"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-semantic-jira-brand hover:bg-semantic-jira-brand-hover active:bg-semantic-jira-brand-active text-white text-xs font-semibold shadow-xs transition-all"
             >
               <span>{trans.name}</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -238,7 +245,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
         {/* Left Scrollable Area */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
           {/* Ticket Title & Status Header */}
-          <div className="space-y-3 bg-white p-5 rounded-xl border border-[#E2E8F0] shadow-xs">
+          <div className="space-y-3 bg-white p-5 rounded-xl border border-semantic-border shadow-xs">
             <div className="flex flex-wrap items-center gap-2.5">
               <span className={`jira-lozenge ${getStatusLozengeClass(ticket.statusCategory)}`}>
                 {ticket.statusName}
@@ -269,15 +276,15 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
                   onClick={() => setActiveTab(tab.id as any)}
                   className={`flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold transition-all relative border-b-2 whitespace-nowrap ${
                     isActive
-                      ? 'border-[#0052CC] text-[#0052CC]'
+                      ? 'border-semantic-jira-brand text-semantic-jira-brand'
                       : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded-t-md'
                   }`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-[#0052CC]' : 'text-slate-400'}`} />
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-semantic-jira-brand' : 'text-slate-400'}`} />
                   <span>{tab.label}</span>
                   {tab.count !== null && (
                     <span
-                      className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                      className={`ml-1 px-1.5 py-0.2 rounded-full text-caption font-bold ${
                         isActive
                           ? 'bg-blue-100 text-blue-700'
                           : 'bg-slate-100 text-slate-600'
@@ -298,6 +305,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
                 ticket={ticket}
                 application={application}
                 asset={asset}
+                cmdb={cmdb}
               />
             )}
 
@@ -306,7 +314,12 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
             )}
 
             {activeTab === 'LIFECYCLE' && (
-              <LifecycleTab ticket={ticket} lifecycle={lifecycle} onRefresh={onRefresh} />
+              <LifecycleTab
+                ticket={ticket}
+                lifecycle={lifecycle}
+                onRefresh={onRefresh}
+                onNavigateToTicket={onNavigateToTicket}
+              />
             )}
 
             {activeTab === 'COMMENTS' && (
@@ -334,7 +347,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
         </div>
 
         {/* Right Info Sidebar Panel */}
-        <div className="w-80 bg-white border-l border-[#E2E8F0] overflow-y-auto p-5 space-y-5 shrink-0 text-xs custom-scrollbar">
+        <div className="w-80 bg-white border-l border-semantic-border overflow-y-auto p-5 space-y-5 shrink-0 text-xs custom-scrollbar">
           {/* SLA Card */}
           <SLARing
             remainingMinutes={ticket.slaRemainingMinutes}
@@ -345,7 +358,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
 
           {/* People / Ownership Section */}
           <div className="space-y-3 p-4 rounded-lg bg-slate-50/70 border border-slate-200">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+            <h4 className="text-label font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-slate-400" />
               <span>People & Ownership</span>
             </h4>
@@ -356,14 +369,15 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
               <div className="flex items-center gap-1.5 font-semibold text-slate-800 text-right truncate">
                 {assignee ? (
                   <>
-                    <div className="w-5 h-5 rounded-full bg-[#0052CC] text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                    <div className="w-5 h-5 rounded-full bg-semantic-jira-brand text-white flex items-center justify-center text-caption font-bold shrink-0">
                       {assignee.fullName.charAt(0)}
                     </div>
                     <span className="truncate">{assignee.fullName}</span>
                   </>
                 ) : (
-                  <span className="text-slate-400 italic font-normal">
-                    {ticket.targetDepartmentId ? 'Department queue' : 'Unassigned'}
+                  <span className="px-2 py-0.5 rounded-full bg-semantic-info-soft border border-semantic-info-soft-border text-semantic-info-strong font-mono text-label font-bold inline-flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-semantic-info-strong animate-pulse shrink-0" />
+                    {ticket.targetDepartmentId || ticket.departmentId ? 'Departament Növbəsi' : 'Təyin edilməyib'}
                   </span>
                 )}
               </div>
@@ -387,7 +401,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
 
           {/* Request Classification */}
           <div className="space-y-3 p-4 rounded-lg bg-slate-50/70 border border-slate-200">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+            <h4 className="text-label font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-slate-400" />
               <span>Request Classification</span>
             </h4>
@@ -405,13 +419,13 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
             </div>
             <div className="flex items-center justify-between gap-2">
               <span className="text-slate-500 font-medium">Channel:</span>
-              <span className="font-mono text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200 text-[11px]">{ticket.intakeChannel || 'LEGACY'}</span>
+              <span className="font-mono text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200 text-label">{ticket.intakeChannel || 'LEGACY'}</span>
             </div>
           </div>
 
           {/* Risk Metrics Section */}
           <div className="space-y-3 p-4 rounded-lg bg-slate-50/70 border border-slate-200">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+            <h4 className="text-label font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
               <span>Risk & Severity Ratings</span>
             </h4>
@@ -444,22 +458,22 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
 
           {/* Dates & SLA Milestones */}
           <div className="space-y-3 p-4 rounded-lg bg-slate-50/70 border border-slate-200">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+            <h4 className="text-label font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-slate-400" />
               <span>Dates & Deadlines</span>
             </h4>
 
-            <div className="flex items-center justify-between text-[11px]">
+            <div className="flex items-center justify-between text-label">
               <span className="text-slate-500 font-medium">Created:</span>
               <span className="font-mono text-slate-800">{new Date(ticket.createdAt).toLocaleDateString()}</span>
             </div>
 
-            <div className="flex items-center justify-between text-[11px]">
+            <div className="flex items-center justify-between text-label">
               <span className="text-slate-500 font-medium">Remediation SLA:</span>
               <span className="font-mono text-amber-600 font-bold">{new Date(ticket.remediationDeadline).toLocaleDateString()}</span>
             </div>
 
-            <div className="flex items-center justify-between text-[11px]">
+            <div className="flex items-center justify-between text-label">
               <span className="text-slate-500 font-medium">Hard Due Date:</span>
               <span className="font-mono text-slate-800 font-semibold">{new Date(ticket.dueDate).toLocaleDateString()}</span>
             </div>
@@ -468,7 +482,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
           {/* Tags */}
           {ticket.tags && ticket.tags.length > 0 && (
             <div className="space-y-2 p-4 rounded-lg bg-slate-50/70 border border-slate-200">
-              <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+              <h4 className="text-label font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
                 <Tag className="w-3.5 h-3.5 text-slate-400" />
                 <span>Tags & Compliance</span>
               </h4>
@@ -476,7 +490,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
                 {ticket.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-white text-blue-700 border border-blue-200 text-[10px] font-mono font-medium shadow-xs"
+                    className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-white text-blue-700 border border-blue-200 text-caption font-mono font-medium shadow-xs"
                   >
                     #{tag}
                   </span>
@@ -489,7 +503,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
 
       {/* Transition Comment Modal */}
       {selectedTransition && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-dsOverlay flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
@@ -573,4 +587,3 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
     </div>
   );
 };
-

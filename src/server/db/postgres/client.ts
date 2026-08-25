@@ -21,9 +21,13 @@ export class PostgresClient {
   }
 
   private initPool(): void {
-    if (config.DB_TYPE !== 'postgres' && !config.DATABASE_URL) {
+    if (config.DB_TYPE !== 'postgres') {
       logger.info('Running in in-memory / local fallback mode for database.');
       return;
+    }
+
+    if (!config.DATABASE_URL && (!config.DB_HOST || !config.DB_USER || !config.DB_PASSWORD || !config.DB_NAME)) {
+      throw new Error('DB_TYPE=postgres requires DATABASE_URL or DB_HOST, DB_USER, DB_PASSWORD, and DB_NAME.');
     }
 
     try {
@@ -35,6 +39,12 @@ export class PostgresClient {
             max: config.DB_POOL_MAX,
             idleTimeoutMillis: 30000,
             connectionTimeoutMillis: 5000,
+            statement_timeout: config.DB_STATEMENT_TIMEOUT_MS,
+            query_timeout: config.DB_STATEMENT_TIMEOUT_MS,
+            keepAlive: true,
+            keepAliveInitialDelayMillis: 10000,
+            maxUses: 10000,
+            application_name: 'aegissec-banking-platform',
           }
         : {
             host: config.DB_HOST,
@@ -47,6 +57,12 @@ export class PostgresClient {
             max: config.DB_POOL_MAX,
             idleTimeoutMillis: 30000,
             connectionTimeoutMillis: 5000,
+            statement_timeout: config.DB_STATEMENT_TIMEOUT_MS,
+            query_timeout: config.DB_STATEMENT_TIMEOUT_MS,
+            keepAlive: true,
+            keepAliveInitialDelayMillis: 10000,
+            maxUses: 10000,
+            application_name: 'aegissec-banking-platform',
           };
 
       this.pool = new Pool(poolConfig);
@@ -107,7 +123,9 @@ export class PostgresClient {
 
     const client = await this.pool.connect();
     try {
-      await client.query('BEGIN');
+      await client.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+      await client.query(`SET LOCAL statement_timeout = ${Math.trunc(config.DB_STATEMENT_TIMEOUT_MS)}`);
+      await client.query(`SET LOCAL lock_timeout = ${Math.trunc(config.DB_LOCK_TIMEOUT_MS)}`);
       const result = await callback(client);
       await client.query('COMMIT');
       return result;
@@ -136,7 +154,9 @@ export class PostgresClient {
 
   public async close(): Promise<void> {
     if (this.pool) {
-      await this.pool.end();
+      const pool = this.pool;
+      this.pool = null;
+      await pool.end();
       this.isConnected = false;
       logger.info('PostgreSQL connection pool closed');
     }

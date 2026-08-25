@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import { LDAPSyncService, LDAPSyncReport } from '../server/services/ldap-sync.service.js';
+import { LDAPSyncService, LDAPSyncReport, LDAP_HUMAN_ACCOUNT_FILTER } from '../server/services/ldap-sync.service.js';
 import type { LDAPRawEntry } from '../server/services/ldap-directory.data.js';
 import { LDAPSchedulerService } from '../server/services/ldap-scheduler.service.js';
 import { db } from '../server/db/database.js';
@@ -54,8 +54,9 @@ describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GM
       ['DevOps'],
       'CN=Turxan Mammadli,OU=DevOps,OU=İnformasiya Texnologiyaları Departamenti,OU=BANK USERS,DC=Expressbank,DC=az'
     );
-    assert.strictEqual(devOpsDept.departmentId, 'dept-devops');
-    assert.strictEqual(devOpsDept.departmentName, 'DevOps');
+    assert.strictEqual(devOpsDept.departmentId, 'dept-it');
+    assert.strictEqual(devOpsDept.sectionName, 'DevOps');
+    assert.strictEqual(devOpsDept.sectionId, 'section-dept-it-devops');
     assert.strictEqual(devOpsDept.divisionId, 'div-it');
     assert.ok(devOpsDept.roles.includes('IT_ADMIN'));
 
@@ -65,7 +66,8 @@ describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GM
       [],
       'CN=Test User,OU=İnnovasiyalar və proqramlaşdırma şöbəsi,OU=İnformasiya Texnologiyaları Departamenti,OU=BANK USERS,DC=Expressbank,DC=az'
     );
-    assert.strictEqual(innovationDept.departmentId, 'dept-innovasiyalar-ve-proqramlasdirma-sobesi');
+    assert.strictEqual(innovationDept.departmentId, 'dept-it');
+    assert.strictEqual(innovationDept.sectionName, 'İnnovasiyalar və proqramlaşdırma şöbəsi');
 
     // HR
     const hrDept = LDAPSyncService.mapDepartment('İnsan Resursları və Kadrlar', 'HR Specialist');
@@ -113,6 +115,89 @@ describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GM
         LDAPSyncService.isGenuineEmployeeOrIntern(privilegedEntry, ['all'], privilegedEntry.sAMAccountName),
         false,
         `.${suffix} must not be synchronized`
+      );
+    }
+  });
+
+  it('3.2 strictly excludes non-human service, system, technical, and VPN accounts', () => {
+    const serviceTestCases = [
+      { sam: 'azure.ad', dn: 'CN=Azure.ad,OU=İnformasiya Texnologiyaları Departamenti,OU=BANK USERS,DC=Expressbank,DC=az' },
+      { sam: 'ldap', dn: 'CN=ldap,OU=DISABLED,OU=USER,OU=SERVICE,DC=Expressbank,DC=az' },
+      { sam: 'ldappa', dn: 'CN=ldappa,OU=DISABLED,OU=USER,OU=SERVICE,DC=Expressbank,DC=az' },
+      { sam: 'assetit', dn: 'CN=assetit,OU=USER,OU=SERVICE,DC=Expressbank,DC=az' },
+      { sam: 'otpuser', dn: 'CN=OTP User,OU=VPN,OU=SERVICE,DC=Expressbank,DC=az' },
+      { sam: 'securit1', dn: 'CN=securit1,OU=USER,OU=SERVICE,DC=Expressbank,DC=az' },
+      { sam: 'qradar', dn: 'CN=qradar,OU=USER,OU=SERVICE,DC=Expressbank,DC=az' },
+      { sam: 'rtccomponent', dn: 'CN=rtccomponent,OU=USER,OU=SERVICE,DC=Expressbank,DC=az' },
+      { sam: 'rtccomponentservice', dn: 'CN=rtccomponentservice,OU=BANK USERS,DC=Expressbank,DC=az' },
+      { sam: 'xerox', dn: 'CN=xerox,OU=BANK USERS,DC=Expressbank,DC=az' },
+      { sam: 'healthmailbox-001', dn: 'CN=healthmailbox-001,OU=BANK USERS,DC=Expressbank,DC=az' },
+      { sam: 'trainingroom01', dn: 'CN=trainingroom01,OU=BANK USERS,DC=Expressbank,DC=az' },
+      { sam: 'sysacc', dn: 'CN=System Account,OU=USER,OU=SERVICE,DC=Expressbank,DC=az' },
+      { sam: 'cob', dn: 'CN=cob,OU=USER,OU=SERVICE,DC=Expressbank,DC=az' },
+      { sam: 'n8n', dn: 'CN=n8n,OU=SERVICE,DC=Expressbank,DC=az' },
+      { sam: 'svc_backup', dn: 'CN=svc_backup,OU=BANK USERS,DC=Expressbank,DC=az' },
+      { sam: 'ramin.quliyev', dn: 'CN=Ramin Quliyev,OU=PavpnUsers,OU=VPN,OU=SERVICE,DC=Expressbank,DC=az' },
+      { sam: 'a.bubnov', dn: 'CN=Alexandr Bubnov,OU=SUPPORT,OU=SERVICE,DC=Expressbank,DC=az' },
+      { sam: 'testinfosec', dn: 'CN=test infosec,CN=Users,DC=Expressbank,DC=az' },
+      { sam: 'owncloud', dn: 'CN=owncloud web,OU=USER,OU=SERVICE,DC=Expressbank,DC=az' },
+      { sam: 'zabbix.windows', dn: 'CN=Zabbix.Windows,OU=USER,OU=SERVICE,DC=Expressbank,DC=az' },
+      { sam: 'adaudit', dn: 'CN=ADAudit,OU=USER,OU=SERVICE,DC=Expressbank,DC=az' },
+      { sam: 'jira-itsec', dn: 'CN=Jira ITSec,OU=USER,OU=SERVICE,DC=Expressbank,DC=az' },
+      { sam: 'nessus.infosec', dn: 'CN=Nessus Infosec,OU=SERVICE,DC=Expressbank,DC=az' },
+      { sam: 'CPAM', dn: 'CN=CPAM,OU=BANK USERS,DC=Expressbank,DC=az' },
+      { sam: 'dnssense', dn: 'CN=DNSSense,OU=BANK USERS,DC=Expressbank,DC=az' },
+    ];
+
+    for (const testCase of serviceTestCases) {
+      const entry: LDAPRawEntry = {
+        sAMAccountName: testCase.sam,
+        distinguishedName: testCase.dn,
+        memberOf: ['CN=all,OU=GROUPS,DC=Expressbank,DC=az'],
+      };
+      assert.strictEqual(
+        LDAPSyncService.isGenuineEmployeeOrIntern(entry, ['all'], testCase.sam),
+        false,
+        `Service account ${testCase.sam} must be rejected from human employee directory`
+      );
+    }
+  });
+
+  it('3.3 applies service-account exclusions in the AD server-side LDAP filter', () => {
+    assert.match(LDAP_HUMAN_ACCOUNT_FILTER, /!\(sAMAccountName=rtccomponentservice\)/i);
+    assert.match(LDAP_HUMAN_ACCOUNT_FILTER, /!\(sAMAccountName=xerox\)/i);
+    assert.match(LDAP_HUMAN_ACCOUNT_FILTER, /!\(sAMAccountName=cpam\)/i);
+    assert.match(LDAP_HUMAN_ACCOUNT_FILTER, /!\(sAMAccountName=dnssense\)/i);
+    assert.match(LDAP_HUMAN_ACCOUNT_FILTER, /!\(sAMAccountName=healthmailbox\*\)/i);
+    assert.match(LDAP_HUMAN_ACCOUNT_FILTER, /!\(sAMAccountName=training\*\)/i);
+  });
+
+  it('3.4 rejects service identities through normalized aliases and AD metadata signals', () => {
+    const cases: LDAPRawEntry[] = [
+      {
+        sAMAccountName: 'ordinary.alias',
+        userPrincipalName: 'CPAM@expressbank.az',
+        mail: 'cpam@expressbank.az',
+      },
+      {
+        sAMAccountName: 'managed.identity',
+        objectClass: ['top', 'person', 'msDS-GroupManagedServiceAccount'],
+      },
+      {
+        sAMAccountName: 'spn.identity',
+        servicePrincipalName: ['HTTP/dnssense.expressbank.az'],
+      },
+      {
+        sAMAccountName: 'technical.identity',
+        title: 'Application Service Account',
+      },
+    ];
+
+    for (const entry of cases) {
+      assert.strictEqual(
+        LDAPSyncService.isGenuineEmployeeOrIntern(entry, [], entry.sAMAccountName),
+        false,
+        `Non-human identity ${entry.sAMAccountName} must be rejected by the shared guard`
       );
     }
   });
@@ -185,10 +270,9 @@ describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GM
 
     db.data.users.push(duplicateUser);
 
-    // Create ticket referencing the duplicate user ID
     db.data.tickets.push({
       id: 'TCK-DEDUP-001',
-      ticketNumber: 9999,
+      key: 'SEC-9999',
       ticketType: 'SEC',
       title: 'Ticket for Deduplication Test',
       description: 'Testing re-mapping of ticket assignee',
@@ -203,10 +287,7 @@ describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GM
       watcherIds: ['usr-duplicate-test-99'],
       tags: [],
       attachments: [],
-      history: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
+    } as any);
 
     const dedupResult = LDAPSyncService.deduplicateUsers();
     assert.strictEqual(dedupResult.removedCount, 1, 'Must remove exactly 1 duplicate user');
@@ -250,5 +331,70 @@ describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GM
       false,
       'Directory identities must originate from a live LDAP query, not source code'
     );
+  });
+
+  // 8. Leadership & Manager Role Differentiation & Slashed Title Resolution
+  it('8. Accurately identifies department managers/heads and infosec staff from titles and OUs', () => {
+    // 8.1 Emil Farzaliyev - Information Security Head (Müdir)
+    const emilMapping = LDAPSyncService.mapDepartment(
+      '',
+      'İnformasiya təhlükəsizliyi şöbəsi / Müdir',
+      ['İnformasiya təhlükəsizliyi şöbəsi - SG', 'all'],
+      'CN=Emil Farzaliyev,OU=İnformasiya təhlükəsizliyi şöbəsi,OU=İnformasiya təhlükəsizliyinin təmin edilməsi departamenti,OU=HO Users,OU=BANK USERS,DC=Expressbank,DC=az'
+    );
+    assert.strictEqual(emilMapping.departmentId, 'dept-secops');
+    assert.strictEqual(emilMapping.departmentName, 'İnformasiya Təhlükəsizliyi Departamenti');
+    assert.strictEqual(emilMapping.sectionName, 'İnformasiya təhlükəsizliyi şöbəsi');
+    assert.strictEqual(emilMapping.divisionId, 'div-sec');
+    assert.ok(emilMapping.roles.includes('INFOSEC_MANAGER'), 'Head of Infosec must have INFOSEC_MANAGER role');
+    assert.ok(emilMapping.roles.includes('DEPARTMENT_MANAGER'), 'Head of Infosec must have DEPARTMENT_MANAGER role');
+    assert.ok(emilMapping.roles.includes('DEPARTMENT_ADMIN'), 'Head of Infosec must have DEPARTMENT_ADMIN role');
+    assert.ok(emilMapping.roles.includes('TEAM_LEAD'), 'Head of Infosec must have TEAM_LEAD role');
+
+    // 8.2 Ruslan Murtuzov - Information Security Specialist
+    const ruslanMapping = LDAPSyncService.mapDepartment(
+      '',
+      'İnformasiya təhlükəsizliyi şöbəsi / Mütəxəssis',
+      ['qradar-operators', 'DOT1x-ITSEC - SG', 'all'],
+      'CN=Ruslan Murtuzov,OU=Kibertəhlükəsizlik bölməsi,OU=İnformasiya təhlükəsizliyi şöbəsi,OU=İnformasiya təhlükəsizliyinin təmin edilməsi departamenti,OU=HO Users,OU=BANK USERS,DC=Expressbank,DC=az'
+    );
+    assert.strictEqual(ruslanMapping.departmentId, 'dept-secops');
+    assert.strictEqual(ruslanMapping.divisionId, 'div-sec');
+    assert.ok(ruslanMapping.roles.includes('SECURITY_ANALYST'), 'Infosec specialist must have SECURITY_ANALYST role');
+    assert.ok(ruslanMapping.roles.includes('SOC_ANALYST'), 'Infosec specialist in SOC/Cyber unit must have SOC_ANALYST role');
+    assert.strictEqual(ruslanMapping.roles.includes('DEPARTMENT_MANAGER'), false, 'Specialist must not have manager role');
+
+    // 8.3 Roza Huseynova - PMO / Business Process Optimization Head
+    const rozaMapping = LDAPSyncService.mapDepartment(
+      '',
+      'Biznes proseslərinin təhlili və optimallaşdırılması şöbəsi / Şöbə müdiri',
+      ['Koordinatorlar', 'all'],
+      'CN=Roza Huseynova,OU=Biznes proseslərin təhlili və optimallaşdırılması şöbəsi,OU=HO Users,OU=BANK USERS,DC=Expressbank,DC=az'
+    );
+    assert.strictEqual(rozaMapping.departmentId, 'dept-pmo');
+    assert.strictEqual(rozaMapping.divisionId, 'div-banking');
+    assert.ok(rozaMapping.roles.includes('DEPARTMENT_MANAGER'), 'Şöbə müdiri must have DEPARTMENT_MANAGER role');
+    assert.ok(rozaMapping.roles.includes('TEAM_LEAD'), 'Şöbə müdiri must have TEAM_LEAD role');
+
+    // 8.4 Mehman Mammadov - Executive Board Chairman (İdarə Heyətinin Sədri)
+    const mehmanMapping = LDAPSyncService.mapDepartment(
+      '',
+      'İdarə Heyətinin Sədri',
+      ['all'],
+      'CN=Mehman Mammadov,OU=BOSSES,OU=BANK USERS,DC=Expressbank,DC=az'
+    );
+    assert.strictEqual(mehmanMapping.departmentId, 'dept-executive');
+    assert.ok(mehmanMapping.roles.includes('DEPARTMENT_MANAGER'), 'Chairman must have DEPARTMENT_MANAGER role');
+    assert.ok(mehmanMapping.roles.includes('PLATFORM_ADMIN'), 'Chairman must have PLATFORM_ADMIN role');
+
+    // 8.5 Ayshan Hasanova - Marketing Head (Müdir)
+    const ayshanMapping = LDAPSyncService.mapDepartment(
+      '',
+      'Reklam və marketinq şöbəsi / Müdir',
+      ['all'],
+      'CN=Ayshan Hasanova,OU=Reklam və marketinq şöbəsi,OU=HO Users,OU=BANK USERS,DC=Expressbank,DC=az'
+    );
+    assert.strictEqual(ayshanMapping.departmentId, 'dept-marketing');
+    assert.ok(ayshanMapping.roles.includes('DEPARTMENT_MANAGER'), 'Marketing Müdir must have DEPARTMENT_MANAGER role');
   });
 });

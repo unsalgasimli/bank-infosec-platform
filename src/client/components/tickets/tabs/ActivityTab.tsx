@@ -39,7 +39,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ comments, auditEvents 
           <History className="w-3.5 h-3.5 text-slate-400" />
           <span>Unified Ticket Activity Stream</span>
         </div>
-        <span className="font-mono text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
+        <span className="font-mono text-label font-bold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
           {timeline.length} Events
         </span>
       </div>
@@ -55,7 +55,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ comments, auditEvents 
             {/* Timeline node icon */}
             <div className="absolute -left-[17px] top-1 w-8 h-8 rounded-full bg-white border-2 border-slate-200 flex items-center justify-center text-xs shadow-xs">
               {item.type === 'COMMENT' ? (
-                <MessageSquare className="w-3.5 h-3.5 text-[#0052CC]" />
+                <MessageSquare className="w-3.5 h-3.5 text-semantic-jira-brand" />
               ) : (
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
               )}
@@ -65,14 +65,14 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ comments, auditEvents 
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-bold text-slate-900">{item.actorName}</span>
-                  <span className="text-slate-500 text-[11px]">({item.actorRole})</span>
+                  <span className="text-slate-500 text-label">({item.actorRole})</span>
                   {item.type === 'AUDIT' && (
-                    <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-[10px] uppercase font-mono font-bold border border-blue-200">
+                    <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-caption uppercase font-mono font-bold border border-blue-200">
                       {item.action?.replace(/_/g, ' ')}
                     </span>
                   )}
                 </div>
-                <span className="text-[11px] text-slate-400 font-mono">
+                <span className="text-label text-slate-400 font-mono">
                   {new Date(item.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
                 </span>
               </div>
@@ -83,7 +83,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ comments, auditEvents 
                 </div>
               ) : (
                 item.fieldChanges && item.fieldChanges.length > 0 && (
-                  <div className="space-y-1.5 pt-1 font-mono text-[11px] bg-white p-3 rounded-lg border border-slate-200">
+                  <div className="space-y-1.5 pt-1 font-mono text-label bg-white p-3 rounded-lg border border-slate-200">
                     {item.fieldChanges.map((ch, i) => (
                       <div key={i} className="flex items-center gap-2 flex-wrap">
                         <span className="text-slate-500 font-semibold">{ch.field}:</span>

@@ -11,8 +11,7 @@ import { HealthController } from '../server/controllers/health.controller.js';
 import { NotificationsController } from '../server/controllers/notifications.controller.js';
 import { pgClient } from '../server/db/postgres/client.js';
 import { cacheService } from '../server/services/cache.service.js';
-import fs from 'node:fs';
-import path from 'node:path';
+import { initialSeedData } from '../server/db/seed.js';
 
 // Mock Express Request & Response helper
 function mockReqRes(body: any = {}, params: any = {}, query: any = {}, user: any = null) {
@@ -46,7 +45,7 @@ function mockReqRes(body: any = {}, params: any = {}, query: any = {}, user: any
 }
 
 test('🛡️ WRIKE PRODUCTION BACKEND COMPREHENSIVE E2E VERIFICATION', async (t) => {
-  const originalDatabase = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'data/database.json'), 'utf8'));
+  const originalDatabase = structuredClone(db.data);
   t.after(async () => {
     db.data = originalDatabase;
     db.persist();

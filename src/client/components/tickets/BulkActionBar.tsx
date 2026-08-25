@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { UserCheck, Tag, ArrowRight, Download, X } from 'lucide-react';
 import { BankUser } from '../../../shared/types/auth.js';
+import { DirectoryAssignmentSelect } from '../common/DirectoryAssignmentSelect.js';
 
 interface BulkActionBarProps {
   selectedCount: number;
@@ -19,12 +20,13 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({
   onBulkPriority,
   onExportSelected,
 }) => {
+  const [assigneeId, setAssigneeId] = useState('');
   if (selectedCount === 0) return null;
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#FFFFFF] border border-[#DFE1E6] shadow-2xl rounded-md px-4 py-2 flex items-center gap-3 text-xs font-medium text-[#172B4D]">
-      <div className="flex items-center gap-2 pr-3 border-r border-[#DFE1E6]">
-        <span className="w-5 h-5 rounded bg-[#0052CC] text-white flex items-center justify-center text-xs font-bold font-mono">
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-dsFloating bg-semantic-panel border border-semantic-jira-border shadow-2xl rounded-md px-4 py-2 flex items-center gap-3 text-xs font-medium text-semantic-jira-primary">
+      <div className="flex items-center gap-2 pr-3 border-r border-semantic-jira-border">
+        <span className="w-5 h-5 rounded bg-semantic-jira-brand text-white flex items-center justify-center text-xs font-bold font-mono">
           {selectedCount}
         </span>
         <span>Selected</span>
@@ -32,26 +34,23 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({
 
       {/* Bulk Assign */}
       <div className="flex items-center gap-1.5">
-        <UserCheck className="w-3.5 h-3.5 text-[#5E6C84]" />
-        <select
-          onChange={(e) => {
-            if (e.target.value) onBulkAssign(e.target.value);
+        <UserCheck className="w-3.5 h-3.5 text-semantic-jira-muted" />
+        <DirectoryAssignmentSelect
+          kind="user"
+          value={assigneeId}
+          onChange={(value) => {
+            setAssigneeId(value);
+            if (value) onBulkAssign(value);
           }}
-          defaultValue=""
-          className="jira-input py-1 text-xs"
-        >
-          <option value="" disabled>Assign To...</option>
-          {allUsers.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.fullName} ({u.roles[0]})
-            </option>
-          ))}
-        </select>
+          placeholder="Assign to…"
+          searchPlaceholder="Search employee…"
+          size="sm"
+        />
       </div>
 
       {/* Bulk Priority */}
       <div className="flex items-center gap-1.5">
-        <Tag className="w-3.5 h-3.5 text-[#5E6C84]" />
+        <Tag className="w-3.5 h-3.5 text-semantic-jira-muted" />
         <select
           onChange={(e) => {
             if (e.target.value) onBulkPriority(e.target.value);
@@ -79,7 +78,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({
       {/* Clear Selection */}
       <button
         onClick={onClear}
-        className="p-1 text-[#5E6C84] hover:text-[#172B4D] rounded hover:bg-[#EBECF0] transition-colors ml-1"
+        className="p-1 text-semantic-jira-muted hover:text-semantic-jira-primary rounded hover:bg-semantic-jira-hover transition-colors ml-1"
         title="Clear Selection"
       >
         <X className="w-3.5 h-3.5" />
@@ -87,4 +86,3 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({
     </div>
   );
 };
-

@@ -12,6 +12,7 @@ import type {
 import { db } from '../db/database.js';
 import { OrchestrationExpressionService } from './orchestration-expression.service.js';
 import { OrchestrationError, WorkflowOrchestrationService } from './workflow-orchestration.service.js';
+import { NotificationService } from './notification.service.js';
 
 export class WorkflowGovernanceService {
   public static initializeClocks(instance: WorkflowInstance, policy: WorkflowPolicySet, start = new Date()): WorkflowSlaClock[] {
@@ -118,6 +119,24 @@ export class WorkflowGovernanceService {
           if (String(resolver).startsWith('context.')) addPath(String(resolver).slice(8));
       }
     }
+    // Information requests are notifications, not work items.  Resolve the
+    // selected department / branch directly so every intended recipient sees
+    // the information even though there is no claim or completion status.
+    if (eventType === 'INFORMATION_SHARED' && node?.assignment) {
+      const assignment = node.assignment;
+      if (assignment.assigneeId) userIds.add(assignment.assigneeId);
+      if (assignment.groupId) groupIds.add(assignment.groupId);
+      if (assignment.departmentId) {
+        for (const user of db.data.users.filter((user) => user.isActive && user.departmentId === assignment.departmentId)) userIds.add(user.id);
+      }
+      if (assignment.strategy === 'DEPARTMENT_OWNER') {
+        const managerId = db.data.departments.find((department) => department.id === assignment.departmentId)?.managerId;
+        if (managerId) userIds.add(managerId);
+      }
+      if (assignment.strategy === 'ROLE_BASED' && assignment.role) {
+        for (const user of db.data.users.filter((user) => user.isActive && user.roles.includes(assignment.role!))) userIds.add(user.id);
+      }
+    }
     const deduplicationKey = `${instance.id}:${node?.id || 'workflow'}:${eventType}:${[...userIds].sort().join(',')}:${[...groupIds].sort().join(',')}`;
     const windowMinutes = node?.notification?.deduplicationWindowMinutes ?? policy?.deduplicationWindowMinutes ?? 30;
     const duplicate = db.data.notificationDeliveries.find((delivery) => delivery.deduplicationKey === deduplicationKey && now.getTime() - new Date(delivery.createdAt).getTime() < windowMinutes * 60_000);
@@ -135,6 +154,38 @@ export class WorkflowGovernanceService {
       sentAt: duplicate ? undefined : now.toISOString(),
     };
     db.data.notificationDeliveries.push(delivery);
+    if (!duplicate && delivery.channels.includes('IN_APP')) {
+      for (const groupId of groupIds) {
+        db.data.users.filter((user) => user.isActive && user.teamIds.includes(groupId)).forEach((user) => userIds.add(user.id));
+      }
+      const notificationType = eventType.startsWith('APPROVAL') ? 'APPROVAL' : eventType.startsWith('WORK_ITEM') ? 'ASSIGNMENT' : eventType.startsWith('SLA') ? 'SLA_WARNING' : 'SYSTEM';
+      const titleByEvent: Record<string, string> = {
+        APPROVAL_CREATED: 'Approval required',
+        APPROVAL_DECIDED: 'Approval updated',
+        APPROVAL_REMINDER: 'Approval reminder',
+        WORK_ITEM_CREATED: 'New workflow ticket',
+        WORK_ITEM_CLAIMED: 'Workflow ticket claimed',
+        WORK_ITEM_COMPLETED: 'Workflow ticket completed',
+        INFORMATION_SHARED: 'Workflow information',
+        COMMENT_ADDED: 'New workflow comment',
+        WORKFLOW_COMPLETED: 'Workflow completed',
+        WORKFLOW_FAILED: 'Workflow failed',
+        SLA_WARNING: 'Workflow SLA warning',
+        SLA_BREACHED: 'Workflow SLA breached',
+      };
+      for (const userId of userIds) {
+        NotificationService.create({
+          userId,
+          title: titleByEvent[eventType] || 'Workflow updated',
+          message: `${instance.key} · ${instance.title}`,
+          type: notificationType,
+          severity: eventType.includes('FAILED') || eventType.includes('BREACHED') ? 'HIGH' : eventType.includes('WARNING') ? 'MEDIUM' : 'INFO',
+          ticketId: instance.id,
+          ticketKey: instance.key,
+          actionUrl: `/work-management/workflows?instance=${encodeURIComponent(instance.id)}`,
+        }, false);
+      }
+    }
     return delivery;
   }
 

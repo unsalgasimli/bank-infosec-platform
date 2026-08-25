@@ -89,7 +89,7 @@ kubectl apply -f deploy/k8s/app-deployment.yaml
 # Deploy Horizontal Pod Autoscaler
 kubectl apply -f deploy/k8s/hpa.yaml
 
-# Deploy Ingress with TLS
+# Deploy the HTTP ingress
 kubectl apply -f deploy/k8s/ingress.yaml
 ```
 
@@ -100,7 +100,7 @@ kubectl apply -f deploy/k8s/ingress.yaml
 | Check | Requirement | Status / Verification |
 |---|---|---|
 | **Non-Root Container** | App runs under UID 10001 (`appuser`) | Enforced in `Dockerfile` & `app-deployment.yaml` |
-| **TLS / SSL** | Enforce HTTPS with HSTS (`max-age=31536000`) | Enforced in `nginx.conf` and `security.middleware.ts` |
+| **HTTP transport** | Application is served over HTTP only | Enforced by the Vite, Nginx, and Kubernetes ingress configuration |
 | **Database Encryption** | PostgreSQL data volume encrypted with LUKS / KMS | Cloud EBS / PVC Encryption |
 | **Object Storage** | S3 bucket encrypted with AWS KMS (`aws:kms`) | Configured in `storage.service.ts` |
 | **Rate Limiting** | Strict limit on authentication endpoints | Configured in `rate-limit.middleware.ts` |

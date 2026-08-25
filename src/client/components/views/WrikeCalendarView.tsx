@@ -48,59 +48,59 @@ export const WrikeCalendarView: React.FC<WrikeCalendarViewProps> = ({ tickets, o
   const todayStr = new Date().toISOString().slice(0, 10);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#FFFFFF] overflow-hidden select-none">
+    <div className="flex-1 flex flex-col h-full bg-semantic-panel overflow-hidden select-none">
       {/* Calendar Month Navigation Sub-bar */}
-      <div className="bg-[#F8FAFC] border-b border-[#E2E8F0] px-6 py-2 flex items-center justify-between shrink-0">
+      <div className="bg-semantic-subtle border-b border-semantic-border px-6 py-2 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <button
             onClick={prevMonth}
-            className="p-1 rounded-md hover:bg-[#E2E8F0] text-[#475569] transition-colors"
+            className="p-1 rounded-md hover:bg-semantic-border text-semantic-secondary transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="font-bold text-sm text-[#162136] min-w-[150px] text-center">
+          <span className="font-bold text-sm text-semantic-primary min-w-[150px] text-center">
             {monthNames[month]} {year}
           </span>
           <button
             onClick={nextMonth}
-            className="p-1 rounded-md hover:bg-[#E2E8F0] text-[#475569] transition-colors"
+            className="p-1 rounded-md hover:bg-semantic-border text-semantic-secondary transition-colors"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
           <button
             onClick={todayMonth}
-            className="ml-2 px-2.5 py-1 text-xs font-semibold rounded-md border border-[#CBD5E1] bg-[#FFFFFF] hover:bg-[#F1F5F9] text-[#162136]"
+            className="ml-2 px-2.5 py-1 text-xs font-semibold rounded-md border border-semantic-border-strong bg-semantic-panel hover:bg-semantic-neutral-surface text-semantic-primary"
           >
             Today
           </button>
         </div>
 
-        <div className="flex items-center gap-4 text-xs font-medium text-[#64748B]">
+        <div className="flex items-center gap-4 text-xs font-medium text-semantic-muted">
           <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#E51739]" /> Critical SLA
+            <span className="w-2.5 h-2.5 rounded-full bg-semantic-brand-danger" /> Critical SLA
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#0073D3]" /> Active Task
+            <span className="w-2.5 h-2.5 rounded-full bg-semantic-info" /> Active Task
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#00B259]" /> Completed
+            <span className="w-2.5 h-2.5 rounded-full bg-semantic-brand" /> Completed
           </span>
         </div>
       </div>
 
       {/* Weekday Headers */}
-      <div className="grid grid-cols-7 border-b border-[#E2E8F0] bg-[#F8FAFC] text-center text-xs font-bold text-[#475569] uppercase tracking-wider py-2">
+      <div className="grid grid-cols-7 border-b border-semantic-border bg-semantic-subtle text-center text-xs font-bold text-semantic-secondary uppercase tracking-wider py-2">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
           <div key={d}>{d}</div>
         ))}
       </div>
 
       {/* Calendar Grid */}
-      <div className="flex-1 grid grid-cols-7 grid-rows-5 overflow-y-auto custom-scrollbar divide-x divide-y divide-[#E2E8F0]">
+      <div className="flex-1 grid grid-cols-7 grid-rows-5 overflow-y-auto custom-scrollbar divide-x divide-y divide-semantic-border">
         {calendarCells.map((cell, idx) => {
           if (!cell.isCurrentMonth || !cell.dayNumber) {
             return (
-              <div key={idx} className="bg-[#F8FAFC]/50 p-2 min-h-[110px] text-xs text-[#94A3B8]" />
+              <div key={idx} className="bg-semantic-subtle/50 p-2 min-h-dsCalendarCell text-xs text-semantic-placeholder" />
             );
           }
 
@@ -115,23 +115,23 @@ export const WrikeCalendarView: React.FC<WrikeCalendarViewProps> = ({ tickets, o
           return (
             <div
               key={idx}
-              className={`p-2 min-h-[110px] flex flex-col justify-between transition-colors overflow-hidden ${
-                isToday ? 'bg-[#E6F7EF]/30 ring-1 ring-inset ring-[#00B259]' : 'bg-[#FFFFFF] hover:bg-[#F8FAFC]'
+              className={`p-2 min-h-dsCalendarCell flex flex-col justify-between transition-colors overflow-hidden ${
+                isToday ? 'bg-semantic-success-surface/30 ring-1 ring-inset ring-semantic-brand' : 'bg-semantic-panel hover:bg-semantic-subtle'
               }`}
             >
               <div className="flex items-center justify-between mb-1">
                 <span
                   className={`text-xs font-bold font-mono ${
                     isToday
-                      ? 'w-6 h-6 rounded-full bg-[#00B259] text-white flex items-center justify-center text-[11px]'
-                      : 'text-[#475569]'
+                      ? 'w-6 h-6 rounded-full bg-semantic-brand text-white flex items-center justify-center text-label'
+                      : 'text-semantic-secondary'
                   }`}
                 >
                   {cell.dayNumber}
                 </span>
 
                 {dayTickets.length > 0 && (
-                  <span className="text-[10px] font-mono font-bold text-[#64748B] bg-[#F1F5F9] px-1.5 py-0.2 rounded border border-[#E2E8F0]">
+                  <span className="text-caption font-mono font-bold text-semantic-muted bg-semantic-neutral-surface px-1.5 py-0.2 rounded border border-semantic-border">
                     {dayTickets.length}
                   </span>
                 )}
@@ -147,12 +147,12 @@ export const WrikeCalendarView: React.FC<WrikeCalendarViewProps> = ({ tickets, o
                     <div
                       key={t.id}
                       onClick={() => onSelectTicket(t)}
-                      className={`p-1.5 rounded text-[11px] border cursor-pointer truncate transition-all ${
+                      className={`p-1.5 rounded text-label border cursor-pointer truncate transition-all ${
                         isDone
-                          ? 'bg-[#E6F7EF] border-[#B8EAD1] text-[#007860] hover:border-[#00B259]'
+                          ? 'bg-semantic-success-surface border-semantic-success-border text-semantic-success hover:border-semantic-brand'
                           : isCrit
-                          ? 'bg-[#FDE8EB] border-[#FFA39E] text-[#CF1322] font-bold hover:border-[#E51739]'
-                          : 'bg-[#EBF4FD] border-[#BAE0FD] text-[#0073D3] hover:border-[#0073D3]'
+                          ? 'bg-semantic-danger-surface border-semantic-danger-border text-semantic-danger font-bold hover:border-semantic-brand-danger'
+                          : 'bg-semantic-info-surface border-semantic-info-border text-semantic-info hover:border-semantic-info'
                       }`}
                       title={`${t.key}: ${t.title} (${t.statusName})`}
                     >

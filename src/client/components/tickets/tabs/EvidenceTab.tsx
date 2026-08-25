@@ -118,14 +118,14 @@ export const EvidenceTab: React.FC<EvidenceTabProps> = ({ attachments, ticketId,
       <section className="rounded-xl border-2 border-dashed border-blue-300 bg-blue-50/30 p-6 shadow-xs transition-all hover:bg-blue-50/50">
         <input ref={fileInputRef} type="file" className="sr-only" onChange={(event) => uploadFile(event.target.files?.[0])} />
         <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="w-full text-center disabled:cursor-not-allowed disabled:opacity-60 group">
-          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 text-[#0052CC] group-hover:scale-105 transition-transform shadow-xs">
+          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 text-semantic-jira-brand group-hover:scale-105 transition-transform shadow-xs">
             {isUploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
           </div>
           <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">{isUploading ? 'Uploading and hashing evidence…' : 'Upload Evidence or Forensic Artifact'}</h4>
-          <p className="mt-1 text-[11px] text-slate-500 max-w-md mx-auto">Supported formats: PDF, PCAP, JSON, CSV, TXT, LOG, image or ZIP up to 25 MB. Each upload is SHA-256 hashed and scanned for malware.</p>
+          <p className="mt-1 text-label text-slate-500 max-w-md mx-auto">Supported formats: PDF, PCAP, JSON, CSV, TXT, LOG, image or ZIP up to 25 MB. Each upload is SHA-256 hashed and scanned for malware.</p>
         </button>
         <div className="mt-5 grid grid-cols-1 gap-4 border-t border-blue-200/60 pt-4 md:grid-cols-[1fr_auto] items-center">
-          <label className="text-[11px] font-bold text-slate-700">
+          <label className="text-label font-bold text-slate-700">
             Evidence Classification
             <select value={evidenceType} onChange={(event) => setEvidenceType(event.target.value as EvidenceType)} disabled={isUploading} className="jira-input mt-1.5 w-full text-xs bg-white">
               {evidenceTypes.map((type) => <option key={type} value={type}>{readable(type)}</option>)}
@@ -158,16 +158,16 @@ export const EvidenceTab: React.FC<EvidenceTabProps> = ({ attachments, ticketId,
                   <div className="min-w-0 space-y-1">
                     <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-900">
                       <span className="truncate max-w-sm">{attachment.fileName}</span>
-                      <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-[10px] font-normal text-slate-600">
+                      <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-caption font-normal text-slate-600">
                         {formatBytes(attachment.fileSizeBytes)}
                       </span>
                       {attachment.isImmutableEvidence && (
-                        <span className="rounded-full bg-purple-100 text-purple-800 border border-purple-200 px-2 py-0.5 text-[10px] font-bold">
+                        <span className="rounded-full bg-purple-100 text-purple-800 border border-purple-200 px-2 py-0.5 text-caption font-bold">
                           Immutable
                         </span>
                       )}
                     </div>
-                    <div className="text-[11px] text-slate-500">
+                    <div className="text-label text-slate-500">
                       <strong className="text-slate-700">{readable(attachment.evidenceType)}</strong> · Uploaded by {attachment.uploaderName} on {new Date(attachment.uploadedAt).toLocaleDateString()}
                     </div>
                   </div>
@@ -185,17 +185,17 @@ export const EvidenceTab: React.FC<EvidenceTabProps> = ({ attachments, ticketId,
 
               {/* Hash & Security info box */}
               <div className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50/80 p-3 font-mono text-xs">
-                <div className="flex items-center justify-between text-[11px] flex-wrap gap-2">
+                <div className="flex items-center justify-between text-label flex-wrap gap-2">
                   <span className={`flex items-center gap-1.5 font-sans font-bold ${attachment.virusScanStatus === 'CLEAN' ? 'text-emerald-700' : attachment.virusScanStatus === 'QUARANTINED' ? 'text-rose-700' : 'text-amber-700'}`}>
                     <CheckCircle2 className="h-3.5 w-3.5" /> Malware Scan: {attachment.virusScanStatus}
                   </span>
                   {attachment.isEncrypted && (
-                    <span className="flex items-center gap-1 font-sans text-slate-600 text-[11px]">
+                    <span className="flex items-center gap-1 font-sans text-slate-600 text-label">
                       <Lock className="h-3 w-3 text-slate-400" /> AES-256 Encrypted at Rest
                     </span>
                   )}
                 </div>
-                <div className="flex items-center justify-between gap-2 text-[10px] text-slate-500 pt-1 border-t border-slate-200/60">
+                <div className="flex items-center justify-between gap-2 text-caption text-slate-500 pt-1 border-t border-slate-200/60">
                   <span className="truncate">SHA-256: <span className="text-slate-800 font-bold">{attachment.sha256Checksum}</span></span>
                   <button
                     type="button"

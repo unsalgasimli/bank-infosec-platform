@@ -166,6 +166,141 @@ export class SLAService {
   }
 
   /**
+   * Ensure default and generalized banking enterprise SLA policies are installed.
+   */
+  public static ensurePoliciesInstalled(): boolean {
+    db.data.slaPolicies ||= [];
+    let changed = false;
+
+    const standardPolicies: SLAPolicy[] = [
+      {
+        id: 'sla-standard-business',
+        name: 'Standard Business SLA (8x5)',
+        description: 'Default operational turnaround for general requests and tasks during bank business hours (09:00-18:00 UTC+4).',
+        isDefault: true,
+        businessHoursOnly: true,
+        businessStartTime: '09:00',
+        businessEndTime: '18:00',
+        timezone: 'Asia/Baku',
+        excludeWeekends: true,
+        excludeHolidays: true,
+        thresholds: {
+          CRITICAL: { acknowledgmentMinutes: 30, firstResponseMinutes: 60, remediationMinutes: 480, resolutionMinutes: 960 },
+          HIGH: { acknowledgmentMinutes: 60, firstResponseMinutes: 120, remediationMinutes: 960, resolutionMinutes: 1440 },
+          MEDIUM: { acknowledgmentMinutes: 120, firstResponseMinutes: 240, remediationMinutes: 2400, resolutionMinutes: 3360 },
+          LOW: { acknowledgmentMinutes: 240, firstResponseMinutes: 480, remediationMinutes: 4800, resolutionMinutes: 6720 },
+          INFORMATIONAL: { acknowledgmentMinutes: 480, firstResponseMinutes: 960, remediationMinutes: 9600, resolutionMinutes: 14400 },
+        },
+      },
+      {
+        id: 'sla-critical-24x7',
+        name: 'Critical 24/7 (Emergency Outage)',
+        description: 'Round-the-clock emergency response for critical system outages, major incidents, and urgent escalations.',
+        isDefault: false,
+        businessHoursOnly: false,
+        businessStartTime: '00:00',
+        businessEndTime: '23:59',
+        timezone: 'Asia/Baku',
+        excludeWeekends: false,
+        excludeHolidays: false,
+        thresholds: {
+          CRITICAL: { acknowledgmentMinutes: 15, firstResponseMinutes: 15, remediationMinutes: 120, resolutionMinutes: 240 },
+          HIGH: { acknowledgmentMinutes: 30, firstResponseMinutes: 30, remediationMinutes: 240, resolutionMinutes: 480 },
+          MEDIUM: { acknowledgmentMinutes: 60, firstResponseMinutes: 120, remediationMinutes: 720, resolutionMinutes: 1440 },
+          LOW: { acknowledgmentMinutes: 120, firstResponseMinutes: 240, remediationMinutes: 1440, resolutionMinutes: 2880 },
+          INFORMATIONAL: { acknowledgmentMinutes: 240, firstResponseMinutes: 480, remediationMinutes: 2880, resolutionMinutes: 4320 },
+        },
+      },
+      {
+        id: 'sla-it-service-desk',
+        name: 'IT Support & Workplace Services',
+        description: 'SLA for user workstations, equipment provisioning, software licenses, and help desk requests.',
+        isDefault: false,
+        businessHoursOnly: true,
+        businessStartTime: '09:00',
+        businessEndTime: '18:00',
+        timezone: 'Asia/Baku',
+        excludeWeekends: true,
+        excludeHolidays: true,
+        thresholds: {
+          CRITICAL: { acknowledgmentMinutes: 30, firstResponseMinutes: 60, remediationMinutes: 240, resolutionMinutes: 480 },
+          HIGH: { acknowledgmentMinutes: 60, firstResponseMinutes: 120, remediationMinutes: 480, resolutionMinutes: 960 },
+          MEDIUM: { acknowledgmentMinutes: 120, firstResponseMinutes: 240, remediationMinutes: 960, resolutionMinutes: 1440 },
+          LOW: { acknowledgmentMinutes: 240, firstResponseMinutes: 480, remediationMinutes: 1920, resolutionMinutes: 2880 },
+          INFORMATIONAL: { acknowledgmentMinutes: 480, firstResponseMinutes: 960, remediationMinutes: 2880, resolutionMinutes: 4320 },
+        },
+      },
+      {
+        id: 'sla-project-change',
+        name: 'Project & Change Management',
+        description: 'SLA for planned application releases, infrastructure changes, and project milestones.',
+        isDefault: false,
+        businessHoursOnly: true,
+        businessStartTime: '09:00',
+        businessEndTime: '18:00',
+        timezone: 'Asia/Baku',
+        excludeWeekends: true,
+        excludeHolidays: true,
+        thresholds: {
+          CRITICAL: { acknowledgmentMinutes: 60, firstResponseMinutes: 120, remediationMinutes: 480, resolutionMinutes: 960 },
+          HIGH: { acknowledgmentMinutes: 120, firstResponseMinutes: 240, remediationMinutes: 1440, resolutionMinutes: 2400 },
+          MEDIUM: { acknowledgmentMinutes: 240, firstResponseMinutes: 480, remediationMinutes: 3360, resolutionMinutes: 4800 },
+          LOW: { acknowledgmentMinutes: 480, firstResponseMinutes: 960, remediationMinutes: 6720, resolutionMinutes: 9600 },
+          INFORMATIONAL: { acknowledgmentMinutes: 960, firstResponseMinutes: 1440, remediationMinutes: 14400, resolutionMinutes: 21600 },
+        },
+      },
+      {
+        id: 'sla-compliance-audit',
+        name: 'Compliance, Legal & Audit Review',
+        description: 'SLA for regulatory reporting, compliance sign-offs, legal reviews and audit findings.',
+        isDefault: false,
+        businessHoursOnly: true,
+        businessStartTime: '09:00',
+        businessEndTime: '18:00',
+        timezone: 'Asia/Baku',
+        excludeWeekends: true,
+        excludeHolidays: true,
+        thresholds: {
+          CRITICAL: { acknowledgmentMinutes: 60, firstResponseMinutes: 120, remediationMinutes: 960, resolutionMinutes: 1440 },
+          HIGH: { acknowledgmentMinutes: 120, firstResponseMinutes: 240, remediationMinutes: 2400, resolutionMinutes: 3360 },
+          MEDIUM: { acknowledgmentMinutes: 240, firstResponseMinutes: 480, remediationMinutes: 4800, resolutionMinutes: 6720 },
+          LOW: { acknowledgmentMinutes: 480, firstResponseMinutes: 960, remediationMinutes: 9600, resolutionMinutes: 14400 },
+          INFORMATIONAL: { acknowledgmentMinutes: 960, firstResponseMinutes: 1440, remediationMinutes: 19200, resolutionMinutes: 28800 },
+        },
+      },
+      {
+        id: 'sla-security-infosec',
+        name: 'Security & Vulnerability Remediation',
+        description: 'SLA for security vulnerability remediation, exception approvals, and penetration testing findings.',
+        isDefault: false,
+        businessHoursOnly: false,
+        businessStartTime: '00:00',
+        businessEndTime: '23:59',
+        timezone: 'Asia/Baku',
+        excludeWeekends: false,
+        excludeHolidays: false,
+        thresholds: {
+          CRITICAL: { acknowledgmentMinutes: 15, firstResponseMinutes: 30, remediationMinutes: 1440, resolutionMinutes: 2880 },
+          HIGH: { acknowledgmentMinutes: 60, firstResponseMinutes: 120, remediationMinutes: 10080, resolutionMinutes: 14400 },
+          MEDIUM: { acknowledgmentMinutes: 120, firstResponseMinutes: 240, remediationMinutes: 43200, resolutionMinutes: 64800 },
+          LOW: { acknowledgmentMinutes: 240, firstResponseMinutes: 480, remediationMinutes: 129600, resolutionMinutes: 172800 },
+          INFORMATIONAL: { acknowledgmentMinutes: 480, firstResponseMinutes: 960, remediationMinutes: 259200, resolutionMinutes: 259200 },
+        },
+      },
+    ];
+
+    for (const policy of standardPolicies) {
+      const existing = db.data.slaPolicies.find((item) => item.id === policy.id);
+      if (!existing) {
+        db.data.slaPolicies.push(policy);
+        changed = true;
+      }
+    }
+
+    return changed;
+  }
+
+  /**
    * Automatically refresh SLA statuses across all active tickets.
    */
   public static refreshAllTicketSLAs(): void {

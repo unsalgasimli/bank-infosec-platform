@@ -87,7 +87,28 @@ export interface BankDepartment {
   connectionCount?: number;
   templateCount?: number;
   activeTaskCount?: number;
+  sections?: BankDepartmentSection[];
+  sectionCount?: number;
+  managerName?: string;
+  managerEmail?: string;
   settings?: DepartmentSettings;
+  createdAt?: string;
+  updatedAt?: string;
+  /** Set only after this record is confirmed by a successful live AD sync. */
+  directorySource?: 'ACTIVE_DIRECTORY';
+}
+
+/** A child organisational unit (şöbə/bölmə) owned by a department. */
+export interface BankDepartmentSection {
+  id: string;
+  departmentId: string;
+  name: string;
+  code: string;
+  managerId?: string;
+  managerName?: string;
+  managerEmail?: string;
+  isActive?: boolean;
+  memberCount?: number;
   createdAt?: string;
   updatedAt?: string;
   /** Set only after this record is confirmed by a successful live AD sync. */
@@ -111,6 +132,10 @@ export interface BankUser {
   title: string;
   divisionId: string;
   departmentId: string;
+  /** AD-confirmed child organisational unit under departmentId. */
+  sectionId?: string;
+  /** Hydrated section relation returned by department detail endpoints. */
+  section?: BankDepartmentSection;
   teamIds: string[];
   roles: BankRole[];
   securityClearance: ConfidentialityTier;

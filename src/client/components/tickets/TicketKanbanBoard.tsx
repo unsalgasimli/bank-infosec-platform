@@ -51,7 +51,7 @@ export const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
   ];
 
   return (
-    <div className="flex-1 overflow-x-auto p-4 flex gap-3 bg-[#F4F5F7] custom-scrollbar">
+    <div className="flex-1 overflow-x-auto p-4 flex gap-3 bg-semantic-jira-surface custom-scrollbar">
       {columns.map((col) => {
         const colTickets = tickets.filter((t) => {
           if (col.category === 'DONE' && t.statusCategory === 'DONE') return true;
@@ -66,15 +66,15 @@ export const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
         return (
           <div
             key={col.id}
-            className="w-72 shrink-0 bg-[#FFFFFF] border border-[#DFE1E6] rounded-md flex flex-col max-h-full overflow-hidden shadow-sm"
+            className="w-72 shrink-0 bg-semantic-panel border border-semantic-jira-border rounded-md flex flex-col max-h-full overflow-hidden shadow-sm"
           >
             {/* Column Header */}
-            <div className="p-3 border-b border-[#DFE1E6] flex items-center justify-between bg-[#F4F5F7]/60">
+            <div className="p-3 border-b border-semantic-jira-border flex items-center justify-between bg-semantic-jira-surface/60">
               <div className="flex items-center gap-2">
-                <span className="font-bold text-xs text-[#172B4D] uppercase tracking-wider">
+                <span className="font-bold text-xs text-semantic-jira-primary uppercase tracking-wider">
                   {col.name}
                 </span>
-                <span className="px-1.5 py-0.2 rounded bg-[#EBECF0] text-[#5E6C84] font-mono text-[10px] font-semibold">
+                <span className="px-1.5 py-0.2 rounded bg-semantic-jira-hover text-semantic-jira-muted font-mono text-caption font-semibold">
                   {colTickets.length}
                 </span>
               </div>
@@ -83,7 +83,7 @@ export const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
             {/* Column Cards Container */}
             <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
               {colTickets.length === 0 ? (
-                <div className="text-center py-10 text-[11px] text-[#7A869A] italic border border-dashed border-[#DFE1E6] rounded">
+                <div className="text-center py-10 text-label text-semantic-jira-muted-light italic border border-dashed border-semantic-jira-border rounded">
                   No issues in this column
                 </div>
               ) : (
@@ -94,13 +94,13 @@ export const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
                     <div
                       key={ticket.id}
                       onClick={() => onSelectTicket(ticket)}
-                      className="p-3 bg-[#FFFFFF] hover:bg-[#EBECF0] border border-[#DFE1E6] hover:border-[#0052CC] rounded cursor-pointer transition-all space-y-2 group shadow-sm"
+                      className="p-3 bg-semantic-panel hover:bg-semantic-jira-hover border border-semantic-jira-border hover:border-semantic-jira-brand rounded cursor-pointer transition-all space-y-2 group shadow-sm"
                     >
                       {/* Card Header: Key + Type + Severity */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
                           <Badge type="PROJECT" value={ticket.projectCode} size="sm" />
-                          <span className="font-mono font-bold text-[#0052CC] text-xs group-hover:underline">
+                          <span className="font-mono font-bold text-semantic-jira-brand text-xs group-hover:underline">
                             {ticket.key}
                           </span>
                         </div>
@@ -108,20 +108,20 @@ export const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
                       </div>
 
                       {/* Summary */}
-                      <h4 className="text-xs font-semibold text-[#172B4D] leading-snug line-clamp-2">
+                      <h4 className="text-xs font-semibold text-semantic-jira-primary leading-snug line-clamp-2">
                         {ticket.title}
                       </h4>
 
                       {/* Finding or CVE snippet */}
                       {(ticket.findingDetails?.cweId || ticket.findingDetails?.cveId) && (
-                        <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-mono">
+                        <div className="flex items-center gap-1.5 flex-wrap text-caption font-mono">
                           {ticket.findingDetails?.cweId && (
-                            <span className="px-1.5 py-0.2 rounded bg-[#FFFFFF] text-[#0052CC] border border-[#DFE1E6]">
+                            <span className="px-1.5 py-0.2 rounded bg-semantic-panel text-semantic-jira-brand border border-semantic-jira-border">
                               {ticket.findingDetails.cweId}
                             </span>
                           )}
                           {ticket.findingDetails?.cveId && (
-                            <span className="px-1.5 py-0.2 rounded bg-[#FFFFFF] text-[#DE350B] border border-[#DFE1E6]">
+                            <span className="px-1.5 py-0.2 rounded bg-semantic-panel text-semantic-danger-strong border border-semantic-jira-border">
                               {ticket.findingDetails.cveId}
                             </span>
                           )}
@@ -129,7 +129,7 @@ export const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
                       )}
 
                       {/* Card Footer: SLA + Assignee */}
-                      <div className="flex items-center justify-between pt-2 border-t border-[#DFE1E6] text-[11px]">
+                      <div className="flex items-center justify-between pt-2 border-t border-semantic-jira-border text-label">
                         <SLARing
                           remainingMinutes={ticket.slaRemainingMinutes}
                           state={ticket.slaState}
@@ -139,13 +139,15 @@ export const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
                         <div className="flex items-center gap-1.5">
                           {assignee ? (
                             <div
-                              className="w-5 h-5 rounded-full bg-[#0052CC] flex items-center justify-center text-[10px] font-bold text-white shadow-sm"
+                              className="w-5 h-5 rounded-full bg-semantic-jira-brand flex items-center justify-center text-caption font-bold text-white shadow-sm"
                               title={`Assignee: ${assignee.fullName}`}
                             >
                               {assignee.fullName.charAt(0)}
                             </div>
                           ) : (
-                            <span className="text-[10px] text-[#7A869A] italic">Unassigned</span>
+                            <span className="px-1.5 py-0.5 rounded bg-semantic-info-soft text-semantic-info-strong border border-semantic-info-soft-border text-caption font-bold">
+                              {ticket.targetDepartmentId || ticket.departmentId ? 'Şöbə Növbəsi' : 'Təyin edilməyib'}
+                            </span>
                           )}
                         </div>
                       </div>

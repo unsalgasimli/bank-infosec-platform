@@ -80,24 +80,24 @@ export const CustomizeSidebarModal: React.FC<CustomizeSidebarModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-[#FFFFFF] border border-[#DFE1E6] rounded-lg shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 z-dsOverlay flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-semantic-panel border border-semantic-jira-border rounded-lg shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-dsModalCompact">
         {/* Modal Header */}
-        <div className="p-4 border-b border-[#DFE1E6] flex items-center justify-between bg-[#F4F5F7]">
+        <div className="p-4 border-b border-semantic-jira-border flex items-center justify-between bg-semantic-jira-surface">
           <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded bg-[#DEEBFF] text-[#0052CC] border border-[#B3D4FF]">
+            <div className="p-1.5 rounded bg-semantic-jira-brand-surface text-semantic-jira-brand border border-semantic-jira-info-border">
               <Sliders className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-[#172B4D]">Customize sidebar</h2>
-              <p className="text-[11px] text-[#5E6C84]">
+              <h2 className="text-sm font-bold text-semantic-jira-primary">Customize sidebar</h2>
+              <p className="text-label text-semantic-jira-muted">
                 Show, hide, or reorder navigation items for your personal account
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-[#EBECF0] text-[#5E6C84] hover:text-[#172B4D] transition-colors"
+            className="p-1 rounded hover:bg-semantic-jira-hover text-semantic-jira-muted hover:text-semantic-jira-primary transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -105,8 +105,8 @@ export const CustomizeSidebarModal: React.FC<CustomizeSidebarModalProps> = ({
 
         {/* Modal Body - Items Checklist */}
         <div className="p-4 overflow-y-auto space-y-4 flex-1 custom-scrollbar">
-          <div className="text-xs text-[#5E6C84] bg-[#FFFFFF] p-2.5 rounded border border-[#DFE1E6]">
-            💡 <strong className="text-[#172B4D]">Tip:</strong> Uncheck items to hide them from your sidebar. Use the arrows to reorder. Changes only affect your view.
+          <div className="text-xs text-semantic-jira-muted bg-semantic-panel p-2.5 rounded border border-semantic-jira-border">
+            💡 <strong className="text-semantic-jira-primary">Tip:</strong> Uncheck items to hide them from your sidebar. Use the arrows to reorder. Changes only affect your view.
           </div>
 
           {['essentials', 'space', 'assets', 'apps'].map((sectionKey) => {
@@ -124,27 +124,27 @@ export const CustomizeSidebarModal: React.FC<CustomizeSidebarModalProps> = ({
 
             return (
               <div key={sectionKey} className="space-y-1.5">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-[#7A869A] px-1">
+                <div className="text-caption font-bold uppercase tracking-wider text-semantic-jira-muted-light px-1">
                   {sectionTitle}
                 </div>
-                <div className="space-y-1 bg-[#FFFFFF] border border-[#DFE1E6] rounded-md p-1.5">
+                <div className="space-y-1 bg-semantic-panel border border-semantic-jira-border rounded-md p-1.5">
                   {sectionItems.map((item) => {
                     const globalIndex = draftConfig.findIndex((d) => d.id === item.id);
                     return (
                       <div
                         key={item.id}
                         className={`flex items-center justify-between p-2 rounded transition-colors ${
-                          item.visible ? 'bg-[#FFFFFF] hover:bg-[#EBECF0]' : 'bg-[#F4F5F7]/50 opacity-60'
+                          item.visible ? 'bg-semantic-panel hover:bg-semantic-jira-hover' : 'bg-semantic-jira-surface/50 opacity-60'
                         }`}
                       >
-                        <label className="flex items-center gap-2.5 cursor-pointer select-none text-xs text-[#172B4D]">
+                        <label className="flex items-center gap-2.5 cursor-pointer select-none text-xs text-semantic-jira-primary">
                           <input
                             type="checkbox"
                             checked={item.visible}
                             onChange={() => toggleVisibility(item.id)}
-                            className="rounded bg-[#FFFFFF] border-[#DFE1E6] text-[#0052CC] focus:ring-0 focus:ring-offset-0 w-3.5 h-3.5 cursor-pointer"
+                            className="rounded bg-semantic-panel border-semantic-jira-border text-semantic-jira-brand focus:ring-0 focus:ring-offset-0 w-3.5 h-3.5 cursor-pointer"
                           />
-                          <span className={item.visible ? 'font-medium' : 'text-[#5E6C84] line-through'}>
+                          <span className={item.visible ? 'font-medium' : 'text-semantic-jira-muted line-through'}>
                             {item.label}
                           </span>
                         </label>
@@ -154,7 +154,7 @@ export const CustomizeSidebarModal: React.FC<CustomizeSidebarModalProps> = ({
                             type="button"
                             onClick={() => moveItem(globalIndex, 'up')}
                             disabled={globalIndex === 0}
-                            className="p-1 rounded hover:bg-[#DFE1E6] text-[#5E6C84] hover:text-[#172B4D] disabled:opacity-30 disabled:hover:bg-transparent"
+                            className="p-1 rounded hover:bg-semantic-jira-border text-semantic-jira-muted hover:text-semantic-jira-primary disabled:opacity-30 disabled:hover:bg-transparent"
                             title="Move up"
                           >
                             <MoveUp className="w-3.5 h-3.5" />
@@ -163,7 +163,7 @@ export const CustomizeSidebarModal: React.FC<CustomizeSidebarModalProps> = ({
                             type="button"
                             onClick={() => moveItem(globalIndex, 'down')}
                             disabled={globalIndex === draftConfig.length - 1}
-                            className="p-1 rounded hover:bg-[#DFE1E6] text-[#5E6C84] hover:text-[#172B4D] disabled:opacity-30 disabled:hover:bg-transparent"
+                            className="p-1 rounded hover:bg-semantic-jira-border text-semantic-jira-muted hover:text-semantic-jira-primary disabled:opacity-30 disabled:hover:bg-transparent"
                             title="Move down"
                           >
                             <MoveDown className="w-3.5 h-3.5" />
@@ -179,10 +179,10 @@ export const CustomizeSidebarModal: React.FC<CustomizeSidebarModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-3 border-t border-[#DFE1E6] bg-[#F4F5F7] flex items-center justify-between">
+        <div className="p-3 border-t border-semantic-jira-border bg-semantic-jira-surface flex items-center justify-between">
           <button
             onClick={handleReset}
-            className="jira-btn-subtle text-xs flex items-center gap-1 text-[#5E6C84] hover:text-[#172B4D]"
+            className="jira-btn-subtle text-xs flex items-center gap-1 text-semantic-jira-muted hover:text-semantic-jira-primary"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>Reset to default</span>

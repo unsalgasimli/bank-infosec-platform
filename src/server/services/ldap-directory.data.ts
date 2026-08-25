@@ -11,7 +11,13 @@ export interface LDAPRawEntry {
   department?: string;
   company?: string;
   distinguishedName?: string;
+  /** Active Directory distinguished name of the employee's direct manager. */
+  manager?: string;
   memberOf?: string[] | string;
+  description?: string;
+  employeeType?: string;
+  objectClass?: string[] | string;
+  servicePrincipalName?: string[] | string;
   userAccountControl?: number | string;
   accountExpires?: string | number;
   whenCreated?: string;
@@ -21,6 +27,9 @@ export interface LDAPRawEntry {
 export interface DepartmentMappingResult {
   departmentId: string;
   divisionId: string;
+  sectionId?: string;
+  sectionName?: string;
+  sectionCode?: string;
   teamIds: string[];
   departmentName: string;
   departmentCode: string;
@@ -37,6 +46,24 @@ export function toSafeString(val: any): string {
   if (Array.isArray(val)) return toSafeString(val[0]);
   if (Buffer.isBuffer(val)) return val.toString('utf8').trim();
   return String(val).trim();
+}
+
+/**
+ * Normalizes directory text at the boundary so LDAP aliases cannot create
+ * duplicate identities through Unicode variants, zero-width characters, or
+ * inconsistent whitespace.
+ */
+export function normalizeDirectoryText(val: any): string {
+  return toSafeString(val)
+    .normalize('NFKC')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Canonical, case-insensitive key used for AD usernames, email, and DNs. */
+export function normalizeDirectoryKey(val: any): string {
+  return normalizeDirectoryText(val).toLowerCase();
 }
 
 export function slugifyDept(text: string): string {
@@ -160,7 +187,8 @@ function getSpecificItOrganizationalUnit(distinguishedName: any, adDepartment: s
 }
 
 /**
- * Intelligently maps Active Directory department/şöbə and security groups to BankDepartment and assigns appropriate roles
+ * Intelligently maps Active Directory department/şöbə, title, distinguishedName OUs,
+ * and security groups to BankDepartment with precise leadership (Müdir / Head) differentiation.
  */
 export function mapDepartment(
   adDepartment: any = '',
@@ -170,217 +198,318 @@ export function mapDepartment(
 ): DepartmentMappingResult {
   const deptStr = toSafeString(adDepartment);
   const titleStr = toSafeString(adTitle);
-  const deptNorm = normalizeAzerbaijani(deptStr);
+  const dnStr = toSafeString(distinguishedName);
+
+  const ous = extractOrganizationalUnits(dnStr);
+  const relevantOUs = ous.filter((ou) => {
+    const n = normalizeAzerbaijani(ou);
+    return ![
+      'bank users',
+      'ho users',
+      'branch users',
+      'users',
+      'service',
+      'disabled',
+      'disable',
+      'outlook',
+      'no policy',
+      'ie test',
+      'qmatic user',
+    ].includes(n);
+  });
+
+  // Extract department candidate from title if formatted as "Department / Position"
+  let titleDept = '';
+  let titlePos = titleStr;
+  if (titleStr.includes('/')) {
+    const parts = titleStr.split('/').map((p) => p.trim());
+    titleDept = parts[0];
+    titlePos = parts[parts.length - 1];
+  }
+
+  // Combined context string for searching across all signals
+  const combinedContext = [deptStr, titleStr, ...relevantOUs].join(' ');
+  const norm = normalizeAzerbaijani(combinedContext);
   const titleNorm = normalizeAzerbaijani(titleStr);
 
   const groupArr = Array.isArray(groups) ? groups : groups ? [groups] : [];
   const groupNorms = groupArr.map((g) => normalizeAzerbaijani(toSafeString(g))).filter(Boolean);
 
+  // Check if position indicates leadership (Müdir / Head / Direktor / Sədr / Rəis / Lead / Manager)
+  const isManagerTitle =
+    titleNorm.includes('mudir') ||
+    titleNorm.includes('reis') ||
+    titleNorm.includes('direktor') ||
+    titleNorm.includes('director') ||
+    titleNorm.includes('head') ||
+    titleNorm.includes('sedr') ||
+    titleNorm.includes('rehber') ||
+    titleNorm.includes('menecer') ||
+    titleNorm.includes('manager') ||
+    titleNorm.includes('ciso');
+
   let result: DepartmentMappingResult;
 
-  // 1. Information Security & Cyber Defense (İnformasiya Təhlükəsizliyi)
+  // 1. Executive Board & Leadership (BOSSES, İdarə Heyəti, Müşahidə Şurası)
   if (
-    deptNorm.includes('infosec') ||
-    deptNorm.includes('tehlukesizliyi') ||
-    deptNorm.includes('tehlukesizlik') ||
-    deptNorm.includes('cyber') ||
-    deptNorm.includes('kiber') ||
-    deptNorm.includes('soc') ||
-    deptNorm.includes('appsec') ||
-    deptNorm === 'dept-secops'
+    norm.includes('bosses') ||
+    titleNorm.includes('idare heyet') ||
+    titleNorm.includes('musahide surasi') ||
+    norm.includes('idare heyeti') ||
+    norm.includes('musahide surasi')
+  ) {
+    result = {
+      departmentId: 'dept-executive',
+      divisionId: 'div-banking',
+      teamIds: ['team-executive'],
+      departmentName: 'İdarə Heyəti və Rəhbərlik',
+      departmentCode: 'EXECUTIVE',
+      roles: isManagerTitle
+        ? ['PLATFORM_ADMIN', 'CISO', 'DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'APPROVER', 'REQUESTER']
+        : ['DEPARTMENT_ADMIN', 'APPROVER', 'REQUESTER'],
+      securityClearance: 'HIGHLY_RESTRICTED_HR_LEGAL',
+    };
+  }
+
+  // 2. Information Security & Cyber Defense (İnformasiya Təhlükəsizliyi)
+  else if (
+    norm.includes('infosec') ||
+    norm.includes('tehlukesizliyi') ||
+    norm.includes('tehlukesizlik') ||
+    norm.includes('cyber') ||
+    norm.includes('kiber') ||
+    norm.includes('soc') ||
+    norm.includes('appsec') ||
+    norm === 'dept-secops'
   ) {
     let roles: BankRole[] = ['SECURITY_ANALYST', 'APPROVER', 'REQUESTER'];
     let teamIds = ['team-soc'];
 
-    if (
+    const isCisoOrDirector =
       titleNorm.includes('ciso') ||
       titleNorm.includes('chief information security') ||
-      titleNorm.includes('departament direktoru') ||
-      titleNorm.includes('sobe reisi')
-    ) {
-      roles = ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'APPROVER', 'REQUESTER'];
+      titleNorm.includes('direktor') ||
+      titleNorm.includes('director');
+
+    const isInfosecHead =
+      isCisoOrDirector ||
+      titleNorm.includes('mudir') ||
+      titleNorm.includes('reis') ||
+      titleNorm.includes('head') ||
+      titleNorm.includes('rehber');
+
+    if (isCisoOrDirector) {
+      roles = [
+        'PLATFORM_ADMIN',
+        'CISO',
+        'INFOSEC_ADMIN',
+        'DEPARTMENT_ADMIN',
+        'DEPARTMENT_MANAGER',
+        'TEAM_LEAD',
+        'SECURITY_ANALYST',
+        'APPROVER',
+        'REQUESTER',
+      ];
       teamIds = ['team-soc', 'team-grc'];
-    } else if (titleNorm.includes('soc') || titleNorm.includes('incident') || titleNorm.includes('triage')) {
-      roles = ['DEPARTMENT_ADMIN', 'INFOSEC_ADMIN', 'SECURITY_ANALYST', 'SOC_ANALYST', 'APPROVER', 'REQUESTER'];
+    } else if (isInfosecHead) {
+      roles = [
+        'INFOSEC_ADMIN',
+        'INFOSEC_MANAGER',
+        'DEPARTMENT_ADMIN',
+        'DEPARTMENT_MANAGER',
+        'TEAM_LEAD',
+        'SECURITY_ANALYST',
+        'APPROVER',
+        'REQUESTER',
+      ];
+      teamIds = ['team-soc'];
+    } else if (titleNorm.includes('tecrube') || titleNorm.includes('intern')) {
+      roles = ['SECURITY_ANALYST', 'REQUESTER'];
       teamIds = ['team-soc'];
     } else if (titleNorm.includes('appsec') || titleNorm.includes('pentest') || titleNorm.includes('vulnerability')) {
       roles = ['APPSEC_ANALYST', 'SECURITY_ANALYST', 'REQUESTER'];
       teamIds = ['team-appsec'];
+    } else {
+      roles = ['SECURITY_ANALYST', 'SOC_ANALYST', 'APPROVER', 'REQUESTER'];
+      teamIds = ['team-soc'];
     }
 
     result = {
       departmentId: 'dept-secops',
       divisionId: 'div-sec',
       teamIds,
-      departmentName: deptStr || 'İnformasiya Təhlükəsizliyi & Kiber Müdafiə',
+      departmentName: 'İnformasiya Təhlükəsizliyi Departamenti',
       departmentCode: 'INFOSEC',
       roles,
-      securityClearance: 'CONFIDENTIAL_SECURITY_ONLY',
+      securityClearance: isInfosecHead ? 'HIGHLY_RESTRICTED_HR_LEGAL' : 'CONFIDENTIAL_SECURITY_ONLY',
     };
   }
 
-  // 2. IT Infrastructure, Cloud & Operations (İT İnfrastruktur)
+  // 3. Technical & Physical Security (Fiziki Mühafizə & Təhlükəsizlik)
   else if (
-    deptNorm.includes('infrastruktur') ||
-    deptNorm.includes('infrastructure') ||
-    deptNorm.includes('texnologiya') ||
-    deptNorm.includes('technology') ||
-    deptNorm.includes('sebeke') ||
-    deptNorm.includes('helpdesk') ||
-    deptNorm.includes('texniki destek') ||
-    deptNorm.includes('sistem inzibat') ||
-    deptNorm.includes('ikt') ||
-    deptNorm.includes('it_ops') ||
-    deptNorm.includes('it ') ||
-    deptNorm === 'dept-it' ||
-    deptNorm === 'it'
+    norm.includes('texniki ve fiziki tehlukesizlik') ||
+    norm.includes('muhafize') ||
+    norm.includes('inkassasiya') ||
+    norm.includes('inkasasiya')
+  ) {
+    let roles: BankRole[] = ['REQUESTER', 'ASSIGNEE'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'SECURITY_ANALYST', 'APPROVER', 'REQUESTER'];
+    } else {
+      roles = ['SECURITY_ANALYST', 'APPROVER', 'REQUESTER'];
+    }
+    result = {
+      departmentId: 'dept-phys-sec',
+      divisionId: 'div-sec',
+      teamIds: ['team-soc'],
+      departmentName: 'Texniki və Fiziki Təhlükəsizlik Şöbəsi',
+      departmentCode: 'PHYS_SEC',
+      roles,
+      securityClearance: 'INTERNAL',
+    };
+  }
+
+  // 4. Marketing & Public Relations (Reklam və Marketinq)
+  else if (
+    norm.includes('reklam') ||
+    norm.includes('marketinq') ||
+    norm.includes('marketing') ||
+    norm.includes('ictimaiyyet') ||
+    /\bpr\b/.test(norm) ||
+    norm.includes('dizayn') ||
+    norm.includes('brend')
+  ) {
+    let roles: BankRole[] = ['REQUESTER'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
+    }
+    result = {
+      departmentId: 'dept-marketing',
+      divisionId: 'div-hr',
+      teamIds: ['team-hr-ops'],
+      departmentName: 'Reklam və Marketinq Departamenti',
+      departmentCode: 'MARKETING',
+      roles,
+      securityClearance: 'INTERNAL',
+    };
+  }
+
+  // 5. PMO & Business Process Optimization (Biznes Prosesləri və Layihələr)
+  else if (
+    norm.includes('biznes proses') ||
+    norm.includes('optimallasdir') ||
+    norm.includes('pmo') ||
+    norm.includes('strategiya') ||
+    norm.includes('layihe')
+  ) {
+    let roles: BankRole[] = ['REQUESTER', 'APPROVER'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
+    }
+    result = {
+      departmentId: 'dept-pmo',
+      divisionId: 'div-banking',
+      teamIds: ['team-swift-eng'],
+      departmentName: 'Biznes Proseslərin Təhlili və Optimallaşdırılması Şöbəsi',
+      departmentCode: 'PMO',
+      roles,
+      securityClearance: 'INTERNAL',
+    };
+  }
+
+  // 6. IT Infrastructure, Cloud & Operations (İT İnfrastruktur və Sistemlər)
+  else if (
+    norm.includes('infrastruktur') ||
+    norm.includes('infrastructure') ||
+    norm.includes('texnologiya') ||
+    norm.includes('technology') ||
+    norm.includes('sebeke') ||
+    norm.includes('sistem inzibat') ||
+    norm.includes('helpdesk') ||
+    norm.includes('texniki destek') ||
+    norm.includes('devops') ||
+    norm.includes('ikt') ||
+    norm.includes('proqram') ||
+    norm.includes('software') ||
+    norm.includes('reqemsal') ||
+    norm.includes('innovasiya') ||
+    norm.includes('melumatlarin idare') ||
+    norm.includes('abs-in idare') ||
+    norm === 'dept-it' ||
+    norm === 'it'
   ) {
     let roles: BankRole[] = ['IT_ADMIN', 'APPROVER', 'REQUESTER'];
-    if (titleNorm.includes('head') || titleNorm.includes('reis') || titleNorm.includes('lead') || titleNorm.includes('direktor')) {
-      roles = ['DEPARTMENT_ADMIN', 'IT_ADMIN', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'IT_ADMIN', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
     }
+
+    // Keep the AD child OU as a section under the IT department. It must not
+    // become a second top-level department, otherwise parent queues and
+    // reporting are split by OU.
+    let deptId = 'dept-it';
+    let deptName = 'İnformasiya Texnologiyaları Departamenti';
+    let deptCode = 'IT_DEPT';
+
     result = {
-      departmentId: 'dept-it',
+      departmentId: deptId,
       divisionId: 'div-it',
       teamIds: ['team-it-infra'],
-      departmentName: deptStr || 'İT İnfrastruktur və Bulud Əməliyyatları',
-      departmentCode: 'IT_OPS',
+      departmentName: deptName,
+      departmentCode: deptCode,
       roles,
       securityClearance: 'CONFIDENTIAL_SECURITY_ONLY',
     };
   }
 
-  // 3. Software Development & Engineering (Proqram Təminatı)
+  // 7. Human Resources & Personnel (İnsan Resursları)
   else if (
-    deptNorm.includes('proqram') ||
-    deptNorm.includes('software') ||
-    deptNorm.includes('development') ||
-    deptNorm.includes('proqramlasdirma') ||
-    deptNorm.includes('inteqrasiya') ||
-    deptNorm.includes('reqemsal hell')
-  ) {
-    let roles: BankRole[] = ['APPLICATION_OWNER', 'REQUESTER'];
-    if (titleNorm.includes('head') || titleNorm.includes('reis') || titleNorm.includes('lead') || titleNorm.includes('direktor')) {
-      roles = ['DEPARTMENT_ADMIN', 'TEAM_LEAD', 'APPLICATION_OWNER', 'APPROVER', 'REQUESTER'];
-    }
-    result = {
-      departmentId: 'dept-software-eng',
-      divisionId: 'div-it',
-      teamIds: ['team-devsecops'],
-      departmentName: deptStr || 'Proqram Təminatı və Rəqəmsal Həllər',
-      departmentCode: 'DEV_ENG',
-      roles,
-      securityClearance: 'CONFIDENTIAL_SECURITY_ONLY',
-    };
-  }
-
-  // 4. Human Resources & Personnel (İnsan Resursları)
-  else if (
-    deptNorm.includes('hr') ||
-    deptNorm.includes('human') ||
-    deptNorm.includes('insan') ||
-    deptNorm.includes('resurs') ||
-    deptNorm.includes('kadr') ||
-    deptNorm.includes('personnel') ||
-    deptNorm.includes('telim') ||
-    deptNorm === 'dept-hr'
+    norm.includes('hr') ||
+    norm.includes('human') ||
+    norm.includes('insan resurs') ||
+    norm.includes('insan') ||
+    norm.includes('kadr') ||
+    norm.includes('personnel') ||
+    norm.includes('telim') ||
+    norm.includes('tedris') ||
+    norm.includes('senedlesdirme') ||
+    norm.includes('ise celb') ||
+    norm === 'dept-hr'
   ) {
     let roles: BankRole[] = ['HR_ADMIN', 'REQUESTER'];
-    if (titleNorm.includes('head') || titleNorm.includes('reis') || titleNorm.includes('lead') || titleNorm.includes('direktor')) {
-      roles = ['DEPARTMENT_ADMIN', 'HR_ADMIN', 'APPROVER', 'REQUESTER'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'HR_ADMIN', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
     }
     result = {
       departmentId: 'dept-hr',
       divisionId: 'div-hr',
       teamIds: ['team-hr-ops'],
-      departmentName: deptStr || 'İnsan Resursları və Kadrlar',
-      departmentCode: 'HR_LEGAL',
+      departmentName: 'İnsan Resursları Departamenti',
+      departmentCode: 'HR_DEPT',
       roles,
       securityClearance: 'HIGHLY_RESTRICTED_HR_LEGAL',
     };
   }
 
-  // 5. Core Banking & SWIFT Systems (Bank Əməliyyat Sistemləri)
+  // 8. Legal Department & Secretariat (Hüquq Departamenti və Katiblik)
   else if (
-    deptNorm.includes('swift') ||
-    deptNorm.includes('plastik kart') ||
-    deptNorm.includes('kartlar') ||
-    deptNorm.includes('prosessinq') ||
-    deptNorm.includes('klirinq') ||
-    deptNorm.includes('core bank') ||
-    deptNorm.includes('bank sistem') ||
-    deptNorm.includes('emeliyyat') ||
-    deptNorm === 'dept-core'
+    norm.includes('huquq') ||
+    norm.includes('legal') ||
+    norm.includes('mehkeme') ||
+    norm.includes('muqavile') ||
+    norm.includes('istehlakci') ||
+    norm.includes('katiblik') ||
+    norm === 'dept-legal'
   ) {
-    let roles: BankRole[] = ['CORE_BANK_ADMIN', 'APPLICATION_OWNER', 'APPROVER', 'REQUESTER'];
-    if (titleNorm.includes('head') || titleNorm.includes('reis') || titleNorm.includes('lead') || titleNorm.includes('direktor')) {
-      roles = ['DEPARTMENT_ADMIN', 'CORE_BANK_ADMIN', 'APPLICATION_OWNER', 'APPROVER', 'REQUESTER'];
-    }
-    result = {
-      departmentId: 'dept-core',
-      divisionId: 'div-banking',
-      teamIds: ['team-swift-eng'],
-      departmentName: deptStr || 'Bank Əməliyyat Sistemləri və SWIFT',
-      departmentCode: 'CORE_BANK',
-      roles,
-      securityClearance: 'CONFIDENTIAL_SECURITY_ONLY',
-    };
-  }
-
-  // 6. GRC & Risk Management (Risklərin İdarə Edilməsi və Komplayens)
-  else if (
-    deptNorm.includes('risk') ||
-    deptNorm.includes('grc') ||
-    deptNorm.includes('compliance') ||
-    deptNorm.includes('komplayens') ||
-    deptNorm.includes('aml') ||
-    deptNorm.includes('maliyye monitorinq') ||
-    deptNorm === 'dept-grc'
-  ) {
-    let roles: BankRole[] = ['AUDITOR', 'REQUESTER'];
-    if (titleNorm.includes('head') || titleNorm.includes('reis') || titleNorm.includes('lead') || titleNorm.includes('officer') || titleNorm.includes('direktor')) {
-      roles = ['DEPARTMENT_ADMIN', 'AUDITOR', 'APPROVER', 'REQUESTER'];
-    }
-    result = {
-      departmentId: 'dept-grc',
-      divisionId: 'div-sec',
-      teamIds: ['team-grc'],
-      departmentName: deptStr || 'İdarəetmə, Risk və Komplayens (GRC)',
-      departmentCode: 'GRC',
-      roles,
-      securityClearance: 'RESTRICTED',
-    };
-  }
-
-  // 7. Internal Audit (Daxili Audit)
-  else if (deptNorm.includes('audit') || deptNorm.includes('daxili nezaret')) {
-    let roles: BankRole[] = ['AUDITOR', 'REQUESTER'];
-    if (titleNorm.includes('head') || titleNorm.includes('reis') || titleNorm.includes('direktor')) {
-      roles = ['DEPARTMENT_ADMIN', 'AUDITOR', 'APPROVER', 'REQUESTER'];
-    }
-    result = {
-      departmentId: 'dept-audit',
-      divisionId: 'div-sec',
-      teamIds: ['team-grc'],
-      departmentName: deptStr || 'Daxili Audit Departamenti',
-      departmentCode: 'AUDIT',
-      roles,
-      securityClearance: 'RESTRICTED',
-    };
-  }
-
-  // 8. Legal Department (Hüquq Departamenti)
-  else if (deptNorm.includes('huquq') || deptNorm.includes('legal') || deptNorm.includes('mehkeme') || deptNorm.includes('muqavile')) {
     let roles: BankRole[] = ['REQUESTER', 'APPROVER'];
-    if (titleNorm.includes('head') || titleNorm.includes('reis') || titleNorm.includes('direktor')) {
-      roles = ['DEPARTMENT_ADMIN', 'APPROVER', 'REQUESTER'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'LEGAL_ADMIN', 'APPROVER', 'REQUESTER'];
     }
     result = {
-      departmentId: 'dept-legal',
+      departmentId: norm.includes('katiblik') ? 'dept-katiblik-sobesi' : 'dept-legal',
       divisionId: 'div-hr',
       teamIds: ['team-hr-ops'],
-      departmentName: deptStr || 'Hüquq Departamenti',
-      departmentCode: 'LEGAL',
+      departmentName: norm.includes('katiblik') ? 'Katiblik Şöbəsi' : 'Hüquq Departamenti',
+      departmentCode: norm.includes('katiblik') ? 'KATIB_DEPT' : 'LEGAL',
       roles,
       securityClearance: 'HIGHLY_RESTRICTED_HR_LEGAL',
     };
@@ -388,21 +517,22 @@ export function mapDepartment(
 
   // 9. Finance & Accounting (Maliyyə və Mühasibatlıq)
   else if (
-    deptNorm.includes('maliyye') ||
-    deptNorm.includes('muhasibat') ||
-    deptNorm.includes('finance') ||
-    deptNorm.includes('accounting') ||
-    deptNorm.includes('budce')
+    norm.includes('maliyye') ||
+    norm.includes('muhasibat') ||
+    norm.includes('finance') ||
+    norm.includes('accounting') ||
+    norm.includes('budce') ||
+    norm === 'dept-finance'
   ) {
     let roles: BankRole[] = ['REQUESTER', 'APPROVER'];
-    if (titleNorm.includes('head') || titleNorm.includes('reis') || titleNorm.includes('bas muhasib') || titleNorm.includes('direktor')) {
-      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'APPROVER', 'REQUESTER'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
     }
     result = {
       departmentId: 'dept-finance',
       divisionId: 'div-banking',
       teamIds: ['team-swift-eng'],
-      departmentName: deptStr || 'Maliyyə və Mühasibatlıq Departamenti',
+      departmentName: 'Maliyyə və Mühasibatlıq Departamenti',
       departmentCode: 'FINANCE',
       roles,
       securityClearance: 'RESTRICTED',
@@ -410,207 +540,252 @@ export function mapDepartment(
   }
 
   // 10. Treasury & Financial Markets (Xəzinədarlıq)
-  else if (deptNorm.includes('xezine') || deptNorm.includes('treasury') || deptNorm.includes('valyuta')) {
+  else if (norm.includes('xezine') || norm.includes('treasury') || norm.includes('valyuta') || norm === 'dept-treasury') {
     let roles: BankRole[] = ['REQUESTER', 'APPROVER'];
-    if (titleNorm.includes('head') || titleNorm.includes('reis') || titleNorm.includes('direktor')) {
-      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'APPROVER', 'REQUESTER'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
     }
     result = {
       departmentId: 'dept-treasury',
       divisionId: 'div-banking',
       teamIds: ['team-swift-eng'],
-      departmentName: deptStr || 'Xəzinədarlıq Departamenti',
+      departmentName: 'Xəzinədarlıq Departamenti',
       departmentCode: 'TREASURY',
       roles,
       securityClearance: 'RESTRICTED',
     };
   }
 
-  // 11. Credit & Underwriting (Kredit Departamenti)
+  // 11. Core Banking & SWIFT Systems (Bank Əməliyyat Sistemləri və SWIFT)
   else if (
-    deptNorm.includes('kredit') ||
-    deptNorm.includes('credit') ||
-    deptNorm.includes('andrraytinq') ||
-    deptNorm.includes('ipoteka') ||
-    deptNorm.includes('lizinq')
+    norm.includes('swift') ||
+    norm.includes('core bank') ||
+    norm.includes('bank sistem') ||
+    norm === 'dept-core'
   ) {
-    let roles: BankRole[] = ['REQUESTER', 'APPROVER'];
-    if (titleNorm.includes('head') || titleNorm.includes('reis') || titleNorm.includes('direktor') || titleNorm.includes('komite')) {
-      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'APPROVER', 'REQUESTER'];
+    let roles: BankRole[] = ['CORE_BANK_ADMIN', 'APPLICATION_OWNER', 'APPROVER', 'REQUESTER'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'CORE_BANK_ADMIN', 'APPLICATION_OWNER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
     }
     result = {
-      departmentId: 'dept-credit',
+      departmentId: 'dept-core',
       divisionId: 'div-banking',
       teamIds: ['team-swift-eng'],
-      departmentName: deptStr || 'Kredit Departamenti',
-      departmentCode: 'CREDIT',
+      departmentName: 'Bank Əməliyyat Sistemləri və SWIFT',
+      departmentCode: 'CORE_BANK',
+      roles,
+      securityClearance: 'CONFIDENTIAL_SECURITY_ONLY',
+    };
+  }
+
+  // 12. Settlements, Cards & Cash Management (Hesablaşmalar Departamenti)
+  else if (
+    norm.includes('hesablas') ||
+    norm.includes('klirinq') ||
+    norm.includes('kartlar') ||
+    norm.includes('prosessinq') ||
+    norm.includes('kassa') ||
+    norm.includes('nagd vesait') ||
+    norm.includes('emeliyyat') ||
+    norm === 'dept-hesablasmalar-departamenti'
+  ) {
+    let roles: BankRole[] = ['REQUESTER', 'ASSIGNEE'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
+    }
+    result = {
+      departmentId: 'dept-hesablasmalar-departamenti',
+      divisionId: 'div-banking',
+      teamIds: ['team-swift-eng'],
+      departmentName: 'Hesablaşmalar Departamenti',
+      departmentCode: 'HESAB_DEPT',
       roles,
       securityClearance: 'RESTRICTED',
     };
   }
 
-  // 12. Retail Banking (Pərakəndə Bankçılıq)
-  else if (deptNorm.includes('perakende') || deptNorm.includes('retail') || deptNorm.includes('ferdi musteri')) {
-    let roles: BankRole[] = ['REQUESTER', 'APPROVER'];
-    if (titleNorm.includes('head') || titleNorm.includes('reis') || titleNorm.includes('direktor')) {
-      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'APPROVER', 'REQUESTER'];
+  // 12. Payment Systems (Ödəniş Sistemləri)
+  else if (norm.includes('odenis sistem') || norm.includes('expresspay')) {
+    let roles: BankRole[] = ['REQUESTER', 'ASSIGNEE'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
     }
     result = {
-      departmentId: 'dept-retail',
+      departmentId: 'dept-odenis-sistemlerin-idare-edilmesi-departamenti',
       divisionId: 'div-banking',
       teamIds: ['team-swift-eng'],
-      departmentName: deptStr || 'Pərakəndə Bankçılıq Departamenti',
-      departmentCode: 'RETAIL',
+      departmentName: 'Ödəniş Sistemlərinin İdarə Edilməsi Departamenti',
+      departmentCode: 'ODENIS_DEPT',
       roles,
-      securityClearance: 'INTERNAL',
+      securityClearance: 'RESTRICTED',
     };
   }
 
-  // 13. Corporate Banking (Korporativ Bankçılıq)
-  else if (deptNorm.includes('korporativ') || deptNorm.includes('corporate') || deptNorm.includes('kombank') || deptNorm.includes('biznes bank')) {
-    let roles: BankRole[] = ['REQUESTER', 'APPROVER'];
-    if (titleNorm.includes('head') || titleNorm.includes('reis') || titleNorm.includes('direktor')) {
-      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'APPROVER', 'REQUESTER'];
-    }
-    result = {
-      departmentId: 'dept-corporate',
-      divisionId: 'div-banking',
-      teamIds: ['team-swift-eng'],
-      departmentName: deptStr || 'Korporativ Bankçılıq Departamenti',
-      departmentCode: 'CORP_BANK',
-      roles,
-      securityClearance: 'INTERNAL',
-    };
-  }
-
-  // 14. Customer Care & Call Center (Müştəri Xidmətləri və Çağrı Mərkəzi)
+  // 13. Risk Management & Compliance (GRC, Komplayens, Daxili Nəzarət)
   else if (
-    deptNorm.includes('musteri') ||
-    deptNorm.includes('call') ||
-    deptNorm.includes('elaqe merkez') ||
-    deptNorm.includes('132')
+    norm.includes('risk') ||
+    norm.includes('grc') ||
+    norm.includes('compliance') ||
+    norm.includes('komplayens') ||
+    norm.includes('aml') ||
+    norm.includes('el-tmm') ||
+    norm.includes('sanksiya') ||
+    norm.includes('daxili nezaret') ||
+    norm.includes('dnd') ||
+    norm === 'dept-grc'
+  ) {
+    let roles: BankRole[] = ['AUDITOR', 'REQUESTER'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'AUDITOR', 'APPROVER', 'REQUESTER'];
+    }
+    const isDnd = norm.includes('daxili nezaret') || norm.includes('dnd');
+    result = {
+      departmentId: isDnd ? 'dept-daxili-nezaret-departamenti' : 'dept-grc',
+      divisionId: 'div-sec',
+      teamIds: ['team-grc'],
+      departmentName: isDnd ? 'Daxili Nəzarət Departamenti' : 'Komplayens və Risk Departamenti',
+      departmentCode: isDnd ? 'DND_DEPT' : 'GRC',
+      roles,
+      securityClearance: 'RESTRICTED',
+    };
+  }
+
+  // 14. Internal Audit (Daxili Audit)
+  else if (norm.includes('audit')) {
+    let roles: BankRole[] = ['AUDITOR', 'REQUESTER'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'AUDITOR', 'APPROVER', 'REQUESTER'];
+    }
+    result = {
+      departmentId: 'dept-audit',
+      divisionId: 'div-sec',
+      teamIds: ['team-grc'],
+      departmentName: 'Daxili Audit Departamenti',
+      departmentCode: 'AUDIT',
+      roles,
+      securityClearance: 'RESTRICTED',
+    };
+  }
+
+  // 15. Customer Care & Call Center (Müştəri Xidmətləri və Çağrı Mərkəzi)
+  else if (
+    norm.includes('musteri') ||
+    norm.includes('call') ||
+    norm.includes('melumat merkez') ||
+    norm.includes('elaqe merkez') ||
+    norm.includes('mxd') ||
+    norm.includes('132')
   ) {
     let roles: BankRole[] = ['REQUESTER', 'ASSIGNEE'];
-    if (titleNorm.includes('head') || titleNorm.includes('reis') || titleNorm.includes('supervayzer') || titleNorm.includes('mudir')) {
-      roles = ['DEPARTMENT_ADMIN', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
     }
     result = {
       departmentId: 'dept-customer-care',
       divisionId: 'div-banking',
       teamIds: ['team-swift-eng'],
-      departmentName: deptStr || 'Müştəri Xidmətləri və Çağrı Mərkəzi',
+      departmentName: 'Müştəri Xidmətləri və Çağrı Mərkəzi',
       departmentCode: 'CALL_CENTER',
       roles,
       securityClearance: 'INTERNAL',
     };
   }
 
-  // 15. Marketing & PR (Marketinq və İctimaiyyətlə Əlaqələr)
-  else if (deptNorm.includes('marketinq') || deptNorm.includes('marketing') || deptNorm.includes('pr') || deptNorm.includes('ictimaiyyet') || deptNorm.includes('brend')) {
-    let roles: BankRole[] = ['REQUESTER'];
-    if (titleNorm.includes('head') || titleNorm.includes('reis') || titleNorm.includes('direktor')) {
-      roles = ['DEPARTMENT_ADMIN', 'APPROVER', 'REQUESTER'];
+  // 16. Credit & Underwriting (Kredit Departamenti)
+  else if (
+    norm.includes('kredit') ||
+    norm.includes('credit') ||
+    norm.includes('andrraytinq') ||
+    norm.includes('anderraytinq') ||
+    norm.includes('ipoteka') ||
+    norm.includes('lizinq')
+  ) {
+    let roles: BankRole[] = ['REQUESTER', 'APPROVER'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
     }
     result = {
-      departmentId: 'dept-marketing',
-      divisionId: 'div-hr',
-      teamIds: ['team-hr-ops'],
-      departmentName: deptStr || 'Marketinq və İctimaiyyətlə Əlaqələr',
-      departmentCode: 'MARKETING',
+      departmentId: 'dept-credit',
+      divisionId: 'div-banking',
+      teamIds: ['team-swift-eng'],
+      departmentName: 'Kredit və Anderraytinq Departamenti',
+      departmentCode: 'CREDIT',
+      roles,
+      securityClearance: 'RESTRICTED',
+    };
+  }
+
+  // 17. Corporate / Business Banking (Biznes Bankçılıq)
+  else if (
+    norm.includes('biznes bank') ||
+    norm.includes('korporativ') ||
+    norm.includes('bbd') ||
+    norm.includes('biznessatish') ||
+    norm.includes('kombank')
+  ) {
+    let roles: BankRole[] = ['REQUESTER', 'APPROVER'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
+    }
+    result = {
+      departmentId: 'dept-corporate',
+      divisionId: 'div-banking',
+      teamIds: ['team-swift-eng'],
+      departmentName: 'Biznes Bankçılıq Departamenti',
+      departmentCode: 'CORP_BANK',
       roles,
       securityClearance: 'INTERNAL',
     };
   }
 
-  // 16. Procurement & Administrative Support (İnzibati Təsərrüfat və Satınalmalar)
-  else if (
-    deptNorm.includes('satinalma') ||
-    deptNorm.includes('teserrufat') ||
-    deptNorm.includes('procurement') ||
-    deptNorm.includes('techizat') ||
-    deptNorm.includes('inzibati') ||
-    deptNorm.includes('logistika')
-  ) {
-    let roles: BankRole[] = ['REQUESTER'];
-    if (titleNorm.includes('head') || titleNorm.includes('reis') || titleNorm.includes('direktor')) {
-      roles = ['DEPARTMENT_ADMIN', 'APPROVER', 'REQUESTER'];
+  // 18. Retail Banking (Pərakəndə Bankçılıq)
+  else if (norm.includes('perakende') || norm.includes('retail') || norm.includes('pbd') || norm.includes('ferdi musteri')) {
+    let roles: BankRole[] = ['REQUESTER', 'APPROVER'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
     }
     result = {
-      departmentId: 'dept-procurement',
-      divisionId: 'div-hr',
-      teamIds: ['team-hr-ops'],
-      departmentName: deptStr || 'İnzibati Təsərrüfat və Satınalmalar',
-      departmentCode: 'PROCUREMENT',
+      departmentId: 'dept-retail',
+      divisionId: 'div-banking',
+      teamIds: ['team-swift-eng'],
+      departmentName: 'Pərakəndə Bankçılıq Departamenti',
+      departmentCode: 'RETAIL',
       roles,
       securityClearance: 'INTERNAL',
     };
   }
 
-  // 17. Bank Branches & Branch Network (Filiallar və Şöbələr)
-  else if (
-    deptNorm.includes('filial') ||
-    deptNorm.includes('branch') ||
-    deptNorm.includes('menteqe') ||
-    deptNorm.includes('sobe')
-  ) {
-    const branchName = deptStr || 'Bank Filialı';
-    const branchSlug = slugifyDept(branchName);
+  // 19. Bank Branches & Branch Network (Filiallar və Şöbələr)
+  else if (norm.includes('branch') || norm.includes('filial') || norm.includes('menteqe')) {
+    const branchOu =
+      relevantOUs.find((ou) => {
+        const n = normalizeAzerbaijani(ou);
+        return n.includes('branch') || n.includes('filial');
+      }) ||
+      deptStr ||
+      'Bank Filialı';
+    const branchSlug = slugifyDept(branchOu);
     let roles: BankRole[] = ['REQUESTER', 'ASSIGNEE'];
-    if (titleNorm.includes('mudir') || titleNorm.includes('reis') || titleNorm.includes('direktor') || titleNorm.includes('manager')) {
+    if (isManagerTitle) {
       roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'APPROVER', 'REQUESTER'];
-    } else if (titleNorm.includes('bas') || titleNorm.includes('aparici') || titleNorm.includes('lead')) {
-      roles = ['TEAM_LEAD', 'APPROVER', 'REQUESTER'];
     }
     result = {
       departmentId: `dept-${branchSlug}`,
       divisionId: 'div-banking',
       teamIds: ['team-swift-eng'],
-      departmentName: branchName,
+      departmentName: branchOu,
       departmentCode: 'BRANCH_' + branchSlug.replace(/[^a-z0-9]/g, '').slice(0, 8).toUpperCase(),
       roles,
       securityClearance: 'INTERNAL',
     };
   }
 
-  // 18. Strategy & PMO (Strateji İdarəetmə və Layihələr)
-  else if (deptNorm.includes('strategiya') || deptNorm.includes('layihe') || deptNorm.includes('pmo')) {
-    let roles: BankRole[] = ['REQUESTER'];
-    if (titleNorm.includes('head') || titleNorm.includes('reis') || titleNorm.includes('direktor')) {
-      roles = ['DEPARTMENT_ADMIN', 'APPROVER', 'REQUESTER'];
-    }
-    result = {
-      departmentId: 'dept-pmo',
-      divisionId: 'div-banking',
-      teamIds: ['team-swift-eng'],
-      departmentName: deptStr || 'Strateji Planlaşdırma və Layihələr',
-      departmentCode: 'PMO',
-      roles,
-      securityClearance: 'INTERNAL',
-    };
-  }
-
-  // 19. Physical Security & Guarding (Fiziki Mühafizə)
-  else if (deptNorm.includes('muhafize') || deptNorm.includes('inkassasiya')) {
-    let roles: BankRole[] = ['REQUESTER'];
-    if (titleNorm.includes('reis') || titleNorm.includes('mudir') || titleNorm.includes('komandir')) {
-      roles = ['DEPARTMENT_ADMIN', 'APPROVER', 'REQUESTER'];
-    }
-    result = {
-      departmentId: 'dept-phys-sec',
-      divisionId: 'div-sec',
-      teamIds: ['team-soc'],
-      departmentName: deptStr || 'Fiziki Təhlükəsizlik və Mühafizə',
-      departmentCode: 'PHYS_SEC',
-      roles,
-      securityClearance: 'INTERNAL',
-    };
-  }
-
-  // 20. ANY OTHER REAL ACTIVE DIRECTORY DEPARTMENT (Dynamic Auto-Discovery!)
-  else if (deptStr && deptStr.length > 1) {
-    const rawSlug = slugifyDept(deptStr);
+  // 20. Other Real Department via title / OU / deptStr
+  else if (relevantOUs.length > 0 || (deptStr && deptStr.length > 1) || (titleDept && titleDept.length > 1)) {
+    const candidateName = relevantOUs[0] || titleDept || deptStr;
+    const rawSlug = slugifyDept(candidateName);
     let roles: BankRole[] = ['REQUESTER', 'ASSIGNEE'];
-    if (titleNorm.includes('direktor') || titleNorm.includes('müdir') || titleNorm.includes('rəis') || titleNorm.includes('head') || titleNorm.includes('manager')) {
+    if (isManagerTitle) {
       roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'APPROVER', 'REQUESTER'];
     } else if (titleNorm.includes('baş') || titleNorm.includes('aparıcı') || titleNorm.includes('lead') || titleNorm.includes('senior')) {
       roles = ['TEAM_LEAD', 'APPROVER', 'REQUESTER'];
@@ -619,8 +794,8 @@ export function mapDepartment(
       departmentId: `dept-${rawSlug}`,
       divisionId: 'div-banking',
       teamIds: ['team-swift-eng'],
-      departmentName: deptStr,
-      departmentCode: generateDeptCode(deptStr),
+      departmentName: candidateName,
+      departmentCode: generateDeptCode(candidateName),
       roles,
       securityClearance: 'INTERNAL',
     };
@@ -637,18 +812,6 @@ export function mapDepartment(
       roles: ['REQUESTER'],
       securityClearance: 'INTERNAL',
     };
-  }
-
-  // AD's department attribute often contains the broad IT department while the
-  // user's actual şöbə lives in the leaf OU (for example OU=DevOps). Keep the
-  // parent IT division/RBAC, but route users and their tickets to that exact OU.
-  if (result.departmentId === 'dept-it') {
-    const specificOu = getSpecificItOrganizationalUnit(distinguishedName, deptStr);
-    if (specificOu) {
-      result.departmentId = `dept-${slugifyDept(specificOu)}`;
-      result.departmentName = specificOu;
-      result.departmentCode = generateDeptCode(specificOu);
-    }
   }
 
   // Dynamic Group-Based RBAC Resolution (Active Directory Security Groups)
@@ -671,6 +834,8 @@ export function mapDepartment(
     result.departmentId = 'dept-secops';
     result.divisionId = 'div-sec';
     result.teamIds = ['team-soc', 'team-grc'];
+    result.departmentName = 'İnformasiya Təhlükəsizliyi Departamenti';
+    result.departmentCode = 'INFOSEC';
     result.roles = ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'APPROVER', 'REQUESTER'];
     result.securityClearance = 'HIGHLY_RESTRICTED_HR_LEGAL';
   } else {
@@ -692,6 +857,30 @@ export function mapDepartment(
     if (isAuditComplianceGroup) {
       result.roles = Array.from(new Set([...result.roles, 'DEPARTMENT_ADMIN', 'AUDITOR']));
     }
+  }
+
+  // AD may contain multiple şöbə/bölmə OUs under one business department.
+  // Keep the parent department stable and persist the most-specific child as
+  // a separate section so routing, reporting, and member lists remain joined.
+  const parentName = normalizeAzerbaijani(result.departmentName).replace(/\s+/g, ' ').trim();
+  const sectionCandidate = [
+    ...relevantOUs,
+    titleDept,
+    ...(/\b(?:şöbə|şobə|bölmə|bolme|section|unit|devops|soc|appsec)\b/i.test(deptStr) ? [deptStr] : []),
+  ].map((value) => normalizeDirectoryText(value)).find((value) => {
+    const normalized = normalizeAzerbaijani(value).replace(/\s+/g, ' ').trim();
+    if (!normalized || normalized === parentName) return false;
+    if (/^(bank users|ho users|branch users|users|service|disabled|disable|outlook|no policy|ie test|qmatic user)$/.test(normalized)) return false;
+    return !normalized.includes('departamenti') && !normalized.includes('department');
+  });
+  if (sectionCandidate) {
+    const sectionSlug = slugifyDept(sectionCandidate);
+    result.sectionId = `section-${result.departmentId}-${sectionSlug}`;
+    result.sectionName = sectionCandidate;
+    // Section codes are scoped to a department in PostgreSQL. Use the stable
+    // slug rather than the short department-code heuristic, which can collide
+    // for names such as "... şöbəsi" and "... bölməsi".
+    result.sectionCode = `SEC_${sectionSlug.replace(/-/g, '_').slice(0, 60)}`;
   }
 
   return result;
@@ -758,47 +947,219 @@ export function isExcludedPrivilegedAccount(sAMAccountName: string): boolean {
 }
 
 /**
+ * Known static service, integration, infrastructure, and non-human accounts.
+ */
+export const KNOWN_SERVICE_ACCOUNT_NAMES = new Set([
+  'azure.ad',
+  'ldap',
+  'ldappa',
+  'ldaps',
+  'assetit',
+  'otpuser',
+  'securit1',
+  'qradar',
+  'rtccomponent',
+  'sysacc',
+  'cob',
+  'n8n',
+  'noreply',
+  'onlinepayments',
+  'stmt',
+  'melumatmerkezi',
+  'cc',
+  'ccm',
+  'ccp',
+  'fcloud',
+  'callback',
+  'survey',
+  'syslog',
+  'notifications',
+  'servicedesk',
+  'sdesk',
+  'sed_contracts',
+  'sed_incoming',
+  'esb',
+  'expressbankswift',
+  'solidwall',
+  'gsmgate',
+  'gitlab',
+  'kochurmeler',
+  'request',
+  'a.k',
+  'sftp',
+  'checkpoint',
+  't24',
+  'uqm',
+  'anipaytest',
+  'onlinesifarish',
+  'rconfig',
+  'sccm_push',
+  'sccmsql_agent',
+  'sccmsql_admin',
+  'db.veaam.srv',
+  'db.veeam.srv',
+  'asanfinanceinfo',
+  'bot',
+  'owncloud',
+  'zabbix.windows',
+  'adaudit',
+  'jira-itsec',
+  'nessus.infosec',
+  'pbxtest',
+  'network.notification',
+  'srv_wss_admin',
+  'backup',
+  'esd_wss_service',
+  'esd_wss_admin',
+  'esd_wss_pool',
+  'testinfosec',
+  'qmatic.vpn1',
+  'rustam.vpn.new',
+  'rauf.gni',
+  'exb_scanner',
+  'qualys',
+  'nessus',
+  'admin',
+  'administrator',
+  'krbtgt',
+  'guest',
+  'defaultaccount',
+  'rtccomponentservice',
+  'xerox',
+  // Environment-specific technical identities observed in the directory.
+  'cpam',
+  'dnssense',
+]);
+
+/**
+ * AD-side exclusions for known non-human account families. AD matching is
+ * case-insensitive, so these filters protect the server query as well as the
+ * application-side guard below.
+ */
+export const LDAP_NON_HUMAN_ACCOUNT_FILTERS = [
+  '(!(sAMAccountName=rtccomponentservice))',
+  '(!(sAMAccountName=xerox))',
+  '(!(sAMAccountName=cpam))',
+  '(!(sAMAccountName=dnssense))',
+  '(!(sAMAccountName=healthmailbox*))',
+  '(!(sAMAccountName=training*))',
+] as const;
+
+/**
+ * Checks whether an account is a service, system, technical, or non-human identity.
+ */
+export function isServiceAccount(
+  entry: LDAPRawEntry | { username?: string; sAMAccountName?: string; distinguishedName?: string },
+  parsedGroups: string[] = []
+): boolean {
+  const typedEntry = entry as LDAPRawEntry & { username?: string };
+  const identityValues = [
+    typedEntry.sAMAccountName,
+    typedEntry.username,
+    typedEntry.userPrincipalName,
+    typedEntry.mail,
+  ].filter(Boolean);
+  const identityAliases = new Set<string>();
+  for (const value of identityValues) {
+    const normalized = normalizeDirectoryKey(value);
+    if (!normalized) continue;
+    identityAliases.add(normalized);
+    const accountPart = normalized.includes('\\') ? normalized.split('\\').pop()! : normalized;
+    identityAliases.add(accountPart.includes('@') ? accountPart.split('@')[0] : accountPart);
+  }
+  const username = normalizeDirectoryKey(typedEntry.sAMAccountName || typedEntry.username);
+  const dn = normalizeDirectoryKey(entry.distinguishedName);
+  const groups = parsedGroups.map((group) => normalizeDirectoryKey(group));
+  const objectClasses = Array.isArray(typedEntry.objectClass)
+    ? typedEntry.objectClass.map((value) => normalizeDirectoryKey(value))
+    : [normalizeDirectoryKey(typedEntry.objectClass)];
+  const servicePrincipalNames = Array.isArray(typedEntry.servicePrincipalName)
+    ? typedEntry.servicePrincipalName.filter(Boolean)
+    : typedEntry.servicePrincipalName
+      ? [typedEntry.servicePrincipalName]
+      : [];
+  const accountControl = Number(typedEntry.userAccountControl || 0);
+
+  // 1. Explicit Service / System / Technical / Disabled OUs
+  if (
+    dn.includes('ou=service') ||
+    dn.includes('ou=system') ||
+    dn.includes('ou=tech') ||
+    dn.includes('ou=special') ||
+    dn.includes('ou=disable') ||
+    dn.includes('ou=service accounts') ||
+    dn.includes('ou=service_accounts')
+  ) {
+    return true;
+  }
+
+  // 2. Known service account names. Check every directory identity alias so
+  // UPN/mail-based LDAP results cannot bypass an sAMAccountName exclusion.
+  if (Array.from(identityAliases).some((alias) => KNOWN_SERVICE_ACCOUNT_NAMES.has(alias))) {
+    return true;
+  }
+
+  // 2b. Explicit service-account families seen in the bank directory.
+  if (
+    /^healthmailbox/i.test(username) ||
+    /^training/i.test(username) ||
+    /^rtccomponentservice$/i.test(username) ||
+    /^xerox(?:$|[._-])/i.test(username)
+  ) {
+    return true;
+  }
+
+  // 2c. Managed service accounts and machine/trust identities are not human
+  // employees, even when the LDAP search returns them as person-like objects.
+  if (
+    objectClasses.some((objectClass) => /(?:managedserviceaccount|groupmanagedserviceaccount|computer)$/i.test(objectClass)) ||
+    servicePrincipalNames.length > 0 ||
+    (accountControl & (0x1000 | 0x2000 | 0x0800 | 0x0100)) !== 0
+  ) {
+    return true;
+  }
+
+  const accountMetadata = [typedEntry.description, typedEntry.employeeType, typedEntry.title, ...groups]
+    .map((value) => normalizeDirectoryKey(value))
+    .filter(Boolean)
+    .join(' ');
+  if (
+    /(?:service|technical|application|system|non[-_ ]?human|managed)[-_ ]?(?:account|identity|user)/i.test(accountMetadata) ||
+    /(?:service|technical|application|system|non[-_ ]?human)[-_ ]?accounts?$/i.test(accountMetadata) ||
+    groups.some((group) => /^(?:svc|service|system|non[-_ ]?human|pam[-_ ]?service)/i.test(group))
+  ) {
+    return true;
+  }
+
+  // 3. Service prefix / suffix patterns
+  if (
+    /^(svc|service|sql|backup|scanner|scan|test|sys|adm|sync|srv|esd|sccm|db|exb|app|iis)[_\-\.]/i.test(username) ||
+    /\.(?:rdp|si|sec|sh|adm|admin|service|srv|test|vpn|backup|notification)$/i.test(username) ||
+    username.endsWith('$')
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Filters out service users, generic system accounts, and non-employee objects.
- * Guarantees that ONLY genuine employees from exact 'all' group and interns from 'Tecrubechiler' groups are synchronized.
+ * Guarantees that ONLY genuine human employees and interns are synchronized.
  */
 export function isGenuineEmployeeOrIntern(
   entry: LDAPRawEntry,
   parsedGroups: string[] = [],
   sAMAccountName: string = ''
 ): boolean {
-  const username = (sAMAccountName || toSafeString(entry.sAMAccountName) || '').toLowerCase().trim();
+  const username = normalizeDirectoryKey(sAMAccountName || entry.sAMAccountName);
   if (!username) return false;
 
-  // 1. Privileged shadow accounts must never enter the business directory,
-  // even if they are members of the otherwise valid `all` group.
+  // 1. Privileged shadow accounts must never enter the business directory
   if (isExcludedPrivilegedAccount(username)) return false;
 
-  // 2. Reject obvious machine, system, technical, or generic accounts.
-  if (
-    username.endsWith('$') ||
-    username === 'krbtgt' ||
-    username === 'guest' ||
-    username === 'defaultaccount'
-  ) {
-    return false;
-  }
+  // 2. Reject all service, system, technical, VPN, and generic accounts
+  if (isServiceAccount({ ...entry, sAMAccountName: username }, parsedGroups)) return false;
 
-  // 3. Reject conventional service, machine, VPN, and secondary-admin accounts.
-  if (
-    /^(svc[_\-\.]|sql[_\-\.]|service[_\-\.]|backup[_\-\.]|test[_\-\.]|scanner[_\-\.]|scan[_\-\.]|exch[_\-\.]|app[_\-\.]|iis[_\-\.]|exb[_\-\.])/i.test(
-      username
-    ) ||
-    username.endsWith('.vpn') ||
-    username.endsWith('.adm') ||
-    username.endsWith('.admin') ||
-    username.endsWith('.service')
-  ) {
-    return false;
-  }
-
-  // Group allow-listing, when needed, belongs in the AD search base/filter.
-  // This function deliberately makes no person- or bank-specific membership
-  // assumptions: every active human account returned by that configured query
-  // is eligible for synchronization.
   return true;
 }

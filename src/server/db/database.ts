@@ -1,11 +1,11 @@
-import fs from 'fs';
-import path from 'path';
-import { BankDivision, BankDepartment, BankTeam, BankUser } from '../../shared/types/auth.js';
+import crypto from 'node:crypto';
+import { BankDivision, BankDepartment, BankDepartmentSection, BankTeam, BankUser } from '../../shared/types/auth.js';
 import { Ticket } from '../../shared/types/ticket.js';
 import { Workflow } from '../../shared/types/workflow.js';
 import { TicketApprovalChain } from '../../shared/types/approval.js';
 import { SLAPolicy } from '../../shared/types/sla.js';
 import { BankAsset, BankApplication } from '../../shared/types/asset.js';
+import { CIRecordLink, CIRelationship, CIType, ConfigurationItem, RelationshipType } from '../../shared/types/cmdb.js';
 import { RiskRegisterItem } from '../../shared/types/risk.js';
 import { AuditEvent } from '../../shared/types/audit.js';
 import { AutomationRule } from '../../shared/types/automation.js';
@@ -15,6 +15,7 @@ import { TeamQueue } from '../../shared/types/queues.js';
 import { KBArticle } from '../../shared/types/kb.js';
 import { IdeaNode } from '../../shared/types/ideate.js';
 import { GanttDependency } from '../../shared/types/gantt.js';
+import { Project, ProjectActivity, ProjectMember, ProjectMilestone, ProjectRisk, ProjectStatusUpdate, ProjectTaskDependency } from '../../shared/types/project.js';
 import { RequestFormDefinition, RequestFormSubmission } from '../../shared/types/request-forms.js';
 import { ProjectBlueprint, WorkflowRun } from '../../shared/types/blueprints.js';
 import { ProofingDocument } from '../../shared/types/proofing.js';
@@ -54,11 +55,14 @@ import type {
   WorkflowVersion,
 } from '../../shared/types/orchestration.js';
 
-import { initialSeedData } from './seed.js';
+import { createEmptyDatabaseSchema } from './seed.js';
+import { config } from '../config/index.js';
+import { PostgresProjectionRepository } from './postgres/projection-repository.js';
 
 export interface DatabaseSchema {
   divisions: BankDivision[];
   departments: BankDepartment[];
+  departmentSections: BankDepartmentSection[];
   teams: BankTeam[];
   users: BankUser[];
   workflows: Workflow[];
@@ -67,6 +71,11 @@ export interface DatabaseSchema {
   approvals: TicketApprovalChain[];
   assets: BankAsset[];
   applications: BankApplication[];
+  cmdbTypes: CIType[];
+  cmdbRelationshipTypes: RelationshipType[];
+  configurationItems: ConfigurationItem[];
+  ciRelationships: CIRelationship[];
+  ciRecordLinks: CIRecordLink[];
   risks: RiskRegisterItem[];
   comments: TicketComment[];
   attachments: TicketAttachment[];
@@ -112,24 +121,27 @@ export interface DatabaseSchema {
   notificationDeliveries: NotificationDelivery[];
   triggerReceipts: TriggerReceipt[];
   executionEvents: ExecutionEvent[];
+  projects: Project[];
+  projectMembers: ProjectMember[];
+  projectMilestones: ProjectMilestone[];
+  projectTaskDependencies: ProjectTaskDependency[];
+  projectStatusUpdates: ProjectStatusUpdate[];
+  projectRisks: ProjectRisk[];
+  projectActivities: ProjectActivity[];
 }
+
+const isUnitTestProcess = () =>
+  process.env.NODE_ENV === 'test' ||
+  process.argv.some((argument) => argument === '--test' || argument.includes('.test.ts') || argument.includes('test-concurrency'));
 
 export class Database {
   private static instance: Database;
-  private dbPath: string;
-  private lastKnownMtimeMs = 0;
+  private postgresWriteQueue: Promise<void> = Promise.resolve();
+  private postgresLastWriteError: Error | null = null;
+  private postgresQueuedSnapshotChecksum: string | null = null;
   public data: DatabaseSchema;
 
   private constructor() {
-    const dataDir = path.resolve(process.cwd(), 'data');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-    const isTestRunner =
-      process.env.NODE_ENV === 'test' ||
-      process.argv.some((arg) => arg === '--test' || arg.includes('.test.ts') || arg.includes('test-concurrency'));
-    const dbFileName = isTestRunner ? 'database.test.json' : 'database.json';
-    this.dbPath = path.join(dataDir, dbFileName);
     this.data = this.loadOrInit();
   }
 
@@ -141,120 +153,47 @@ export class Database {
   }
 
   private loadOrInit(): DatabaseSchema {
-    if (fs.existsSync(this.dbPath)) {
-      try {
-        const raw = fs.readFileSync(this.dbPath, 'utf8');
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object' && Array.isArray(parsed.users)) {
-          this.lastKnownMtimeMs = fs.statSync(this.dbPath).mtimeMs;
-          // Ensure all required collections exist
-          parsed.users = parsed.users || [];
-          parsed.departments = parsed.departments || [];
-          parsed.divisions = parsed.divisions || [];
-          parsed.ideas = parsed.ideas || [];
-          parsed.requestForms = parsed.requestForms || [];
-          parsed.requestSubmissions = parsed.requestSubmissions || [];
-          parsed.blueprints = parsed.blueprints || [];
-          parsed.workflowRuns = parsed.workflowRuns || [];
-          parsed.proofingDocuments = parsed.proofingDocuments || [];
-          parsed.ganttDependencies = parsed.ganttDependencies || [];
-          parsed.notifications = parsed.notifications || [];
-          parsed.connections = parsed.connections || [];
-          parsed.ticketRelationships = parsed.ticketRelationships || [];
-          parsed.ticketTasks = parsed.ticketTasks || [];
-          parsed.ticketWorklogs = parsed.ticketWorklogs || [];
-          parsed.ticketSlaInstances = parsed.ticketSlaInstances || [];
-          parsed.ticketSatisfaction = parsed.ticketSatisfaction || [];
-          parsed.ticketAiRecommendations = parsed.ticketAiRecommendations || [];
-          parsed.workflowDefinitions = parsed.workflowDefinitions || [];
-          parsed.workflowVersions = parsed.workflowVersions || [];
-          parsed.workflowCatalogTemplates = parsed.workflowCatalogTemplates || [];
-          parsed.formDefinitionsV2 = parsed.formDefinitionsV2 || [];
-          parsed.formFieldGroupsV2 = parsed.formFieldGroupsV2 || [];
-          parsed.formVersions = parsed.formVersions || [];
-          parsed.requestTypesV2 = parsed.requestTypesV2 || [];
-          parsed.workflowPolicySets = parsed.workflowPolicySets || [];
-          parsed.assignmentRulesV2 = parsed.assignmentRulesV2 || [];
-          parsed.businessCalendarsV2 = parsed.businessCalendarsV2 || [];
-          parsed.connectorDefinitions = parsed.connectorDefinitions || [];
-          parsed.notificationPoliciesV2 = parsed.notificationPoliciesV2 || [];
-          parsed.workflowInstances = parsed.workflowInstances || [];
-          parsed.nodeInstances = parsed.nodeInstances || [];
-          parsed.nodeAttempts = parsed.nodeAttempts || [];
-          parsed.deadLetters = parsed.deadLetters || [];
-          parsed.workItemsV2 = parsed.workItemsV2 || [];
-          parsed.workRelations = parsed.workRelations || [];
-          parsed.workflowSlaClocks = parsed.workflowSlaClocks || [];
-          parsed.notificationDeliveries = parsed.notificationDeliveries || [];
-          parsed.triggerReceipts = parsed.triggerReceipts || [];
-          parsed.executionEvents = parsed.executionEvents || [];
-          return parsed;
-        }
-      } catch (err) {
-        console.error('Error reading database file, re-initializing...', err);
-      }
-    }
-    const initial = JSON.parse(JSON.stringify(initialSeedData));
-    this.data = initial;
-    this.persist();
-    return initial;
+    // Runtime state is hydrated from PostgreSQL after migrations. In tests and
+    // explicit memory mode this is only an isolated process-local projection;
+    // no operational JSON file is ever read or written.
+    return createEmptyDatabaseSchema();
+  }
+
+  public async initialize(): Promise<void> {
+    if (config.DB_TYPE !== 'postgres') return;
+    this.data = await PostgresProjectionRepository.hydrate();
+    this.postgresQueuedSnapshotChecksum = this.snapshotChecksum(this.data);
+  }
+
+  private snapshotChecksum(data: DatabaseSchema): string {
+    return crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex');
   }
 
   public persist(): void {
-    try {
-      // `sync:ad` runs as a separate CLI process. A long-lived API process
-      // may still hold an older in-memory snapshot, so merge the durable AD
-      // projection before any write. This prevents an unrelated ticket/audit
-      // update from erasing a successful directory synchronization.
-      if (fs.existsSync(this.dbPath)) {
-        try {
-          const persisted = JSON.parse(fs.readFileSync(this.dbPath, 'utf8')) as Partial<DatabaseSchema>;
-          const persistedMtimeMs = fs.statSync(this.dbPath).mtimeMs;
-          const directoryProjectionChangedExternally = persistedMtimeMs > this.lastKnownMtimeMs;
-          const persistedDirectoryUsers = (persisted.users || []).filter((user) => user.directorySource === 'ACTIVE_DIRECTORY');
-          const inMemoryDirectoryUsers = (this.data.users || []).filter((user) => user.directorySource === 'ACTIVE_DIRECTORY');
-          if (persistedDirectoryUsers.length > 0 && (inMemoryDirectoryUsers.length === 0 || directoryProjectionChangedExternally)) {
-            const directoryKeys = new Set(
-              persistedDirectoryUsers.flatMap((user) => [user.id, user.username?.toLowerCase(), user.sAMAccountName?.toLowerCase(), user.email?.toLowerCase()].filter(Boolean))
-            );
-            this.data.users = [
-              ...this.data.users.filter(
-                (user) =>
-                  !directoryKeys.has(user.id) &&
-                  !directoryKeys.has(user.username?.toLowerCase()) &&
-                  !directoryKeys.has(user.sAMAccountName?.toLowerCase()) &&
-                  !directoryKeys.has(user.email?.toLowerCase())
-              ),
-              ...persistedDirectoryUsers,
-            ];
+    if (config.DB_TYPE === 'postgres') {
+      if (isUnitTestProcess()) return;
+      const serialized = JSON.stringify(this.data);
+      const checksum = crypto.createHash('sha256').update(serialized).digest('hex');
+      if (checksum === this.postgresQueuedSnapshotChecksum) return;
+      this.postgresQueuedSnapshotChecksum = checksum;
+      const snapshot = JSON.parse(serialized) as DatabaseSchema;
+      // Keep writes ordered. Every caller still receives the synchronous
+      // compatibility API, while the HTTP boundary flushes the committed
+      // PostgreSQL transaction before returning a response.
+      this.postgresWriteQueue = this.postgresWriteQueue
+        .catch(() => undefined)
+        .then(() => PostgresProjectionRepository.persist(snapshot))
+        .then(
+          () => { this.postgresLastWriteError = null; },
+          (error: unknown) => {
+            this.postgresLastWriteError = error instanceof Error ? error : new Error(String(error));
+            this.postgresQueuedSnapshotChecksum = null;
           }
-
-          const persistedDirectoryDepartments = (persisted.departments || []).filter(
-            (department) => department.directorySource === 'ACTIVE_DIRECTORY'
-          );
-          const inMemoryDirectoryDepartments = (this.data.departments || []).filter(
-            (department) => department.directorySource === 'ACTIVE_DIRECTORY'
-          );
-          if (persistedDirectoryDepartments.length > 0 && (inMemoryDirectoryDepartments.length === 0 || directoryProjectionChangedExternally)) {
-            const directoryDepartmentIds = new Set(persistedDirectoryDepartments.map((department) => department.id));
-            this.data.departments = [
-              ...this.data.departments.filter((department) => !directoryDepartmentIds.has(department.id)),
-              ...persistedDirectoryDepartments,
-            ];
-          }
-        } catch {
-          // The normal write below remains the recovery path for malformed or
-          // partially-created local development data.
-        }
-      }
-
-      const tempPath = `${this.dbPath}.${process.pid}.tmp`;
-      fs.writeFileSync(tempPath, JSON.stringify(this.data, null, 2), 'utf8');
-      fs.renameSync(tempPath, this.dbPath);
-      this.lastKnownMtimeMs = fs.statSync(this.dbPath).mtimeMs;
-    } catch (err) {
-      console.error('Failed to persist database file', err);
+        );
+      return;
     }
+    // Memory mode is intentionally non-persistent. PostgreSQL is the only
+    // durable application store.
   }
 
   public transaction<T>(operation: () => T): T {
@@ -269,8 +208,18 @@ export class Database {
     }
   }
 
+  public async flush(): Promise<void> {
+    if (config.DB_TYPE !== 'postgres') return;
+    await this.postgresWriteQueue;
+    if (this.postgresLastWriteError) throw this.postgresLastWriteError;
+  }
+
+  public async persistAsync(): Promise<void> {
+    this.persist();
+    await this.flush();
+  }
+
   public reload(): DatabaseSchema {
-    this.data = this.loadOrInit();
     return this.data;
   }
 
@@ -282,6 +231,11 @@ export class Database {
     this.data.ticketSlaInstances ||= [];
     this.data.ticketSatisfaction ||= [];
     this.data.ticketAiRecommendations ||= [];
+    this.data.cmdbTypes ||= [];
+    this.data.cmdbRelationshipTypes ||= [];
+    this.data.configurationItems ||= [];
+    this.data.ciRelationships ||= [];
+    this.data.ciRecordLinks ||= [];
     this.data.workflowRuns ||= [];
     this.data.workflowDefinitions ||= [];
     this.data.workflowVersions ||= [];
@@ -305,6 +259,13 @@ export class Database {
     this.data.notificationDeliveries ||= [];
     this.data.triggerReceipts ||= [];
     this.data.executionEvents ||= [];
+    this.data.projects ||= [];
+    this.data.projectMembers ||= [];
+    this.data.projectMilestones ||= [];
+    this.data.projectTaskDependencies ||= [];
+    this.data.projectStatusUpdates ||= [];
+    this.data.projectRisks ||= [];
+    this.data.projectActivities ||= [];
     this.persist();
   }
 }

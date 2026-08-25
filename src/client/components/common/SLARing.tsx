@@ -34,37 +34,37 @@ export const SLARing: React.FC<SLARingProps> = ({
     switch (state) {
       case 'BREACHED':
         return {
-          color: 'text-[#DE350B]',
-          bg: 'bg-[#FFEBE6] border-[#FFBDAD]',
+          color: 'text-semantic-danger-strong',
+          bg: 'bg-semantic-jira-blocked-surface border-semantic-jira-blocked-border',
           icon: AlertOctagon,
           label: 'SLA BREACHED',
         };
       case 'AT_RISK':
         return {
-          color: 'text-[#FF8B00]',
-          bg: 'bg-[#FFFAE6] border-[#FFE380]',
+          color: 'text-semantic-warning-bright',
+          bg: 'bg-semantic-warning-soft border-semantic-warning-border-strong',
           icon: AlertTriangle,
           label: 'SLA AT RISK',
         };
       case 'PAUSED':
         return {
-          color: 'text-[#0052CC]',
-          bg: 'bg-[#DEEBFF] border-[#B3D4FF]',
+          color: 'text-semantic-jira-brand',
+          bg: 'bg-semantic-jira-brand-surface border-semantic-jira-info-border',
           icon: Pause,
           label: 'SLA PAUSED',
         };
       case 'MET':
         return {
-          color: 'text-[#5E6C84]',
-          bg: 'bg-[#FFFFFF] border-[#DFE1E6]',
+          color: 'text-semantic-jira-muted',
+          bg: 'bg-semantic-panel border-semantic-jira-border',
           icon: CheckCircle,
           label: 'COMPLETED',
         };
       case 'SAFE':
       default:
         return {
-          color: 'text-[#006644]',
-          bg: 'bg-[#E3FCEF] border-[#ABF5D1]',
+          color: 'text-semantic-success',
+          bg: 'bg-semantic-success-soft border-semantic-success-soft-border',
           icon: Clock,
           label: 'SLA SAFE',
         };
@@ -76,7 +76,7 @@ export const SLARing: React.FC<SLARingProps> = ({
 
   if (size === 'sm') {
     return (
-      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] border ${theme.bg} ${theme.color} font-mono font-medium`}>
+      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-label border ${theme.bg} ${theme.color} font-mono font-medium`}>
         <Icon className="w-3 h-3" />
         {formatTime(remainingMinutes)}
       </span>
@@ -86,29 +86,29 @@ export const SLARing: React.FC<SLARingProps> = ({
   return (
     <div className={`p-3.5 rounded-md border flex items-center justify-between shadow-sm ${theme.bg}`}>
       <div className="flex items-center gap-3">
-        <div className={`p-2 rounded bg-[#FFFFFF] border border-[#DFE1E6] ${theme.color}`}>
+        <div className={`p-2 rounded bg-semantic-panel border border-semantic-jira-border ${theme.color}`}>
           <Icon className="w-4 h-4" />
         </div>
         <div>
           <div className="flex items-center gap-2">
-            <span className={`text-[11px] font-bold tracking-wider ${theme.color}`}>
+            <span className={`text-label font-bold tracking-wider ${theme.color}`}>
               {theme.label}
             </span>
             {pausedReason && (
-              <span className="text-[10px] text-[#0052CC] bg-[#DEEBFF] px-1.5 py-0.5 rounded border border-[#B3D4FF]">
+              <span className="text-caption text-semantic-jira-brand bg-semantic-jira-brand-surface px-1.5 py-0.5 rounded border border-semantic-jira-info-border">
                 {pausedReason}
               </span>
             )}
           </div>
-          <div className="text-base font-mono font-bold text-[#172B4D] mt-0.5">
+          <div className="text-base font-mono font-bold text-semantic-jira-primary mt-0.5">
             {formatTime(remainingMinutes)}
           </div>
         </div>
       </div>
       {deadline && (
-        <div className="text-right text-xs text-[#5E6C84]">
-          <div className="text-[11px]">Deadline</div>
-          <div className="font-mono text-[#172B4D] text-xs font-semibold">{new Date(deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}</div>
+        <div className="text-right text-xs text-semantic-jira-muted">
+          <div className="text-label">Deadline</div>
+          <div className="font-mono text-semantic-jira-primary text-xs font-semibold">{new Date(deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}</div>
         </div>
       )}
     </div>

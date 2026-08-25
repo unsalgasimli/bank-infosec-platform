@@ -16,7 +16,7 @@ RUN npm ci
 COPY . .
 
 # Build Client (Vite Bundle) and Server (TypeScript compilation)
-RUN npm run build
+RUN npm run build:client && npm run build:server
 
 # Prune development dependencies for minimal production image
 RUN npm prune --production

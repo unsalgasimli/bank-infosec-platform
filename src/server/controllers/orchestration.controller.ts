@@ -25,7 +25,7 @@ export class OrchestrationController {
   }
 
   public static template(req: Request, res: Response) {
-    try { res.json({ success: true, ...WorkflowOrchestrationService.getTemplate(String(req.params.id)) }); }
+    try { res.json({ success: true, ...WorkflowOrchestrationService.getTemplate(String(req.params.id), OrchestrationController.actor(req)) }); }
     catch (error) { OrchestrationController.fail(res, error, 'Failed to load workflow template'); }
   }
 
@@ -46,6 +46,11 @@ export class OrchestrationController {
     } catch (error) { OrchestrationController.fail(res, error, 'Failed to load orchestration governance metadata'); }
   }
 
+  public static directory(req: Request, res: Response) {
+    try { res.json({ success: true, ...WorkflowOrchestrationService.directoryOptions(OrchestrationController.actor(req)) }); }
+    catch (error) { OrchestrationController.fail(res, error, 'Failed to load LDAP routing options'); }
+  }
+
   public static requestForm(req: Request, res: Response) {
     try {
       const resolved = WorkflowOrchestrationService.resolveVisibleFields(String(req.params.id), (req.query.values ? JSON.parse(String(req.query.values)) : {}), OrchestrationController.actor(req));
@@ -62,7 +67,7 @@ export class OrchestrationController {
   public static launchTemplate(req: Request, res: Response) {
     try {
       const input = launchSchema.parse(req.body || {});
-      const { template } = WorkflowOrchestrationService.getTemplate(String(req.params.id));
+      const { template } = WorkflowOrchestrationService.getTemplate(String(req.params.id), OrchestrationController.actor(req));
       const result = WorkflowRuntimeService.launch({ workflowDefinitionId: template.workflowDefinitionId, workflowVersion: input.workflowVersion || template.publishedWorkflowVersion, requestTypeId: input.requestTypeId, context: input.context, actor: OrchestrationController.actor(req), idempotencyKey: input.idempotencyKey, title: input.title });
       res.status(result.replayed ? 200 : 201).json({ success: true, ...result });
     } catch (error) { OrchestrationController.fail(res, error, 'Failed to launch workflow template'); }
@@ -72,7 +77,8 @@ export class OrchestrationController {
     try {
       const input = z.object({ requestTypeId: z.string().min(1), values: contextSchema, idempotencyKey: z.string().trim().min(8).max(160).optional() }).parse(req.body);
       const result = WorkflowRuntimeService.launchQuickWork({ ...input, actor: OrchestrationController.actor(req) });
-      res.status(result.replayed ? 200 : 201).json({ success: true, ...result });
+      const ticket = db.data.tickets.find((item) => item.workflowRunId === result.instance.id);
+      res.status(result.replayed ? 200 : 201).json({ success: true, ...result, ticket });
     } catch (error) { OrchestrationController.fail(res, error, 'Failed to create quick work item'); }
   }
 
@@ -89,6 +95,18 @@ export class OrchestrationController {
   public static completeWorkItem(req: Request, res: Response) {
     try { res.json({ success: true, execution: WorkflowRuntimeService.completeWorkItem(String(req.params.workItemId), OrchestrationController.actor(req), contextSchema.parse(req.body?.output || {})) }); }
     catch (error) { OrchestrationController.fail(res, error, 'Failed to complete work item'); }
+  }
+
+  public static claimWorkItem(req: Request, res: Response) {
+    try { res.json({ success: true, execution: WorkflowRuntimeService.claimWorkItem(String(req.params.workItemId), OrchestrationController.actor(req)) }); }
+    catch (error) { OrchestrationController.fail(res, error, 'Failed to claim workflow work item'); }
+  }
+
+  public static addComment(req: Request, res: Response) {
+    try {
+      const input = z.object({ body: z.string().trim().min(1).max(5000) }).parse(req.body);
+      res.status(201).json({ success: true, execution: WorkflowRuntimeService.addComment(String(req.params.id), OrchestrationController.actor(req), input.body) });
+    } catch (error) { OrchestrationController.fail(res, error, 'Failed to add workflow comment'); }
   }
 
   public static decideApproval(req: Request, res: Response) {
@@ -168,6 +186,11 @@ export class OrchestrationController {
       const mode = z.enum(['CLONE', 'FORK']).default('CLONE').parse(req.body?.mode);
       res.status(201).json({ success: true, ...WorkflowOrchestrationService.cloneTemplate(String(req.params.id), OrchestrationController.actor(req), mode) });
     } catch (error) { OrchestrationController.fail(res, error, 'Failed to clone workflow template'); }
+  }
+
+  public static deleteTemplate(req: Request, res: Response) {
+    try { res.json({ success: true, ...WorkflowOrchestrationService.deleteTemplate(String(req.params.id), OrchestrationController.actor(req)) }); }
+    catch (error) { OrchestrationController.fail(res, error, 'Failed to delete workflow template'); }
   }
 
   public static lifecycle(req: Request, res: Response) {

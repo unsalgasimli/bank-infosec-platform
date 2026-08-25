@@ -78,20 +78,20 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
   };
 
   return (
-    <div className="flex-1 flex h-full bg-[#F4F5F7] overflow-hidden">
+    <div className="flex-1 flex h-full bg-semantic-jira-surface overflow-hidden">
       {/* Left Article List */}
-      <div className="w-80 bg-[#FFFFFF] border-r border-[#DFE1E6] flex flex-col h-full shrink-0">
-        <div className="p-3.5 border-b border-[#DFE1E6] space-y-2.5">
+      <div className="w-80 bg-semantic-panel border-r border-semantic-jira-border flex flex-col h-full shrink-0">
+        <div className="p-3.5 border-b border-semantic-jira-border space-y-2.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <BookOpen className="w-4 h-4 text-[#0052CC]" />
-              <h2 className="text-xs font-bold text-[#172B4D] uppercase tracking-wider">
+              <BookOpen className="w-4 h-4 text-semantic-jira-brand" />
+              <h2 className="text-xs font-bold text-semantic-jira-primary uppercase tracking-wider">
                 Knowledge & Playbooks
               </h2>
             </div>
             <button
               onClick={() => setIsModalOpen(true)}
-              className="p-1 rounded bg-[#0052CC] hover:bg-[#0055CC] text-white text-xs"
+              className="p-1 rounded bg-semantic-jira-brand hover:bg-semantic-jira-brand-hover text-white text-xs"
               title="Create Playbook"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -99,7 +99,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
           </div>
 
           <div className="relative">
-            <Search className="w-3.5 h-3.5 text-[#5E6C84] absolute left-2.5 top-2" />
+            <Search className="w-3.5 h-3.5 text-semantic-jira-muted absolute left-2.5 top-2" />
             <input
               type="text"
               value={search}
@@ -109,7 +109,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
             />
           </div>
 
-          <div className="flex items-center gap-1 overflow-x-auto pb-1 text-[10px]">
+          <div className="flex items-center gap-1 overflow-x-auto pb-1 text-caption">
             {[
               { id: 'ALL', label: 'All' },
               { id: 'INCIDENT_PLAYBOOK', label: 'IR Playbooks' },
@@ -121,8 +121,8 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
                 onClick={() => setCategoryFilter(cat.id)}
                 className={`px-2 py-0.5 rounded whitespace-nowrap transition-colors ${
                   categoryFilter === cat.id
-                    ? 'bg-[#0052CC] text-white font-semibold'
-                    : 'bg-[#FFFFFF] text-[#5E6C84] hover:text-[#172B4D] border border-[#DFE1E6]'
+                    ? 'bg-semantic-jira-brand text-white font-semibold'
+                    : 'bg-semantic-panel text-semantic-jira-muted hover:text-semantic-jira-primary border border-semantic-jira-border'
                 }`}
               >
                 {cat.label}
@@ -140,16 +140,16 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
                 onClick={() => setSelectedArticle(art)}
                 className={`p-3 rounded border text-xs cursor-pointer transition-all ${
                   isSelected
-                    ? 'bg-[#DEEBFF] border-[#0052CC] text-[#0052CC] font-medium shadow-sm'
-                    : 'bg-[#FFFFFF] border-[#DFE1E6] hover:border-[#0052CC] text-[#172B4D]'
+                    ? 'bg-semantic-jira-brand-surface border-semantic-jira-brand text-semantic-jira-brand font-medium shadow-sm'
+                    : 'bg-semantic-panel border-semantic-jira-border hover:border-semantic-jira-brand text-semantic-jira-primary'
                 }`}
               >
-                <div className="flex items-center justify-between text-[10px] font-mono text-[#0052CC] mb-1">
+                <div className="flex items-center justify-between text-caption font-mono text-semantic-jira-brand mb-1">
                   <span className="truncate">{art.category.replace(/_/g, ' ')}</span>
                   <span>v{art.version}</span>
                 </div>
-                <h4 className="font-semibold text-[#172B4D] line-clamp-1">{art.title}</h4>
-                <p className="text-[11px] text-[#5E6C84] mt-0.5 line-clamp-2 leading-snug">{art.summary}</p>
+                <h4 className="font-semibold text-semantic-jira-primary line-clamp-1">{art.title}</h4>
+                <p className="text-label text-semantic-jira-muted mt-0.5 line-clamp-2 leading-snug">{art.summary}</p>
               </div>
             );
           })}
@@ -157,26 +157,26 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
       </div>
 
       {/* Right Article Viewer */}
-      <div className="flex-1 overflow-y-auto p-8 space-y-5 bg-[#F4F5F7] custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-8 space-y-5 bg-semantic-jira-surface custom-scrollbar">
         {selectedArticle ? (
           <div className="max-w-3xl space-y-5">
-            <div className="flex items-start justify-between border-b border-[#DFE1E6] pb-4 gap-4">
+            <div className="flex items-start justify-between border-b border-semantic-jira-border pb-4 gap-4">
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded bg-[#DEEBFF] text-[#0052CC] font-mono text-xs border border-[#B3D4FF] font-semibold">
+                  <span className="px-2 py-0.5 rounded bg-semantic-jira-brand-surface text-semantic-jira-brand font-mono text-xs border border-semantic-jira-info-border font-semibold">
                     {selectedArticle.category.replace(/_/g, ' ')}
                   </span>
                   {selectedArticle.approvedByCiso && (
-                    <span className="flex items-center gap-1 text-[#006644] text-xs font-mono">
+                    <span className="flex items-center gap-1 text-semantic-success text-xs font-mono">
                       <ShieldCheck className="w-3.5 h-3.5" /> Approved Standard
                     </span>
                   )}
                 </div>
-                <h1 className="text-xl font-bold text-[#172B4D] tracking-tight leading-snug">
+                <h1 className="text-xl font-bold text-semantic-jira-primary tracking-tight leading-snug">
                   {selectedArticle.title}
                 </h1>
-                <div className="text-[11px] text-[#5E6C84]">
-                  Author: <strong className="text-[#172B4D]">{selectedArticle.authorName}</strong> ({selectedArticle.authorRole}) • Version {selectedArticle.version} • Reviewed: {selectedArticle.lastReviewedAt}
+                <div className="text-label text-semantic-jira-muted">
+                  Author: <strong className="text-semantic-jira-primary">{selectedArticle.authorName}</strong> ({selectedArticle.authorRole}) • Version {selectedArticle.version} • Reviewed: {selectedArticle.lastReviewedAt}
                 </div>
               </div>
 
@@ -185,12 +185,12 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
                   onClick={handleCopyMarkdown}
                   className="jira-btn-secondary"
                 >
-                  {copied ? <Check className="w-3.5 h-3.5 text-[#006644]" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copied ? <Check className="w-3.5 h-3.5 text-semantic-success" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copied ? 'Copied' : 'Copy Content'}</span>
                 </button>
                 <button
                   onClick={() => window.print()}
-                  className="p-1.5 rounded bg-[#FFFFFF] hover:bg-[#EBECF0] text-[#172B4D] border border-[#DFE1E6]"
+                  className="p-1.5 rounded bg-semantic-panel hover:bg-semantic-jira-hover text-semantic-jira-primary border border-semantic-jira-border"
                   title="Print Playbook"
                 >
                   <Printer className="w-3.5 h-3.5" />
@@ -198,17 +198,17 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
               </div>
             </div>
 
-            <div className="p-6 bg-[#FFFFFF] border border-[#DFE1E6] rounded-md text-xs text-[#172B4D] leading-relaxed font-normal whitespace-pre-wrap font-mono shadow-sm">
+            <div className="p-6 bg-semantic-panel border border-semantic-jira-border rounded-md text-xs text-semantic-jira-primary leading-relaxed font-normal whitespace-pre-wrap font-mono shadow-sm">
               {selectedArticle.contentMarkdown}
             </div>
 
             {selectedArticle.tags && (
               <div className="flex items-center gap-2 pt-1 flex-wrap">
-                <span className="text-xs font-semibold text-[#5E6C84] flex items-center gap-1">
+                <span className="text-xs font-semibold text-semantic-jira-muted flex items-center gap-1">
                   <Tag className="w-3.5 h-3.5" /> Tags:
                 </span>
                 {selectedArticle.tags.map((t) => (
-                  <span key={t} className="px-2 py-0.5 rounded bg-[#FFFFFF] border border-[#DFE1E6] text-[#0052CC] font-mono text-[11px]">
+                  <span key={t} className="px-2 py-0.5 rounded bg-semantic-panel border border-semantic-jira-border text-semantic-jira-brand font-mono text-label">
                     #{t}
                   </span>
                 ))}
@@ -216,7 +216,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
             )}
           </div>
         ) : (
-          <div className="text-center py-20 text-[#5E6C84] text-xs">
+          <div className="text-center py-20 text-semantic-jira-muted text-xs">
             Select a playbook from the left sidebar to view procedures.
           </div>
         )}
@@ -224,14 +224,14 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
 
       {/* Create Playbook Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-[2px] p-4">
-          <div className="bg-[#FFFFFF] border border-[#DFE1E6] rounded-md max-w-xl w-full p-5 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#DFE1E6] pb-3">
+        <div className="fixed inset-0 z-dsOverlay flex items-center justify-center bg-black/65 backdrop-blur-[2px] p-4">
+          <div className="bg-semantic-panel border border-semantic-jira-border rounded-md max-w-xl w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-semantic-jira-border pb-3">
               <div className="flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-[#0052CC]" />
-                <h3 className="text-sm font-bold text-[#172B4D]">Create Security Playbook / SOP</h3>
+                <BookOpen className="w-4 h-4 text-semantic-jira-brand" />
+                <h3 className="text-sm font-bold text-semantic-jira-primary">Create Security Playbook / SOP</h3>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="text-[#5E6C84] hover:text-[#172B4D]">
+              <button onClick={() => setIsModalOpen(false)} className="text-semantic-jira-muted hover:text-semantic-jira-primary">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -239,7 +239,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
             <form onSubmit={handleCreateArticle} className="space-y-3 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#5E6C84] mb-1">Playbook Title:</label>
+                  <label className="block text-semantic-jira-muted mb-1">Playbook Title:</label>
                   <input
                     type="text"
                     value={title}
@@ -250,7 +250,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
                   />
                 </div>
                 <div>
-                  <label className="block text-[#5E6C84] mb-1">Category:</label>
+                  <label className="block text-semantic-jira-muted mb-1">Category:</label>
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value as any)}
@@ -265,7 +265,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
               </div>
 
               <div>
-                <label className="block text-[#5E6C84] mb-1">Executive Summary:</label>
+                <label className="block text-semantic-jira-muted mb-1">Executive Summary:</label>
                 <input
                   type="text"
                   value={summary}
@@ -276,7 +276,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
               </div>
 
               <div>
-                <label className="block text-[#5E6C84] mb-1">Content (Markdown & Commands):</label>
+                <label className="block text-semantic-jira-muted mb-1">Content (Markdown & Commands):</label>
                 <textarea
                   value={contentMarkdown}
                   onChange={(e) => setContentMarkdown(e.target.value)}
@@ -288,7 +288,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
               </div>
 
               <div>
-                <label className="block text-[#5E6C84] mb-1">Tags (comma separated):</label>
+                <label className="block text-semantic-jira-muted mb-1">Tags (comma separated):</label>
                 <input
                   type="text"
                   value={tags}
@@ -298,7 +298,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#DFE1E6]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-semantic-jira-border">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
@@ -320,5 +320,4 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
     </div>
   );
 };
-
 
