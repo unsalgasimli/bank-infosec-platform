@@ -19,6 +19,12 @@ import {
   Share2,
   Sliders,
   Server,
+  Plus,
+  Pencil,
+  Trash2,
+  Save,
+  RotateCcw,
+  Loader2,
 } from 'lucide-react';
 import { Badge } from '../common/Badge.js';
 import { AuditEvent } from '../../../shared/types/audit.js';
@@ -28,10 +34,26 @@ interface AdminCenterViewProps {
   onNavigate?: (destination: string) => void;
 }
 
+const SLA_SEVERITIES = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFORMATIONAL'] as const;
+const emptyThreshold = () => ({ acknowledgmentMinutes: 60, firstResponseMinutes: 120, remediationMinutes: 1440, resolutionMinutes: 2880 });
+const createSlaDraft = () => ({
+  name: '',
+  description: '',
+  isActive: true,
+  isDefault: false,
+  businessHoursOnly: true,
+  businessStartTime: '09:00',
+  businessEndTime: '18:00',
+  timezone: 'Asia/Baku',
+  excludeWeekends: true,
+  excludeHolidays: true,
+  thresholds: Object.fromEntries(SLA_SEVERITIES.map((severity) => [severity, emptyThreshold()])),
+});
+
 export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = 'SETTINGS', onNavigate }) => {
   const { allUsers, refreshUsers, fetchWithAuth } = useAuth();
 
-  const getMappedTab = (tabStr: string): 'SETTINGS' | 'USERS' | 'WORKFLOWS' | 'SLA' | 'AUTOMATION' | 'TAXONOMY' | 'INTEGRATIONS' => {
+  const getMappedTab = (tabStr: string): 'SETTINGS' | 'USERS' | 'DIRECTORY' | 'WORKFLOWS' | 'SLA' | 'AUTOMATION' | 'TAXONOMY' | 'INTEGRATIONS' => {
     switch (tabStr) {
       case 'admin-sla-policies':
       case 'SLA':
@@ -56,7 +78,7 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
     }
   };
 
-  const [activeTab, setActiveTab] = useState<'SETTINGS' | 'USERS' | 'WORKFLOWS' | 'SLA' | 'AUTOMATION' | 'TAXONOMY' | 'INTEGRATIONS'>(
+  const [activeTab, setActiveTab] = useState<'SETTINGS' | 'USERS' | 'DIRECTORY' | 'WORKFLOWS' | 'SLA' | 'AUTOMATION' | 'TAXONOMY' | 'INTEGRATIONS'>(
     () => getMappedTab(initialTab)
   );
 
@@ -67,6 +89,8 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
   }, [initialTab]);
 
   const [adminData, setAdminData] = useState<any>(null);
+  const [directoryGovernance, setDirectoryGovernance] = useState<any>(null);
+  const [directoryGovernanceError, setDirectoryGovernanceError] = useState('');
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [auditSearch, setAuditSearch] = useState('');
   const [userSearch, setUserSearch] = useState('');
@@ -74,6 +98,14 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('ALL');
   const [currentPage, setCurrentPage] = useState(1);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
+
+  const [slaPolicies, setSlaPolicies] = useState<any[]>([]);
+  const [slaLoading, setSlaLoading] = useState(false);
+  const [slaSaving, setSlaSaving] = useState(false);
+  const [slaError, setSlaError] = useState('');
+  const [slaEditorOpen, setSlaEditorOpen] = useState(false);
+  const [editingSlaId, setEditingSlaId] = useState<string | null>(null);
+  const [slaDraft, setSlaDraft] = useState<any>(() => createSlaDraft());
 
   // LDAP Daily Check State
   const [ldapStatus, setLdapStatus] = useState<any>(null);
@@ -103,6 +135,43 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
       .catch((err) => console.error(err));
   };
 
+  const loadDirectoryGovernance = async () => {
+    setDirectoryGovernanceError('');
+    try {
+      const response = await fetchWithAuth('/api/admin/directory-governance');
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || 'Directory governance yüklənmədi.');
+      setDirectoryGovernance(data);
+    } catch (error: any) {
+      setDirectoryGovernanceError(error.message || 'Directory governance yüklənmədi.');
+    }
+  };
+
+  const setDirectoryEligibility = async (identity: any, organizationEligible: boolean) => {
+    const accountType = organizationEligible ? 'HUMAN' : identity.account_type;
+    const reason = organizationEligible ? 'Administrator confirmed this is a human organisational identity.' : `Excluded ${identity.account_type} identity from organisational tree.`;
+    const response = await fetchWithAuth(`/api/admin/directory-governance/${identity.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accountType, organizationEligible, reason }) });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || 'Directory override yadda saxlanmadı.');
+    await loadDirectoryGovernance();
+    await refreshUsers();
+  };
+
+  const loadSlaPolicies = async () => {
+    setSlaLoading(true);
+    setSlaError('');
+    try {
+      const response = await fetchWithAuth('/api/admin/sla-policies');
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.error || 'SLA siyasətləri yüklənmədi.');
+      setSlaPolicies(data.policies || []);
+    } catch (error: any) {
+      setSlaError(error.message || 'SLA siyasətləri yüklənmədi.');
+    } finally {
+      setSlaLoading(false);
+    }
+  };
+
   useEffect(() => {
     refreshUsers();
     loadAdminMetadata();
@@ -116,6 +185,75 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
 
     loadLdapStatus();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'SLA') void loadSlaPolicies();
+    if (activeTab === 'DIRECTORY') void loadDirectoryGovernance();
+  }, [activeTab]);
+
+  const openSlaEditor = (policy?: any) => {
+    if (policy) {
+      setEditingSlaId(policy.id);
+      setSlaDraft({
+        ...createSlaDraft(),
+        ...policy,
+        thresholds: Object.fromEntries(SLA_SEVERITIES.map((severity) => [severity, { ...emptyThreshold(), ...(policy.thresholds?.[severity] || {}) }])),
+      });
+    } else {
+      setEditingSlaId(null);
+      setSlaDraft(createSlaDraft());
+    }
+    setSlaError('');
+    setSlaEditorOpen(true);
+  };
+
+  const updateSlaDraft = (field: string, value: any) => setSlaDraft((current: any) => ({ ...current, [field]: value }));
+
+  const updateSlaThreshold = (severity: string, field: string, value: string) => {
+    setSlaDraft((current: any) => ({
+      ...current,
+      thresholds: {
+        ...current.thresholds,
+        [severity]: { ...current.thresholds[severity], [field]: Number(value) },
+      },
+    }));
+  };
+
+  const saveSlaPolicy = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSlaSaving(true);
+    setSlaError('');
+    try {
+      const response = await fetchWithAuth(editingSlaId ? `/api/admin/sla-policies/${editingSlaId}` : '/api/admin/sla-policies', {
+        method: editingSlaId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(slaDraft),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.error || 'SLA siyasəti yadda saxlanmadı.');
+      setSlaEditorOpen(false);
+      await loadSlaPolicies();
+      loadAdminMetadata();
+    } catch (error: any) {
+      setSlaError(error.message || 'SLA siyasəti yadda saxlanmadı.');
+    } finally {
+      setSlaSaving(false);
+    }
+  };
+
+  const archiveSlaPolicy = async (policy: any) => {
+    if (!window.confirm(`“${policy.name}” SLA siyasəti arxivlənsin?`)) return;
+    setSlaError('');
+    try {
+      const response = await fetchWithAuth(`/api/admin/sla-policies/${policy.id}`, { method: 'DELETE' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.error || 'SLA siyasəti arxivlənmədi.');
+      await loadSlaPolicies();
+      loadAdminMetadata();
+    } catch (error: any) {
+      setSlaError(error.message || 'SLA siyasəti arxivlənmədi.');
+    }
+  };
 
   const handleTriggerLdapSync = async () => {
     setIsLdapSyncing(true);
@@ -263,6 +401,7 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
           { id: 'TAXONOMY', label: 'Taxonomy', icon: Tag },
           { id: 'INTEGRATIONS', label: 'Integrations', icon: Share2 },
           { id: 'USERS', label: 'User Directory', icon: Users },
+          { id: 'DIRECTORY', label: 'Directory Governance', icon: ShieldCheck },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -282,6 +421,18 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
           );
         })}
       </div>
+
+      {activeTab === 'DIRECTORY' && (
+        <div className="space-y-4">
+          <div className="wrike-card p-5 space-y-3">
+            <div><h3 className="text-sm font-bold text-semantic-primary">Directory governance</h3><p className="text-xs text-semantic-muted mt-1">Organisation tree: DN/title. Access roles: AD groups. Service, test, technical, and privileged identities never enter assignment queues.</p></div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">{(directoryGovernance?.summary || []).map((item: any) => <div key={`${item.account_type}-${item.organization_eligible}`} className="rounded border border-semantic-border bg-semantic-subtle p-3"><div className="text-caption text-semantic-muted">{item.account_type} · {item.organization_eligible === 'true' ? 'tree' : 'excluded'}</div><div className="text-lg font-bold text-semantic-primary">{item.count}</div></div>)}</div>
+            <button onClick={() => void loadDirectoryGovernance()} className="wrike-btn-secondary text-xs">Refresh audit</button>
+          </div>
+          {directoryGovernanceError && <div className="wrike-card p-3 text-xs text-semantic-danger">{directoryGovernanceError}</div>}
+          <div className="wrike-card overflow-x-auto"><table className="wrike-table text-xs"><thead><tr><th>Excluded identity</th><th>Classification</th><th>Last placement</th><th>Action</th></tr></thead><tbody>{(directoryGovernance?.candidates || []).map((identity: any) => <tr key={identity.id}><td><strong>{identity.full_name}</strong><br/><span className="font-mono text-semantic-muted">{identity.username}</span></td><td>{identity.account_type}</td><td>{identity.department_id || '—'} / {identity.section_id || '—'}</td><td><button onClick={() => void setDirectoryEligibility(identity, true)} className="wrike-btn-secondary text-xs">Mark human</button></td></tr>)}{directoryGovernance && !directoryGovernance.candidates?.length && <tr><td colSpan={4} className="p-8 text-center text-semantic-muted">No excluded directory identities.</td></tr>}</tbody></table></div>
+        </div>
+      )}
 
       {/* Settings & Audit Log Tab */}
       {activeTab === 'SETTINGS' && (
@@ -353,36 +504,95 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
       {/* SLA Policies Tab */}
       {activeTab === 'SLA' && (
         <div className="space-y-4">
-          {(adminData?.slaPolicies || []).map((sla: any) => (
-            <div key={sla.id} className="wrike-card p-5 space-y-4 shadow-xs">
-              <div className="flex items-center justify-between border-b border-semantic-border pb-3">
+          <div className="wrike-card p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
+            <div>
+              <h2 className="text-sm font-bold text-semantic-primary">SLA Policy Configuration</h2>
+              <p className="text-xs text-semantic-muted mt-0.5">Persisted PostgreSQL configuration with server-side validation and audit history.</p>
+            </div>
+            <button onClick={() => openSlaEditor()} className="wrike-btn-primary text-xs py-2 px-3 flex items-center gap-2 self-start md:self-auto">
+              <Plus className="w-3.5 h-3.5" /> New SLA Policy
+            </button>
+          </div>
+
+          {slaError && <div className="rounded-lg border border-semantic-danger-border bg-semantic-danger-surface px-3 py-2 text-xs text-semantic-danger">{slaError}</div>}
+          {slaLoading ? (
+            <div className="wrike-card p-10 flex items-center justify-center gap-2 text-xs text-semantic-muted"><Loader2 className="w-4 h-4 animate-spin" /> Loading persisted SLA policies...</div>
+          ) : slaPolicies.length === 0 ? (
+            <div className="wrike-card p-10 text-center text-xs text-semantic-muted">No SLA policies are configured in the database.</div>
+          ) : slaPolicies.map((sla: any) => (
+            <div key={sla.id} className={`wrike-card p-5 space-y-4 shadow-xs ${sla.isActive === false ? 'opacity-70' : ''}`}>
+              <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 border-b border-semantic-border pb-3">
                 <div>
-                  <h3 className="font-bold text-semantic-primary text-sm">{sla.name}</h3>
-                  <p className="text-xs text-semantic-muted mt-0.5">{sla.description}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-semantic-primary text-sm">{sla.name}</h3>
+                    {sla.isDefault && <span className="px-2 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success border border-semantic-success-border font-mono text-caption font-bold">DEFAULT</span>}
+                    <span className={`px-2 py-0.5 rounded-full border font-mono text-caption font-bold ${sla.isActive === false ? 'bg-semantic-danger-surface text-semantic-danger border-semantic-danger-border' : 'bg-semantic-neutral-surface text-semantic-secondary border-semantic-border'}`}>
+                      {sla.isActive === false ? 'ARCHIVED' : 'ACTIVE'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-semantic-muted mt-1">{sla.description || 'No description provided.'}</p>
+                  <p className="text-caption text-semantic-placeholder mt-2 font-mono">{sla.businessHoursOnly ? `${sla.businessStartTime}–${sla.businessEndTime}` : '24/7'} · {sla.timezone} · {sla.excludeWeekends ? 'Weekends excluded' : 'Weekends included'}</p>
                 </div>
-                <span className="px-2.5 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success border border-semantic-success-border font-mono text-xs font-bold">
-                  {sla.isDefault ? 'DEFAULT SLA POLICY' : 'CONFIGURED'}
-                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => openSlaEditor(sla)} className="px-2.5 py-1.5 rounded-lg border border-semantic-border text-semantic-secondary hover:bg-semantic-subtle text-xs flex items-center gap-1.5"><Pencil className="w-3.5 h-3.5" /> Edit</button>
+                  {sla.isActive !== false && <button onClick={() => archiveSlaPolicy(sla)} className="px-2.5 py-1.5 rounded-lg border border-semantic-danger-border text-semantic-danger hover:bg-semantic-danger-surface text-xs flex items-center gap-1.5"><Trash2 className="w-3.5 h-3.5" /> Archive</button>}
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                {Object.entries(sla.thresholds || {}).map(([sev, th]: [string, any]) => (
-                  <div key={sev} className="p-3 bg-semantic-subtle rounded-lg border border-semantic-border space-y-1.5">
-                    <div className="font-bold text-semantic-primary text-xs flex items-center justify-between">
-                      <span>{sev}</span>
-                      <Badge type="SEVERITY" value={sev} size="sm" />
-                    </div>
-                    <div className="text-semantic-muted text-xs mt-1">
-                      MTTA Target: <strong className="text-semantic-primary font-mono">{th.acknowledgmentMinutes} min</strong>
-                    </div>
-                    <div className="text-semantic-warning text-xs font-medium">
-                      MTTR Target: <strong className="text-semantic-primary font-mono">{Math.round(th.remediationMinutes / 60)} hrs</strong>
-                    </div>
-                  </div>
-                ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                {SLA_SEVERITIES.map((severity) => {
+                  const th = sla.thresholds?.[severity] || {};
+                  return <div key={severity} className="p-3 bg-semantic-subtle rounded-lg border border-semantic-border space-y-1.5">
+                    <div className="font-bold text-semantic-primary text-xs flex items-center justify-between"><span>{severity}</span><Badge type="SEVERITY" value={severity} size="sm" /></div>
+                    <div className="text-semantic-muted text-xs">MTTA: <strong className="text-semantic-primary font-mono">{th.acknowledgmentMinutes ?? '—'} min</strong></div>
+                    <div className="text-semantic-muted text-xs">First response: <strong className="text-semantic-primary font-mono">{th.firstResponseMinutes ?? '—'} min</strong></div>
+                    <div className="text-semantic-warning text-xs">MTTR: <strong className="text-semantic-primary font-mono">{th.remediationMinutes ?? '—'} min</strong></div>
+                    <div className="text-semantic-muted text-xs">Resolution: <strong className="text-semantic-primary font-mono">{th.resolutionMinutes ?? '—'} min</strong></div>
+                  </div>;
+                })}
               </div>
             </div>
           ))}
+
+          {slaEditorOpen && (
+            <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-label="SLA policy editor">
+              <form onSubmit={saveSlaPolicy} className="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-2xl border border-semantic-border bg-semantic-panel p-5 shadow-xl space-y-5">
+                <div className="flex items-center justify-between border-b border-semantic-border pb-3">
+                  <div><h3 className="text-base font-bold text-semantic-primary">{editingSlaId ? 'Edit SLA Policy' : 'Create SLA Policy'}</h3><p className="text-xs text-semantic-muted mt-1">All values are validated and persisted by the backend.</p></div>
+                  <button type="button" onClick={() => setSlaEditorOpen(false)} className="p-2 rounded-lg hover:bg-semantic-subtle text-semantic-muted"><X className="w-4 h-4" /></button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="text-xs font-semibold text-semantic-secondary">Name<input required maxLength={255} value={slaDraft.name} onChange={(event) => updateSlaDraft('name', event.target.value)} className="mt-1 w-full rounded-lg border border-semantic-border-strong bg-semantic-panel px-3 py-2 text-sm text-semantic-primary outline-none focus:border-semantic-brand" /></label>
+                  <label className="text-xs font-semibold text-semantic-secondary">Timezone<input required value={slaDraft.timezone} onChange={(event) => updateSlaDraft('timezone', event.target.value)} className="mt-1 w-full rounded-lg border border-semantic-border-strong bg-semantic-panel px-3 py-2 text-sm text-semantic-primary outline-none focus:border-semantic-brand" /></label>
+                  <label className="text-xs font-semibold text-semantic-secondary md:col-span-2">Description<textarea maxLength={4000} rows={2} value={slaDraft.description} onChange={(event) => updateSlaDraft('description', event.target.value)} className="mt-1 w-full rounded-lg border border-semantic-border-strong bg-semantic-panel px-3 py-2 text-sm text-semantic-primary outline-none focus:border-semantic-brand" /></label>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 rounded-xl border border-semantic-border bg-semantic-subtle p-3">
+                  <label className="text-xs font-semibold text-semantic-secondary flex items-center gap-2"><input type="checkbox" checked={slaDraft.isActive} onChange={(event) => updateSlaDraft('isActive', event.target.checked)} /> Active</label>
+                  <label className="text-xs font-semibold text-semantic-secondary flex items-center gap-2"><input type="checkbox" checked={slaDraft.isDefault} onChange={(event) => updateSlaDraft('isDefault', event.target.checked)} /> Default</label>
+                  <label className="text-xs font-semibold text-semantic-secondary flex items-center gap-2"><input type="checkbox" checked={slaDraft.businessHoursOnly} onChange={(event) => updateSlaDraft('businessHoursOnly', event.target.checked)} /> Business hours</label>
+                  <label className="text-xs font-semibold text-semantic-secondary flex items-center gap-2"><input type="checkbox" checked={slaDraft.excludeWeekends} onChange={(event) => updateSlaDraft('excludeWeekends', event.target.checked)} /> Exclude weekends</label>
+                  <label className="text-xs font-semibold text-semantic-secondary flex items-center gap-2"><input type="checkbox" checked={slaDraft.excludeHolidays} onChange={(event) => updateSlaDraft('excludeHolidays', event.target.checked)} /> Exclude holidays</label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 max-w-md">
+                  <label className="text-xs font-semibold text-semantic-secondary">Start time<input type="time" value={slaDraft.businessStartTime} onChange={(event) => updateSlaDraft('businessStartTime', event.target.value)} className="mt-1 w-full rounded-lg border border-semantic-border-strong bg-semantic-panel px-3 py-2 text-sm text-semantic-primary" /></label>
+                  <label className="text-xs font-semibold text-semantic-secondary">End time<input type="time" value={slaDraft.businessEndTime} onChange={(event) => updateSlaDraft('businessEndTime', event.target.value)} className="mt-1 w-full rounded-lg border border-semantic-border-strong bg-semantic-panel px-3 py-2 text-sm text-semantic-primary" /></label>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2"><div><h4 className="text-xs font-bold uppercase tracking-wider text-semantic-primary">Severity thresholds (minutes)</h4><p className="text-caption text-semantic-muted mt-0.5">Each severity needs acknowledgement, first response, remediation and resolution targets.</p></div><button type="button" onClick={() => setSlaDraft((current: any) => ({ ...current, thresholds: Object.fromEntries(SLA_SEVERITIES.map((severity) => [severity, emptyThreshold()])) }))} className="text-xs text-semantic-info flex items-center gap-1"><RotateCcw className="w-3 h-3" /> Reset values</button></div>
+                  <div className="overflow-x-auto rounded-xl border border-semantic-border">
+                    <table className="w-full min-w-[760px] text-xs"><thead className="bg-semantic-subtle text-semantic-muted"><tr><th className="text-left px-3 py-2">Severity</th><th className="text-left px-3 py-2">Acknowledgement</th><th className="text-left px-3 py-2">First response</th><th className="text-left px-3 py-2">Remediation</th><th className="text-left px-3 py-2">Resolution</th></tr></thead><tbody className="divide-y divide-semantic-border">{SLA_SEVERITIES.map((severity) => <tr key={severity}><td className="px-3 py-2 font-bold text-semantic-primary">{severity}</td>{['acknowledgmentMinutes', 'firstResponseMinutes', 'remediationMinutes', 'resolutionMinutes'].map((field) => <td key={field} className="px-3 py-2"><input required min={1} max={5256000} type="number" value={slaDraft.thresholds?.[severity]?.[field] ?? ''} onChange={(event) => updateSlaThreshold(severity, field, event.target.value)} className="w-full rounded-lg border border-semantic-border-strong bg-semantic-panel px-2 py-1.5 font-mono text-semantic-primary" /></td>)}</tr>)}</tbody></table>
+                  </div>
+                </div>
+
+                {slaError && <div className="rounded-lg border border-semantic-danger-border bg-semantic-danger-surface px-3 py-2 text-xs text-semantic-danger">{slaError}</div>}
+                <div className="flex justify-end gap-2 border-t border-semantic-border pt-4"><button type="button" onClick={() => setSlaEditorOpen(false)} className="px-3 py-2 rounded-lg border border-semantic-border text-xs text-semantic-secondary">Cancel</button><button disabled={slaSaving} type="submit" className="wrike-btn-primary text-xs py-2 px-4 flex items-center gap-2">{slaSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}{slaSaving ? 'Saving...' : 'Save policy'}</button></div>
+              </form>
+            </div>
+          )}
         </div>
       )}
 
@@ -857,7 +1067,7 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
 
       {/* Active Directory Connection & Credentials Configuration Modal */}
       {isAdConfigOpen && (
-        <div className="fixed inset-0 bg-black/40 z-dsOverlay flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/40 z-dsDialog flex items-center justify-center p-4">
           <div className="bg-semantic-panel border border-semantic-border-strong rounded-xl max-w-xl w-full p-5 space-y-4 shadow-xl text-xs">
             <div className="flex items-center justify-between border-b border-semantic-border pb-3">
               <div className="flex items-center gap-2">

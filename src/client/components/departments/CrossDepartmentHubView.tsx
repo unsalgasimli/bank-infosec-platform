@@ -14,7 +14,6 @@ import {
   Building2,
   ChevronRight,
   Sparkles,
-  GitBranch,
   X,
   Lock,
   ExternalLink,
@@ -140,14 +139,6 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2.5">
-          <button
-            onClick={() => onNavigate('gantt')}
-            className="px-3.5 py-2 rounded-lg bg-semantic-subtle hover:bg-semantic-neutral-surface text-semantic-primary border border-semantic-border text-xs font-bold flex items-center gap-2 shadow-xs"
-          >
-            <GitBranch className="w-4 h-4 text-semantic-info" />
-            <span>Gantt Dependencies</span>
-          </button>
-
           <button
             onClick={() => setIsLaunchModalOpen(true)}
             className="wrike-btn-primary px-3.5 py-2 text-xs font-bold flex items-center gap-2 shadow-sm"
@@ -363,7 +354,7 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
 
       {/* Launch Cross-Department Workflow Wizard Modal */}
       {isLaunchModalOpen && (
-        <div className="fixed inset-0 z-dsOverlay flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-4">
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-4">
           <div className="bg-semantic-panel border border-semantic-border rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl animate-scale-in">
             <div className="flex items-center justify-between border-b border-semantic-border pb-3">
               <div className="flex items-center gap-2.5">

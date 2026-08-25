@@ -11,6 +11,7 @@ export interface AuditEvent {
   action:
     | 'TICKET_CREATED'
     | 'TICKET_UPDATED'
+    | 'TICKET_ARCHIVED'
     | 'STATUS_TRANSITIONED'
     | 'ASSIGNMENT_CHANGED'
     | 'COMMENT_ADDED'

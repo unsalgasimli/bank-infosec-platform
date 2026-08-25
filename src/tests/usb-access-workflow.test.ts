@@ -52,6 +52,11 @@ test('USB Access company workflow', async (t) => {
     assert.deepEqual(catalog.sections.map((section) => section.name), ['Company Templates', 'Department / Branch Templates', 'User Templates']);
     assert.ok(catalog.sections[0].templates.some((template) => template.id === 'template-usb-access'));
     assert.ok(catalog.requestTypes.some((requestType) => requestType.id === 'request-usb-access'));
+    const usbForm = WorkflowOrchestrationService.getFormForRequestType('request-usb-access');
+    const usbFieldKeys = usbForm.version.sections.flatMap((section) => section.fields).map((field) => field.key);
+    assert.ok(usbFieldKeys.includes('businessJustification'));
+    assert.ok(!usbFieldKeys.includes('description'));
+    assert.ok(!usbFieldKeys.includes('supportingEvidence'));
 
     const launched = WorkflowRuntimeService.launchQuickWork({
       requestTypeId: 'request-usb-access',
@@ -75,6 +80,34 @@ test('USB Access company workflow', async (t) => {
     let execution = WorkflowRuntimeService.getExecution(launched.instance.id, requester);
     const managerChain = execution.approvals.find((chain) => chain.title === 'Manager approval')!;
     assert.deepEqual(managerChain.steps.map((step) => step.assignedApproverId), [manager.id]);
+    assert.equal(managerChain.steps[0].canDecide, false, 'the requester must not be offered their manager approval action');
+    assert.equal(
+      ApprovalService.submitDecision({ chainId: managerChain.id, stepId: managerChain.steps[0].id, decision: 'APPROVED', user: requester }).success,
+      false,
+      'the requester cannot bypass the hidden action through the decision service',
+    );
+    const managerExecution = WorkflowRuntimeService.getExecution(launched.instance.id, manager);
+    const managerStep = managerExecution.approvals.find((chain) => chain.id === managerChain.id)!.steps[0];
+    assert.equal(managerStep.canDecide, true, 'only the resolved manager receives the approval action');
+    const managerApprovalQueue = ApprovalService.getPendingApprovalsForUser(manager);
+    const managerQueueItem = managerApprovalQueue.find((item) => item.chain.id === managerChain.id)!;
+    assert.equal(managerQueueItem.work?.kind, 'WORKFLOW', 'workflow approvals must identify their workflow work context, not a node id as a ticket');
+    assert.equal(managerQueueItem.work?.workflowInstanceId, launched.instance.id);
+    assert.equal(managerQueueItem.work?.key, launched.instance.key);
+    assert.equal(managerQueueItem.work?.title, launched.instance.title);
+    const managerWorkItem = execution.workItems.find((item) => item.title === 'Manager approval')!;
+    assert.throws(() => WorkflowRuntimeService.claimWorkItem(managerWorkItem.id, manager), /Approval work items must be decided/i);
+    assert.throws(() => WorkflowRuntimeService.completeWorkItem(managerWorkItem.id, manager), /Approval work items must be decided/i);
+    const section = { id: 'section-usb-routing-parent', departmentId: requester.departmentId, name: 'USB routing section', code: 'USB_ROUTING', isActive: true, directorySource: 'ACTIVE_DIRECTORY' as const };
+    db.data.departmentSections.push(section);
+    db.data.users.find((user) => user.id === requester.id)!.sectionId = section.id;
+    const parentDepartmentNode: any = {
+      id: 'usb-parent-department-approval', key: 'usb-parent-department-approval', type: 'APPROVAL', title: 'Parent department approval', position: { x: 0, y: 0 },
+      approval: { approverSource: 'DEPARTMENT_MEMBERS', departmentSource: 'REQUESTER_PARENT_DEPARTMENT', approvalMode: 'ANY_ONE', preventSelfApproval: false },
+    };
+    const parentDepartmentApprovers = WorkflowOrchestrationService.resolveApprovers(parentDepartmentNode, { requesterId: requester.id, requester: { sectionId: section.id } }, requester.id);
+    const expectedParentDepartmentApprovers = db.data.users.filter((user) => user.isActive && user.departmentId === requester.departmentId).map((user) => user.id).sort();
+    assert.deepEqual(parentDepartmentApprovers.map((user) => user.id).sort(), expectedParentDepartmentApprovers, 'parent department routing resolves from the request creator section at runtime');
     assert.ok(WorkflowRuntimeService.listInstances(manager).some((instance) => instance.id === launched.instance.id));
     assert.throws(() => WorkflowRuntimeService.getExecution(launched.instance.id, outsider), /not authorized/i);
 
@@ -131,5 +164,25 @@ test('USB Access company workflow', async (t) => {
       },
     }), /no exact manager relationship/i);
     assert.equal(db.data.workflowInstances.length, before);
+  });
+
+  await t.test('rejects an Access required until date before today', () => {
+    reset();
+    const previousDay = new Date();
+    previousDay.setDate(previousDay.getDate() - 1);
+    const requestedUntil = `${previousDay.getFullYear()}-${String(previousDay.getMonth() + 1).padStart(2, '0')}-${String(previousDay.getDate()).padStart(2, '0')}`;
+    const validation = WorkflowOrchestrationService.prepareSubmission('request-usb-access', {
+      summary: 'USB request with expired date',
+      businessJustification: 'This request must be rejected because its expiry is already in the past.',
+      accessScope: 'READ_ONLY',
+      requestedUntil,
+      dataClassification: 'INTERNAL',
+      requesterId: requester.id,
+      departmentId: requester.departmentId,
+      encryptedDevice: true,
+    }, requester);
+
+    assert.equal(validation.valid, false);
+    assert.match(validation.errors.find((error) => error.fieldKey === 'requestedUntil')?.message || '', /earlier than today/i);
   });
 });

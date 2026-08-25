@@ -2,8 +2,6 @@ import React from 'react';
 import {
   Table as TableIcon,
   Layers,
-  Calendar as CalendarIcon,
-  CalendarRange,
   Users,
   Search,
   Download,
@@ -45,13 +43,11 @@ export const DestinationViewHeader: React.FC<DestinationViewHeaderProps> = ({
   onOpenCreate,
   createButtonLabel = 'New Task',
   supportsViewSwitcher = true,
-  allowedViewModes = ['spreadsheet', 'kanban', 'gantt', 'calendar'],
+  allowedViewModes = ['spreadsheet', 'kanban'],
 }) => {
   const allViewModes: { id: ViewMode; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: 'spreadsheet', label: 'Spreadsheet', icon: TableIcon },
     { id: 'kanban', label: 'Kanban', icon: Layers },
-    { id: 'gantt', label: 'Gantt', icon: CalendarRange },
-    { id: 'calendar', label: 'Calendar', icon: CalendarIcon },
     { id: 'capacity', label: 'Capacity', icon: Users },
   ];
 

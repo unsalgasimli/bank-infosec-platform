@@ -123,6 +123,67 @@ test('Enterprise ITSM lifecycle invariants', async (t) => {
     assert.strictEqual(competingClaim.getStatus(), 409);
   });
 
+  await t.test('a section route is persisted under its department and only section members can claim it', () => {
+    const targetDepartment = db.data.departments.find((department) => department.id !== actor.departmentId && department.isActive !== false)!;
+    const targetSection = {
+      id: 'section-ticket-intake-test',
+      departmentId: targetDepartment.id,
+      name: 'Ticket Intake Test Section',
+      code: 'TICKET_INTAKE_TEST',
+      isActive: true,
+      directorySource: 'ACTIVE_DIRECTORY' as const,
+    };
+    db.data.departmentSections.push(targetSection);
+    const sectionMember: BankUser = {
+      ...actor,
+      id: 'usr-section-queue-member',
+      username: 'section.queue.member',
+      email: 'section.queue.member@bank.internal',
+      fullName: 'Section Queue Member',
+      roles: ['REQUESTER'],
+      departmentId: targetDepartment.id,
+      sectionId: targetSection.id,
+      teamIds: [],
+    };
+    const departmentOnlyMember: BankUser = {
+      ...sectionMember,
+      id: 'usr-section-other-member',
+      username: 'section.other.member',
+      email: 'section.other.member@bank.internal',
+      fullName: 'Other Section Member',
+      sectionId: undefined,
+    };
+    db.data.users.push(sectionMember, departmentOnlyMember);
+
+    const createResponse = mockResponse();
+    TicketsController.create({
+      body: {
+        title: 'Section queue routing test',
+        description: 'Route this work to one AD-confirmed section.',
+        category: 'GENERAL_REQUEST',
+        requesterId: actor.id,
+        targetDepartmentId: targetDepartment.id,
+        targetSectionId: targetSection.id,
+        routingStrategy: 'TEAM_QUEUE',
+      },
+      user: actor,
+    } as any, createResponse);
+
+    assert.strictEqual(createResponse.getStatus(), 201);
+    const sectionTicket = createResponse.getPayload().ticket as Ticket;
+    assert.strictEqual(sectionTicket.targetDepartmentId, targetDepartment.id);
+    assert.strictEqual(sectionTicket.departmentId, targetDepartment.id);
+    assert.strictEqual(sectionTicket.targetSectionId, targetSection.id);
+
+    const rejectedClaim = mockResponse();
+    TicketsController.claim({ params: { id: sectionTicket.id }, user: departmentOnlyMember } as any, rejectedClaim);
+    assert.strictEqual(rejectedClaim.getStatus(), 403);
+
+    const acceptedClaim = mockResponse();
+    TicketsController.claim({ params: { id: sectionTicket.id }, user: sectionMember } as any, acceptedClaim);
+    assert.strictEqual(acceptedClaim.getStatus(), 200);
+  });
+
   await t.test('a ticket receives multiple independent SLA clocks', () => {
     db.data.ticketSlaInstances = [];
     const metrics = TicketLifecycleService.initializeSlaMetrics(baseTicket);
@@ -191,9 +252,11 @@ test('Enterprise ITSM lifecycle invariants', async (t) => {
     });
     assert.strictEqual(resolved.ticket?.statusId, 'RESOLVED');
     assert.strictEqual(resolved.ticket?.closedAt, undefined);
+    assert.strictEqual(resolved.ticket?.archivedAt, undefined, 'an intermediate DONE state must remain outside the archive');
     const closed = WorkflowService.executeTransition({ ticketId: ticket.id, transitionId: 'tr-close', user: actor });
     assert.strictEqual(closed.ticket?.statusId, 'CLOSED');
     assert.ok(closed.ticket?.closedAt);
+    assert.ok(closed.ticket?.archivedAt, 'the final lifecycle node must enter the archive');
   });
 
   await t.test('requesters cannot escalate confidentiality or write internal notes', () => {

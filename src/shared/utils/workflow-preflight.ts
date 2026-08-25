@@ -4,6 +4,7 @@ import type { PreflightIssue, PreflightResult, WorkflowVersion } from '../types/
 export interface PreflightValidationContext {
   actor?: BankUser;
   departments?: { id: string }[];
+  sections?: { id: string; departmentId: string; isActive?: boolean }[];
   users?: { id: string; isActive?: boolean }[];
   teams?: { id: string }[];
   connectorDefinitions?: { id: string; status: string; actionKeys: string[]; credentialReferenceIds: string[]; name?: string }[];
@@ -188,11 +189,27 @@ export function validateWorkflowPreflight(
       if (!node.approval) {
         add('ERROR', 'APPROVAL_WITHOUT_APPROVER', `Approval “${node.title}” has no approver source.`, node.id);
       }
-      if (context?.departments && node.approval?.departmentId && !context.departments.some((department) => department.id === node.approval!.departmentId)) {
+      const approvalEdges = (version.edges || []).filter((edge) => edge.sourceNodeId === node.id);
+      const approvedEdges = approvalEdges.filter((edge) => edge.outcome === 'APPROVED');
+      const rejectedEdges = approvalEdges.filter((edge) => edge.outcome === 'REJECTED');
+      const invalidApprovalEdges = approvalEdges.filter((edge) => !['APPROVED', 'REJECTED'].includes(edge.outcome || ''));
+      if (approvedEdges.length !== 1) {
+        add('ERROR', 'APPROVAL_APPROVED_BRANCH_COUNT', `Approval “${node.title}” must have exactly one APPROVED output connection.`, node.id, undefined, 'Connect the Approved output to the next activity or success path.');
+      }
+      if (rejectedEdges.length !== 1) {
+        add('ERROR', 'APPROVAL_REJECTED_BRANCH_COUNT', `Approval “${node.title}” must have exactly one REJECTED output connection.`, node.id, undefined, 'Connect the Rejected output to a rejected end or rejection handling path.');
+      }
+      for (const edge of invalidApprovalEdges) {
+        add('ERROR', 'APPROVAL_INVALID_OUTCOME', `Approval “${node.title}” has an output that is not APPROVED or REJECTED.`, node.id, edge.id, 'Use the Approved and Rejected output ports for approval routing.');
+      }
+      if (context?.departments && (!node.approval?.departmentSource || node.approval.departmentSource === 'STATIC') && node.approval?.departmentId && !context.departments.some((department) => department.id === node.approval!.departmentId)) {
         add('ERROR', 'DELETED_APPROVER_DEPARTMENT', `Approval “${node.title}” references a deleted department or branch.`, node.id);
       }
       if (context?.users && node.approval?.specificUserIds?.some((id) => !context.users!.some((user) => user.id === id && (user.isActive ?? true)))) {
         add('ERROR', 'DELETED_APPROVER', `Approval “${node.title}” references a missing or inactive user.`, node.id);
+      }
+      if (node.approval?.departmentSource && node.approval.departmentSource !== 'STATIC' && (node.approval.approverSource === 'SPECIFIC_USER' || node.approval.specificUserIds?.length)) {
+        add('ERROR', 'DYNAMIC_DEPARTMENT_FIXED_APPROVER', `Approval “${node.title}” routes by a runtime department or branch and cannot use a fixed user.`, node.id, undefined, 'Use department members or the department head.');
       }
       if (context?.teams && node.approval?.groupId && !context.teams.some((team) => team.id === node.approval!.groupId)) {
         add('ERROR', 'DELETED_APPROVER_GROUP', `Approval “${node.title}” references a deleted group.`, node.id);
@@ -216,6 +233,14 @@ export function validateWorkflowPreflight(
       }
       if (context?.users && node.assignment?.assigneeId && !context.users.some((user) => user.id === node.assignment!.assigneeId && (user.isActive ?? true))) {
         add('ERROR', 'DELETED_ASSIGNEE', `Human activity “${node.title}” references a missing or inactive assignee.`, node.id);
+      }
+      if (node.assignment?.sectionId) {
+        const section = context?.sections?.find((item) => item.id === node.assignment!.sectionId && item.isActive !== false);
+        if (!section) {
+          add('ERROR', 'DELETED_ASSIGNMENT_SECTION', `Human activity “${node.title}” references an inactive or deleted department section.`, node.id);
+        } else if (node.assignment.departmentId !== section.departmentId) {
+          add('ERROR', 'ASSIGNMENT_SECTION_PARENT_MISMATCH', `Human activity “${node.title}” has a section that does not belong to its selected department.`, node.id);
+        }
       }
       if (context?.teams && node.assignment?.groupId && !context.teams.some((team) => team.id === node.assignment!.groupId)) {
         add('ERROR', 'DELETED_ASSIGNMENT_GROUP', `Human activity “${node.title}” references a deleted assignment group.`, node.id);

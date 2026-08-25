@@ -700,7 +700,6 @@ export const App: React.FC = () => {
           {activeDestination === 'admin-automations' && (
             <WrikeAutomationsView
               onRefreshTickets={loadData}
-              onNavigate={handleNavigate}
             />
           )}
 

@@ -103,6 +103,8 @@ app.use('/api', requireAuthentication);
 app.get('/api/auth/ldap/groups', AuthController.listGroups);
 app.get('/api/auth/users', AuthController.listUsers);
 app.get('/api/directory/assignment-options', DirectoryController.assignmentOptions);
+app.get('/api/admin/directory-governance', requireAdmin, DirectoryController.governance);
+app.patch('/api/admin/directory-governance/:id', requireAdmin, DirectoryController.updateGovernance);
 app.post('/api/admin/ldap/sync', requireAdmin, AuthController.triggerLdapSync);
 app.get('/api/admin/ldap/sync-status', requireAdmin, AuthController.getLdapSyncStatus);
 app.get('/api/admin/ldap/departments', requireAdmin, AuthController.getUsersByDepartment);
@@ -134,6 +136,7 @@ app.post('/api/tickets/:id/ai-recommendations/:recommendationId/apply', TicketsC
 // authenticated caller's project membership or global administrative role.
 app.get('/api/projects', ProjectsController.list);
 app.post('/api/projects', ProjectsController.create);
+app.get('/api/projects/workflow-options', ProjectsController.workflowOptions);
 app.get('/api/projects/:id', ProjectsController.get);
 app.patch('/api/projects/:id', ProjectsController.update);
 app.post('/api/projects/:id/members', ProjectsController.addMember);
@@ -141,9 +144,11 @@ app.patch('/api/projects/:id/members/:memberId', ProjectsController.updateMember
 app.delete('/api/projects/:id/members/:memberId', ProjectsController.removeMember);
 app.post('/api/projects/:id/milestones', ProjectsController.createMilestone);
 app.post('/api/projects/:id/tasks', ProjectsController.createTask);
+app.get('/api/projects/:id/tasks/:taskId', ProjectsController.getTask);
 app.patch('/api/projects/:id/tasks/:taskId', ProjectsController.updateTask);
 app.post('/api/projects/:id/tasks/:taskId/dependencies', ProjectsController.addDependency);
 app.post('/api/projects/:id/tasks/:taskId/comments', ProjectsController.addComment);
+app.post('/api/projects/:id/tasks/:taskId/watchers/toggle', ProjectsController.toggleWatcher);
 app.post('/api/projects/:id/status-updates', ProjectsController.addStatusUpdate);
 app.get('/api/projects/:id/activity', ProjectsController.listActivity);
 app.get('/api/projects/:id/status-report', ProjectsController.report);
@@ -282,6 +287,10 @@ app.get('/api/kb/:slug', KBController.getArticleBySlug);
 // 13. Admin & Audit
 app.get('/api/admin/metadata', requireAdmin, AdminController.getMetadata);
 app.get('/api/admin/audit', requireAdmin, AdminController.getAuditTrail);
+app.get('/api/admin/sla-policies', requireAdmin, AdminController.listSlaPolicies);
+app.post('/api/admin/sla-policies', requireAdmin, AdminController.createSlaPolicy);
+app.patch('/api/admin/sla-policies/:id', requireAdmin, AdminController.updateSlaPolicy);
+app.delete('/api/admin/sla-policies/:id', requireAdmin, AdminController.deleteSlaPolicy);
 
 // 14. Enterprise Multi-Department Architecture & Cross-Tasks
 app.get('/api/departments', DepartmentsController.listDepartments);

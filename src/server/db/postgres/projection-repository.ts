@@ -1,4 +1,5 @@
 import { pgClient } from './client.js';
+import { directoryUserColumns, rowToUser } from './departments-repository.js';
 import type { DatabaseSchema } from '../database.js';
 import { normalizeDirectoryKey, normalizeDirectoryText } from '../../services/ldap-directory.data.js';
 import crypto from 'node:crypto';
@@ -74,7 +75,7 @@ export class PostgresProjectionRepository {
       pgClient.query('SELECT source_payload FROM bank_departments ORDER BY id'),
       pgClient.query('SELECT source_payload FROM bank_department_sections ORDER BY department_id, name'),
       pgClient.query('SELECT source_payload FROM bank_teams ORDER BY id'),
-      pgClient.query('SELECT source_payload FROM bank_users ORDER BY username'),
+      pgClient.query(`SELECT ${directoryUserColumns} FROM bank_users ORDER BY username`),
       pgClient.query('SELECT id, tag, name, type, ip_address, fqdn, environment, critical_asset, pci_dss_scope, owner_id, custodian_id, department_id, os, created_at, updated_at FROM bank_assets ORDER BY id'),
       pgClient.query('SELECT id, code, name, tier, architecture_type, repository_url, technical_owner_id, business_owner_id, department_id, active_cve_count, created_at, updated_at FROM bank_applications ORDER BY id'),
       pgClient.query('SELECT source_payload FROM cmdb_ci_types ORDER BY id'),
@@ -104,7 +105,10 @@ export class PostgresProjectionRepository {
     base.departments = departments.rows.map((row) => fromPayload(row)).filter(Boolean);
     base.departmentSections = departmentSections.rows.map((row) => fromPayload(row)).filter(Boolean);
     base.teams = teams.rows.map((row) => fromPayload(row)).filter(Boolean);
-    base.users = users.rows.map((row) => fromPayload(row)).filter(Boolean);
+    // Identity, authorization, and organizational placement are normalized
+    // columns. They outrank the compatibility payload so an outdated in-memory
+    // login snapshot cannot restore old roles or old section membership.
+    base.users = users.rows.map(rowToUser).filter(Boolean);
     base.assets = assets.rows.map((row) => ({
       id: row.id,
       name: row.name,
@@ -442,12 +446,25 @@ export class PostgresProjectionRepository {
 
       // CMDB is persisted in its own normalized relational model. source_payload
       // preserves full typed metadata while columns/indexes serve operational queries.
-      for (const type of data.cmdbTypes || []) {
+      // PostgreSQL enforces the self-reference on parent_type_id, so a
+      // snapshot loaded from legacy_json_records must be written parent-first.
+      const cmdbTypeIds = new Set((data.cmdbTypes || []).map((type) => type.id));
+      const pendingCmdbTypes = [...(data.cmdbTypes || [])];
+      const orderedCmdbTypes: typeof pendingCmdbTypes = [];
+      const writtenCmdbTypeIds = new Set<string>();
+      while (pendingCmdbTypes.length > 0) {
+        const next = pendingCmdbTypes.findIndex((type) => !type.parentTypeId || writtenCmdbTypeIds.has(type.parentTypeId) || !cmdbTypeIds.has(type.parentTypeId));
+        const [type] = pendingCmdbTypes.splice(next >= 0 ? next : 0, 1);
+        orderedCmdbTypes.push(type);
+        writtenCmdbTypeIds.add(type.id);
+      }
+      for (const type of orderedCmdbTypes) {
+        const parentTypeId = type.parentTypeId && cmdbTypeIds.has(type.parentTypeId) ? type.parentTypeId : null;
         await client.query(
           `INSERT INTO cmdb_ci_types(id,name,parent_type_id,icon,is_active,required_attributes,optional_attributes,validation_rules,allowed_relationship_type_ids,source_payload)
            VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb)
            ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,parent_type_id=EXCLUDED.parent_type_id,icon=EXCLUDED.icon,is_active=EXCLUDED.is_active,required_attributes=EXCLUDED.required_attributes,optional_attributes=EXCLUDED.optional_attributes,validation_rules=EXCLUDED.validation_rules,allowed_relationship_type_ids=EXCLUDED.allowed_relationship_type_ids,source_payload=EXCLUDED.source_payload,updated_at=NOW()`,
-          [type.id, type.name, type.parentTypeId || null, type.icon || 'Box', type.isActive !== false, json(type.requiredAttributes), json(type.optionalAttributes), json(type.validationRules), json(type.allowedRelationshipTypeIds), json(type)]
+          [type.id, type.name, parentTypeId, type.icon || 'Box', type.isActive !== false, json(type.requiredAttributes), json(type.optionalAttributes), json(type.validationRules), json(type.allowedRelationshipTypeIds), json(type)]
         );
       }
       for (const type of data.cmdbRelationshipTypes || []) {
@@ -508,6 +525,10 @@ export class PostgresProjectionRepository {
           [policy.id, text(policy.name) || policy.id, text(policy.description), (policy as any).isActive !== false, Boolean(policy.isDefault), json((policy as any).rules || (policy as any).thresholds || []), json((policy as any).businessHours || policy), json(policy)]
         );
       }
+      // SLA DELETE is represented as an archive in the controller, but keep
+      // this reconciliation guard so any future hard-delete path cannot leave
+      // stale policy rows in PostgreSQL after projection synchronization.
+      await client.query('DELETE FROM sla_policies WHERE NOT (id = ANY($1::text[]))', [[...policyIds]]);
       const workflowIds = new Set((data.workflows || []).map((item) => item.id));
       for (const ticket of data.tickets || []) workflowIds.add(ticket.workflowId);
       for (const workflowId of workflowIds) {

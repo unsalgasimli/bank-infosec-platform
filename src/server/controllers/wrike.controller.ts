@@ -40,10 +40,11 @@ export class WrikeController {
         (ticket) =>
           ticket.assigneeId === user.id ||
           (!ticket.assigneeId &&
-            ((ticket.targetDepartmentId && ticket.targetDepartmentId === user.departmentId) ||
+            (((ticket.targetDepartmentId && ticket.targetDepartmentId === user.departmentId) ||
               (ticket.departmentId && ticket.departmentId === user.departmentId) ||
               (ticket.assignmentGroupId && user.teamIds?.includes(ticket.assignmentGroupId)) ||
-              ticket.participatingDepartmentIds?.includes(user.departmentId || '')))
+              ticket.participatingDepartmentIds?.includes(user.departmentId || '')) &&
+              (!ticket.targetSectionId || ticket.targetSectionId === user.sectionId)))
       );
     }
 

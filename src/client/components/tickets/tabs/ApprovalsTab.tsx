@@ -154,7 +154,7 @@ export const ApprovalsTab: React.FC<ApprovalsTabProps> = ({
 
       {/* Decision Modal */}
       {selectedStep && (
-        <div className="fixed inset-0 z-dsOverlay flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
@@ -228,4 +228,3 @@ export const ApprovalsTab: React.FC<ApprovalsTabProps> = ({
     </div>
   );
 };
-

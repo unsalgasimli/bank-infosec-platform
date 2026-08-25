@@ -200,6 +200,8 @@ export interface Ticket {
   teamId?: string;
   departmentId?: string;
   targetDepartmentId?: string;
+  /** AD-confirmed child organisational unit selected for queue routing. */
+  targetSectionId?: string;
   applicationId?: string;
   assetId?: string;
   riskOwnerId?: string;
@@ -247,6 +249,9 @@ export interface Ticket {
   resolvedAt?: string;
   closedAt?: string;
   reopenedAt?: string;
+  /** Set only after the ticket's complete workflow reaches its final node. */
+  archivedAt?: string;
+  archivedByUserId?: string;
   
   // SLA Status
   slaPolicyId?: string;
@@ -265,6 +270,8 @@ export interface Ticket {
   milestoneId?: string;
   projectTaskNumber?: number;
   projectTaskStatus?: import('./project.js').ProjectTaskStatus;
+  /** The configured project work-item type; tickets remain the canonical persisted entity. */
+  projectWorkItemType?: import('./project.js').ProjectWorkItemType;
   actualHours?: number;
   taskWeight?: number;
   blockedReason?: string;

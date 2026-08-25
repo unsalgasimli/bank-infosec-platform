@@ -4,6 +4,76 @@ import { db } from '../db/database.js';
 import { AuditService } from '../services/audit.service.js';
 import { v4 as uuidv4 } from 'uuid';
 import { isGenuineEmployeeOrIntern } from '../services/ldap-directory.data.js';
+import { SLAService } from '../services/sla.service.js';
+import { SLAMetricThresholds, SLAPolicy } from '../../shared/types/sla.js';
+import { TechnicalSeverity } from '../../shared/types/ticket.js';
+
+const SLA_SEVERITIES: TechnicalSeverity[] = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFORMATIONAL'];
+const SLA_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function parseSlaThresholds(value: unknown): Record<TechnicalSeverity, SLAMetricThresholds> | null {
+  if (!value || typeof value !== 'object') return null;
+  const input = value as Record<string, unknown>;
+  const thresholds = {} as Record<TechnicalSeverity, SLAMetricThresholds>;
+  for (const severity of SLA_SEVERITIES) {
+    const raw = input[severity];
+    if (!raw || typeof raw !== 'object') return null;
+    const candidate = raw as Record<string, unknown>;
+    const parsed = {
+      acknowledgmentMinutes: Number(candidate.acknowledgmentMinutes),
+      firstResponseMinutes: Number(candidate.firstResponseMinutes),
+      remediationMinutes: Number(candidate.remediationMinutes),
+      resolutionMinutes: Number(candidate.resolutionMinutes),
+    };
+    if (Object.values(parsed).some((minutes) => !Number.isInteger(minutes) || minutes <= 0 || minutes > 5256000)) return null;
+    thresholds[severity] = parsed;
+  }
+  return thresholds;
+}
+
+function normalizeSlaPayload(body: any, existing?: SLAPolicy): { policy?: SLAPolicy; error?: string } {
+  for (const field of ['isActive', 'isDefault', 'businessHoursOnly', 'excludeWeekends', 'excludeHolidays']) {
+    if (body[field] !== undefined && typeof body[field] !== 'boolean') return { error: `${field} must be a boolean.` };
+  }
+  const name = String(body.name ?? existing?.name ?? '').trim();
+  const description = String(body.description ?? existing?.description ?? '').trim();
+  const timezone = String(body.timezone ?? existing?.timezone ?? '').trim();
+  const businessStartTime = String(body.businessStartTime ?? existing?.businessStartTime ?? '09:00');
+  const businessEndTime = String(body.businessEndTime ?? existing?.businessEndTime ?? '18:00');
+  const thresholds = parseSlaThresholds(body.thresholds ?? existing?.thresholds);
+
+  if (!name || name.length > 255) return { error: 'SLA policy name is required and must be at most 255 characters.' };
+  if (description.length > 4000) return { error: 'SLA policy description must be at most 4000 characters.' };
+  if (!timezone) return { error: 'Timezone is required.' };
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
+  } catch {
+    return { error: `Invalid timezone: ${timezone}.` };
+  }
+  if (!SLA_TIME_PATTERN.test(businessStartTime) || !SLA_TIME_PATTERN.test(businessEndTime)) {
+    return { error: 'Business hours must use HH:mm format.' };
+  }
+  if (!thresholds) return { error: 'Every severity must have four positive minute thresholds.' };
+
+  const policy: SLAPolicy = {
+    id: existing?.id || String(body.id || '').trim(),
+    name,
+    description,
+    isActive: body.isActive ?? existing?.isActive ?? true,
+    isDefault: Boolean(body.isDefault ?? existing?.isDefault ?? false),
+    businessHoursOnly: Boolean(body.businessHoursOnly ?? existing?.businessHoursOnly ?? true),
+    businessStartTime,
+    businessEndTime,
+    timezone,
+    excludeWeekends: Boolean(body.excludeWeekends ?? existing?.excludeWeekends ?? true),
+    excludeHolidays: Boolean(body.excludeHolidays ?? existing?.excludeHolidays ?? true),
+    thresholds,
+    createdAt: existing?.createdAt,
+    updatedAt: new Date().toISOString(),
+  };
+  if (policy.isDefault && policy.isActive === false) return { error: 'The default SLA policy must be active.' };
+  return { policy };
+}
 
 export class AssetsController {
   public static listAssets(req: AuthenticatedRequest, res: Response): void {
@@ -234,6 +304,10 @@ export class KBController {
 }
 
 export class AdminController {
+  private static ensureSlaPolicies(): void {
+    if (SLAService.ensurePoliciesInstalled()) db.persist();
+  }
+
   public static getMetadata(req: AuthenticatedRequest, res: Response): void {
     db.reload();
     const directoryUsers = db.data.users.filter((user) =>
@@ -257,5 +331,136 @@ export class AdminController {
   public static getAuditTrail(req: AuthenticatedRequest, res: Response): void {
     const limit = parseInt(req.query.limit as string) || 100;
     res.json({ success: true, events: AuditService.getAllEvents(limit) });
+  }
+
+  public static listSlaPolicies(req: AuthenticatedRequest, res: Response): void {
+    AdminController.ensureSlaPolicies();
+    const policies = [...(db.data.slaPolicies || [])].sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ success: true, policies });
+  }
+
+  public static createSlaPolicy(req: AuthenticatedRequest, res: Response): void {
+    AdminController.ensureSlaPolicies();
+    const normalized = normalizeSlaPayload(req.body || {});
+    if (normalized.error || !normalized.policy) {
+      res.status(400).json({ success: false, error: normalized.error || 'Invalid SLA policy.' });
+      return;
+    }
+    const policy = normalized.policy;
+    policy.id = `sla-${uuidv4()}`;
+    policy.createdAt = new Date().toISOString();
+
+    if (db.data.slaPolicies.some((item) => item.name.trim().toLowerCase() === policy.name.toLowerCase())) {
+      res.status(409).json({ success: false, error: 'An SLA policy with this name already exists.' });
+      return;
+    }
+    if (policy.isDefault || !db.data.slaPolicies.some((item) => item.isDefault && item.isActive !== false)) {
+      for (const item of db.data.slaPolicies) item.isDefault = false;
+      policy.isDefault = true;
+    }
+
+    db.data.slaPolicies.push(policy);
+    AuditService.log({
+      actor: req.user!,
+      action: 'ADMIN_CONFIG_CHANGED',
+      entityType: 'SLA_POLICY',
+      entityId: policy.id,
+      metadata: { action: 'SLA_POLICY_CREATED', name: policy.name },
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      correlationId: req.correlationId,
+      persist: false,
+    });
+    db.persist();
+    res.status(201).json({ success: true, policy });
+  }
+
+  public static updateSlaPolicy(req: AuthenticatedRequest, res: Response): void {
+    AdminController.ensureSlaPolicies();
+    const policy = db.data.slaPolicies.find((item) => item.id === req.params.id);
+    if (!policy) {
+      res.status(404).json({ success: false, error: 'SLA policy not found.' });
+      return;
+    }
+    const normalized = normalizeSlaPayload(req.body || {}, policy);
+    if (normalized.error || !normalized.policy) {
+      res.status(400).json({ success: false, error: normalized.error || 'Invalid SLA policy.' });
+      return;
+    }
+    const updated = normalized.policy;
+    const duplicate = db.data.slaPolicies.find((item) => item.id !== policy.id && item.name.trim().toLowerCase() === updated.name.toLowerCase());
+    if (duplicate) {
+      res.status(409).json({ success: false, error: 'An SLA policy with this name already exists.' });
+      return;
+    }
+    const wasDefault = policy.isDefault;
+    const fieldChanges = Object.keys(updated).flatMap((field) => {
+      const oldValue = (policy as any)[field];
+      const newValue = (updated as any)[field];
+      return JSON.stringify(oldValue) === JSON.stringify(newValue) ? [] : [{ field, oldValue, newValue }];
+    });
+    Object.assign(policy, updated);
+    if (policy.isDefault) {
+      for (const item of db.data.slaPolicies) if (item.id !== policy.id) item.isDefault = false;
+    } else if (wasDefault && !db.data.slaPolicies.some((item) => item.id !== policy.id && item.isDefault && item.isActive !== false)) {
+      policy.isDefault = true;
+      res.status(400).json({ success: false, error: 'At least one active default SLA policy is required.' });
+      return;
+    }
+    AuditService.log({
+      actor: req.user!,
+      action: 'ADMIN_CONFIG_CHANGED',
+      entityType: 'SLA_POLICY',
+      entityId: policy.id,
+      fieldChanges,
+      metadata: { action: 'SLA_POLICY_UPDATED', name: policy.name },
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      correlationId: req.correlationId,
+      persist: false,
+    });
+    db.persist();
+    res.json({ success: true, policy });
+  }
+
+  public static deleteSlaPolicy(req: AuthenticatedRequest, res: Response): void {
+    AdminController.ensureSlaPolicies();
+    const policy = db.data.slaPolicies.find((item) => item.id === req.params.id);
+    if (!policy) {
+      res.status(404).json({ success: false, error: 'SLA policy not found.' });
+      return;
+    }
+    if (policy.isDefault) {
+      res.status(409).json({ success: false, error: 'The default SLA policy cannot be deleted. Set another policy as default first.' });
+      return;
+    }
+    const references = [
+      ...db.data.tickets.filter((ticket) => ticket.slaPolicyId === policy.id).map((ticket) => ticket.key || ticket.id),
+      ...db.data.ticketSlaInstances.filter((metric) => metric.policyId === policy.id).map((metric) => metric.id),
+      ...db.data.projects.filter((project) => project.slaPolicyId === policy.id).map((project) => project.id),
+    ];
+    if (references.length > 0) {
+      res.status(409).json({ success: false, error: `This policy is referenced by ${references.length} persisted record(s) and cannot be deleted.` });
+      return;
+    }
+
+    // Archive instead of physically removing policy history. The PostgreSQL
+    // projection keeps the record and the existing policy ID remains auditable.
+    policy.isActive = false;
+    policy.updatedAt = new Date().toISOString();
+    AuditService.log({
+      actor: req.user!,
+      action: 'ADMIN_CONFIG_CHANGED',
+      entityType: 'SLA_POLICY',
+      entityId: policy.id,
+      fieldChanges: [{ field: 'isActive', oldValue: true, newValue: false }],
+      metadata: { action: 'SLA_POLICY_ARCHIVED', name: policy.name },
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      correlationId: req.correlationId,
+      persist: false,
+    });
+    db.persist();
+    res.json({ success: true, policy });
   }
 }

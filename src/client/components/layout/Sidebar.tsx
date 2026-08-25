@@ -235,7 +235,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       activeDestination === item.id ||
                       (item.id === 'admin-departments' && activeDestination === 'dept-admin') ||
                       (item.id === 'projects-tasks' &&
-                        ['table', 'board', 'gantt', 'workload', 'calendar'].includes(activeDestination));
+                        ['table', 'board', 'workload'].includes(activeDestination));
 
                     const count = getBadgeCount(item);
 

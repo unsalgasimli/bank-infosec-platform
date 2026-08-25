@@ -72,11 +72,24 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   const [placement, setPlacement] = useState<'bottom' | 'top'>(
     placementProp === 'top' ? 'top' : 'bottom'
   );
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // A body portal is hidden behind the browser's fullscreen top layer. The
+  // workflow builder uses fullscreen focus mode, so move the menu into the
+  // active fullscreen element while it is open there.
+  useEffect(() => {
+    const updatePortalTarget = () => {
+      setPortalTarget(document.fullscreenElement || document.body);
+    };
+    updatePortalTarget();
+    document.addEventListener('fullscreenchange', updatePortalTarget);
+    return () => document.removeEventListener('fullscreenchange', updatePortalTarget);
+  }, []);
 
   // Normalize options to SelectOption format
   const normalizedOptions: SelectOption[] = options.map((opt) => {
@@ -107,6 +120,15 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   const selectValue = (optionValue: string) => {
     closeMenu(true);
     onChange(optionValue);
+  };
+
+  // Commit pointer selections before the portal/focus teardown can dispatch a
+  // click outside the menu. This keeps controlled selects in sync when the
+  // dropdown is rendered in a portal or inside fullscreen mode.
+  const handleOptionPointerDown = (optionValue: string, event: React.PointerEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    selectValue(optionValue);
   };
 
   useEffect(() => {
@@ -194,12 +216,6 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     sm: 'py-1.5 px-3 text-xs min-h-[34px]',
     md: 'py-2 px-3.5 text-sm min-h-[42px]',
     lg: 'py-2.5 px-4 text-sm font-semibold min-h-[46px]',
-  };
-
-  const handleOptionPointerDown = (optValue: string, event: React.PointerEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    selectValue(optValue);
   };
 
   const handleTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
@@ -298,12 +314,12 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       </button>
 
       {/* Floating Dropdown Menu */}
-      {isOpen && typeof document !== 'undefined' && createPortal(
+      {isOpen && portalTarget && createPortal(
         <div
           ref={menuRef}
           style={{
             position: 'fixed',
-            zIndex: 200,
+            zIndex: 2147483000,
             left: menuPosition.left,
             width: menuPosition.width,
             ...(placement === 'top' ? { bottom: window.innerHeight - menuPosition.top } : { top: menuPosition.top }),
@@ -427,7 +443,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           )}
           </div>
         </div>
-      , document.body)}
+      , portalTarget)}
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   AlertCircle,
@@ -34,7 +34,6 @@ import {
   Plus,
   RefreshCw,
   Rocket,
-  Save,
   Search,
   Send,
   ShieldCheck,
@@ -42,7 +41,6 @@ import {
   Sparkles,
   Split,
   Square,
-  TestTube2,
   TimerReset,
   Trash2,
   Undo2,
@@ -71,11 +69,17 @@ import { CustomSelect, type SelectOption } from "../common/CustomSelect.js";
 
 type WorkspaceTab = "CATALOG" | "BUILDER" | "EXECUTIONS" | "ANALYTICS";
 type BuilderSidebarTab = "NODES" | "VARIABLES";
-type BuilderOperation = "SAVE" | "TEST" | "PUBLISH";
+type BuilderOperation = "PUBLISH";
 type CatalogPayload = {
   sections: Array<{ name: string; templates: WorkflowCatalogTemplate[] }>;
   templates: WorkflowCatalogTemplate[];
   requestTypes: RequestTypeDefinition[];
+  permissions: {
+    canCreatePersonal: boolean;
+    canCreateDepartment: boolean;
+    canCreateCompany: boolean;
+    canLaunchWorkflows: boolean;
+  };
 };
 type TemplateDetail = {
   template: WorkflowCatalogTemplate;
@@ -84,6 +88,7 @@ type TemplateDetail = {
   preflight: any;
 };
 type RuntimeExecution = any;
+type WorkflowBranchOutcome = "TRUE" | "FALSE" | "APPROVED" | "REJECTED";
 
 const nodePalette: Array<{
   group: string;
@@ -203,6 +208,15 @@ const nodePalette: Array<{
 // the graph boundary and are intentionally not author-configurable nodes.
 const isFixedEndpoint = (node: Pick<WorkflowNodeDefinition, "type">) =>
   node.type === "START" || node.type === "SUCCESS_END";
+const CANVAS_GRID_SIZE = 20;
+const WORKFLOW_NODE_WIDTH = 180;
+const WORKFLOW_NODE_FALLBACK_HEIGHT = 90;
+
+const directoryIdFromOption = (value: string | undefined, kind: "department" | "section") => {
+  if (!value) return undefined;
+  const prefix = `${kind}:`;
+  return value.startsWith(prefix) ? value.slice(prefix.length) : value;
+};
 
 const apiError = async (response: Response, fallback: string) => {
   const payload = await response.json().catch(() => ({}));
@@ -266,10 +280,6 @@ export const UniversalWorkflowWorkspace: React.FC<{
   onRefreshTickets?: () => void;
 }> = ({ onRefreshTickets }) => {
   const { currentUser, fetchWithAuth } = useAuth();
-  const companyTemplateRoles = ["PLATFORM_ADMIN", "CISO", "INFOSEC_ADMIN"];
-  const canCreateWorkflow = Boolean(currentUser?.isActive);
-  const canCreateCompanyTemplate = Boolean(currentUser?.roles.some((role: string) => companyTemplateRoles.includes(role)));
-  const canCreateDepartmentTemplate = Boolean(currentUser?.departmentId && canCreateWorkflow);
   const [tab, setTab] = useState<WorkspaceTab>(() => {
     const stored = sessionStorage.getItem(
       "orchestration-workspace-tab",
@@ -284,8 +294,17 @@ export const UniversalWorkflowWorkspace: React.FC<{
     sections: [],
     templates: [],
     requestTypes: [],
+    permissions: {
+      canCreatePersonal: false,
+      canCreateDepartment: false,
+      canCreateCompany: false,
+      canLaunchWorkflows: false,
+    },
   });
-  const [directory, setDirectory] = useState<any>({ users: [], departments: [], groups: [], roles: [] });
+  const canCreateWorkflow = catalog.permissions.canCreatePersonal;
+  const canCreateCompanyTemplate = catalog.permissions.canCreateCompany;
+  const canCreateDepartmentTemplate = catalog.permissions.canCreateDepartment;
+  const [directory, setDirectory] = useState<any>({ users: [], departments: [], sections: [], groups: [], roles: [] });
   const [instances, setInstances] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any>(null);
   const [query, setQuery] = useState("");
@@ -316,11 +335,13 @@ export const UniversalWorkflowWorkspace: React.FC<{
     sourceNodeId: string;
     x: number;
     y: number;
-    outcome?: "TRUE" | "FALSE";
+    outcome?: WorkflowBranchOutcome;
   } | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string>("");
   const [zoom, setZoom] = useState(0.8);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isGridVisible, setIsGridVisible] = useState(true);
+  const [isFocusMode, setIsFocusMode] = useState(false);
   const [clipboardNodes, setClipboardNodes] = useState<
     WorkflowNodeDefinition[]
   >([]);
@@ -336,8 +357,9 @@ export const UniversalWorkflowWorkspace: React.FC<{
     return validateWorkflowPreflight(builderVersion, {
       actor: currentUser || undefined,
       departments: directory?.departments,
+      sections: directory?.sections,
       users: directory?.users,
-      teams: directory?.teams,
+      teams: directory?.teams || directory?.groups,
     });
   }, [builderVersion, currentUser, directory]);
 
@@ -354,13 +376,32 @@ export const UniversalWorkflowWorkspace: React.FC<{
   const [builderOperation, setBuilderOperation] = useState<BuilderOperation | null>(null);
   const [workflowMetadata, setWorkflowMetadata] = useState<{ name: string; scope: TemplateScope }>({ name: "", scope: "PERSONAL" });
   const [metadataError, setMetadataError] = useState("");
+  const builderWorkspaceRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const nodeElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
+  const [nodeSizes, setNodeSizes] = useState<Record<string, { width: number; height: number }>>({});
   const panOrigin = useRef<{
     pointerX: number;
     pointerY: number;
     panX: number;
     panY: number;
   } | null>(null);
+  const snapCanvasPosition = (x: number, y: number) => ({
+    x: Math.max(0, isGridVisible ? Math.round(x / CANVAS_GRID_SIZE) * CANVAS_GRID_SIZE : Math.round(x)),
+    y: Math.max(0, isGridVisible ? Math.round(y / CANVAS_GRID_SIZE) * CANVAS_GRID_SIZE : Math.round(y)),
+  });
+  const getNodeSize = (nodeId: string) =>
+    nodeSizes[nodeId] || { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_FALLBACK_HEIGHT };
+  const getNodePort = (node: WorkflowNodeDefinition, outcome?: WorkflowBranchOutcome) => {
+    const size = getNodeSize(node.id);
+    const isBranch = (node.type === "CONDITION" && ["TRUE", "FALSE"].includes(outcome || ""))
+      || (node.type === "APPROVAL" && ["APPROVED", "REJECTED"].includes(outcome || ""));
+    const isPositiveBranch = outcome === "TRUE" || outcome === "APPROVED";
+    return {
+      x: node.position.x + size.width,
+      y: node.position.y + (isBranch ? size.height * (isPositiveBranch ? 0.3 : 0.7) : size.height / 2),
+    };
+  };
 
   const load = async () => {
     setLoading(true);
@@ -473,7 +514,8 @@ export const UniversalWorkflowWorkspace: React.FC<{
         ["INPUT", "TICKET_INPUT"].includes(n.type),
       );
       if (inputNode?.inputConfig?.fields?.length) {
-        const customFields = inputNode.inputConfig.fields;
+        const customFields = inputNode.inputConfig.fields as FormFieldDefinition[];
+        const isUsbAccessRequest = requestType?.id === "request-usb-access" || template.id === "template-usb-access";
         const baseFields: FormFieldDefinition[] = [
           {
             id: "summary",
@@ -483,13 +525,15 @@ export const UniversalWorkflowWorkspace: React.FC<{
             required: true,
             placeholder: "Brief title of the request",
           },
-          {
-            id: "description",
-            key: "description",
-            label: "Description / Details",
-            type: "TEXTAREA",
-            placeholder: "Provide additional context or instructions...",
-          },
+          ...(isUsbAccessRequest
+            ? []
+            : [{
+                id: "description",
+                key: "description",
+                label: "Description / Details",
+                type: "TEXTAREA" as const,
+                placeholder: "Provide additional context or instructions...",
+              }]),
           {
             id: "requesterId",
             key: "requesterId",
@@ -505,24 +549,29 @@ export const UniversalWorkflowWorkspace: React.FC<{
             required: true,
           },
         ];
-        const allFields = [
-          ...baseFields.filter(
-            (bf) => !customFields.some((cf: any) => cf.key === bf.key),
-          ),
-          ...customFields,
-        ];
+        // The published request form is authoritative. INPUT-node fields are
+        // additive custom fields; replacing the form with them used to hide
+        // required fields such as USB business justification and data
+        // classification, causing an apparently valid launch to fail server
+        // validation.
+        const existingSections = form?.version?.sections || [];
+        const existingFields = existingSections.flatMap((section: any) => section.fields || []);
+        const existingKeys = new Set(existingFields.map((field: any) => field.key));
+        const additionalFields = [...baseFields, ...customFields]
+          .filter((field, index, fields) => !existingKeys.has(field.key) && fields.findIndex((candidate) => candidate.key === field.key) === index);
+        const sections = existingSections.length
+          ? existingSections.map((section: any, index: number) => index === 0 ? { ...section, fields: [...(section.fields || []), ...additionalFields] } : section)
+          : [{
+              id: "input-section-main",
+              title: inputNode.title || "Request details",
+              description: inputNode.description || "Fill in the required information to launch this workflow.",
+              fields: [...baseFields, ...customFields].filter((field, index, fields) => fields.findIndex((candidate) => candidate.key === field.key) === index),
+            }];
         form = {
+          ...(form || {}),
           version: {
-            sections: [
-              {
-                id: "input-section-main",
-                title: inputNode.title || "Request details",
-                description:
-                  inputNode.description ||
-                  "Fill in the required information to launch this workflow.",
-                fields: allFields,
-              },
-            ],
+            ...(form?.version || {}),
+            sections,
           },
         };
         if (!requestType) {
@@ -569,13 +618,11 @@ export const UniversalWorkflowWorkspace: React.FC<{
         requesterId: currentUser?.id || "",
         departmentId: currentUser?.departmentId || "",
       };
-      if (inputNode?.inputConfig?.fields) {
-        for (const field of inputNode.inputConfig.fields) {
-          if (field.defaultValue !== undefined) {
-            initialValues[field.key] = field.defaultValue;
-          } else if (field.type === "CHECKBOX") {
-            initialValues[field.key] = false;
-          }
+      for (const field of (form.version?.sections || []).flatMap((section: any) => section.fields || [])) {
+        if (field.defaultValue !== undefined) {
+          initialValues[field.key] = field.defaultValue;
+        } else if (field.type === "CHECKBOX") {
+          initialValues[field.key] = false;
         }
       }
 
@@ -584,7 +631,10 @@ export const UniversalWorkflowWorkspace: React.FC<{
       setLaunchForm(form);
       setSelectedTemplate(detail);
     } catch (reason: any) {
-      setError(reason.message);
+      const details = Array.isArray(reason.payload?.details)
+        ? reason.payload.details.map((detail: any) => detail.message || detail).join(" ")
+        : "";
+      setError(details ? `${reason.message} ${details}` : reason.message);
       setLaunchRequestType(null);
     }
   };
@@ -615,7 +665,10 @@ export const UniversalWorkflowWorkspace: React.FC<{
       setSelectedTemplate(null);
       setTab("BUILDER");
     } catch (reason: any) {
-      setError(reason.message);
+      const details = Array.isArray(reason.payload?.details)
+        ? reason.payload.details.map((detail: any) => detail.message || detail).join(" ")
+        : "";
+      setError(details ? `${reason.message} ${details}` : reason.message);
     }
   };
 
@@ -681,6 +734,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
       setLaunchRequestType(null);
       setLaunchForm(null);
       setLaunchValues({});
+      setSelectedTemplate(null);
       await load();
       const executionResponse = await fetchWithAuth(
         `/api/orchestration/instances/${result.instance.id}`,
@@ -693,7 +747,10 @@ export const UniversalWorkflowWorkspace: React.FC<{
       setTab("EXECUTIONS");
       onRefreshTickets?.();
     } catch (reason: any) {
-      setError(reason.message);
+      const details = Array.isArray(reason.payload?.details)
+        ? reason.payload.details.map((detail: any) => detail.message || detail).join(" ")
+        : "";
+      setError(details ? `${reason.message} ${details}` : reason.message);
     } finally {
       setLaunching(false);
     }
@@ -818,7 +875,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
       type,
       title: palette?.label || type,
       stageId,
-      position: { x, y },
+      position: snapCanvasPosition(x, y),
       ...(["INPUT", "TICKET_INPUT"].includes(type)
         ? {
             title: "Ticket Input Form",
@@ -855,10 +912,11 @@ export const UniversalWorkflowWorkspace: React.FC<{
             approval: {
               approverSource: "DEPARTMENT_MEMBERS" as const,
               approvalMode: "ANY_ONE" as const,
-              departmentId: currentUser?.departmentId,
+              departmentSource: "REQUESTER_DEPARTMENT" as const,
               commentsMandatoryOnReject: true,
               allowDelegation: true,
               preventSelfApproval: true,
+              escalationSource: "DEPARTMENT_HEAD" as const,
             },
           }
         : {}),
@@ -963,7 +1021,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
         id,
         key: id,
         title: `${source.title} copy`,
-        position: { x: source.position.x + 40, y: source.position.y + 40 },
+        position: snapCanvasPosition(source.position.x + 40, source.position.y + 40),
       };
     });
     commitBuilder({
@@ -982,7 +1040,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
     setSelectedNodeId(copies[0].id);
     setSelectedNodeIds(copies.map((copy) => copy.id));
   };
-  const connectNodes = (sourceNodeId: string, destinationNodeId: string, outcomeHint?: "TRUE" | "FALSE") => {
+  const connectNodes = (sourceNodeId: string, destinationNodeId: string, outcomeHint?: WorkflowBranchOutcome) => {
     if (!builderVersion) return false;
     const source = builderVersion.nodes.find((node) => node.id === sourceNodeId);
     const destination = builderVersion.nodes.find(
@@ -998,7 +1056,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
       return false;
     }
     if (
-      source.type !== "CONDITION" &&
+      !["CONDITION", "APPROVAL"].includes(source.type) &&
       builderVersion.edges.some(
         (edge) =>
           edge.sourceNodeId === sourceNodeId &&
@@ -1014,25 +1072,29 @@ export const UniversalWorkflowWorkspace: React.FC<{
     );
     let outcome: string | undefined;
     let branchLabel: string | undefined;
-    if (source.type === "CONDITION") {
-      if (outcomeHint === "TRUE" && outgoing.some((edge) => edge.outcome === "TRUE")) {
-        setError("The Yes branch is already connected. Select the No branch or remove the existing Yes connection.");
+    if (source.type === "CONDITION" || source.type === "APPROVAL") {
+      const positiveOutcome = source.type === "APPROVAL" ? "APPROVED" : "TRUE";
+      const negativeOutcome = source.type === "APPROVAL" ? "REJECTED" : "FALSE";
+      const positiveLabel = source.type === "APPROVAL" ? "Approved" : "Yes";
+      const negativeLabel = source.type === "APPROVAL" ? "Rejected" : "No";
+      if (outcomeHint === positiveOutcome && outgoing.some((edge) => edge.outcome === positiveOutcome)) {
+        setError(`The ${positiveLabel} branch is already connected. Remove the existing connection first.`);
         return false;
       }
-      if (outcomeHint === "FALSE" && outgoing.some((edge) => edge.outcome === "FALSE")) {
-        setError("The No branch is already connected. Select the Yes branch or remove the existing No connection.");
+      if (outcomeHint === negativeOutcome && outgoing.some((edge) => edge.outcome === negativeOutcome)) {
+        setError(`The ${negativeLabel} branch is already connected. Remove the existing connection first.`);
         return false;
       }
-      if (outcomeHint === "TRUE" || (!outcomeHint && !outgoing.some((edge) => edge.outcome === "TRUE"))) {
-        outcome = "TRUE";
-        branchLabel = "Yes";
-      } else if (outcomeHint === "FALSE" || !outgoing.some((edge) => edge.outcome === "FALSE")) {
-        outcome = "FALSE";
-        branchLabel = "No";
+      if (outcomeHint === positiveOutcome || (!outcomeHint && !outgoing.some((edge) => edge.outcome === positiveOutcome))) {
+        outcome = positiveOutcome;
+        branchLabel = positiveLabel;
+      } else if (outcomeHint === negativeOutcome || !outgoing.some((edge) => edge.outcome === negativeOutcome)) {
+        outcome = negativeOutcome;
+        branchLabel = negativeLabel;
       } else {
-        setError(
-          "A condition can have one True and one False connection. Remove or edit an existing branch first.",
-        );
+        setError(source.type === "APPROVAL"
+          ? "An approval can have one Approved and one Rejected connection. Remove or edit an existing branch first."
+          : "A condition can have one True and one False connection. Remove or edit an existing branch first.");
         return false;
       }
     }
@@ -1053,7 +1115,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
   const beginConnection = (
     event: React.PointerEvent<HTMLButtonElement>,
     nodeId: string,
-    outcome?: "TRUE" | "FALSE",
+    outcome?: WorkflowBranchOutcome,
   ) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1090,10 +1152,10 @@ export const UniversalWorkflowWorkspace: React.FC<{
     if (!builderVersion) return;
     const nodes = builderVersion.nodes.map((item, index) => ({
       ...item,
-      position: {
-        x: 100 + (index % 5) * 240,
-        y: 100 + Math.floor(index / 5) * 150,
-      },
+      position: snapCanvasPosition(
+        100 + (index % 5) * 240,
+        100 + Math.floor(index / 5) * 160,
+      ),
     }));
     commitBuilder({ ...builderVersion, nodes });
   };
@@ -1132,7 +1194,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
         ...structuredClone(source),
         id,
         key: id,
-        position: { x: source.position.x + 60, y: source.position.y + 60 },
+        position: snapCanvasPosition(source.position.x + 60, source.position.y + 60),
       };
     });
     commitBuilder({
@@ -1171,14 +1233,10 @@ export const UniversalWorkflowWorkspace: React.FC<{
           : {
               ...node,
               position: {
-                x:
-                  axis === "VERTICAL"
-                    ? Math.round(anchor / 20) * 20
-                    : Math.round(node.position.x / 20) * 20,
-                y:
-                  axis === "HORIZONTAL"
-                    ? Math.round(anchor / 20) * 20
-                    : Math.round(node.position.y / 20) * 20,
+                ...snapCanvasPosition(
+                  axis === "VERTICAL" ? anchor : node.position.x,
+                  axis === "HORIZONTAL" ? anchor : node.position.y,
+                ),
               },
             },
       ),
@@ -1198,10 +1256,10 @@ export const UniversalWorkflowWorkspace: React.FC<{
       ...builderVersion.nodes.map((node) => node.position.y),
     );
     const maxX = Math.max(
-      ...builderVersion.nodes.map((node) => node.position.x + 180),
+      ...builderVersion.nodes.map((node) => node.position.x + getNodeSize(node.id).width),
     );
     const maxY = Math.max(
-      ...builderVersion.nodes.map((node) => node.position.y + 90),
+      ...builderVersion.nodes.map((node) => node.position.y + getNodeSize(node.id).height),
     );
     const nextZoom = Math.max(
       0.35,
@@ -1214,6 +1272,51 @@ export const UniversalWorkflowWorkspace: React.FC<{
     setZoom(nextZoom);
     setPan({ x: 50 - minX * nextZoom, y: 50 - minY * nextZoom });
   };
+  const focusNodeOnCanvas = (node: WorkflowNodeDefinition) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (rect) {
+      setPan({
+        x: rect.width / 2 - (node.position.x + getNodeSize(node.id).width / 2) * zoom,
+        y: rect.height / 2 - (node.position.y + getNodeSize(node.id).height / 2) * zoom,
+      });
+    }
+    cancelConnection();
+    setSelectedEdgeId("");
+    setSelectedNodeId(node.id);
+    setSelectedNodeIds([node.id]);
+  };
+  const focusSearchResult = () => {
+    if (!nodeSearch.trim()) return;
+    const match = builderVersion?.nodes.find((node) =>
+      node.title.toLocaleLowerCase().includes(nodeSearch.trim().toLocaleLowerCase()),
+    );
+    if (match) focusNodeOnCanvas(match);
+  };
+  const exitFocusMode = () => {
+    setIsFocusMode(false);
+    if (document.fullscreenElement === builderWorkspaceRef.current) {
+      void document.exitFullscreen().catch(() => undefined);
+    }
+  };
+  const toggleFocusMode = () => {
+    if (isFocusMode) {
+      exitFocusMode();
+      return;
+    }
+    setIsFocusMode(true);
+    if (builderWorkspaceRef.current?.requestFullscreen) {
+      void builderWorkspaceRef.current.requestFullscreen().catch(() => undefined);
+    }
+  };
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (document.fullscreenElement !== builderWorkspaceRef.current) {
+        setIsFocusMode(false);
+      }
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
   // Keep the pointer interaction independent of native HTML drag events. This
   // lets an author either drag an output port onto any node or click an output
   // port and then an input port. The edge is committed only after the target
@@ -1256,18 +1359,17 @@ export const UniversalWorkflowWorkspace: React.FC<{
   useEffect(() => {
     if (tab !== "BUILDER") return;
     const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && isFocusMode) {
+        event.preventDefault();
+        exitFocusMode();
+        return;
+      }
       const target = event.target as HTMLElement | null;
       if (target?.matches('input, textarea, select, [contenteditable="true"]'))
         return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
         event.shiftKey ? redo() : undo();
-      } else if (
-        (event.ctrlKey || event.metaKey) &&
-        event.key.toLowerCase() === "s"
-      ) {
-        event.preventDefault();
-        openWorkflowMetadata("SAVE");
       } else if (
         (event.ctrlKey || event.metaKey) &&
         event.key.toLowerCase() === "y"
@@ -1313,6 +1415,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
     history,
     future,
     builderDefinition,
+    isFocusMode,
   ]);
 
   const saveDraft = async (definitionOverride = builderDefinition) => {
@@ -1340,43 +1443,6 @@ export const UniversalWorkflowWorkspace: React.FC<{
       setHistory([]);
       setFuture([]);
       return data;
-    } catch (reason: any) {
-      setError(reason.message);
-      if (reason.preflight) setPreflight(reason.preflight);
-    } finally {
-      setBuilderBusy(false);
-    }
-  };
-  const testWorkflow = async (definitionId = builderDefinition?.id, versionNumber = builderVersion?.version) => {
-    if (!definitionId || !versionNumber) return;
-    setBuilderBusy(true);
-    try {
-      const response = await fetchWithAuth(
-        `/api/orchestration/definitions/${definitionId}/simulate`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            version: versionNumber,
-            context: {
-              summary: "Test Workflow",
-              requesterId: currentUser?.id,
-              employeeId: "test-employee",
-              departmentId: "dept-core",
-              managerId: currentUser?.id,
-              location: "Baku HQ",
-              startDate: "2026-09-01T05:00:00.000Z",
-              remote: true,
-              privilegedRole: true,
-              risk: "HIGH",
-              change: { risk: "HIGH" },
-            },
-          }),
-        },
-      );
-      const data = await apiError(response, "Simulation failed");
-      setSimulation(data.simulation);
-      setPreflight(data.simulation.preflight);
     } catch (reason: any) {
       setError(reason.message);
       if (reason.preflight) setPreflight(reason.preflight);
@@ -1438,8 +1504,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
     const saved = await saveDraft(definition);
     if (!saved) return;
     setBuilderOperation(null);
-    if (operation === "TEST") await testWorkflow(saved.definition.id, saved.version.version);
-    if (operation === "PUBLISH") await publish(saved.definition.id, saved.version.version);
+    await publish(saved.definition.id, saved.version.version);
   };
 
   const selectedNode = builderVersion?.nodes.find(
@@ -1457,11 +1522,39 @@ export const UniversalWorkflowWorkspace: React.FC<{
       ),
     });
   };
-  const visibleNodes =
-    builderVersion?.nodes.filter(
-      (item) =>
-        !nodeSearch || item.title.toLowerCase().includes(nodeSearch.toLowerCase()),
+  const matchingNodes =
+    builderVersion?.nodes.filter((item) =>
+      item.title.toLocaleLowerCase().includes(nodeSearch.trim().toLocaleLowerCase()),
     ) || [];
+  const visibleNodes = builderVersion?.nodes || [];
+
+  useLayoutEffect(() => {
+    const measureNodes = () => {
+      const next = Object.fromEntries(
+        visibleNodes.flatMap((node) => {
+          const element = nodeElementsRef.current[node.id];
+          return element
+            ? [[node.id, { width: element.offsetWidth, height: element.offsetHeight }]]
+            : [];
+        }),
+      ) as Record<string, { width: number; height: number }>;
+      setNodeSizes((current) => {
+        const ids = Object.keys(next);
+        if (ids.length === Object.keys(current).length && ids.every((id) => current[id]?.width === next[id].width && current[id]?.height === next[id].height)) {
+          return current;
+        }
+        return next;
+      });
+    };
+    measureNodes();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measureNodes);
+    visibleNodes.forEach((node) => {
+      const element = nodeElementsRef.current[node.id];
+      if (element) observer.observe(element);
+    });
+    return () => observer.disconnect();
+  }, [visibleNodes.map((node) => node.id).join("|")]);
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-semantic-page text-semantic-primary">
@@ -1484,22 +1577,24 @@ export const UniversalWorkflowWorkspace: React.FC<{
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap xl:self-auto">
-            <button
-              onClick={() => {
-                const workflow = blankWorkflow(currentUser?.id || "");
-                setBuilderDefinition(blankDefinition(currentUser?.id || ""));
-                setBuilderVersion(workflow);
-                setSelectedStageId("stage-main");
-                setSelectedNodeId("node-start");
-                setSelectedNodeIds(["node-start"]);
-                setTab("BUILDER");
-              }}
-              className="wrike-btn-primary h-9 gap-2 whitespace-nowrap px-3.5 text-sm"
-              title="Create a workflow draft"
-            >
-              <Sparkles className="h-4 w-4" />
-              <span>New workflow</span>
-            </button>
+            {canCreateWorkflow && (
+              <button
+                onClick={() => {
+                  const workflow = blankWorkflow(currentUser?.id || "");
+                  setBuilderDefinition(blankDefinition(currentUser?.id || ""));
+                  setBuilderVersion(workflow);
+                  setSelectedStageId("stage-main");
+                  setSelectedNodeId("node-start");
+                  setSelectedNodeIds(["node-start"]);
+                  setTab("BUILDER");
+                }}
+                className="wrike-btn-primary h-9 gap-2 whitespace-nowrap px-3.5 text-sm"
+                title="Create a workflow draft"
+              >
+                <Sparkles className="h-4 w-4" />
+                <span>New workflow</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -1533,7 +1628,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
         </button>
       </nav>
 
-      {error && (
+      {error && !launchRequestType && (
         <div className="mx-6 mt-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
           <AlertCircle className="h-4 w-4" />
           {error}
@@ -1564,7 +1659,10 @@ export const UniversalWorkflowWorkspace: React.FC<{
           onDelete={(item: WorkflowCatalogTemplate) => setTemplatePendingDeletion(item)}
         />
       ) : tab === "BUILDER" ? (
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div
+          ref={builderWorkspaceRef}
+          className={`flex min-h-0 flex-1 flex-col ${isFocusMode ? "fixed inset-0 z-dsDialog h-screen bg-white shadow-2xl" : ""}`}
+        >
           <div className="flex h-12 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-4 text-xs">
             <span className="font-semibold text-slate-500">
               Workflow Catalog
@@ -1598,6 +1696,11 @@ export const UniversalWorkflowWorkspace: React.FC<{
               <option value="COMPANY" disabled={!canCreateCompanyTemplate}>Company template</option>
             </select>
             <div className="ml-auto flex items-center gap-2">
+              {isFocusMode && (
+                <span className="hidden rounded-md bg-emerald-50 px-2 py-1 text-caption font-bold text-emerald-700 sm:inline">
+                  Focus mode · Esc to exit
+                </span>
+              )}
               <button
                 onClick={undo}
                 disabled={!history.length}
@@ -1611,22 +1714,6 @@ export const UniversalWorkflowWorkspace: React.FC<{
                 className="rounded p-1.5 hover:bg-slate-100 disabled:opacity-30"
               >
                 <Undo2 className="h-4 w-4 scale-x-[-1]" />
-              </button>
-              <button
-                onClick={() => openWorkflowMetadata("SAVE")}
-                disabled={builderBusy}
-                className="wrike-btn-secondary flex items-center gap-1.5 px-3 py-1.5"
-              >
-                <Save className="h-3.5 w-3.5" />
-                Save Draft
-              </button>
-              <button
-                onClick={() => openWorkflowMetadata("TEST")}
-                disabled={!builderVersion || builderBusy}
-                className="wrike-btn-secondary flex items-center gap-1.5 px-3 py-1.5"
-              >
-                <TestTube2 className="h-3.5 w-3.5" />
-                Test
               </button>
               <button
                 onClick={() => openWorkflowMetadata("PUBLISH")}
@@ -1755,52 +1842,80 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   );
               }}
             >
-              <div
-                className="absolute inset-0 opacity-60"
-                style={{
-                  backgroundImage:
-                    "radial-gradient(#CBD5E1 1px, transparent 1px)",
-                  backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
-                }}
-              />
+              {isGridVisible && (
+                <div
+                  className="pointer-events-none absolute inset-0 opacity-60"
+                  style={{
+                    backgroundImage:
+                      "radial-gradient(#CBD5E1 1px, transparent 1px)",
+                    backgroundSize: `${CANVAS_GRID_SIZE * zoom}px ${CANVAS_GRID_SIZE * zoom}px`,
+                  }}
+                />
+              )}
               <div className="absolute left-3 top-3 z-dsSticky flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
-                <Search className="ml-1 h-3.5 w-3.5 text-slate-400" />
+                <button
+                  type="button"
+                  onClick={focusSearchResult}
+                  disabled={!nodeSearch.trim() || !matchingNodes.length}
+                  className="ml-0.5 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  title={matchingNodes.length ? `Focus ${matchingNodes.length} matching node${matchingNodes.length === 1 ? "" : "s"}` : "No matching nodes"}
+                  aria-label="Focus matching workflow node"
+                >
+                  <Search className="h-3.5 w-3.5" />
+                </button>
                 <input
                   value={nodeSearch}
                   onChange={(event) => setNodeSearch(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      focusSearchResult();
+                    }
+                  }}
                   placeholder="Find node"
                   className="w-28 border-0 px-1 py-1 text-xs outline-none"
+                  aria-label="Find workflow node"
                 />
                 <button
-                  onClick={autoLayout}
-                  className="rounded p-1.5 hover:bg-slate-100"
-                  title="Auto-layout"
+                  type="button"
+                  onClick={() => setIsGridVisible((visible) => !visible)}
+                  aria-pressed={isGridVisible}
+                  className={`rounded p-1.5 transition-colors ${isGridVisible ? "bg-emerald-50 text-emerald-700" : "text-slate-500 hover:bg-slate-100"}`}
+                  title={isGridVisible ? "Grid and snap are on" : "Show grid and enable snap"}
                 >
                   <Grid3X3 className="h-4 w-4" />
                 </button>
                 <button
+                  type="button"
                   onClick={() => setZoom((value) => Math.min(1.4, value + 0.1))}
                   className="rounded p-1.5 hover:bg-slate-100"
+                  title="Zoom in"
                 >
                   <ZoomIn className="h-4 w-4" />
                 </button>
                 <button
+                  type="button"
                   onClick={() =>
                     setZoom((value) => Math.max(0.45, value - 0.1))
                   }
                   className="rounded p-1.5 hover:bg-slate-100"
+                  title="Zoom out"
                 >
                   <ZoomOut className="h-4 w-4" />
                 </button>
                 <button
-                  onClick={() => setZoom(0.8)}
+                  type="button"
+                  onClick={toggleFocusMode}
                   className="rounded p-1.5 hover:bg-slate-100"
+                  aria-pressed={isFocusMode}
+                  title={isFocusMode ? "Exit focus mode (Esc)" : "Open workflow builder in focus mode"}
                 >
                   <Maximize2 className="h-4 w-4" />
                 </button>
               </div>
               <div className="absolute left-3 top-14 z-dsSticky flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
                 <button
+                  type="button"
                   onClick={copySelection}
                   disabled={!selectedNodeIds.length && !selectedNodeId}
                   className="rounded p-1.5 hover:bg-slate-100 disabled:opacity-30"
@@ -1809,6 +1924,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   <Copy className="h-4 w-4" />
                 </button>
                 <button
+                  type="button"
                   onClick={pasteSelection}
                   disabled={!clipboardNodes.length}
                   className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100 disabled:opacity-30"
@@ -1817,6 +1933,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   Paste
                 </button>
                 <button
+                  type="button"
                   onClick={() => alignSelection("HORIZONTAL")}
                   disabled={selectedNodeIds.length < 2}
                   className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100 disabled:opacity-30"
@@ -1824,6 +1941,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   Align H
                 </button>
                 <button
+                  type="button"
                   onClick={() => alignSelection("VERTICAL")}
                   disabled={selectedNodeIds.length < 2}
                   className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100 disabled:opacity-30"
@@ -1831,10 +1949,19 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   Align V
                 </button>
                 <button
+                  type="button"
                   onClick={fitToScreen}
                   className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100"
                 >
                   Fit
+                </button>
+                <button
+                  type="button"
+                  onClick={autoLayout}
+                  className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100"
+                  title="Arrange nodes on the current grid"
+                >
+                  Arrange
                 </button>
               </div>
               {builderVersion && (
@@ -1853,18 +1980,21 @@ export const UniversalWorkflowWorkspace: React.FC<{
                         (item) => item.id === workflowEdge.destinationNodeId,
                       );
                       if (!from || !to) return null;
-                      const isDecisionEdge = from.type === "CONDITION" && ["TRUE", "FALSE"].includes(workflowEdge.outcome || "");
-                      const isYesBranch = workflowEdge.outcome === "TRUE";
-                      const x1 = from.position.x + 180,
-                        y1 = from.position.y + (isDecisionEdge ? (isYesBranch ? 27 : 63) : 45),
+                      const isBranchEdge = (from.type === "CONDITION" && ["TRUE", "FALSE"].includes(workflowEdge.outcome || ""))
+                        || (from.type === "APPROVAL" && ["APPROVED", "REJECTED"].includes(workflowEdge.outcome || ""));
+                      const isPositiveBranch = workflowEdge.outcome === "TRUE" || workflowEdge.outcome === "APPROVED";
+                      const isApprovalBranch = from.type === "APPROVAL";
+                      const sourcePort = getNodePort(from, workflowEdge.outcome as WorkflowBranchOutcome | undefined);
+                      const x1 = sourcePort.x,
+                        y1 = sourcePort.y,
                         x2 = to.position.x,
-                        y2 = to.position.y + 45;
-                      const edgeStroke = isDecisionEdge
-                        ? isYesBranch ? "#059669" : "#D97706"
+                        y2 = to.position.y + getNodeSize(to.id).height / 2;
+                      const edgeStroke = isBranchEdge
+                        ? isPositiveBranch ? "#059669" : isApprovalBranch ? "#DC2626" : "#D97706"
                         : selectedEdgeId === workflowEdge.id ? "var(--color-brand-500)" : "var(--color-neutral-400)";
-                      const edgeLabel = workflowEdge.branchLabel || (isDecisionEdge ? isYesBranch ? "Yes" : "No" : undefined);
+                      const edgeLabel = workflowEdge.branchLabel || (isBranchEdge ? isPositiveBranch ? (isApprovalBranch ? "Approved" : "Yes") : (isApprovalBranch ? "Rejected" : "No") : undefined);
                       const labelX = x1 + Math.max(44, Math.min(88, (x2 - x1) * 0.32));
-                      const labelY = y1 + (isDecisionEdge ? (isYesBranch ? -13 : 16) : -9);
+                      const labelY = y1 + (isBranchEdge ? (isPositiveBranch ? -13 : 16) : -9);
                       const labelWidth = edgeLabel ? Math.max(34, edgeLabel.length * 6.4 + 18) : 0;
                       return (
                         <g key={workflowEdge.id}>
@@ -1895,8 +2025,8 @@ export const UniversalWorkflowWorkspace: React.FC<{
                           />
                           {edgeLabel && (
                             <g className="pointer-events-none">
-                              <rect x={labelX - labelWidth / 2} y={labelY - 10} width={labelWidth} height="19" rx="9.5" fill="white" stroke={isDecisionEdge ? edgeStroke : "#CBD5E1"} strokeWidth="1" />
-                              <text x={labelX} y={labelY + 3.5} textAnchor="middle" className={isDecisionEdge ? "text-label font-bold" : "fill-slate-500 text-label font-bold"} fill={isDecisionEdge ? edgeStroke : undefined}>{edgeLabel}</text>
+                              <rect x={labelX - labelWidth / 2} y={labelY - 10} width={labelWidth} height="19" rx="9.5" fill="white" stroke={isBranchEdge ? edgeStroke : "#CBD5E1"} strokeWidth="1" />
+                              <text x={labelX} y={labelY + 3.5} textAnchor="middle" className={isBranchEdge ? "text-label font-bold" : "fill-slate-500 text-label font-bold"} fill={isBranchEdge ? edgeStroke : undefined}>{edgeLabel}</text>
                             </g>
                           )}
                         </g>
@@ -1907,8 +2037,9 @@ export const UniversalWorkflowWorkspace: React.FC<{
                         (item) => item.id === connectionDraft.sourceNodeId,
                       );
                       if (!source) return null;
-                      const x1 = source.position.x + 180;
-                      const y1 = source.position.y + (source.type === "CONDITION" && connectionDraft.outcome === "TRUE" ? 27 : source.type === "CONDITION" && connectionDraft.outcome === "FALSE" ? 63 : 45);
+                      const sourcePort = getNodePort(source, connectionDraft.outcome);
+                      const x1 = sourcePort.x;
+                      const y1 = sourcePort.y;
                       const x2 = connectionDraft.x;
                       const y2 = connectionDraft.y;
                       return (
@@ -1941,6 +2072,9 @@ export const UniversalWorkflowWorkspace: React.FC<{
                     return (
                       <div
                         key={workflowNode.id}
+                        ref={(element) => {
+                          nodeElementsRef.current[workflowNode.id] = element;
+                        }}
                         data-workflow-node="true"
                         data-workflow-node-id={workflowNode.id}
                         draggable
@@ -1949,20 +2083,9 @@ export const UniversalWorkflowWorkspace: React.FC<{
                           const rect =
                             canvasRef.current?.getBoundingClientRect();
                           if (!rect || !builderVersion) return;
-                          const x = Math.max(
-                            0,
-                            Math.round(
-                              ((event.clientX - rect.left - pan.x) / zoom -
-                                90) /
-                                20,
-                            ) * 20,
-                          );
-                          const y = Math.max(
-                            0,
-                            Math.round(
-                              ((event.clientY - rect.top - pan.y) / zoom - 45) /
-                                20,
-                            ) * 20,
+                          const { x, y } = snapCanvasPosition(
+                            (event.clientX - rect.left - pan.x) / zoom - getNodeSize(workflowNode.id).width / 2,
+                            (event.clientY - rect.top - pan.y) / zoom - getNodeSize(workflowNode.id).height / 2,
                           );
                           if (
                             selectedNodeIds.length > 1 &&
@@ -1976,10 +2099,10 @@ export const UniversalWorkflowWorkspace: React.FC<{
                                 selectedNodeIds.includes(node.id)
                                   ? {
                                       ...node,
-                                      position: {
-                                        x: Math.max(0, node.position.x + dx),
-                                        y: Math.max(0, node.position.y + dy),
-                                      },
+                                      position: snapCanvasPosition(
+                                        node.position.x + dx,
+                                        node.position.y + dy,
+                                      ),
                                     }
                                   : node,
                               ),
@@ -2055,29 +2178,31 @@ export const UniversalWorkflowWorkspace: React.FC<{
                             )}
                           </div>
                         </div>
-                        {!workflowNode.type.endsWith("_END") && (workflowNode.type === "CONDITION" ? (
+                        {!workflowNode.type.endsWith("_END") && (["CONDITION", "APPROVAL"].includes(workflowNode.type) ? (
                           <>
-                            <span className="pointer-events-none absolute right-4 z-dsContent -translate-y-1/2 rounded bg-emerald-50 px-1.5 py-0.5 text-caption font-bold text-emerald-700" style={{ top: "30%" }}>Yes</span>
+                            <span className={`pointer-events-none absolute right-4 z-dsContent -translate-y-1/2 rounded px-1.5 py-0.5 text-caption font-bold ${workflowNode.type === "APPROVAL" ? "bg-emerald-50 text-emerald-700" : "bg-emerald-50 text-emerald-700"}`} style={{ top: "30%" }}>{workflowNode.type === "APPROVAL" ? "Approved" : "Yes"}</span>
                             <button
                               type="button"
                               data-workflow-output-port="true"
-                              aria-label={`Connect Yes branch from ${workflowNode.title}`}
-                              onPointerDown={(event) => beginConnection(event, workflowNode.id, "TRUE")}
+                              aria-label={`Connect ${workflowNode.type === "APPROVAL" ? "Approved" : "Yes"} branch from ${workflowNode.title}`}
+                              onPointerDown={(event) => beginConnection(event, workflowNode.id, workflowNode.type === "APPROVAL" ? "APPROVED" : "TRUE")}
                               onClick={(event) => event.stopPropagation()}
-                              className={`absolute -right-3 z-dsContent h-6 w-6 -translate-y-1/2 rounded-full border-2 border-white bg-emerald-500 shadow-sm transition hover:scale-110 ${connectionDraft?.sourceNodeId === workflowNode.id && connectionDraft.outcome === "TRUE" ? "ring-2 ring-emerald-200" : ""}`}
+                              className={`absolute -right-3 z-dsContent h-6 w-6 -translate-y-1/2 rounded-full border-2 border-white bg-emerald-500 shadow-sm transition hover:scale-110 ${connectionDraft?.sourceNodeId === workflowNode.id && (connectionDraft.outcome === "TRUE" || connectionDraft.outcome === "APPROVED") ? "ring-2 ring-emerald-200" : ""}`}
                               style={{ top: "30%" }}
-                              title="Yes branch — connect when the rule is true"
+                              title={`${workflowNode.type === "APPROVAL" ? "Approved" : "Yes"} branch — connect to the next node`
+                              }
                             />
-                            <span className="pointer-events-none absolute right-4 z-dsContent -translate-y-1/2 rounded bg-amber-50 px-1.5 py-0.5 text-caption font-bold text-amber-700" style={{ top: "70%" }}>No</span>
+                            <span className={`pointer-events-none absolute right-4 z-dsContent -translate-y-1/2 rounded px-1.5 py-0.5 text-caption font-bold ${workflowNode.type === "APPROVAL" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`} style={{ top: "70%" }}>{workflowNode.type === "APPROVAL" ? "Rejected" : "No"}</span>
                             <button
                               type="button"
                               data-workflow-output-port="true"
-                              aria-label={`Connect No branch from ${workflowNode.title}`}
-                              onPointerDown={(event) => beginConnection(event, workflowNode.id, "FALSE")}
+                              aria-label={`Connect ${workflowNode.type === "APPROVAL" ? "Rejected" : "No"} branch from ${workflowNode.title}`}
+                              onPointerDown={(event) => beginConnection(event, workflowNode.id, workflowNode.type === "APPROVAL" ? "REJECTED" : "FALSE")}
                               onClick={(event) => event.stopPropagation()}
-                              className={`absolute -right-3 z-dsContent h-6 w-6 -translate-y-1/2 rounded-full border-2 border-white bg-amber-500 shadow-sm transition hover:scale-110 ${connectionDraft?.sourceNodeId === workflowNode.id && connectionDraft.outcome === "FALSE" ? "ring-2 ring-amber-200" : ""}`}
+                              className={`absolute -right-3 z-dsContent h-6 w-6 -translate-y-1/2 rounded-full border-2 border-white ${workflowNode.type === "APPROVAL" ? "bg-red-500" : "bg-amber-500"} shadow-sm transition hover:scale-110 ${connectionDraft?.sourceNodeId === workflowNode.id && (connectionDraft.outcome === "FALSE" || connectionDraft.outcome === "REJECTED") ? "ring-2 ring-red-200" : ""}`}
                               style={{ top: "70%" }}
-                              title="No branch — connect when the rule is false"
+                              title={`${workflowNode.type === "APPROVAL" ? "Rejected" : "No"} branch — connect to the next node`
+                              }
                             />
                           </>
                         ) : (
@@ -2099,11 +2224,11 @@ export const UniversalWorkflowWorkspace: React.FC<{
               <div className="absolute bottom-3 left-3 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-caption font-semibold text-slate-500 shadow-sm">
                 {builderVersion?.nodes.length || 0} nodes ·{" "}
                 {builderVersion?.edges.length || 0} edges ·{" "}
-                {Math.round(zoom * 100)}%
+                {Math.round(zoom * 100)}% · {isGridVisible ? "Grid + snap" : "Freeform"}
               </div>
-              {connectionDraft && (
-                <div className="absolute bottom-12 left-3 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-caption font-semibold text-emerald-800 shadow-sm">
-                  Connecting from {builderVersion?.nodes.find((node) => node.id === connectionDraft.sourceNodeId)?.title || "node"}{connectionDraft.outcome === "TRUE" ? " · Yes branch" : connectionDraft.outcome === "FALSE" ? " · No branch" : ""}
+                  {connectionDraft && (
+                    <div className="absolute bottom-12 left-3 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-caption font-semibold text-emerald-800 shadow-sm">
+                  Connecting from {builderVersion?.nodes.find((node) => node.id === connectionDraft.sourceNodeId)?.title || "node"}{connectionDraft.outcome === "TRUE" ? " · Yes branch" : connectionDraft.outcome === "FALSE" ? " · No branch" : connectionDraft.outcome === "APPROVED" ? " · Approved branch" : connectionDraft.outcome === "REJECTED" ? " · Rejected branch" : ""}
                   <button
                     type="button"
                     onClick={cancelConnection}
@@ -2260,6 +2385,21 @@ export const UniversalWorkflowWorkspace: React.FC<{
                 </div>
               )}
             </aside>
+            {builderOperation && (
+              <WorkflowMetadataModal
+                operation={builderOperation}
+                metadata={workflowMetadata}
+                setMetadata={setWorkflowMetadata}
+                error={metadataError}
+                canCreateCompanyTemplate={canCreateCompanyTemplate}
+                canCreateDepartmentTemplate={canCreateDepartmentTemplate}
+                busy={builderBusy}
+                onClose={() => {
+                  if (!builderBusy) setBuilderOperation(null);
+                }}
+                onConfirm={() => void confirmWorkflowMetadata()}
+              />
+            )}
           </div>
         </div>
       ) : tab === "EXECUTIONS" ? (
@@ -2321,27 +2461,16 @@ export const UniversalWorkflowWorkspace: React.FC<{
           currentUser={currentUser}
           values={launchValues}
           setValues={setLaunchValues}
+          error={error}
           onClose={() => {
             setLaunchRequestType(null);
             setLaunchForm(null);
+            setLaunchValues({});
+            setSelectedTemplate(null);
+            setError("");
           }}
           onSubmit={() => void submitLaunch()}
           busy={launching}
-        />
-      )}
-      {builderOperation && (
-        <WorkflowMetadataModal
-          operation={builderOperation}
-          metadata={workflowMetadata}
-          setMetadata={setWorkflowMetadata}
-          error={metadataError}
-          canCreateCompanyTemplate={canCreateCompanyTemplate}
-          canCreateDepartmentTemplate={canCreateDepartmentTemplate}
-          busy={builderBusy}
-          onClose={() => {
-            if (!builderBusy) setBuilderOperation(null);
-          }}
-          onConfirm={() => void confirmWorkflowMetadata()}
         />
       )}
     </div>
@@ -2359,7 +2488,7 @@ const WorkflowMetadataModal = ({
   onClose,
   onConfirm,
 }: any) => {
-  const operationLabel = operation === "SAVE" ? "Save draft" : operation === "TEST" ? "Save and test" : "Save and publish";
+  const operationLabel = "Save and publish";
   const scopes: Array<{ value: TemplateScope; label: string; description: string; enabled: boolean }> = [
     { value: "PERSONAL", label: "User level", description: "Only you can use and manage this workflow.", enabled: true },
     { value: "DEPARTMENT", label: "Department / branch", description: "Available within your department or branch.", enabled: canCreateDepartmentTemplate },
@@ -2539,13 +2668,15 @@ const CatalogView = ({
                   >
                     <Copy className="h-4 w-4" />
                   </button>
-                  <button
-                    onClick={() => onEdit(template)}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
-                    title="Open published definition"
-                  >
-                    <Code2 className="h-4 w-4" />
-                  </button>
+                  {template.canEdit && (
+                    <button
+                      onClick={() => onEdit(template)}
+                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
+                      title="Open published definition"
+                    >
+                      <Code2 className="h-4 w-4" />
+                    </button>
+                  )}
                   {template.canDelete && (
                     <button
                       onClick={() => onDelete(template)}
@@ -2597,7 +2728,7 @@ const TemplatePreview = ({
   onEdit,
   onClone,
 }: any) => (
-  <div className="fixed inset-0 z-dsOverlay flex justify-end bg-slate-950/30 backdrop-blur-[1px]">
+  <div className="fixed inset-0 z-dsDialog flex justify-end bg-slate-950/30 backdrop-blur-[1px]">
     <div className="flex h-full w-[620px] flex-col bg-white shadow-2xl">
       <header className="flex items-start justify-between border-b border-slate-200 p-6">
         <div>
@@ -2639,9 +2770,11 @@ const TemplatePreview = ({
         </div>
       </div>
       <footer className="flex gap-2 border-t border-slate-200 p-4">
-        <button onClick={onEdit} className="wrike-btn-secondary flex-1 py-2">
-          Open in Builder
-        </button>
+        {detail.template.canEdit && (
+          <button onClick={onEdit} className="wrike-btn-secondary flex-1 py-2">
+            Open in Builder
+          </button>
+        )}
         <button onClick={onClone} className="wrike-btn-secondary flex-1 py-2">
           Clone Draft
         </button>
@@ -2660,6 +2793,7 @@ const DynamicIntakeModal = ({
   currentUser,
   values,
   setValues,
+  error,
   onClose,
   onSubmit,
   busy,
@@ -2707,6 +2841,16 @@ const DynamicIntakeModal = ({
             <X className="h-5 w-5" />
           </button>
         </header>
+        {error && (
+          <div
+            className="mx-5 mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+            role="alert"
+            aria-live="polite"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto p-5">
           {sections.map((section: any) => (
             <section key={section.id} className="mb-6">
@@ -2939,22 +3083,24 @@ const DynamicField = ({
           {value ? "Yes" : "No"}
         </button>
       ) : ["SELECT", "RADIO"].includes(field.type) && options?.length ? (
-        <CustomSelect
+        <select
           id={fieldId}
           value={value || ""}
-          onChange={onChange}
-          options={
-            required
-              ? choiceOptions
-              : [{ value: "", label: "No selection" }, ...choiceOptions]
-          }
+          onChange={(event) => onChange(event.target.value)}
           disabled={readOnly}
           required={required}
-          ariaLabelledBy={labelId}
-          placeholder="Select…"
-          searchPlaceholder="Search options…"
-          size="lg"
-        />
+          aria-labelledby={labelId}
+          className="wrike-input min-h-[46px] w-full cursor-pointer text-sm font-semibold"
+        >
+          <option value="" disabled={required}>
+            Select…
+          </option>
+          {choiceOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       ) : field.type === "MULTI_SELECT" &&
         options?.length ? (
         <select
@@ -3697,26 +3843,59 @@ const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRem
     );
   }
   const isHumanNode = ["TASK", "INFORMATION_REQUEST"].includes(node.type);
-  const departmentUsers = directory.users.filter((user: any) => !node.assignment?.departmentId || user.departmentId === node.assignment.departmentId);
-  const approvalDepartmentUsers = directory.users.filter((user: any) => !node.approval?.departmentId || user.departmentId === node.approval.departmentId);
+  const directorySections = directory.sections || [];
+  const assignmentDepartmentId = directoryIdFromOption(node.assignment?.departmentId, "department");
+  const assignmentSectionId = directoryIdFromOption(node.assignment?.sectionId, "section");
+  const approvalDepartmentId = directoryIdFromOption(node.approval?.departmentId, "department");
+  const selectedAssignmentSection = directorySections.find((section: any) => section.id === assignmentSectionId);
+  const departmentUsers = directory.users.filter((user: any) =>
+    assignmentSectionId
+      ? user.sectionId === assignmentSectionId
+      : !assignmentDepartmentId || user.departmentId === assignmentDepartmentId,
+  );
+  const approvalDepartmentSource = node.approval?.departmentSource || "STATIC";
+  const usesDynamicApprovalDepartment = approvalDepartmentSource !== "STATIC";
+  const approvalApproverSource = usesDynamicApprovalDepartment && node.approval?.approverSource === "SPECIFIC_USER"
+    ? "DEPARTMENT_MEMBERS"
+    : node.approval?.approverSource || "DEPARTMENT_MEMBERS";
+  const approvalDepartmentUsers = directory.users.filter((user: any) => approvalDepartmentSource !== "STATIC" || !approvalDepartmentId || user.departmentId === approvalDepartmentId);
   const departmentOptions: SelectOption[] = [
     {
       value: "",
-      label: "All departments / branches",
-      sublabel: "Clear the selected department / branch",
+      label: "No organisational target",
+      sublabel: "Clear the selected department or section",
       badge: "ALL",
     },
-    ...directory.departments.map((department: any) => ({
-      value: department.id,
-      label: department.name,
-      sublabel: department.code ? `Department / branch · ${department.code}` : "Department / branch",
-      badge: department.code,
-    })),
+    ...[...directory.departments]
+      .sort((left: any, right: any) => left.name.localeCompare(right.name, "az"))
+      .flatMap((department: any) => [
+        {
+          value: `department:${department.id}`,
+          label: department.name,
+          sublabel: department.code ? `Department queue · ${department.code}` : "Department queue",
+          badge: department.code,
+        },
+        ...directorySections
+          .filter((section: any) => section.departmentId === department.id)
+          .sort((left: any, right: any) => left.name.localeCompare(right.name, "az"))
+          .map((section: any) => ({
+            value: `section:${section.id}`,
+            label: `↳ ${section.name}`,
+            sublabel: `Section of ${department.name}${section.code ? ` · ${section.code}` : ""}`,
+            badge: section.code || "SECTION",
+          })),
+      ]),
   ];
+  const approvalDepartmentOptions = departmentOptions.filter((option) => option.value === "" || option.value.startsWith("department:"));
+  const assignmentTargetValue = assignmentSectionId
+    ? `section:${assignmentSectionId}`
+    : assignmentDepartmentId
+      ? `department:${assignmentDepartmentId}`
+      : "";
   const employeeOptions: SelectOption[] = departmentUsers.map((user: any) => ({
     value: user.id,
     label: user.fullName,
-    sublabel: [user.title, user.departmentId].filter(Boolean).join(" · "),
+    sublabel: [user.title, selectedAssignmentSection?.name || user.sectionName || user.departmentId].filter(Boolean).join(" · "),
     badge: user.roles?.[0]?.replaceAll("_", " "),
   }));
   const approvalUserOptions: SelectOption[] = approvalDepartmentUsers.map((user: any) => ({
@@ -3825,24 +4004,33 @@ const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRem
     {isHumanNode && (
       <>
         <label className="mb-3 block">
-          <span className="mini-label">Department / branch</span>
+          <span className="mini-label">Department / section</span>
           <CustomSelect
             id={`workflow-node-department-${node.id}`}
-            value={node.assignment?.departmentId || ""}
-            onChange={(departmentId) =>
+            value={assignmentTargetValue}
+            onChange={(target) => {
+              const [kind, id] = target.split(":", 2);
+              const normalizedId = directoryIdFromOption(id, kind === "section" ? "section" : "department");
+              const section = kind === "section" ? directorySections.find((item: any) => item.id === normalizedId) : undefined;
+              const departmentId = kind === "department" ? id : section?.departmentId;
               onChange({
                 assignment: {
                   ...(node.assignment || {}),
-                  departmentId: departmentId || undefined,
+                  departmentId: directoryIdFromOption(departmentId, "department"),
+                  sectionId: section?.id,
+                  groupId: undefined,
                   assigneeId: undefined,
                 },
-              })
-            }
+              });
+            }}
             options={departmentOptions}
-            placeholder="Select department / branch…"
-            searchPlaceholder="Search department or branch…"
+            placeholder="Select department or section…"
+            searchPlaceholder="Search department, section or AD code…"
             className="mt-1"
           />
+          <span className="mt-1 block text-xs leading-4 text-semantic-muted">
+            Sections are active AD-linked units. A section route limits the queue and employee list to that section; a department route keeps the full department queue.
+          </span>
         </label>
         <label className="mb-3 block">
           <span className="mini-label">Assign type</span>
@@ -3858,15 +4046,15 @@ const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRem
         </label>
         {node.assignment?.strategy === "FIXED_PERSON" && (
           <label className="mb-3 block">
-            <span className="mini-label">Department employee</span>
+            <span className="mini-label">Eligible employee</span>
             <CustomSelect
               id={`workflow-node-employee-${node.id}`}
               value={node.assignment?.assigneeId || ""}
               onChange={(assigneeId) => onChange({ assignment: { ...(node.assignment || {}), assigneeId: assigneeId || undefined } })}
               options={employeeOptions}
-              placeholder={node.assignment?.departmentId ? "Select employee…" : "Select a department first…"}
-              searchPlaceholder="Search employee, title or role…"
-              disabled={!node.assignment?.departmentId}
+              placeholder={assignmentDepartmentId ? "Select eligible employee…" : "Select a department or section first…"}
+              searchPlaceholder="Search eligible employee or title…"
+              disabled={!assignmentDepartmentId}
               className="mt-1"
             />
           </label>
@@ -3881,29 +4069,61 @@ const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRem
     {node.type === "APPROVAL" && (
       <>
         <label className="mb-3 block">
-          <span className="mini-label">Department / branch</span>
-          <CustomSelect
-            id={`workflow-approval-department-${node.id}`}
-            value={node.approval?.departmentId || ""}
-            onChange={(departmentId) =>
+          <span className="mini-label">Şöbə / filial mənbəyi</span>
+          <select
+            value={approvalDepartmentSource}
+            onChange={(event) =>
               onChange({
                 approval: {
                   ...node.approval,
-                  departmentId: departmentId || undefined,
+                  departmentSource: event.target.value,
+                  departmentId: undefined,
                   specificUserIds: undefined,
+                  ...(event.target.value !== "STATIC" && node.approval?.approverSource === "SPECIFIC_USER"
+                    ? { approverSource: "DEPARTMENT_MEMBERS" }
+                    : {}),
                 },
               })
             }
-            options={departmentOptions}
-            placeholder="Requester’s department / branch"
-            searchPlaceholder="Search department or branch…"
-            className="mt-1"
-          />
+            className="wrike-input mt-1 w-full"
+          >
+            <option value="STATIC">Sabit şöbə / filial</option>
+            <option value="REQUESTER_DEPARTMENT">Sorğunu yaradanın şöbə / filialı</option>
+            <option value="REQUESTER_PARENT_DEPARTMENT">Sorğunu yaradanın üst şöbəsi</option>
+            <option value="TICKET_DEPARTMENT">Formda seçilən şöbə / filial</option>
+            <option value="TICKET_PARENT_DEPARTMENT">Formda seçilən şöbənin üst şöbəsi</option>
+          </select>
         </label>
+        {approvalDepartmentSource === "STATIC" && (
+          <label className="mb-3 block">
+            <span className="mini-label">Sabit şöbə / filial</span>
+            <select
+              id={`workflow-approval-department-${node.id}`}
+              value={approvalDepartmentId ? `department:${approvalDepartmentId}` : ""}
+              onChange={(event) =>
+                onChange({
+                  approval: {
+                    ...node.approval,
+                    departmentId: directoryIdFromOption(event.target.value, "department"),
+                    specificUserIds: undefined,
+                  },
+                })
+              }
+              className="wrike-input mt-1 w-full cursor-pointer"
+              aria-label="Sabit şöbə və ya filial seçin"
+            >
+              {approvalDepartmentOptions.map((department) => (
+                <option key={department.value} value={department.value}>
+                  {department.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="mb-3 block">
           <span className="mini-label">Assign approval to</span>
           <select
-            value={node.approval?.approverSource || "DEPARTMENT_MEMBERS"}
+            value={approvalApproverSource}
             onChange={(event) =>
               onChange({
                 approval: {
@@ -3918,13 +4138,13 @@ const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRem
           >
             <option value="DEPARTMENT_MEMBERS">Anyone in department / branch</option>
             <option value="DEPARTMENT_HEAD">Department / branch head</option>
-            <option value="SPECIFIC_USER">Specific user</option>
+            {!usesDynamicApprovalDepartment && <option value="SPECIFIC_USER">Specific user</option>}
             {node.approval?.approverSource && !["DEPARTMENT_MEMBERS", "DEPARTMENT_HEAD", "SPECIFIC_USER"].includes(node.approval.approverSource) && (
               <option value={node.approval.approverSource}>{node.approval.approverSource.replaceAll("_", " ")} (legacy)</option>
             )}
           </select>
         </label>
-        {node.approval?.approverSource === "SPECIFIC_USER" && (
+        {!usesDynamicApprovalDepartment && node.approval?.approverSource === "SPECIFIC_USER" && (
           <label className="mb-3 block">
             <span className="mini-label">Specific user</span>
             <CustomSelect
@@ -3953,6 +4173,30 @@ const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRem
             <input value={node.approval?.dynamicPath || ""} onChange={(event) => onChange({ approval: { ...node.approval, dynamicPath: event.target.value } })} className="wrike-input mt-1 w-full" placeholder="currentAssigneeId" />
           </label>
         )}
+        <label className="mb-3 block">
+          <span className="mini-label">Escalation path</span>
+          <select
+            value={node.approval?.escalationSource || ""}
+            onChange={(event) =>
+              onChange({
+                approval: {
+                  ...node.approval,
+                  escalationSource: event.target.value || undefined,
+                },
+              })
+            }
+            className="wrike-input mt-1 w-full"
+          >
+            <option value="">No escalation</option>
+            <option value="DEPARTMENT_HEAD">Department / branch head</option>
+            <option value="REQUESTER_MANAGER">Requester manager</option>
+            <option value="ROLE">Directory role</option>
+            <option value="CAB_BOARD">Governance / CAB board</option>
+          </select>
+          <span className="mt-1 block text-xs leading-4 text-semantic-muted">
+            The selected resolver is added when the approval reaches its timeout.
+          </span>
+        </label>
         <label className="mb-3 block">
           <span className="mini-label">Approval strategy</span>
           <select
@@ -4350,7 +4594,8 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDeci
                   {execution.workItems
                     .filter(
                       (item: any) =>
-                        !["COMPLETED", "CANCELLED"].includes(item.status),
+                        !["COMPLETED", "CANCELLED"].includes(item.status) &&
+                        item.workType !== "APPROVAL_REQUEST",
                     )
                     .map((item: any) => {
                       const isInformationRequest = execution.nodes.some((node: any) => node.id === item.nodeInstanceId && node.nodeType === "INFORMATION_REQUEST");
@@ -4381,7 +4626,8 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDeci
                     })}
                   {!execution.workItems.some(
                     (item: any) =>
-                      !["COMPLETED", "CANCELLED"].includes(item.status),
+                      !["COMPLETED", "CANCELLED"].includes(item.status) &&
+                      item.workType !== "APPROVAL_REQUEST",
                   ) && (
                     <p className="text-xs text-slate-400">
                       No active human work.
@@ -4399,10 +4645,14 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDeci
                         {chain.steps.filter((step: any) => step.status === "PENDING").map((step: any) => (
                           <div key={step.id} className="mt-2 rounded-lg bg-slate-50 p-2">
                             <div className="text-caption text-slate-600">{step.assignedApproverName || step.requiredRole || "Eligible approval queue"}</div>
-                            <div className="mt-2 flex gap-2">
-                              <button onClick={() => onDecision(chain.id, step.id, "APPROVED")} className="flex-1 rounded bg-emerald-600 px-2 py-1.5 text-caption font-bold text-white">Approve</button>
-                              <button onClick={() => onDecision(chain.id, step.id, "REJECTED")} className="flex-1 rounded bg-red-600 px-2 py-1.5 text-caption font-bold text-white">Reject + comment</button>
-                            </div>
+                            {step.canDecide ? (
+                              <div className="mt-2 flex gap-2">
+                                <button onClick={() => onDecision(chain.id, step.id, "APPROVED")} className="flex-1 rounded bg-emerald-600 px-2 py-1.5 text-caption font-bold text-white">Approve</button>
+                                <button onClick={() => onDecision(chain.id, step.id, "REJECTED")} className="flex-1 rounded bg-red-600 px-2 py-1.5 text-caption font-bold text-white">Reject + comment</button>
+                              </div>
+                            ) : (
+                              <div className="mt-2 text-caption text-slate-500">Waiting for the assigned approver.</div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -4509,7 +4759,7 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDeci
       </div>
     )}
     {confirmationItem && (
-      <div className="fixed inset-0 z-dsOverlay flex items-center justify-center bg-slate-950/35 p-4" role="dialog" aria-modal="true" aria-labelledby="task-confirmation-title">
+      <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-slate-950/35 p-4" role="dialog" aria-modal="true" aria-labelledby="task-confirmation-title">
         <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700"><CheckCircle2 className="h-5 w-5" /></div>

@@ -98,7 +98,7 @@ export const LDAPSignInModal: React.FC<LDAPSignInModalProps> = ({ isOpen, onClos
   });
 
   return (
-    <div className="fixed inset-0 z-dsOverlay flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-dsDialog flex items-center justify-center p-4">
       {/* Dark Blur Backdrop */}
       <div
         className="fixed inset-0 bg-semantic-auth-overlay/80 backdrop-blur-md transition-opacity"

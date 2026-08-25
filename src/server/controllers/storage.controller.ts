@@ -5,6 +5,7 @@ import { storageService } from '../services/storage.service.js';
 import { db } from '../db/database.js';
 import { AuditService } from '../services/audit.service.js';
 import { AuthService } from '../services/auth.service.js';
+import { ProjectService } from '../services/project.service.js';
 import { TicketAttachment, EvidenceType } from '../../shared/types/attachment.js';
 
 export class StorageController {
@@ -26,14 +27,8 @@ export class StorageController {
       return;
     }
 
-    // Check ABAC write access
-    const check = AuthService.canAccessResource({
-      user,
-      action: 'WRITE',
-      resourceType: 'TICKET',
-      resource: ticket,
-    });
-
+    const projectWrite = ticket.projectId ? ProjectService.canUseProjectTask(ticket.projectId, ticket, user, 'EDIT') : undefined;
+    const check = projectWrite || AuthService.canAccessResource({ user, action: 'WRITE', resourceType: 'TICKET', resource: ticket });
     if (!check.allowed) {
       res.status(403).json({ success: false, error: check.reason || 'Not authorized to upload artifacts to this ticket' });
       return;
@@ -115,12 +110,9 @@ export class StorageController {
 
     const ticket = db.data.tickets.find((t) => t.id === attachment.ticketId);
     if (ticket) {
-      const check = AuthService.canAccessResource({
-        user,
-        action: 'READ',
-        resourceType: 'TICKET',
-        resource: ticket,
-      });
+      const check = ticket.projectId
+        ? StorageController.projectReadAccess(ticket.projectId, ticket.id, user)
+        : AuthService.canAccessResource({ user, action: 'READ', resourceType: 'TICKET', resource: ticket });
 
       if (!check.allowed) {
         res.status(403).json({ success: false, error: check.reason });
@@ -158,7 +150,9 @@ export class StorageController {
       res.status(404).json({ success: false, error: 'Attachment ticket not found.' });
       return;
     }
-    const check = AuthService.canAccessResource({ user, action: 'READ', resourceType: 'TICKET', resource: ticket });
+    const check = ticket.projectId
+      ? StorageController.projectReadAccess(ticket.projectId, ticket.id, user)
+      : AuthService.canAccessResource({ user, action: 'READ', resourceType: 'TICKET', resource: ticket });
     if (!check.allowed) {
       res.status(403).json({ success: false, error: check.reason || 'Not authorized to download this attachment.' });
       return;
@@ -182,5 +176,14 @@ export class StorageController {
     } catch (error: any) {
       res.status(404).send(error.message || 'File not found');
     }
+  }
+
+  private static projectReadAccess(projectId: string, ticketId: string, user: AuthenticatedRequest['user']): { allowed: boolean; reason?: string } {
+    if (!user) return { allowed: false, reason: 'Authentication required.' };
+    const access = ProjectService.authorize(projectId, user, 'READ');
+    if (!access.allowed) return { allowed: false, reason: access.reason };
+    return ProjectService.visibleTasks(projectId, user).some((ticket) => ticket.id === ticketId)
+      ? { allowed: true }
+      : { allowed: false, reason: 'You are not authorized to access this project task.' };
   }
 }

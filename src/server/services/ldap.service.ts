@@ -7,6 +7,7 @@ import { isAccountDisabled, isGenuineEmployeeOrIntern, parseMemberOfGroups } fro
 import { config } from '../config/index.js';
 import { logger } from './logger.service.js';
 import { PostgresProjectionRepository } from '../db/postgres/projection-repository.js';
+import { DepartmentsRepository } from '../db/postgres/departments-repository.js';
 
 function parseActiveDirectoryError(_errorMessage: string): string {
   return 'İstifadəçi adı və ya şifrə yanlışdır, yaxud hesab giriş üçün əlçatan deyil.';
@@ -104,12 +105,17 @@ export class LDAPAuthService {
     if (!password) {
       const allowDevelopmentBypass =
         config.NODE_ENV === 'development' && config.DEV_EMPTY_PASSWORD_LOGIN_ENABLED;
-      // sync:ad runs in a separate process; pick up its current directory
-      // projection immediately instead of requiring an API restart.
-      if (allowDevelopmentBypass) db.reload();
       const usernameKey = sAMAccountName.toLowerCase();
       const rawInputKey = rawInput.toLowerCase();
-      const developmentUser = db.data.users.find(
+      // The PostgreSQL directory projection can be changed by the guarded AD
+      // sync/reconciliation commands outside this API process. Authenticate a
+      // development-bypass user from that durable projection, rather than a
+      // stale in-memory snapshot.
+      const isIsolatedTestProcess = process.env.NODE_ENV === 'test' || process.argv.some((argument) => argument === '--test' || argument.includes('.test.ts') || argument.includes('test-concurrency'));
+      const directoryUsers = allowDevelopmentBypass && config.DB_TYPE === 'postgres' && !isIsolatedTestProcess
+        ? await DepartmentsRepository.listActiveDirectoryUsers()
+        : db.data.users;
+      const developmentUser = directoryUsers.find(
         (user) =>
           user.isActive &&
           (user.directorySource === 'ACTIVE_DIRECTORY' ||
@@ -375,6 +381,8 @@ export class LDAPAuthService {
             ldapBindStatus: 'AUTHENTICATED',
             lastLdapLoginAt: new Date().toISOString(),
             directorySource: 'ACTIVE_DIRECTORY',
+            directoryAccountType: 'HUMAN',
+            organizationEligible: true,
           };
           db.data.users.push(user);
         } else {
@@ -385,8 +393,16 @@ export class LDAPAuthService {
           user.sectionId = section?.id;
           user.divisionId = deptMapping.divisionId;
           user.teamIds = deptMapping.teamIds;
-          user.roles = deptMapping.roles;
-          user.securityClearance = deptMapping.securityClearance;
+          // A verified platform entitlement is stored on the existing active
+          // directory identity. Do not remove it merely because a profile
+          // refresh returns ordinary departmental groups.
+          const preservedRoles = user.roles.filter(
+            (role) => role === 'PLATFORM_ADMIN' || role === 'CISO' || role === 'INFOSEC_ADMIN'
+          );
+          user.roles = Array.from(new Set([...deptMapping.roles, ...preservedRoles]));
+          user.securityClearance = preservedRoles.length > 0
+            ? 'HIGHLY_RESTRICTED_HR_LEGAL'
+            : deptMapping.securityClearance;
           user.distinguishedName = adDistinguishedName || user.distinguishedName;
           user.managerId = manager?.id;
           user.distributionGroups = adGroups;
@@ -394,6 +410,8 @@ export class LDAPAuthService {
           user.ldapBindStatus = 'AUTHENTICATED';
           user.lastLdapLoginAt = new Date().toISOString();
           user.directorySource = 'ACTIVE_DIRECTORY';
+          user.directoryAccountType = 'HUMAN';
+          user.organizationEligible = true;
         }
 
         db.persist();

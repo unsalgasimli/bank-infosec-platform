@@ -31,7 +31,10 @@ export class OrchestrationError extends Error {
 }
 
 const designerRoles: BankRole[] = ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'IT_ADMIN', 'HR_ADMIN', 'CORE_BANK_ADMIN', 'LEGAL_ADMIN'];
-const companyTemplateRoles: BankRole[] = ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN'];
+// Company-wide workflow creation is reserved for administrative directory
+// roles. Ordinary employees may still create personal and own-department
+// workflows, but cannot publish a company-wide template.
+const companyTemplateRoles: BankRole[] = ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'DEPARTMENT_ADMIN', 'IT_ADMIN', 'HR_ADMIN', 'CORE_BANK_ADMIN', 'LEGAL_ADMIN'];
 const departmentTemplateRoles: BankRole[] = ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'IT_ADMIN', 'HR_ADMIN', 'CORE_BANK_ADMIN', 'LEGAL_ADMIN'];
 
 export class WorkflowOrchestrationService {
@@ -46,11 +49,15 @@ export class WorkflowOrchestrationService {
   private static canUseScope(actor: BankUser, scope: WorkflowDefinition['scope']): boolean {
     if (!this.canDesign(actor)) return false;
     if (scope === 'COMPANY') return this.isCompanyAdmin(actor);
-    if (scope === 'DEPARTMENT') return Boolean(actor.departmentId) && actor.roles.some((role) => departmentTemplateRoles.includes(role));
+    // Every active employee may create a workflow for their own department.
+    // Department/admin roles retain broader edit rights through
+    // canEditDefinition(), while the scope itself remains department-bound.
+    if (scope === 'DEPARTMENT') return Boolean(actor.departmentId);
     return true;
   }
 
   private static canViewDefinition(definition: WorkflowDefinition, actor: BankUser): boolean {
+    if (!actor.isActive) return false;
     if (this.isCompanyAdmin(actor) || definition.scope === 'COMPANY') return true;
     if (definition.scope === 'DEPARTMENT') return Boolean(definition.departmentId && definition.departmentId === actor.departmentId);
     return definition.ownerId === actor.id || definition.maintainerIds.includes(actor.id);
@@ -59,6 +66,25 @@ export class WorkflowOrchestrationService {
   private static canEditDefinition(definition: WorkflowDefinition, actor: BankUser): boolean {
     if (this.isCompanyAdmin(actor) || definition.ownerId === actor.id) return true;
     return definition.scope === 'DEPARTMENT' && definition.departmentId === actor.departmentId && actor.roles.some((role) => departmentTemplateRoles.includes(role));
+  }
+
+  public static canLaunchDefinition(definition: WorkflowDefinition, actor: BankUser): boolean {
+    return this.canViewDefinition(definition, actor);
+  }
+
+  public static assertCanLaunchDefinition(definition: WorkflowDefinition, actor: BankUser): void {
+    if (!this.canLaunchDefinition(definition, actor)) {
+      throw new OrchestrationError('You are not authorized to launch this workflow template.', 403);
+    }
+  }
+
+  public static permissions(actor: BankUser) {
+    return {
+      canCreatePersonal: this.canUseScope(actor, 'PERSONAL'),
+      canCreateDepartment: this.canUseScope(actor, 'DEPARTMENT'),
+      canCreateCompany: this.canUseScope(actor, 'COMPANY'),
+      canLaunchWorkflows: this.canDesign(actor),
+    };
   }
 
   /**
@@ -134,12 +160,17 @@ export class WorkflowOrchestrationService {
       db.transaction(() => {
         this.ensureRuntimeBaseline();
       });
+    } else {
+      // Keep product-owned starter templates current even when the rest of
+      // the orchestration baseline is already present in the database.
+      if (UsbAccessTemplateService.ensureInstalled()) db.persist();
     }
     const templates = this.listCatalog(actor, query).map((template) => {
       const definition = this.getDefinition(template.workflowDefinitionId);
       return {
         ...template,
         canDelete: this.canDesign(actor) && this.canEditDefinition(definition, actor) && this.canUseScope(actor, definition.scope),
+        canEdit: this.canDesign(actor) && this.canEditDefinition(definition, actor) && this.canUseScope(actor, definition.scope),
       };
     });
     const sections = [
@@ -155,12 +186,14 @@ export class WorkflowOrchestrationService {
       })),
       templates,
       requestTypes: db.data.requestTypesV2.filter((requestType) => requestType.isActive),
+      permissions: this.permissions(actor),
     };
   }
 
   public static directoryOptions(actor: BankUser) {
     if (!actor.isActive) throw new OrchestrationError('Inactive users cannot access directory routing options.', 403);
-    const sections = db.data.departmentSections || [];
+    const sections = (db.data.departmentSections || [])
+      .filter((section) => section.isActive !== false && section.directorySource === 'ACTIVE_DIRECTORY');
     const users = db.data.users
       .filter((user) => user.isActive && user.directorySource === 'ACTIVE_DIRECTORY')
       .map((user) => ({ id: user.id, fullName: user.fullName, title: user.title, departmentId: user.departmentId, sectionId: user.sectionId, sectionName: sections.find((section) => section.id === user.sectionId)?.name, teamIds: user.teamIds, roles: user.roles, managerId: user.managerId }));
@@ -173,7 +206,7 @@ export class WorkflowOrchestrationService {
       name: db.data.teams.find((team) => team.id === id)?.name || id.replace(/^team-/, '').replaceAll('-', ' '),
     }));
     const roles = [...new Set(users.flatMap((user) => user.roles))].sort();
-    return { users, departments, sections: sections.filter((section) => section.isActive !== false), groups, roles };
+    return { users, departments, sections, groups, roles };
   }
 
   public static getDefinition(id: string): WorkflowDefinition {
@@ -402,11 +435,29 @@ export class WorkflowOrchestrationService {
   private static validateField(formField: FormFieldDefinition, value: unknown, errors: Array<{ fieldKey: string; message: string }>) {
     if (value == null || value === '') return;
     const validation = formField.validation;
+    if (formField.type === 'DATE') {
+      const dateValue = String(value);
+      const parsed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue);
+      const date = parsed ? new Date(Number(parsed[1]), Number(parsed[2]) - 1, Number(parsed[3])) : null;
+      const validDate = Boolean(
+        date &&
+        date.getFullYear() === Number(parsed?.[1]) &&
+        date.getMonth() === Number(parsed?.[2]) - 1 &&
+        date.getDate() === Number(parsed?.[3]),
+      );
+      if (!validDate) errors.push({ fieldKey: formField.key, message: `${formField.label} must be a valid date.` });
+      const today = new Date();
+      const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const minimum = validation?.min === 'today' ? todayIso : typeof validation?.min === 'string' ? validation.min : undefined;
+      const maximum = validation?.max === 'today' ? todayIso : typeof validation?.max === 'string' ? validation.max : undefined;
+      if (minimum && dateValue < minimum) errors.push({ fieldKey: formField.key, message: `${formField.label} cannot be earlier than today.` });
+      if (maximum && dateValue > maximum) errors.push({ fieldKey: formField.key, message: `${formField.label} cannot be later than ${maximum}.` });
+    }
     if (formField.type === 'NUMBER') {
       const number = Number(value);
       if (!Number.isFinite(number)) errors.push({ fieldKey: formField.key, message: `${formField.label} must be a number.` });
-      if (validation?.min != null && number < validation.min) errors.push({ fieldKey: formField.key, message: `${formField.label} must be at least ${validation.min}.` });
-      if (validation?.max != null && number > validation.max) errors.push({ fieldKey: formField.key, message: `${formField.label} must be at most ${validation.max}.` });
+      if (typeof validation?.min === 'number' && number < validation.min) errors.push({ fieldKey: formField.key, message: `${formField.label} must be at least ${validation.min}.` });
+      if (typeof validation?.max === 'number' && number > validation.max) errors.push({ fieldKey: formField.key, message: `${formField.label} must be at most ${validation.max}.` });
     }
     if (validation?.pattern && !new RegExp(validation.pattern).test(String(value))) errors.push({ fieldKey: formField.key, message: `${formField.label} has an invalid format.` });
     if (validation?.allowedValues && !validation.allowedValues.includes(value)) errors.push({ fieldKey: formField.key, message: `${formField.label} contains an unsupported value.` });
@@ -429,7 +480,10 @@ export class WorkflowOrchestrationService {
         if (!user) {
           assigneeId = undefined;
         } else if (!groupId) {
-          groupId = user.teamIds[0] || user.departmentId;
+          // A person can belong to multiple AD groups.  The user is the
+          // explicit route here, so retain their organisational home instead
+          // of arbitrarily picking the first group in a directory array.
+          groupId = user.departmentId;
         }
       }
       const group = db.data.departments.find((d) => d.id === groupId) || db.data.teams.find((t) => t.id === groupId);
@@ -447,11 +501,14 @@ export class WorkflowOrchestrationService {
     let groupId = configuration.groupId;
     let assigneeId = configuration.assigneeId;
     const requester = db.data.users.find((user) => user.id === requesterId);
+    const selectedSection = configuration.sectionId
+      ? db.data.departmentSections.find((section) => section.id === configuration.sectionId && section.isActive !== false)
+      : undefined;
     if (configuration.strategy === 'REQUESTER_MANAGER') assigneeId = requester?.managerId;
     if (configuration.strategy === 'EMPLOYEE_MANAGER') assigneeId = String(OrchestrationExpressionService.getPath(context, 'managerId') || OrchestrationExpressionService.getPath(context, 'employee.managerId') || '');
     if (configuration.strategy === 'DEPARTMENT_OWNER') {
-      const departmentId = String(configuration.departmentId || OrchestrationExpressionService.getPath(context, 'departmentId') || requester?.departmentId || '');
-      assigneeId = db.data.departments.find((department) => department.id === departmentId)?.managerId;
+      const departmentId = String(configuration.departmentId || selectedSection?.departmentId || OrchestrationExpressionService.getPath(context, 'departmentId') || requester?.departmentId || '');
+      assigneeId = selectedSection?.managerId || db.data.departments.find((department) => department.id === departmentId)?.managerId;
     }
     if (configuration.strategy === 'FIXED_PERSON' && configuration.expressionPath) assigneeId = String(OrchestrationExpressionService.getPath(context, configuration.expressionPath) || configuration.assigneeId || '');
     if (configuration.strategy === 'APPLICATION_OWNER' || configuration.strategy === 'SERVICE_OWNER') {
@@ -474,7 +531,7 @@ export class WorkflowOrchestrationService {
     // it is not backed by a named team. The corresponding authorization paths
     // use the department membership, so designers can safely select “Anyone
     // in this department / branch” from the builder without a hidden team ID.
-    if (configuration.strategy === 'UNASSIGNED_TEAM_QUEUE' && !groupId && configuration.departmentId) groupId = configuration.departmentId;
+    if (configuration.strategy === 'UNASSIGNED_TEAM_QUEUE' && !groupId && (configuration.departmentId || selectedSection?.departmentId)) groupId = configuration.departmentId || selectedSection?.departmentId;
     if (configuration.strategy === 'ON_CALL' && groupId) assigneeId = db.data.teams.find((team) => team.id === groupId)?.leadId;
     if (configuration.strategy === 'SKILL_BASED' && groupId) assigneeId = db.data.users.find((user) => user.isActive && user.teamIds.includes(groupId!))?.id;
     if (configuration.strategy === 'RULE_ENGINE') {
@@ -488,7 +545,7 @@ export class WorkflowOrchestrationService {
       // authenticated requester is deterministic and avoids an invisible,
       // unclaimable owner queue.
       const requesterFallback = db.data.users.find((user) => user.id === requesterId && user.isActive);
-      if (requesterFallback) return { assigneeId: requesterFallback.id, groupId: requesterFallback.teamIds[0] || requesterFallback.departmentId, explanation: `No rule matched; routed to requester ${requesterFallback.fullName}.` };
+      if (requesterFallback) return { assigneeId: requesterFallback.id, groupId: requesterFallback.departmentId, explanation: `No rule matched; routed to requester ${requesterFallback.fullName}.` };
     }
     if (['ROUND_ROBIN', 'LOWEST_WORKLOAD'].includes(configuration.strategy) && groupId) {
       const candidates = db.data.users.filter((user) => user.isActive && user.teamIds.includes(groupId!));
@@ -498,15 +555,16 @@ export class WorkflowOrchestrationService {
     if (assigneeId) {
       const user = db.data.users.find((candidate) => candidate.id === assigneeId && candidate.isActive);
       if (!user) assigneeId = undefined;
-      else if (!groupId) groupId = user.teamIds[0];
+      else if (!groupId) groupId = configuration.departmentId || selectedSection?.departmentId || user.departmentId;
     }
     const group = db.data.teams.find((team) => team.id === groupId) || db.data.departments.find((department) => department.id === groupId);
     const assignee = db.data.users.find((user) => user.id === assigneeId);
     const capability = configuration.capability ? ` using capability “${configuration.capability}”` : '';
+    const destination = selectedSection ? `${selectedSection.name} section` : group?.name;
     const explanation = assignee
-      ? `Assigned to ${assignee.fullName}${group ? ` in ${group.name}` : ''} because node “${node.title}” uses ${configuration.strategy.replaceAll('_', ' ').toLowerCase()}${capability}.`
-      : group
-        ? `Assigned to ${group.name} because node “${node.title}” uses ${configuration.strategy.replaceAll('_', ' ').toLowerCase()}${capability}.`
+      ? `Assigned to ${assignee.fullName}${destination ? ` in ${destination}` : ''} because node “${node.title}” uses ${configuration.strategy.replaceAll('_', ' ').toLowerCase()}${capability}.`
+      : destination
+        ? `Assigned to ${destination} because node “${node.title}” uses ${configuration.strategy.replaceAll('_', ' ').toLowerCase()}${capability}.`
         : `No eligible user or group resolved for node “${node.title}”; it remains in the workflow owner queue.`;
     return { groupId, assigneeId, explanation };
   }
@@ -516,28 +574,56 @@ export class WorkflowOrchestrationService {
     if (!approval) return [];
     let users: BankUser[] = [];
     const requester = db.data.users.find((user) => user.id === requesterId);
-    const approvalDepartmentId = approval.departmentId || String(context.departmentId || '') || requester?.departmentId;
-    if (approval.specificUserIds?.length) users = db.data.users.filter((user) => approval.specificUserIds!.includes(user.id) && user.isActive);
+    const approvalDepartmentId = this.resolveApprovalDepartmentId(approval, context, requester);
+    const usesDynamicDepartment = Boolean(approval.departmentSource && approval.departmentSource !== 'STATIC');
+    // A runtime department route must never be overridden by a saved person ID.
+    // This also keeps legacy drafts safe if they predate the designer restriction.
+    const approverSource = usesDynamicDepartment && approval.approverSource === 'SPECIFIC_USER'
+      ? 'DEPARTMENT_MEMBERS'
+      : approval.approverSource;
+    if (!usesDynamicDepartment && approval.specificUserIds?.length) users = db.data.users.filter((user) => approval.specificUserIds!.includes(user.id) && user.isActive);
     if (!users.length && approval.groupId) users = db.data.users.filter((user) => user.isActive && user.teamIds.includes(approval.groupId!));
-    if (!users.length && approval.approverSource === 'DEPARTMENT_MEMBERS') {
+    if (!users.length && approverSource === 'DEPARTMENT_MEMBERS') {
       users = db.data.users.filter((user) => user.isActive && user.departmentId === approvalDepartmentId);
     }
-    if (!users.length && approval.approverSource === 'DYNAMIC_EXPRESSION' && approval.dynamicPath) {
+    if (!users.length && approverSource === 'DYNAMIC_EXPRESSION' && approval.dynamicPath) {
       const ids = OrchestrationExpressionService.getPath(context, approval.dynamicPath);
       users = db.data.users.filter((user) => user.isActive && (Array.isArray(ids) ? ids.includes(user.id) : ids === user.id));
     }
-    if (!users.length && approval.approverSource === 'MANAGERS_MANAGER') {
+    if (!users.length && approverSource === 'MANAGERS_MANAGER') {
       const requester = db.data.users.find((user) => user.id === requesterId);
       const manager = db.data.users.find((user) => user.id === requester?.managerId);
       users = db.data.users.filter((user) => user.isActive && user.id === manager?.managerId);
     }
     if (!users.length) {
       const ticketLike: any = { requesterId, reporterId: requesterId, departmentId: approvalDepartmentId || '', applicationId: context.applicationId, assetId: context.assetId };
-      const resolver = approval.approverSource === 'APPLICATION_OWNER' || approval.approverSource === 'CI_OWNER' ? (approval.approverSource === 'APPLICATION_OWNER' ? 'SERVICE_OWNER' : 'ASSET_OWNER') : approval.approverSource;
+      const resolver = approverSource === 'APPLICATION_OWNER' || approverSource === 'CI_OWNER' ? (approverSource === 'APPLICATION_OWNER' ? 'SERVICE_OWNER' : 'ASSET_OWNER') : approverSource;
       if (['SPECIFIC_USER', 'ROLE', 'REQUESTER_MANAGER', 'DEPARTMENT_HEAD', 'SERVICE_OWNER', 'ASSET_OWNER', 'CAB_BOARD'].includes(resolver)) users = ApprovalService.resolveApprovers(resolver as any, ticketLike, approval.role);
     }
     if (approval.preventSelfApproval !== false) users = users.filter((user) => user.id !== requesterId);
     return [...new Map(users.map((user) => [user.id, user])).values()];
+  }
+
+  /** Resolve department routing from server-owned request context, never UI labels. */
+  private static resolveApprovalDepartmentId(approval: NonNullable<WorkflowNodeDefinition['approval']>, context: Record<string, unknown>, requester?: BankUser): string | undefined {
+    const contextString = (key: string) => typeof context[key] === 'string' && context[key].trim() ? context[key] as string : undefined;
+    const requesterContext = typeof context.requester === 'object' && context.requester !== null ? context.requester as Record<string, unknown> : {};
+    const requesterSectionId = requester?.sectionId || (typeof requesterContext.sectionId === 'string' ? requesterContext.sectionId : undefined);
+    const sectionParent = (sectionId?: string) => sectionId ? db.data.departmentSections.find((section) => section.id === sectionId && section.isActive !== false)?.departmentId : undefined;
+
+    switch (approval.departmentSource || 'STATIC') {
+      case 'REQUESTER_DEPARTMENT':
+        return requester?.departmentId || (typeof requesterContext.departmentId === 'string' ? requesterContext.departmentId : undefined) || contextString('departmentId');
+      case 'REQUESTER_PARENT_DEPARTMENT':
+        return sectionParent(requesterSectionId) || requester?.departmentId || (typeof requesterContext.departmentId === 'string' ? requesterContext.departmentId : undefined);
+      case 'TICKET_DEPARTMENT':
+        return contextString('targetDepartmentId') || contextString('departmentId');
+      case 'TICKET_PARENT_DEPARTMENT':
+        return sectionParent(contextString('targetSectionId') || contextString('sectionId')) || contextString('targetDepartmentId') || contextString('departmentId');
+      case 'STATIC':
+      default:
+        return approval.departmentId || contextString('departmentId') || requester?.departmentId;
+    }
   }
 
   public static resolvePriority(policySetId: string, context: Record<string, unknown>) {
@@ -671,7 +757,21 @@ export class WorkflowOrchestrationService {
         db.data.workflowDefinitions.push(definition);
       }
       const nextVersion = Math.max(0, ...db.data.workflowVersions.filter((item) => item.workflowDefinitionId === definition.id).map((item) => item.version)) + 1;
-      const payload = { ...input.version, status: 'DRAFT' as const };
+      const payload = {
+        ...input.version,
+        status: 'DRAFT' as const,
+        nodes: input.version.nodes.map((node) => {
+          if (node.type !== 'APPROVAL' || !node.approval?.departmentSource || node.approval.departmentSource === 'STATIC') return node;
+          const { specificUserIds: _specificUserIds, ...approval } = node.approval;
+          return {
+            ...node,
+            approval: {
+              ...approval,
+              ...(approval.approverSource === 'SPECIFIC_USER' ? { approverSource: 'DEPARTMENT_MEMBERS' as const } : {}),
+            },
+          };
+        }),
+      };
       const checksum = `sha256-${crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex')}`;
       const snapshot: WorkflowVersion = { ...payload, id: `${definition.id}-v${nextVersion}`, workflowDefinitionId: definition.id, version: nextVersion, checksum, createdAt: new Date().toISOString(), createdByUserId: actor.id };
       db.data.workflowVersions.push(snapshot);

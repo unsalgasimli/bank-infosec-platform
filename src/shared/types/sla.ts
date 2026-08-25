@@ -11,6 +11,7 @@ export interface SLAPolicy {
   id: string;
   name: string;
   description: string;
+  isActive?: boolean;
   isDefault: boolean;
   businessHoursOnly: boolean;
   businessStartTime: string; // "09:00"
@@ -19,6 +20,8 @@ export interface SLAPolicy {
   excludeWeekends: boolean;
   excludeHolidays: boolean;
   thresholds: Record<TechnicalSeverity, SLAMetricThresholds>;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface SLACalculationResult {

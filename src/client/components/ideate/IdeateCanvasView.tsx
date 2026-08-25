@@ -453,7 +453,7 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
 
       {/* Add Idea Modal */}
       {isAddingIdea && (
-        <div className="fixed inset-0 bg-semantic-primary/50 backdrop-blur-sm flex items-center justify-center z-dsOverlay p-4">
+        <div className="fixed inset-0 bg-semantic-primary/50 backdrop-blur-sm flex items-center justify-center z-dsDialog p-4">
           <div className="w-full max-w-md bg-semantic-panel rounded-xl border border-semantic-surface-alt shadow-wrike-lg p-5 space-y-4">
             <div className="flex items-center justify-between border-b border-semantic-surface-alt pb-2.5">
               <div className="flex items-center gap-2">

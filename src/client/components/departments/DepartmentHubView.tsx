@@ -368,7 +368,7 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
 
       {/* Create Department Modal (Super Admin) */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-dsOverlay flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-4">
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-4">
           <div className="bg-semantic-panel border border-semantic-border rounded-2xl max-w-xl w-full p-6 space-y-5 shadow-2xl animate-scale-in">
             <div className="flex items-center justify-between border-b border-semantic-border pb-3.5">
               <div className="flex items-center gap-2.5">

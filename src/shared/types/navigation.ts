@@ -1,6 +1,6 @@
 import { BankRole, BankUser } from './auth.js';
 
-export type ViewMode = 'spreadsheet' | 'kanban' | 'gantt' | 'calendar' | 'capacity';
+export type ViewMode = 'spreadsheet' | 'kanban' | 'capacity';
 
 export type NavigationModuleId =
   | 'my-work'
@@ -123,33 +123,33 @@ export const NAVIGATION_MODULES: NavigationModule[] = [
     id: 'work-management',
     label: 'Work Management',
     iconName: 'Briefcase',
-    allowedRoles: [
-      'PLATFORM_ADMIN',
-      'INFOSEC_ADMIN',
-      'CISO',
-      'INFOSEC_MANAGER',
-      'DEPARTMENT_ADMIN',
-      'DEPARTMENT_MANAGER',
-      'TEAM_LEAD',
-      'IT_ADMIN',
-      'CORE_BANK_ADMIN',
-      'SECURITY_ANALYST',
-      'SOC_ANALYST',
-      'APPSEC_ANALYST',
-      'VULN_ANALYST',
-      'GRC_ANALYST',
-      'DLP_ANALYST',
-      'AUDITOR',
-    ],
     items: [
       {
         id: 'projects-tasks',
         label: 'Projects & Tasks',
         moduleId: 'work-management',
         iconName: 'Layers',
+        allowedRoles: [
+          'PLATFORM_ADMIN',
+          'INFOSEC_ADMIN',
+          'CISO',
+          'INFOSEC_MANAGER',
+          'DEPARTMENT_ADMIN',
+          'DEPARTMENT_MANAGER',
+          'TEAM_LEAD',
+          'IT_ADMIN',
+          'CORE_BANK_ADMIN',
+          'SECURITY_ANALYST',
+          'SOC_ANALYST',
+          'APPSEC_ANALYST',
+          'VULN_ANALYST',
+          'GRC_ANALYST',
+          'DLP_ANALYST',
+          'AUDITOR',
+        ],
         supportsViewSwitcher: true,
         defaultViewMode: 'spreadsheet',
-        description: 'Unified cross-functional task spreadsheet, Kanban board, Gantt schedule, and capacity view.',
+        description: 'Unified cross-functional task spreadsheet, Kanban board, and capacity view.',
       },
       {
         id: 'workflows',
@@ -468,9 +468,9 @@ export function resolveLegacyRoute(route: string): { destinationId: DestinationI
     case 'board':
       return { destinationId: 'projects-tasks', viewMode: 'kanban' };
     case 'gantt':
-      return { destinationId: 'projects-tasks', viewMode: 'gantt' };
+      return { destinationId: 'projects-tasks', viewMode: 'spreadsheet' };
     case 'calendar':
-      return { destinationId: 'projects-tasks', viewMode: 'calendar' };
+      return { destinationId: 'projects-tasks', viewMode: 'spreadsheet' };
     case 'workload':
       return { destinationId: 'projects-tasks', viewMode: 'capacity' };
 

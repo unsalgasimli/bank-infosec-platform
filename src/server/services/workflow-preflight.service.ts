@@ -8,6 +8,7 @@ export class WorkflowPreflightService {
     return validateWorkflowPreflight(version, {
       actor,
       departments: db.data.departments,
+      sections: db.data.departmentSections,
       users: db.data.users,
       teams: db.data.teams,
       connectorDefinitions: db.data.connectorDefinitions,

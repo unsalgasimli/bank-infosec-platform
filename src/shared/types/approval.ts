@@ -33,6 +33,8 @@ export interface ApprovalStep {
   quorumCount?: number;
   quorumPercentage?: number;
   deadlineAt?: string;
+  /** Server-calculated for the authenticated viewer; never persisted. */
+  canDecide?: boolean;
   escalationUserId?: string;
   requiresReapprovalOnChange?: boolean;
 }

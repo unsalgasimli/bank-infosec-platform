@@ -16,6 +16,8 @@ import {
   normalizeDirectoryKey,
   LDAP_NON_HUMAN_ACCOUNT_FILTERS,
   isServiceAccount,
+  classifyDirectoryAccount,
+  hasHumanDirectoryName,
   getDepartmentColor,
   getDepartmentIcon,
 } from './ldap-directory.data.js';
@@ -27,6 +29,9 @@ export const LDAP_HUMAN_ACCOUNT_FILTER = [
   '(!(userAccountControl:1.2.840.113556.1.4.803:=2))',
   '(!(sAMAccountName=*$))',
   ...LDAP_NON_HUMAN_ACCOUNT_FILTERS,
+  '(!(sAMAccountName=*.si))',
+  '(!(sAMAccountName=*.sec))',
+  '(!(sAMAccountName=*.abs))',
   ')',
 ].join('');
 
@@ -85,6 +90,13 @@ export class LDAPSyncService {
 
   public static isServiceAccount(entry: LDAPRawEntry): boolean {
     return isServiceAccount(entry);
+  }
+
+  /** A title/group cannot turn a technical identity into an organisation member. */
+  private static isOrganizationEligible(user: BankUser): boolean {
+    return user.organizationEligible !== false &&
+      classifyDirectoryAccount(user) === 'HUMAN' &&
+      hasHumanDirectoryName(user);
   }
 
   /**
@@ -309,7 +321,18 @@ export class LDAPSyncService {
     const uniqueUsers: BankUser[] = [];
     const idRemap = new Map<string, string>(); // oldId -> canonicalId
 
-    for (const u of users) {
+    const canonicalScore = (user: BankUser): number =>
+      (user.directorySource === 'ACTIVE_DIRECTORY' ? 16 : 0) +
+      (user.isActive ? 8 : 0) +
+      (user.organizationEligible !== false ? 4 : 0) +
+      (user.sAMAccountName ? 2 : 0) +
+      (user.distinguishedName ? 1 : 0);
+
+    // Current AD identities win over stale local variants irrespective of
+    // storage order, e.g. a legacy `firstname` versus `f.surname` account.
+    const orderedUsers = [...users].sort((left, right) => canonicalScore(right) - canonicalScore(left));
+
+    for (const u of orderedUsers) {
       // Canonicalize persisted identity columns before uniqueness checks.
       // This keeps username/sAMAccountName/email stable across AD casing and
       // Unicode/whitespace variants.
@@ -324,6 +347,12 @@ export class LDAPSyncService {
             .filter(Boolean)
         )
       );
+      // A verified full name is a stable reconciliation key across legacy
+      // username formats. Technical identities never receive this key.
+      const nameKey = hasHumanDirectoryName(u)
+        ? normalizeDirectoryText(u.fullName || '').split(/[\s,]+/).map(normalizeDirectoryKey).filter(Boolean).join(' ')
+        : '';
+      if (nameKey) identityKeys.push(`person:${nameKey}`);
       const lookupKey = identityKeys[0] || '';
 
       if (!lookupKey) {
@@ -387,6 +416,42 @@ export class LDAPSyncService {
           dept.adminUserIds = Array.from(new Set(dept.adminUserIds.map((id) => idRemap.get(id) || id)));
         }
       }
+
+      for (const section of db.data.departmentSections || []) {
+        if (section.managerId && idRemap.has(section.managerId)) section.managerId = idRemap.get(section.managerId)!;
+      }
+
+      // Preserve every existing workflow, evidence, project, and ticket link
+      // when two directory identities collapse into one canonical employee.
+      // Only known user-reference fields are rewritten; ordinary string data
+      // and business record IDs are left untouched.
+      const scalarUserReferences = new Set([
+        'managerId', 'leadId', 'ownerId', 'assigneeId', 'reporterId',
+        'requesterId', 'securityOwnerId', 'userId', 'authorId', 'createdBy',
+        'updatedBy', 'createdByUserId', 'assignedTo', 'assignedToUserId',
+        'approverId', 'assignedUserId', 'sponsorId',
+      ]);
+      const arrayUserReferences = new Set([
+        'watcherIds', 'adminUserIds', 'approverIds', 'userIds', 'memberIds',
+        'assigneeIds', 'ownerIds', 'participantIds', 'recipientIds',
+      ]);
+      const remapUserReferences = (value: unknown): void => {
+        if (!value || typeof value !== 'object') return;
+        if (Array.isArray(value)) {
+          for (const item of value) remapUserReferences(item);
+          return;
+        }
+        for (const [field, current] of Object.entries(value as Record<string, unknown>)) {
+          if (scalarUserReferences.has(field) && typeof current === 'string' && idRemap.has(current)) {
+            (value as Record<string, unknown>)[field] = idRemap.get(current)!;
+          } else if (arrayUserReferences.has(field) && Array.isArray(current)) {
+            (value as Record<string, unknown>)[field] = Array.from(new Set(current.map((item) => typeof item === 'string' ? idRemap.get(item) || item : item)));
+          } else {
+            remapUserReferences(current);
+          }
+        }
+      };
+      for (const collection of Object.values(db.data)) remapUserReferences(collection);
 
       if (options.persist !== false) db.persist();
       logger.info({ removedCount, duplicateUsernames }, 'Deduplication completed: purged duplicate users and fixed foreign key references');
@@ -463,6 +528,19 @@ export class LDAPSyncService {
     // changes commit together. A failed sync therefore leaves the previous
     // durable directory projection untouched.
     db.transaction(() => {
+      // Historical technical/service entries remain available for audit, but
+      // can never stay active in the employee hierarchy or assignment queues.
+      for (const user of db.data.users || []) {
+        if (user.directorySource !== 'ACTIVE_DIRECTORY') continue;
+        const accountType = classifyDirectoryAccount(user);
+        user.directoryAccountType = accountType;
+        user.organizationEligible = accountType === 'HUMAN';
+        if (accountType !== 'HUMAN') {
+          user.isActive = false;
+          user.managerId = undefined;
+          user.sectionId = undefined;
+        }
+      }
       const dedupPre = this.deduplicateUsers({ persist: false });
       report.duplicatesRemovedCount += dedupPre.removedCount;
       report.duplicateUsernames.push(...dedupPre.duplicateUsernames);
@@ -471,6 +549,18 @@ export class LDAPSyncService {
       const ldapUsernamesSeen = new Set<string>();
       const syncedDepartmentIds = new Set<string>();
       const syncedSectionIds = new Set<string>();
+
+      const ensureDivision = (divisionId: string): void => {
+        if (db.data.divisions.some((division) => division.id === divisionId)) return;
+        const divisionNames: Record<string, { name: string; code: string }> = {
+          'div-sec': { name: 'İnformasiya Təhlükəsizliyi', code: 'INFOSEC' },
+          'div-it': { name: 'İnformasiya Texnologiyaları', code: 'IT' },
+          'div-hr': { name: 'İnsan Resursları', code: 'HR' },
+          'div-banking': { name: 'Bank əməliyyatları və biznes', code: 'BANKING' },
+        };
+        const division = divisionNames[divisionId] || { name: divisionId, code: divisionId.replace(/^div-/, '').toUpperCase() };
+        db.data.divisions.push({ id: divisionId, ...division });
+      };
 
     // 3. Process each genuine LDAP User
     for (const entry of validLdapEntries) {
@@ -502,6 +592,7 @@ export class LDAPSyncService {
       const targetDeptId = deptMapping.departmentId;
       const targetDeptName = deptMapping.departmentName;
       syncedDepartmentIds.add(targetDeptId);
+      ensureDivision(deptMapping.divisionId);
 
       // Auto-register or refresh department in db.data.departments
       let deptRecord = (db.data.departments || []).find((d) => d.id === targetDeptId);
@@ -534,18 +625,14 @@ export class LDAPSyncService {
         };
         db.data.departments.push(deptRecord);
       } else {
-        // Refresh department name and code if it was previously corrupted or generic
-        if (
-          targetDeptName &&
-          targetDeptName !== 'Ümumi Bank Xidmətləri və Əməliyyatlar' &&
-          deptRecord.name === 'Ümumi Bank Xidmətləri və Əməliyyatlar'
-        ) {
-          deptRecord.name = targetDeptName;
-          deptRecord.code = deptMapping.departmentCode;
-          deptRecord.color = getDepartmentColor(targetDeptName);
-          deptRecord.icon = getDepartmentIcon(targetDeptName);
-          deptRecord.divisionId = deptMapping.divisionId;
-        }
+        // AD title/OU routing is the source of truth for its organisational
+        // records, including records created by an older generic mapping.
+        deptRecord.name = targetDeptName;
+        deptRecord.code = deptMapping.departmentCode;
+        deptRecord.color = getDepartmentColor(targetDeptName);
+        deptRecord.icon = getDepartmentIcon(targetDeptName);
+        deptRecord.divisionId = deptMapping.divisionId;
+        deptRecord.updatedAt = new Date().toISOString();
       }
       deptRecord.directorySource = 'ACTIVE_DIRECTORY';
       deptRecord.isActive = true;
@@ -632,6 +719,8 @@ export class LDAPSyncService {
           ldapBindStatus: 'BOUND',
           lastLdapLoginAt: new Date().toISOString(),
           directorySource: 'ACTIVE_DIRECTORY',
+          directoryAccountType: 'HUMAN',
+          organizationEligible: true,
         };
 
         db.data.users.push(newUser);
@@ -673,14 +762,19 @@ export class LDAPSyncService {
           existingUser.sectionId = userSectionId;
         }
 
-        // Preserve special platform admin roles if assigned
+        // Platform entitlement is deliberately retained from the server-side
+        // directory projection. A normal profile refresh must never silently
+        // downgrade an explicitly authorized platform administrator.
         const preservedRoles: BankRole[] = [];
         if (existingUser.roles?.includes('PLATFORM_ADMIN')) preservedRoles.push('PLATFORM_ADMIN');
         if (existingUser.roles?.includes('CISO')) preservedRoles.push('CISO');
+        if (existingUser.roles?.includes('INFOSEC_ADMIN')) preservedRoles.push('INFOSEC_ADMIN');
         existingUser.roles = Array.from(new Set([...userRoles, ...preservedRoles]));
 
         existingUser.teamIds = userTeams;
-        existingUser.securityClearance = userClearance;
+        existingUser.securityClearance = preservedRoles.length > 0
+          ? 'HIGHLY_RESTRICTED_HR_LEGAL'
+          : userClearance;
 
         // Account status synchronization (Added / Disabled users fix)
         if (existingUser.isActive && !targetIsActive) {
@@ -709,6 +803,8 @@ export class LDAPSyncService {
         existingUser.ldapDomain = config.LDAP_DOMAIN;
         existingUser.ldapBindStatus = 'BOUND';
         existingUser.directorySource = 'ACTIVE_DIRECTORY';
+        existingUser.directoryAccountType = 'HUMAN';
+        existingUser.organizationEligible = true;
 
         if (changes.length > 0) {
           report.updatedCount++;
@@ -721,7 +817,7 @@ export class LDAPSyncService {
       }
     }
 
-    // Resolve the AD `manager` DN only after every user has been upserted.
+    // Resolve the AD `manager` DN only after every human user has been upserted.
     const userByDn = new Map(
       db.data.users
         .filter((user) => user.distinguishedName)
@@ -735,16 +831,14 @@ export class LDAPSyncService {
       const managerDn = normalizeDirectoryKey(entry.manager);
       if (!managerDn) continue;
       const manager = userByDn.get(managerDn);
-      employee.managerId = manager?.id;
-      if (manager && manager.departmentId === employee.departmentId) {
-        const department = db.data.departments.find((item) => item.id === employee.departmentId);
-        if (department && !department.managerId) department.managerId = manager.id;
-      }
+      employee.managerId = manager && this.isOrganizationEligible(manager) ? manager.id : undefined;
     }
 
-    // Direct Leadership Resolution (Assign department.managerId based on explicit Head / Müdir titles)
+    // Derive department and section leadership from AD manager relations
+    // first, then explicit Head/Müdir titles. This mirrors AD Properties.
     for (const dept of db.data.departments || []) {
-      const deptMembers = db.data.users.filter((u) => u.departmentId === dept.id && u.isActive);
+      const deptMembers = db.data.users.filter((u) => u.departmentId === dept.id && u.isActive && this.isOrganizationEligible(u));
+      const directManager = deptMembers.find((candidate) => deptMembers.some((member) => member.managerId === candidate.id));
       const headUser = deptMembers.find(
         (u) =>
           u.roles.includes('INFOSEC_MANAGER') ||
@@ -752,11 +846,10 @@ export class LDAPSyncService {
           u.roles.includes('CISO') ||
           /müdir|mudir|direktor|director|rəis|reis|sədr|head|manager/i.test(u.title || '')
       );
-      if (headUser && (!dept.managerId || !db.data.users.some((u) => u.id === dept.managerId && u.departmentId === dept.id))) {
-        dept.managerId = headUser.id;
-      }
-      if (headUser && (!dept.adminUserIds || !dept.adminUserIds.includes(headUser.id))) {
-        dept.adminUserIds = Array.from(new Set([...(dept.adminUserIds || []), headUser.id]));
+      const resolvedDepartmentManager = headUser || directManager;
+      if (dept.directorySource === 'ACTIVE_DIRECTORY') dept.managerId = resolvedDepartmentManager?.id;
+      if (resolvedDepartmentManager) {
+        dept.adminUserIds = Array.from(new Set([...(dept.adminUserIds || []), resolvedDepartmentManager.id]));
       }
     }
 
@@ -765,7 +858,11 @@ export class LDAPSyncService {
         section.isActive = false;
         section.updatedAt = new Date().toISOString();
       }
-      section.memberCount = db.data.users.filter((user) => user.sectionId === section.id && user.isActive).length;
+      const sectionMembers = db.data.users.filter((user) => user.sectionId === section.id && user.isActive && this.isOrganizationEligible(user));
+      const directManager = sectionMembers.find((candidate) => sectionMembers.some((member) => member.managerId === candidate.id));
+      const titleManager = sectionMembers.find((candidate) => /müdir|mudir|direktor|director|rəis|reis|sədr|head|manager/i.test(candidate.title || ''));
+      section.managerId = titleManager?.id || directManager?.id;
+      section.memberCount = sectionMembers.length;
     }
 
     // 4. Safe Account Lifecycle Synchronization with Circuit-Breaker Protection
@@ -811,19 +908,30 @@ export class LDAPSyncService {
       }
     }
 
-    // 7. Update Department member counts in db.data.departments
-    for (const dept of db.data.departments || []) {
-      const activeCount = db.data.users.filter((u) => u.departmentId === dept.id && u.isActive).length;
-      dept.memberCount = activeCount || dept.memberCount || 0;
+    // 7. Repair orphaned historical identities before recalculating counts.
+    // A user without a department cannot be safely queued, assigned, or
+    // authorized by department scope. Keep the account for audit, but place it
+    // in the live general-banking fallback until the next AD projection maps it.
+    const fallbackDepartmentId = db.data.departments.find((dept) => dept.id === 'dept-general-banking')?.id || db.data.departments[0]?.id;
+    if (fallbackDepartmentId) {
+      for (const user of db.data.users) {
+        if (!user.departmentId) user.departmentId = fallbackDepartmentId;
+      }
     }
 
-    // 8. Commit the complete directory projection atomically.
+    // 8. Update Department member counts in db.data.departments
+    for (const dept of db.data.departments || []) {
+      const activeCount = db.data.users.filter((u) => u.departmentId === dept.id && u.isActive && this.isOrganizationEligible(u)).length;
+      dept.memberCount = activeCount;
+    }
+
+    // 9. Commit the complete directory projection atomically.
     });
 
     report.executionDurationMs = Date.now() - startTime;
     this.lastSyncReport = report;
 
-    // 9. Log Audit Event
+    // 10. Log Audit Event
     AuditService.log({
       actor: options.actor || db.data.users.find((u) => u.roles.includes('CISO')) || db.data.users[0],
       action: 'LDAP_AUTH_SUCCESS',

@@ -25,7 +25,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
   };
 
   return (
-    <div className="fixed inset-0 z-dsOverlay flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
+    <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
       <div className="bg-semantic-panel border border-semantic-jira-border rounded-lg shadow-2xl w-full max-w-md overflow-hidden">
         {/* Modal Header */}
         <div className="p-4 border-b border-semantic-jira-border flex items-center justify-between bg-semantic-jira-surface">

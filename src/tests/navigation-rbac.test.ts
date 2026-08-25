@@ -113,9 +113,12 @@ test('🛡️ Enterprise Banking ITSM/GRC Navigation & RBAC Test Suite', async (
     }
   });
 
-  await t.test('3. RBAC: Standard Employee sees only My Work & Knowledge', () => {
+  await t.test('3. RBAC: Standard Employee can launch workflows but not manage project work', () => {
     assert.strictEqual(canUserAccessModule(employeeUser, 'my-work'), true);
     assert.strictEqual(canUserAccessModule(employeeUser, 'knowledge'), true);
+    assert.strictEqual(canUserAccessModule(employeeUser, 'work-management'), true);
+    assert.strictEqual(canUserAccessDestination(employeeUser, 'workflows'), true);
+    assert.strictEqual(canUserAccessDestination(employeeUser, 'projects-tasks'), false);
 
     // Should NOT have access to restricted modules
     assert.strictEqual(canUserAccessModule(employeeUser, 'administration'), false);
@@ -138,9 +141,9 @@ test('🛡️ Enterprise Banking ITSM/GRC Navigation & RBAC Test Suite', async (
   await t.test('5. Legacy routes resolve cleanly to canonical destinations and view modes', () => {
     assert.deepStrictEqual(resolveLegacyRoute('table'), { destinationId: 'projects-tasks', viewMode: 'spreadsheet' });
     assert.deepStrictEqual(resolveLegacyRoute('board'), { destinationId: 'projects-tasks', viewMode: 'kanban' });
-    assert.deepStrictEqual(resolveLegacyRoute('gantt'), { destinationId: 'projects-tasks', viewMode: 'gantt' });
+    assert.deepStrictEqual(resolveLegacyRoute('gantt'), { destinationId: 'projects-tasks', viewMode: 'spreadsheet' });
+    assert.deepStrictEqual(resolveLegacyRoute('calendar'), { destinationId: 'projects-tasks', viewMode: 'spreadsheet' });
     assert.deepStrictEqual(resolveLegacyRoute('workload'), { destinationId: 'projects-tasks', viewMode: 'capacity' });
-    assert.deepStrictEqual(resolveLegacyRoute('calendar'), { destinationId: 'projects-tasks', viewMode: 'calendar' });
 
     assert.deepStrictEqual(resolveLegacyRoute('risk-register'), { destinationId: 'risk-management' });
     assert.deepStrictEqual(resolveLegacyRoute('cross-tasks'), { destinationId: 'workflows' });
@@ -157,7 +160,6 @@ test('🛡️ Enterprise Banking ITSM/GRC Navigation & RBAC Test Suite', async (
     assert.strictEqual(buildUrl('approvals'), '/my-work/approvals');
     assert.strictEqual(buildUrl('projects-tasks'), '/work-management/projects-tasks');
     assert.strictEqual(buildUrl('projects-tasks', 'kanban'), '/work-management/projects-tasks?view=kanban');
-    assert.strictEqual(buildUrl('projects-tasks', 'gantt', 'SEC-101'), '/work-management/projects-tasks?view=gantt&ticket=SEC-101');
     assert.strictEqual(buildUrl('service-incidents'), '/service-management/incidents');
     assert.strictEqual(buildUrl('risk-management'), '/security-grc/risk-management');
     assert.strictEqual(buildUrl('audit-compliance'), '/security-grc/audit-compliance');

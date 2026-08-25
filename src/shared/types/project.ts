@@ -4,6 +4,8 @@ export type ProjectHealth = 'ON_TRACK' | 'AT_RISK' | 'DELAYED' | 'BLOCKED' | 'CO
 export type ProjectPriority = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 export type ProjectCategory = 'IT' | 'INFORMATION_SECURITY' | 'SOFTWARE_DEVELOPMENT' | 'HR' | 'OPERATIONS' | 'COMPLIANCE' | 'OTHER';
 export type ProjectTaskStatus = 'BACKLOG' | 'TO_DO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'BLOCKED' | 'DONE';
+export const PROJECT_WORK_ITEM_TYPES = ['EPIC', 'STORY', 'TASK', 'SUBTASK', 'BUG', 'IMPROVEMENT', 'INCIDENT', 'SERVICE_REQUEST', 'CHANGE', 'PROBLEM', 'RESEARCH', 'SECURITY_FINDING'] as const;
+export type ProjectWorkItemType = typeof PROJECT_WORK_ITEM_TYPES[number];
 
 export interface Project {
   id: string;
@@ -26,10 +28,14 @@ export interface Project {
   relatedAssetIds: string[];
   slaPolicyId?: string;
   templateId?: string;
+  /** Optional platform workflow scheme applied to newly created project work items. */
+  workflowId?: string;
   startDate?: string;
   targetDate?: string;
   healthOverride?: { health: ProjectHealth; reason: string; changedByUserId: string; changedAt: string };
   progressWeighting: 'EQUAL' | 'STORY_POINTS' | 'ESTIMATED_EFFORT' | 'MANUAL';
+  /** Admin-controlled types that may be created in this project. */
+  workItemTypes?: ProjectWorkItemType[];
   createdByUserId: string;
   createdAt: string;
   updatedAt: string;

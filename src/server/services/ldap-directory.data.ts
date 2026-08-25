@@ -22,6 +22,8 @@ export interface LDAPRawEntry {
   accountExpires?: string | number;
   whenCreated?: string;
   whenChanged?: string;
+  /** Present on the persisted projection and accepted as a display-name alias. */
+  fullName?: string;
 }
 
 export interface DepartmentMappingResult {
@@ -218,13 +220,17 @@ export function mapDepartment(
     ].includes(n);
   });
 
-  // Extract department candidate from title if formatted as "Department / Position"
+  // Extract department candidates from titles such as
+  // "Department / Section / Position". These are used as a fallback after a
+  // concrete business OU; generic shared containers are explicitly excluded.
   let titleDept = '';
+  let titleSections: string[] = [];
   let titlePos = titleStr;
   if (titleStr.includes('/')) {
     const parts = titleStr.split('/').map((p) => p.trim());
     titleDept = parts[0];
     titlePos = parts[parts.length - 1];
+    titleSections = parts.slice(0, -1).reverse();
   }
 
   // Combined context string for searching across all signals
@@ -830,13 +836,11 @@ export function mapDepartment(
   const isCoreBankAdminGroup = groupNorms.some((g) => g.includes('core_banking_admins') || g.includes('swift_admins'));
   const isAuditComplianceGroup = groupNorms.some((g) => g.includes('audit_compliance_group') || g.includes('auditors'));
 
+  // Security groups grant entitlements; they do not define the user's
+  // reporting line. A human can be in several AD groups, so changing their
+  // department/section from memberOf would corrupt the organisation tree.
   if (isEnterpriseSecurityAdmin) {
-    result.departmentId = 'dept-secops';
-    result.divisionId = 'div-sec';
-    result.teamIds = ['team-soc', 'team-grc'];
-    result.departmentName = 'İnformasiya Təhlükəsizliyi Departamenti';
-    result.departmentCode = 'INFOSEC';
-    result.roles = ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'APPROVER', 'REQUESTER'];
+    result.roles = Array.from(new Set([...result.roles, 'PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'APPROVER', 'REQUESTER']));
     result.securityClearance = 'HIGHLY_RESTRICTED_HR_LEGAL';
   } else {
     if (isSocIncidentResponder) {
@@ -865,12 +869,13 @@ export function mapDepartment(
   const parentName = normalizeAzerbaijani(result.departmentName).replace(/\s+/g, ' ').trim();
   const sectionCandidate = [
     ...relevantOUs,
+    ...titleSections,
     titleDept,
     ...(/\b(?:şöbə|şobə|bölmə|bolme|section|unit|devops|soc|appsec)\b/i.test(deptStr) ? [deptStr] : []),
   ].map((value) => normalizeDirectoryText(value)).find((value) => {
     const normalized = normalizeAzerbaijani(value).replace(/\s+/g, ' ').trim();
     if (!normalized || normalized === parentName) return false;
-    if (/^(bank users|ho users|branch users|users|service|disabled|disable|outlook|no policy|ie test|qmatic user)$/.test(normalized)) return false;
+    if (/^(bank users|ho users|branch users|users|service|disabled|disable|outlook|no policy|ie test|qmatic user|tarcubacilar|tecrubeciler?|tercubeciler?|interns?|trainees?|stajyerler?)$/.test(normalized)) return false;
     return !normalized.includes('departamenti') && !normalized.includes('department');
   });
   if (sectionCandidate) {
@@ -943,7 +948,11 @@ export function parseMemberOfGroups(rawMemberOf?: string[] | string): string[] {
  * in tickets, assignments, or department member lists.
  */
 export function isExcludedPrivilegedAccount(sAMAccountName: string): boolean {
-  return /\.(?:rdp|si|sec|sh)$/i.test(toSafeString(sAMAccountName));
+  const normalized = normalizeDirectoryKey(sAMAccountName);
+  const finalSegment = normalized.split('.').at(-1) || '';
+  // .si/.sec/.abs are observed delegated/service suffixes. Very short final
+  // segments are not valid "initial.surname" employee accounts either.
+  return /\.(?:rdp|si|sec|sh|abs)$/i.test(normalized) || (normalized.includes('.') && finalSegment.length > 0 && finalSegment.length < 3);
 }
 
 /**
@@ -1045,6 +1054,41 @@ export const LDAP_NON_HUMAN_ACCOUNT_FILTERS = [
   '(!(sAMAccountName=training*))',
 ] as const;
 
+export type DirectoryAccountType = 'HUMAN' | 'SERVICE' | 'TEST' | 'TECHNICAL' | 'PRIVILEGED';
+
+const TEST_DIRECTORY_IDENTITY = /(?:^|[._-])(?:test|qa|uat|demo|sandbox)(?:[._-]?\d+|[._-]|$)/i;
+const TECHNICAL_DIRECTORY_IDENTITY = /(?:^|[._-])(?:adm|admin|svc|service|robot|bot|gpo|keycloak|review|qradar|splunk|zabbix|nessus|qualys|cpam|dnssense|gitlab|jira|mattermost|zammad|ipam|pgadmin|sccm|msol|vault|wug|cortex)(?:[._-]|$)|(?:adm|admin)$/i;
+const TECHNICAL_NAME_MARKER = /\b(?:account|admin|service|system|technical|application|qradar|splunk|zabbix|nessus|qualys|cpam|sccm|monitor(?:ing)?|scanner|backup|database|sql|ldap|mailbox|exchange|vpn|oracle|swift|gitlab|jira|keycloak|test|demo|specialist|engineer|analyst|officer|administrator|operator|developer|support)\b/i;
+
+function isPersonNamePart(value: string): boolean {
+  return /^\p{L}[\p{L}'’-]{1,}$/u.test(normalizeDirectoryText(value));
+}
+
+/**
+ * A username shape is never enough to make an identity a bank employee.
+ * Real employee records must carry an AD name pair (givenName + sn) or a
+ * display/full name with at least two person-name components.
+ */
+export function hasHumanDirectoryName(
+  entry: LDAPRawEntry | { fullName?: string; displayName?: string; givenName?: string; sn?: string },
+): boolean {
+  const givenName = normalizeDirectoryText(entry.givenName);
+  const surname = normalizeDirectoryText(entry.sn);
+  if (isPersonNamePart(givenName) && isPersonNamePart(surname)) return true;
+
+  const displayName = normalizeDirectoryText(entry.displayName || entry.fullName);
+  if (!displayName || TECHNICAL_NAME_MARKER.test(displayName)) return false;
+  const nameParts = displayName.split(/[\s,]+/).filter(Boolean);
+  return nameParts.length >= 2 && nameParts.every(isPersonNamePart);
+}
+
+function isLikelyPersonalUsername(username: string): boolean {
+  // Modern accounts are normally `f.surname`; older accounts may use the
+  // full first name. Exactly two alphabetic parts avoids accepting technical
+  // multi-segment/service naming conventions.
+  return /^\p{L}{1,}[._-]\p{L}{3,}$/u.test(username);
+}
+
 /**
  * Checks whether an account is a service, system, technical, or non-human identity.
  */
@@ -1084,7 +1128,6 @@ export function isServiceAccount(
   if (
     dn.includes('ou=service') ||
     dn.includes('ou=system') ||
-    dn.includes('ou=tech') ||
     dn.includes('ou=special') ||
     dn.includes('ou=disable') ||
     dn.includes('ou=service accounts') ||
@@ -1119,21 +1162,22 @@ export function isServiceAccount(
     return true;
   }
 
-  const accountMetadata = [typedEntry.description, typedEntry.employeeType, typedEntry.title, ...groups]
+  // Groups never classify an account. An explicit "service account" marker in
+  // title/description/employeeType remains a valid identity-owned signal.
+  const accountMetadata = [typedEntry.description, typedEntry.employeeType, typedEntry.title]
     .map((value) => normalizeDirectoryKey(value))
     .filter(Boolean)
     .join(' ');
   if (
     /(?:service|technical|application|system|non[-_ ]?human|managed)[-_ ]?(?:account|identity|user)/i.test(accountMetadata) ||
-    /(?:service|technical|application|system|non[-_ ]?human)[-_ ]?accounts?$/i.test(accountMetadata) ||
-    groups.some((group) => /^(?:svc|service|system|non[-_ ]?human|pam[-_ ]?service)/i.test(group))
+    /(?:service|technical|application|system|non[-_ ]?human)[-_ ]?accounts?$/i.test(accountMetadata)
   ) {
     return true;
   }
 
   // 3. Service prefix / suffix patterns
   if (
-    /^(svc|service|sql|backup|scanner|scan|test|sys|adm|sync|srv|esd|sccm|db|exb|app|iis)[_\-\.]/i.test(username) ||
+    /^(svc|service|sql|backup|scanner|scan|sys|adm|sync|srv|esd|sccm|db|exb|app|iis)[_\-\.]/i.test(username) ||
     /\.(?:rdp|si|sec|sh|adm|admin|service|srv|test|vpn|backup|notification)$/i.test(username) ||
     username.endsWith('$')
   ) {
@@ -1141,6 +1185,34 @@ export function isServiceAccount(
   }
 
   return false;
+}
+
+/**
+ * Classifies the identity itself. AD memberOf is deliberately excluded: a
+ * person can hold many security/distribution groups without becoming a service
+ * account or moving to a different organisational unit.
+ */
+export function classifyDirectoryAccount(
+  entry: LDAPRawEntry | { username?: string; sAMAccountName?: string; distinguishedName?: string; title?: string; mail?: string; fullName?: string },
+): DirectoryAccountType {
+  const identity = entry as LDAPRawEntry & { username?: string };
+  const username = normalizeDirectoryKey(identity.sAMAccountName || identity.username);
+  const email = normalizeDirectoryKey(identity.mail);
+  if (isExcludedPrivilegedAccount(username)) return 'PRIVILEGED';
+  if (isServiceAccount(entry, [])) return 'SERVICE';
+  if (TEST_DIRECTORY_IDENTITY.test(username) || TEST_DIRECTORY_IDENTITY.test(email)) return 'TEST';
+  if (TECHNICAL_DIRECTORY_IDENTITY.test(username)) return 'TECHNICAL';
+  if (!hasHumanDirectoryName(entry)) {
+    const nameAlias = normalizeDirectoryKey(identity.displayName || identity.fullName).replace(/[._\-\s]/g, '');
+    const usernameAlias = username.replace(/[._\-\s]/g, '');
+    // Older SQL projections can retain only a username-shaped display value
+    // (for example `A.Afandiyev`). The documented personal username shape is
+    // enough in that narrowly constrained legacy case, but never overrides a
+    // supplied non-person name such as "Information Security Specialist".
+    const isEmptyOrUsernameAlias = !nameAlias || nameAlias === usernameAlias;
+    if (!isEmptyOrUsernameAlias || !isLikelyPersonalUsername(username)) return 'TECHNICAL';
+  }
+  return 'HUMAN';
 }
 
 /**
@@ -1155,11 +1227,5 @@ export function isGenuineEmployeeOrIntern(
   const username = normalizeDirectoryKey(sAMAccountName || entry.sAMAccountName);
   if (!username) return false;
 
-  // 1. Privileged shadow accounts must never enter the business directory
-  if (isExcludedPrivilegedAccount(username)) return false;
-
-  // 2. Reject all service, system, technical, VPN, and generic accounts
-  if (isServiceAccount({ ...entry, sAMAccountName: username }, parsedGroups)) return false;
-
-  return true;
+  return classifyDirectoryAccount({ ...entry, sAMAccountName: username }) === 'HUMAN';
 }

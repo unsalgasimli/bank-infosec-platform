@@ -10,6 +10,7 @@ import {
   User,
   Plus,
   TrendingUp,
+  Workflow,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
 import { Ticket } from '../../../shared/types/ticket.js';
@@ -84,6 +85,13 @@ export const MyWorkOverviewView: React.FC<MyWorkOverviewViewProps> = ({
           >
             <TrendingUp className="w-4 h-4 text-semantic-success" />
             <span>Risk Management</span>
+          </button>
+          <button
+            onClick={() => onNavigate('workflows')}
+            className="wrike-btn-secondary text-xs py-2 px-3.5 flex items-center gap-2"
+          >
+            <Workflow className="w-4 h-4 text-semantic-success" />
+            <span>Workflow kataloqu</span>
           </button>
           <button
             onClick={onOpenCreate}

@@ -121,7 +121,8 @@ export class DashboardsController {
             ((t.targetDepartmentId && t.targetDepartmentId === user.departmentId) ||
               (t.departmentId && t.departmentId === user.departmentId) ||
               (t.assignmentGroupId && user.teamIds?.includes(t.assignmentGroupId)) ||
-              t.participatingDepartmentIds?.includes(user.departmentId || '')))) &&
+              t.participatingDepartmentIds?.includes(user.departmentId || '')) &&
+            (!t.targetSectionId || t.targetSectionId === user.sectionId))) &&
         t.statusCategory !== 'DONE'
     );
     const myApprovals = db.data.approvals

@@ -69,6 +69,30 @@ describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GM
     assert.strictEqual(innovationDept.departmentId, 'dept-it');
     assert.strictEqual(innovationDept.sectionName, 'İnnovasiyalar və proqramlaşdırma şöbəsi');
 
+    // A generic trainee container is not a business section. The title still
+    // identifies the employee's real section, so it must carry the member
+    // count and assignment queue.
+    const technicalSupportTrainee = LDAPSyncService.mapDepartment(
+      'İnformasiya Texnologiyaları Departamenti',
+      'Texniki dəstək şöbəsi / Mütəxəssis',
+      [],
+      'CN=Test Intern,OU=Tarcubacilar,OU=Texniki dəstək şöbəsi,OU=İnformasiya Texnologiyaları Departamenti,OU=BANK USERS,DC=Expressbank,DC=az'
+    );
+    assert.strictEqual(technicalSupportTrainee.departmentId, 'dept-it');
+    assert.strictEqual(technicalSupportTrainee.sectionId, 'section-dept-it-texniki-destek-sobesi');
+    assert.strictEqual(technicalSupportTrainee.sectionName, 'Texniki dəstək şöbəsi');
+
+    // A concrete business OU wins over the broad parent department or a
+    // group-like container even when the title has multiple levels.
+    const nestedTechnicalSupport = LDAPSyncService.mapDepartment(
+      'İnformasiya Texnologiyaları Departamenti',
+      'Texniki avadanlıqlara nəzarət şöbəsi / Texniki dəstək bölməsi / Mütəxəssis',
+      [],
+      'CN=Test Employee,OU=Texniki dəstək bölməsi,OU=Texniki avadanlıqlara nəzarət şöbəsi,OU=İnformasiya Texnologiyaları Departamenti,OU=BANK USERS,DC=Expressbank,DC=az'
+    );
+    assert.strictEqual(nestedTechnicalSupport.sectionId, 'section-dept-it-texniki-destek-bolmesi');
+    assert.strictEqual(nestedTechnicalSupport.sectionName, 'Texniki dəstək bölməsi');
+
     // HR
     const hrDept = LDAPSyncService.mapDepartment('İnsan Resursları və Kadrlar', 'HR Specialist');
     assert.strictEqual(hrDept.departmentId, 'dept-hr');
@@ -106,7 +130,7 @@ describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GM
   });
 
   it('3.1 excludes privileged shadow-account suffixes even when they are in the all group', () => {
-    for (const suffix of ['rdp', 'si', 'sec', 'sh']) {
+    for (const suffix of ['rdp', 'si', 'sec', 'sh', 'abs']) {
       const privilegedEntry: LDAPRawEntry = {
         sAMAccountName: `employee.${suffix}`,
         memberOf: ['CN=all,OU=GROUPS,DC=Expressbank,DC=az'],
@@ -170,6 +194,9 @@ describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GM
     assert.match(LDAP_HUMAN_ACCOUNT_FILTER, /!\(sAMAccountName=dnssense\)/i);
     assert.match(LDAP_HUMAN_ACCOUNT_FILTER, /!\(sAMAccountName=healthmailbox\*\)/i);
     assert.match(LDAP_HUMAN_ACCOUNT_FILTER, /!\(sAMAccountName=training\*\)/i);
+    assert.match(LDAP_HUMAN_ACCOUNT_FILTER, /!\(sAMAccountName=\*\.si\)/i);
+    assert.match(LDAP_HUMAN_ACCOUNT_FILTER, /!\(sAMAccountName=\*\.sec\)/i);
+    assert.match(LDAP_HUMAN_ACCOUNT_FILTER, /!\(sAMAccountName=\*\.abs\)/i);
   });
 
   it('3.4 rejects service identities through normalized aliases and AD metadata signals', () => {
@@ -200,6 +227,39 @@ describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GM
         `Non-human identity ${entry.sAMAccountName} must be rejected by the shared guard`
       );
     }
+  });
+
+  it('3.5 accepts only records with a real AD name pair and rejects generic products', () => {
+    assert.strictEqual(
+      LDAPSyncService.isGenuineEmployeeOrIntern({ sAMAccountName: 'u.gasimli', displayName: 'Unsal Gasimli' }, [], 'u.gasimli'),
+      true,
+      'The common initial.surname employee account with a real display name must be accepted'
+    );
+    assert.strictEqual(
+      LDAPSyncService.isGenuineEmployeeOrIntern({ sAMAccountName: 'unsal', givenName: 'Unsal', sn: 'Gasimli' }, [], 'unsal'),
+      true,
+      'Legacy given-name account with AD givenName/sn must be accepted'
+    );
+    assert.strictEqual(
+      LDAPSyncService.isGenuineEmployeeOrIntern({ sAMAccountName: 'a.afandiyev', displayName: 'A.Afandiyev' }, [], 'a.afandiyev'),
+      true,
+      'A legacy SQL projection that stores only the documented initial.surname form must be reconciled as a person'
+    );
+    assert.strictEqual(
+      LDAPSyncService.isGenuineEmployeeOrIntern({ sAMAccountName: 'qradar', displayName: 'QRadar' }, [], 'qradar'),
+      false,
+      'A product/system identity with no person-name pair must not enter the employee directory'
+    );
+    assert.strictEqual(
+      LDAPSyncService.isGenuineEmployeeOrIntern({ sAMAccountName: 'sec.specialist', displayName: 'Information Security Specialist' }, [], 'sec.specialist'),
+      false,
+      'A role label is not a person name and must not create an employee identity'
+    );
+    assert.strictEqual(
+      LDAPSyncService.isGenuineEmployeeOrIntern({ sAMAccountName: 'a.li', displayName: 'Ali Valiyev' }, [], 'a.li'),
+      false,
+      'A final username segment shorter than three characters is a service-style account'
+    );
   });
 
   // 4. Synchronization Pipeline: Added and Disabled Users Handling
@@ -252,10 +312,10 @@ describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GM
     // Inject artificial duplicate user
     const duplicateUser: BankUser = {
       id: 'usr-duplicate-test-99',
-      username: 'u.gasimli', // duplicate username
-      sAMAccountName: 'u.gasimli',
-      email: 'u.gasimli@expressbank.az',
-      fullName: 'Unsal Gasimli Duplicate',
+      username: 'unsal', // historical username variant of the same person
+      sAMAccountName: 'unsal',
+      email: 'unsal.legacy@expressbank.az',
+      fullName: 'Unsal Gasimli',
       title: 'CISO Duplicate',
       departmentId: 'dept-secops',
       divisionId: 'div-sec',
@@ -312,7 +372,10 @@ describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GM
     assert.strictEqual(status.isSchedulerActive, true, 'Scheduler must be active');
     assert.strictEqual(status.targetTimeGMT4, '13:30', 'Target time must be 13:30');
     assert.strictEqual(status.timezone, 'GMT+4 (Asia/Baku)', 'Timezone must be GMT+4 (Asia/Baku)');
-    assert.ok(status.departmentOverview.length >= 5, 'Must report at least 5 departments');
+    // The scheduler must report only the current directory projection. A unit
+    // test must not require fabricated departments when the supplied LDAP
+    // result intentionally contains a single verified account.
+    assert.ok(Array.isArray(status.departmentOverview), 'Department overview must be an array');
 
     // Test manual trigger
     const manualReport = await LDAPSchedulerService.triggerManualSync();

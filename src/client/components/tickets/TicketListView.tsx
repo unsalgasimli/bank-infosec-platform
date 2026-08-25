@@ -284,7 +284,7 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
 
       {/* Main Content: Table View or Kanban View */}
       {viewMode === 'KANBAN' ? (
-        <TicketKanbanBoard tickets={filteredTickets} onSelectTicket={onSelectTicket} />
+        <TicketKanbanBoard tickets={filteredTickets} onSelectTicket={onSelectTicket} onRefreshTickets={onRefresh} />
       ) : (
         <div className="flex-1 overflow-auto custom-scrollbar">
           <table className="jira-table">
@@ -479,5 +479,4 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
     </div>
   );
 };
-
 

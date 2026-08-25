@@ -156,6 +156,10 @@ export interface BankUser {
   lastLdapLoginAt?: string;
   /** Set only after this profile is confirmed by a successful live AD bind/sync. */
   directorySource?: 'ACTIVE_DIRECTORY';
+  /** Identity classification is separate from AD group memberships and access roles. */
+  directoryAccountType?: 'HUMAN' | 'SERVICE' | 'TEST' | 'TECHNICAL' | 'PRIVILEGED';
+  /** Only verified human identities participate in department trees and assignment pickers. */
+  organizationEligible?: boolean;
 }
 
 export interface LDAPLoginPayload {

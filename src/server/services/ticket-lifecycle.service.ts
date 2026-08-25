@@ -94,6 +94,7 @@ const createTicketSchema = z
     assignmentGroupId: z.string().min(1).optional(),
     departmentId: z.string().min(1).optional(),
     targetDepartmentId: z.string().min(1).optional(),
+    targetSectionId: z.string().min(1).optional(),
     acceptanceCriteria: z.string().max(20000).optional(),
     checklists: z.array(z.object({
       id: z.string().optional(),
@@ -139,6 +140,7 @@ const ticketUpdateSchema = z.object({
   teamId: z.string().nullable().optional(),
   departmentId: z.string().nullable().optional(),
   targetDepartmentId: z.string().nullable().optional(),
+  targetSectionId: z.string().nullable().optional(),
   applicationId: z.string().nullable().optional(),
   assetId: z.string().nullable().optional(),
   affectedAssetIds: z.array(z.string()).max(500).optional(),
@@ -173,6 +175,67 @@ const RELATIONSHIP_TYPES: TicketRelationshipType[] = ['RELATES_TO', 'BLOCKS', 'D
 const TASK_STATUSES: TicketTaskStatus[] = ['TO_DO', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'CANCELLED'];
 
 export class TicketLifecycleService {
+  /**
+   * A DONE state is not necessarily the end of a ticket. Approval and
+   * remediation workflows can use DONE for an intermediate node and expose a
+   * later close/final node. Archive only when the state machine has no further
+   * transition from the current state, or the workflow explicitly marks it as
+   * terminal.
+   */
+  public static archiveIfFinalLifecycle(ticket: Ticket, actor: BankUser): boolean {
+    if (ticket.archivedAt || ticket.statusCategory !== 'DONE') return false;
+
+    const workflow = db.data.workflows.find((candidate) => candidate.id === ticket.workflowId);
+    const state = workflow?.states?.find((candidate) => candidate.id === ticket.statusId);
+    if (!workflow || !state || state.category !== 'DONE') return false;
+
+    const hasNextTransition = workflow.transitions?.some((transition) => transition.fromStateId === state.id) ?? false;
+    if (!state.isTerminal && hasNextTransition) return false;
+
+    return this.archiveTicket(ticket, actor, 'FINAL_LIFECYCLE_NODE');
+  }
+
+  /** Universal orchestration uses a workflow instance as the source of truth. */
+  public static archiveForCompletedWorkflow(workflowInstanceId: string, actor?: BankUser): number {
+    const instance = db.data.workflowInstances.find((candidate) => candidate.id === workflowInstanceId);
+    if (!instance || instance.status !== 'COMPLETED') return 0;
+
+    const ticketIds = new Set<string>();
+    const contextTicketId = instance.context?.ticketId;
+    if (typeof contextTicketId === 'string') ticketIds.add(contextTicketId);
+    for (const approval of db.data.approvals.filter((candidate) => candidate.workflowInstanceId === instance.id)) {
+      ticketIds.add(approval.ticketId);
+    }
+    for (const ticket of db.data.tickets.filter((candidate) => candidate.workflowRunId === instance.id)) {
+      ticketIds.add(ticket.id);
+    }
+
+    let archivedCount = 0;
+    for (const ticket of db.data.tickets.filter((candidate) => ticketIds.has(candidate.id))) {
+      if (ticket.statusCategory === 'DONE' && this.archiveTicket(ticket, actor, 'WORKFLOW_COMPLETED')) archivedCount += 1;
+    }
+    return archivedCount;
+  }
+
+  private static archiveTicket(ticket: Ticket, actor?: BankUser, reason = 'FINAL_LIFECYCLE_NODE'): boolean {
+    if (ticket.archivedAt) return false;
+    const now = new Date().toISOString();
+    ticket.archivedAt = now;
+    ticket.archivedByUserId = actor?.id || 'usr-system-admin';
+    ticket.updatedAt = now;
+    ticket.version += 1;
+    AuditService.log({
+      actor: actor as BankUser,
+      action: 'TICKET_ARCHIVED',
+      entityType: 'TICKET',
+      entityId: ticket.id,
+      entityKey: ticket.key,
+      metadata: { reason },
+      persist: false,
+    });
+    return true;
+  }
+
   public static validateAndNormalizeCreateInput(raw: unknown, actor: BankUser): Record<string, any> {
     const sanitized =
       typeof raw === 'object' && raw !== null
@@ -205,6 +268,15 @@ export class TicketLifecycleService {
       throw new Error('Target department or team does not exist or is inactive.');
     }
     const resolvedTargetDepartmentId = targetTeam?.departmentId || targetDepartment?.id;
+    const targetSection = body.targetSectionId
+      ? db.data.departmentSections.find((section) => section.id === body.targetSectionId && section.isActive !== false)
+      : undefined;
+    if (body.targetSectionId && !targetSection) {
+      throw new Error('Target section does not exist or is inactive.');
+    }
+    if (targetSection && resolvedTargetDepartmentId !== targetSection.departmentId) {
+      throw new Error('Target section does not belong to the selected department.');
+    }
     if (targetTeam && !db.data.departments.some((department) => department.id === targetTeam.departmentId && department.isActive !== false)) {
       throw new Error('Target team does not belong to an active department.');
     }
@@ -241,7 +313,9 @@ export class TicketLifecycleService {
 
     if (dynamicAssigneeId && resolvedTargetDepartmentId) {
       const assignee = db.data.users.find((user) => user.id === dynamicAssigneeId);
-      const isInTarget = assignee?.departmentId === resolvedTargetDepartmentId || Boolean(targetTeam && assignee?.teamIds?.includes(targetTeam.id));
+      const isInTarget = targetSection
+        ? assignee?.sectionId === targetSection.id
+        : assignee?.departmentId === resolvedTargetDepartmentId || Boolean(targetTeam && assignee?.teamIds?.includes(targetTeam.id));
       if (!isInTarget) throw new Error('Assignee does not belong to the selected department or team.');
     }
 
@@ -257,6 +331,7 @@ export class TicketLifecycleService {
       businessPriority: priority,
       departmentId: resolvedTargetDepartmentId || body.departmentId || actor.departmentId,
       targetDepartmentId: resolvedTargetDepartmentId,
+      targetSectionId: targetSection?.id,
       // A ticket is routed to a named person OR to a queue, never both. Client
       // supplied group IDs are ignored whenever a target unit has been chosen.
       assignmentGroupId: dynamicAssigneeId
@@ -319,6 +394,13 @@ export class TicketLifecycleService {
     for (const [field, value, collection] of references) {
       if (typeof value === 'string' && !collection.some((candidate) => candidate.id === value)) {
         throw new Error(`${field} references an unknown record.`);
+      }
+    }
+    if (typeof updates.targetSectionId === 'string') {
+      const section = db.data.departmentSections.find((candidate) => candidate.id === updates.targetSectionId && candidate.isActive !== false);
+      if (!section) throw new Error('targetSectionId references an unknown or inactive section.');
+      if (typeof updates.targetDepartmentId === 'string' && section.departmentId !== updates.targetDepartmentId) {
+        throw new Error('targetSectionId does not belong to targetDepartmentId.');
       }
     }
   }

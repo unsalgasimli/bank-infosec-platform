@@ -76,6 +76,9 @@ export const AccessibleDatePicker: React.FC<AccessibleDatePickerProps> = ({
 
   const [placement, setPlacement] = useState<'bottom' | 'top'>('bottom');
 
+  const minimumDate = min === 'today' ? toIsoDate(new Date()) : min;
+  const maximumDate = max === 'today' ? toIsoDate(new Date()) : max;
+
   useEffect(() => setDraft(value || ''), [value]);
 
   useEffect(() => {
@@ -111,7 +114,8 @@ export const AccessibleDatePicker: React.FC<AccessibleDatePickerProps> = ({
     });
   }, [activeDate, focusCalendar, isOpen, visibleMonth]);
 
-  const isAllowed = (isoValue: string) => (!min || isoValue >= min) && (!max || isoValue <= max);
+  const isAllowed = (isoValue: string) =>
+    (!minimumDate || isoValue >= minimumDate) && (!maximumDate || isoValue <= maximumDate);
   const draftDate = parseIsoDate(draft);
   const invalidDraft = Boolean(draft && (!draftDate || !isAllowed(draft)));
 

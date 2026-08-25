@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Table as TableIcon,
   Search,
@@ -8,6 +8,9 @@ import {
   User,
   CheckCircle2,
   Filter,
+  Archive,
+  X,
+  Loader2,
 } from 'lucide-react';
 import { Ticket } from '../../../shared/types/ticket.js';
 import { BankApplication, BankAsset } from '../../../shared/types/asset.js';
@@ -42,6 +45,32 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
   const [selectedSeverityFilter, setSelectedSeverityFilter] = useState('ALL');
   const [selectedTicketIds, setSelectedTicketIds] = useState<string[]>([]);
   const [isResolving, setIsResolving] = useState(false);
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const [archivedTickets, setArchivedTickets] = useState<Ticket[]>([]);
+  const [isLoadingArchive, setIsLoadingArchive] = useState(false);
+
+  useEffect(() => {
+    if (!isArchiveOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsArchiveOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isArchiveOpen]);
+
+  const openArchive = async () => {
+    setIsArchiveOpen(true);
+    setIsLoadingArchive(true);
+    try {
+      const response = await fetchWithAuth('/api/tickets?archived=true');
+      const data = await response.json();
+      setArchivedTickets(data.success && Array.isArray(data.tickets) ? data.tickets : []);
+    } catch {
+      setArchivedTickets([]);
+    } finally {
+      setIsLoadingArchive(false);
+    }
+  };
 
   // Filter tickets
   const filteredTickets = useMemo(() => {
@@ -131,7 +160,7 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-semantic-panel overflow-hidden select-none">
+    <div className="relative flex-1 flex flex-col h-full bg-semantic-panel overflow-hidden select-none">
       {/* Clean Single-Row View Header Toolbar (Hidden when wrapped in WorkManagementContainer) */}
       {!hideHeader && (
         <div className="bg-semantic-panel border-b border-semantic-border px-6 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0">
@@ -250,8 +279,8 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
       )}
 
       {/* Table Container */}
-      <div className="flex-1 overflow-auto custom-scrollbar">
-        <table className="wrike-table">
+      <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
+        <table className="wrike-table wrike-table-responsive w-full table-fixed">
           <thead className="sticky top-0 z-dsContent shadow-xs">
             <tr>
               <th className="w-12 text-center">
@@ -262,15 +291,15 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
                   className="rounded border-semantic-border-strong text-semantic-brand focus:ring-semantic-brand cursor-pointer w-4 h-4"
                 />
               </th>
-              <th className="w-28">Key</th>
-              <th className="min-w-[320px]">Task Summary</th>
-              <th className="w-36">Status</th>
-              <th className="w-36">Severity</th>
-              <th className="w-32">Priority</th>
-              <th className="w-36">SLA Countdown</th>
+              <th className="w-24">Key</th>
+              <th className="w-[28%]">Task Summary</th>
+              <th className="w-24">Status</th>
+              <th className="hidden w-28 lg:table-cell">Severity</th>
+              <th className="hidden w-28 xl:table-cell">Priority</th>
+              <th className="w-28">SLA Countdown</th>
               <th className="w-40">Assignee</th>
-              <th className="w-36">Target System</th>
-              <th className="w-32">Created</th>
+              <th className="hidden w-28 2xl:table-cell">Target System</th>
+              <th className="hidden w-24 2xl:table-cell">Created</th>
             </tr>
           </thead>
           <tbody>
@@ -302,14 +331,14 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
                     </td>
 
                     {/* Key */}
-                    <td className="font-mono font-bold text-semantic-info text-xs">
+                    <td className="font-mono font-bold text-semantic-info text-xs overflow-hidden">
                       {ticket.key}
                     </td>
 
                     {/* Title */}
-                    <td>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-semantic-primary hover:text-semantic-brand transition-colors truncate text-sm">
+                    <td className="min-w-0 overflow-hidden">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="block min-w-0 truncate font-bold text-semantic-primary hover:text-semantic-brand transition-colors text-sm">
                           {ticket.title}
                         </span>
                         {ticket.tags && ticket.tags.length > 0 && (
@@ -321,20 +350,20 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
                     </td>
 
                     {/* Status */}
-                    <td>{getStatusPill(ticket)}</td>
+                    <td className="overflow-hidden whitespace-nowrap">{getStatusPill(ticket)}</td>
 
                     {/* Severity */}
-                    <td>
+                    <td className="hidden overflow-hidden lg:table-cell">
                       <Badge type="SEVERITY" value={ticket.technicalSeverity} />
                     </td>
 
                     {/* Priority */}
-                    <td>
+                    <td className="hidden overflow-hidden xl:table-cell">
                       <Badge type="PRIORITY" value={ticket.businessPriority} />
                     </td>
 
                     {/* SLA Status */}
-                    <td>
+                    <td className="overflow-hidden whitespace-nowrap">
                       <div className="flex items-center gap-1.5 font-mono text-xs">
                         <Clock className="w-3.5 h-3.5 text-semantic-brand" />
                         <Badge type="SLA" value={ticket.slaState || 'SAFE'} />
@@ -342,7 +371,7 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
                     </td>
 
                     {/* Assignee / Department Queue */}
-                    <td>
+                    <td className="overflow-hidden">
                       {ticket.assigneeId ? (
                         (() => {
                           const assignedUser = allUsers.find((u) => u.id === ticket.assigneeId);
@@ -378,14 +407,14 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
                     </td>
 
                     {/* Target Asset */}
-                    <td>
+                    <td className="hidden overflow-hidden 2xl:table-cell">
                       <span className="font-mono text-xs text-semantic-jira-muted-strong">
                         {ticket.assetId || ticket.applicationId || 'Core Platform'}
                       </span>
                     </td>
 
                     {/* Created Date */}
-                    <td className="text-xs text-semantic-jira-muted-strong font-mono">
+                    <td className="hidden text-xs text-semantic-jira-muted-strong font-mono 2xl:table-cell">
                       {new Date(ticket.createdAt).toLocaleDateString()}
                     </td>
                   </tr>
@@ -407,6 +436,72 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
           <span>Resolved: <b className="text-semantic-success">{filteredTickets.filter((t) => t.statusCategory === 'DONE').length}</b></span>
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={() => void openArchive()}
+        className="fixed bottom-5 right-5 z-dsOverlay inline-flex items-center gap-2 rounded-full border border-semantic-border-strong bg-semantic-panel px-4 py-2.5 text-xs font-bold text-semantic-primary shadow-lg transition hover:-translate-y-0.5 hover:border-semantic-brand hover:text-semantic-brand"
+        title="View completed lifecycle archive"
+      >
+        <Archive className="h-4 w-4" />
+        <span>Archive</span>
+      </button>
+
+      {isArchiveOpen && (
+        <div
+          className="absolute inset-0 z-dsDialog flex items-center justify-center bg-slate-950/20 p-4"
+          role="presentation"
+          onClick={() => setIsArchiveOpen(false)}
+        >
+          <section
+            className="flex max-h-[min(70vh,42rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-semantic-border-strong bg-semantic-panel shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ticket-archive-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-semantic-border px-5 py-4">
+              <div>
+                <h2 id="ticket-archive-title" className="flex items-center gap-2 text-sm font-bold text-semantic-primary">
+                  <Archive className="h-4 w-4 text-semantic-brand" />
+                  Completed lifecycle archive
+                </h2>
+                <p className="mt-1 text-xs text-semantic-muted">Only tickets whose final workflow node completed appear here.</p>
+              </div>
+              <button type="button" onClick={() => setIsArchiveOpen(false)} className="rounded-lg p-2 text-semantic-muted hover:bg-semantic-subtle hover:text-semantic-primary" aria-label="Close archive">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="min-h-28 flex-1 overflow-y-auto p-3">
+              {isLoadingArchive ? (
+                <div className="flex items-center justify-center gap-2 p-8 text-xs text-semantic-muted"><Loader2 className="h-4 w-4 animate-spin" /> Loading archive…</div>
+              ) : archivedTickets.length === 0 ? (
+                <div className="p-8 text-center text-xs text-semantic-muted">No completed lifecycle cases in the archive.</div>
+              ) : (
+                <div className="space-y-2">
+                  {archivedTickets.map((ticket) => (
+                    <button
+                      type="button"
+                      key={ticket.id}
+                      onClick={() => { setIsArchiveOpen(false); onSelectTicket(ticket); }}
+                      className="flex w-full items-center justify-between gap-3 rounded-xl border border-semantic-border p-3 text-left transition hover:border-semantic-brand hover:bg-semantic-subtle"
+                    >
+                      <span className="min-w-0">
+                        <span className="block font-mono text-xs font-bold text-semantic-info">{ticket.key}</span>
+                        <span className="mt-1 block truncate text-xs font-semibold text-semantic-primary">{ticket.title}</span>
+                      </span>
+                      <span className="shrink-0 text-right text-label text-semantic-muted">
+                        <span className="block">{ticket.statusName}</span>
+                        <span className="block">{ticket.archivedAt ? new Date(ticket.archivedAt).toLocaleDateString() : ''}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 };

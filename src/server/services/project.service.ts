@@ -1,14 +1,56 @@
 import { v4 as uuidv4 } from 'uuid';
 import { BankUser } from '../../shared/types/auth.js';
 import { Ticket } from '../../shared/types/ticket.js';
-import { Project, ProjectActivity, ProjectHealth, ProjectMember, ProjectMilestone, ProjectRole, ProjectSummary } from '../../shared/types/project.js';
+import { PROJECT_WORK_ITEM_TYPES, Project, ProjectActivity, ProjectHealth, ProjectMember, ProjectMilestone, ProjectRole, ProjectSummary, ProjectWorkItemType } from '../../shared/types/project.js';
 import { db } from '../db/database.js';
+import { Workflow } from '../../shared/types/workflow.js';
 
 const GLOBAL_PROJECT_ADMINS = new Set(['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN']);
 const MANAGE_ROLES = new Set<ProjectRole>(['OWNER', 'PROJECT_MANAGER']);
 const WRITE_ROLES = new Set<ProjectRole>(['OWNER', 'PROJECT_MANAGER', 'CONTRIBUTOR']);
 
 export class ProjectService {
+  static readonly DEFAULT_WORKFLOW_ID = 'wf-project-delivery-default';
+
+  static ensureDefaultWorkflow(): Workflow {
+    const existing = db.data.workflows.find((workflow) => workflow.id === this.DEFAULT_WORKFLOW_ID);
+    if (existing) return existing;
+    const operationalRoles: Workflow['transitions'][number]['allowedRoles'] = ['REQUESTER', 'SECURITY_ANALYST', 'SOC_ANALYST', 'APPROVER', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'TEAM_LEAD'];
+    const workflow: Workflow = {
+      id: this.DEFAULT_WORKFLOW_ID,
+      name: 'Project Delivery Default',
+      description: 'Default governed delivery lifecycle for project work items.',
+      ticketTypeId: 'PROJECT_WORK',
+      version: 1,
+      isActive: true,
+      states: [
+        { id: 'BACKLOG', name: 'Backlog', category: 'TO_DO', color: '#64748b', isInitial: true },
+        { id: 'TO_DO', name: 'To Do', category: 'TO_DO', color: '#2563eb' },
+        { id: 'IN_PROGRESS', name: 'In Progress', category: 'IN_PROGRESS', color: '#4f46e5' },
+        { id: 'IN_REVIEW', name: 'In Review', category: 'IN_REVIEW', color: '#d97706' },
+        { id: 'BLOCKED', name: 'Blocked', category: 'IN_PROGRESS', color: '#dc2626', isPausedSLA: true, pauseReason: 'Blocked' },
+        { id: 'DONE', name: 'Done', category: 'DONE', color: '#16a34a', isTerminal: true },
+      ],
+      transitions: [
+        { id: 'project-plan', name: 'Plan work', fromStateId: 'BACKLOG', toStateId: 'TO_DO', allowedRoles: operationalRoles },
+        { id: 'project-start', name: 'Start work', fromStateId: 'TO_DO', toStateId: 'IN_PROGRESS', allowedRoles: operationalRoles },
+        { id: 'project-review', name: 'Request review', fromStateId: 'IN_PROGRESS', toStateId: 'IN_REVIEW', allowedRoles: operationalRoles },
+        { id: 'project-block', name: 'Mark blocked', fromStateId: 'IN_PROGRESS', toStateId: 'BLOCKED', allowedRoles: operationalRoles, requireComment: true },
+        { id: 'project-unblock', name: 'Resume work', fromStateId: 'BLOCKED', toStateId: 'IN_PROGRESS', allowedRoles: operationalRoles },
+        { id: 'project-complete', name: 'Complete work', fromStateId: 'IN_REVIEW', toStateId: 'DONE', allowedRoles: operationalRoles },
+        { id: 'project-rework', name: 'Return to work', fromStateId: 'IN_REVIEW', toStateId: 'IN_PROGRESS', allowedRoles: operationalRoles },
+        { id: 'project-reopen', name: 'Reopen work', fromStateId: 'DONE', toStateId: 'TO_DO', allowedRoles: operationalRoles, requireComment: true },
+      ],
+    };
+    db.data.workflows.push(workflow);
+    return workflow;
+  }
+
+  static workItemTypes(project: Project): ProjectWorkItemType[] {
+    const configured = (project.workItemTypes || []).filter((type): type is ProjectWorkItemType => (PROJECT_WORK_ITEM_TYPES as readonly string[]).includes(type));
+    return configured.length ? configured : [...PROJECT_WORK_ITEM_TYPES];
+  }
+
   static isGlobalAdmin(user: BankUser): boolean {
     return user.roles.some((role) => GLOBAL_PROJECT_ADMINS.has(role));
   }
@@ -58,6 +100,29 @@ export class ProjectService {
     const member = this.memberFor(projectId, user);
     if (this.isGlobalAdmin(user) || member?.role !== 'RESTRICTED_CONTRIBUTOR') return tasks;
     return tasks.filter((task) => task.assigneeId === user.id || task.reporterId === user.id || task.watcherIds.includes(user.id) || task.participantIds?.includes(user.id));
+  }
+
+  static canUseProjectTask(projectId: string, task: Ticket, user: BankUser, action: 'EDIT' | 'TRANSITION' | 'ASSIGN' | 'COMMENT' | 'LINK'): { allowed: boolean; reason?: string } {
+    const access = this.authorize(projectId, user, 'READ');
+    if (!access.allowed) return { allowed: false, reason: access.reason };
+    if (!this.visibleTasks(projectId, user).some((candidate) => candidate.id === task.id)) return { allowed: false, reason: 'You are not authorized to access this project task.' };
+    if (this.isGlobalAdmin(user) || access.member?.role === 'OWNER' || access.member?.role === 'PROJECT_MANAGER') return { allowed: true };
+    if (action === 'COMMENT') return access.member?.role === 'CONTRIBUTOR' || access.member?.role === 'RESTRICTED_CONTRIBUTOR'
+      ? { allowed: true }
+      : { allowed: false, reason: 'Your project role does not permit comments.' };
+    if (access.member?.role !== 'CONTRIBUTOR') return { allowed: false, reason: 'Your project role does not permit this work-item operation.' };
+    if (action === 'TRANSITION') return task.assigneeId === user.id
+      ? { allowed: true }
+      : { allowed: false, reason: 'Only the assigned contributor or a project manager may transition this work item.' };
+    if (action === 'ASSIGN') return (!task.assigneeId || task.assigneeId === user.id)
+      ? { allowed: true }
+      : { allowed: false, reason: 'Contributors may only self-assign an unassigned work item.' };
+    if (action === 'LINK') return task.assigneeId === user.id || task.reporterId === user.id
+      ? { allowed: true }
+      : { allowed: false, reason: 'Only the reporter, assignee, or project manager may link this work item.' };
+    return task.assigneeId === user.id || task.reporterId === user.id
+      ? { allowed: true }
+      : { allowed: false, reason: 'Only the reporter, assignee, or project manager may edit this work item.' };
   }
 
   static weightedProgress(tasks: Ticket[], project: Project): number {

@@ -50,6 +50,7 @@ const TICKET_EDITABLE_FIELDS = new Set([
   'teamId',
   'departmentId',
   'targetDepartmentId',
+  'targetSectionId',
   'applicationId',
   'assetId',
   'affectedAssetIds',
@@ -74,6 +75,7 @@ const TICKET_ADMIN_FIELDS = new Set([
   'teamId',
   'departmentId',
   'targetDepartmentId',
+  'targetSectionId',
 ]);
 
 export class TicketsController {
@@ -96,7 +98,8 @@ export class TicketsController {
     const targetId = typeof req.query.targetId === 'string' ? req.query.targetId.trim() : '';
     const targetDepartment = departments.find((department) => department.id === targetId);
     const targetTeam = teams.find((team) => team.id === targetId);
-    const targetDepartmentId = targetTeam?.departmentId || targetDepartment?.id;
+    const targetSection = sections.find((section) => section.id === targetId);
+    const targetDepartmentId = targetTeam?.departmentId || targetSection?.departmentId || targetDepartment?.id;
 
     const assignees = targetDepartmentId
       ? (db.data.users || [])
@@ -105,7 +108,9 @@ export class TicketsController {
             candidate.directorySource === 'ACTIVE_DIRECTORY' &&
             isGenuineEmployeeOrIntern(candidate, candidate.distributionGroups || [], candidate.sAMAccountName || candidate.username) &&
             departmentIds.has(candidate.departmentId) &&
-            (candidate.departmentId === targetDepartmentId || Boolean(targetTeam && candidate.teamIds?.includes(targetTeam.id)))
+            (targetSection
+              ? candidate.sectionId === targetSection.id
+              : candidate.departmentId === targetDepartmentId || Boolean(targetTeam && candidate.teamIds?.includes(targetTeam.id)))
           )
           .sort((left, right) => left.fullName.localeCompare(right.fullName, 'az'))
           .map(({ id, fullName, title, departmentId, sectionId, teamIds }) => ({
@@ -144,9 +149,18 @@ export class TicketsController {
     // the raw template list is used here because listCatalog intentionally
     // hides these cards from the workflow catalog.
     WorkflowOrchestrationService.catalogPayload(user);
-    const helpDeskDepartment = departments.find((department) =>
-      department.code.toLocaleLowerCase('az').includes('it') || department.name.toLocaleLowerCase('az').includes('help desk')
-    );
+    const helpDeskDepartment = departments
+      .map((department) => {
+        const code = department.code.toLocaleLowerCase('az');
+        const name = department.name.toLocaleLowerCase('az');
+        const score = name.includes('help desk') || name.includes('helpdesk') ? 100
+          : code === 'it' || code.startsWith('it_') || code.startsWith('it-') ? 90
+            : name.includes('information technology') || name.includes('informasiya texnolog') ? 80
+              : /(^|[^a-z])it([^a-z]|$)/i.test(code) ? 70
+                : 0;
+        return { department, score };
+      })
+      .sort((left, right) => right.score - left.score)[0];
     const basicTaskCategories = db.data.workflowCatalogTemplates
       .filter((template) => template.kind === 'BASIC_TICKET' && template.catalogGroup?.startsWith('IT ·') && template.requestTypeId)
       .sort((left, right) => (left.catalogGroup || '').localeCompare(right.catalogGroup || '', 'az') || left.title.localeCompare(right.title, 'az'))
@@ -157,7 +171,7 @@ export class TicketsController {
         kind: 'BASIC_TICKET' as const,
         requestTypeId: template.requestTypeId,
         catalogGroup: template.catalogGroup,
-        targetDepartmentId: helpDeskDepartment?.id,
+        targetDepartmentId: helpDeskDepartment?.score ? helpDeskDepartment.department.id : undefined,
       }));
     const categoryCodes = new Set(categories.map((category) => category.code));
     categories.push(...basicTaskCategories.filter((category) => !categoryCodes.has(category.code)));
@@ -184,15 +198,18 @@ export class TicketsController {
   public static list(req: AuthenticatedRequest, res: Response): void {
     const user = req.user!;
     const jql = req.query.jql as string;
+    const archivedOnly = req.query.archived === 'true';
 
     // Refresh SLAs before returning
     SLAService.refreshAllTicketSLAs();
 
-    const filteredTickets = SearchService.query(db.data.tickets, jql, user);
+    const lifecycleTickets = (db.data.tickets || []).filter((ticket) => archivedOnly === Boolean(ticket.archivedAt));
+    const filteredTickets = SearchService.query(lifecycleTickets, jql, user);
 
     res.json({
       success: true,
       total: filteredTickets.length,
+      archived: archivedOnly,
       tickets: filteredTickets,
     });
   }
@@ -291,6 +308,7 @@ export class TicketsController {
         ...req.body,
         assigneeId: requestedAssigneeId,
         targetDepartmentId: req.body.targetDepartmentId,
+        targetSectionId: req.body.targetSectionId,
         assignmentGroupId: req.body.assignmentGroupId,
       };
       const body = TicketLifecycleService.validateAndNormalizeCreateInput(rawBody, user);
@@ -313,6 +331,7 @@ export class TicketsController {
 
       const assigneeId = body.assigneeId || undefined;
       const targetDepartmentId = body.targetDepartmentId || undefined;
+      const targetSectionId = body.targetSectionId || undefined;
       const departmentId = targetDepartmentId || body.departmentId || user.departmentId;
 
       const newTicket: Ticket = {
@@ -356,6 +375,7 @@ export class TicketsController {
         teamId: body.teamId,
         departmentId,
         targetDepartmentId,
+        targetSectionId,
         applicationId: body.applicationId || undefined,
         assetId: body.assetId || undefined,
         riskOwnerId: body.riskOwnerId,
@@ -453,9 +473,10 @@ export class TicketsController {
     }
 
     const isDepartmentMember = Boolean(
-      (ticket.targetDepartmentId && ticket.targetDepartmentId === user.departmentId) ||
-      (!ticket.targetDepartmentId && ticket.departmentId && ticket.departmentId === user.departmentId) ||
-      ticket.participatingDepartmentIds?.includes(user.departmentId || '')
+      ((ticket.targetDepartmentId && ticket.targetDepartmentId === user.departmentId) ||
+        (!ticket.targetDepartmentId && ticket.departmentId && ticket.departmentId === user.departmentId) ||
+        ticket.participatingDepartmentIds?.includes(user.departmentId || '')) &&
+      (!ticket.targetSectionId || ticket.targetSectionId === user.sectionId)
     );
     const isTeamMember = Boolean(
       ticket.assignmentGroupId && user.teamIds?.includes(ticket.assignmentGroupId)

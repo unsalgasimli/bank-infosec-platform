@@ -186,7 +186,7 @@ export const DLPView: React.FC<DLPViewProps> = ({ tickets, onSelectTicket }) => 
 
       {/* Create DLP Case Modal */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-dsOverlay flex items-center justify-center bg-black/65 backdrop-blur-[2px] p-4">
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-black/65 backdrop-blur-[2px] p-4">
           <div className="bg-semantic-panel border border-semantic-jira-border rounded-md max-w-lg w-full p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-semantic-jira-border pb-3">
               <div className="flex items-center gap-2">

@@ -92,7 +92,7 @@ export const DocumentProofingModal: React.FC<DocumentProofingModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-semantic-primary/60 backdrop-blur-sm flex items-center justify-center z-dsOverlay p-4">
+    <div className="fixed inset-0 bg-semantic-primary/60 backdrop-blur-sm flex items-center justify-center z-dsDialog p-4">
       <div className="w-full max-w-5xl h-[85vh] bg-semantic-panel rounded-xl border border-semantic-surface-alt shadow-wrike-lg flex flex-col overflow-hidden select-none">
         {/* Proofing Header */}
         <div className="bg-semantic-panel border-b border-semantic-surface-alt px-5 py-3 flex items-center justify-between shrink-0 shadow-wrike-sm">

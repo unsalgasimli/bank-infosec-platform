@@ -54,7 +54,7 @@ export const Modal: React.FC<ModalProps> = ({
   }[maxWidth];
 
   return (
-    <div className="fixed inset-0 z-dsOverlay flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+    <div className="fixed inset-0 z-dsDialog flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
       {/* Backdrop with modern blur */}
       <div
         className="fixed inset-0 bg-slate-950/55 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"

@@ -49,6 +49,7 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
 }) => {
   const { currentUser, fetchWithAuth } = useAuth();
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'MEMBERS' | 'SETTINGS' | 'TEMPLATES' | 'CONNECTIONS' | 'FLOWS'>('OVERVIEW');
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [data, setData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -103,6 +104,7 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
 
   useEffect(() => {
     loadDepartmentData();
+    setSelectedSectionId(null);
     setDirectoryLoadError(null);
     fetchWithAuth('/api/auth/users')
       .then(async (res) => {
@@ -282,6 +284,13 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
   const averageHealth = measuredHealthScores.length
     ? Math.round(measuredHealthScores.reduce((total: number, score: number) => total + score, 0) / measuredHealthScores.length)
     : null;
+  const selectedSection = dept.sections?.find((section) => section.id === selectedSectionId);
+  const selectedSectionMembers = selectedSection
+    ? (data.members || []).filter((member: BankUser) => member.sectionId === selectedSection.id)
+    : [];
+  const selectedSectionTickets = selectedSection
+    ? (data.activeTickets || []).filter((ticket: any) => ticket.targetSectionId === selectedSection.id)
+    : [];
 
   return (
     <div className="flex-1 flex flex-col h-full bg-semantic-page overflow-hidden select-none">
@@ -484,31 +493,137 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
                 <div className="flex items-center justify-between border-b border-semantic-border pb-3">
                   <div>
                     <h3 className="font-extrabold text-sm text-semantic-primary">
-                      Department Sections ({dept.sections?.length || 0})
+                      {selectedSection ? selectedSection.name : `Department Sections (${dept.sections?.length || 0})`}
                     </h3>
                     <p className="text-xs text-semantic-jira-muted-strong">
-                      Active child sections synchronized from the directory.
+                      {selectedSection
+                        ? 'Section details, directory staff and routed work.'
+                        : 'Active child sections synchronized from the directory.'}
                     </p>
                   </div>
-                  <span className="text-caption font-bold uppercase tracking-wide text-semantic-info">
-                    {dept.sections?.length ? 'Directory linked' : 'No active sections'}
-                  </span>
+                  {selectedSection ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSectionId(null)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-semantic-border bg-semantic-subtle px-3 py-1.5 text-caption font-bold text-semantic-primary hover:bg-semantic-border-subtle"
+                    >
+                      <ArrowLeft className="h-3.5 w-3.5" />
+                      All sections
+                    </button>
+                  ) : (
+                    <span className="text-caption font-bold uppercase tracking-wide text-semantic-info">
+                      {dept.sections?.length ? 'Directory linked' : 'No active sections'}
+                    </span>
+                  )}
                 </div>
 
-                {dept.sections?.length ? (
+                {selectedSection ? (
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-semantic-info/30 bg-semantic-info/5 p-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="rounded bg-semantic-neutral-surface px-2 py-0.5 font-mono text-micro font-bold text-semantic-secondary">
+                            {selectedSection.code}
+                          </span>
+                          <span className="rounded-full border border-semantic-success-border bg-semantic-success-surface px-2 py-0.5 text-micro font-bold uppercase text-semantic-success">
+                            Active Directory
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-semantic-jira-muted-strong">
+                          {selectedSection.managerName ? `Manager: ${selectedSection.managerName}` : 'No section manager assigned'}
+                          {selectedSection.managerEmail ? ` · ${selectedSection.managerEmail}` : ''}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xl font-extrabold text-semantic-primary">{selectedSectionMembers.length}</div>
+                        <div className="text-caption font-semibold text-semantic-jira-muted-strong">Live members</div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.35fr_1fr]">
+                      <div className="overflow-hidden rounded-xl border border-semantic-border">
+                        <div className="flex items-center justify-between border-b border-semantic-border bg-semantic-subtle px-4 py-3">
+                          <div>
+                            <h4 className="text-xs font-extrabold text-semantic-primary">Section staff</h4>
+                            <p className="mt-0.5 text-caption text-semantic-jira-muted-strong">Verified Active Directory members</p>
+                          </div>
+                          <Users className="h-4 w-4 text-semantic-jira-icon" />
+                        </div>
+                        {selectedSectionMembers.length ? (
+                          <div className="divide-y divide-semantic-border">
+                            {selectedSectionMembers.map((member: BankUser) => (
+                              <div key={member.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                                <div className="flex min-w-0 items-center gap-3">
+                                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-semantic-brand text-xs font-bold text-white">
+                                    {member.fullName?.[0] || 'U'}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="truncate text-xs font-bold text-semantic-primary">{member.fullName}</div>
+                                    <div className="truncate font-mono text-label text-semantic-jira-muted-strong">{member.email}</div>
+                                  </div>
+                                </div>
+                                <span className="shrink-0 text-right text-label text-semantic-jira-muted-strong">{member.title || 'Directory member'}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="px-4 py-5 text-xs text-semantic-jira-muted-strong">No active directory members are assigned to this section.</div>
+                        )}
+                      </div>
+
+                      <div className="overflow-hidden rounded-xl border border-semantic-border">
+                        <div className="flex items-center justify-between border-b border-semantic-border bg-semantic-subtle px-4 py-3">
+                          <div>
+                            <h4 className="text-xs font-extrabold text-semantic-primary">Section work queue</h4>
+                            <p className="mt-0.5 text-caption text-semantic-jira-muted-strong">Open tasks routed to this section</p>
+                          </div>
+                          <CheckSquare className="h-4 w-4 text-semantic-jira-icon" />
+                        </div>
+                        {selectedSectionTickets.length ? (
+                          <div className="divide-y divide-semantic-border">
+                            {selectedSectionTickets.map((ticket: any) => (
+                              <button
+                                key={ticket.id}
+                                type="button"
+                                onClick={() => onNavigate('table')}
+                                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-semantic-subtle"
+                              >
+                                <span className="min-w-0">
+                                  <span className="block truncate text-xs font-bold text-semantic-primary">{ticket.title || ticket.subject || ticket.id}</span>
+                                  <span className="mt-0.5 block text-label text-semantic-jira-muted-strong">{ticket.status || ticket.statusCategory || 'Open'}</span>
+                                </span>
+                                <ChevronRight className="h-4 w-4 shrink-0 text-semantic-jira-icon" />
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="px-4 py-5 text-xs text-semantic-jira-muted-strong">No open tasks are currently routed to this section.</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : dept.sections?.length ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {dept.sections.map((section: any) => (
-                      <div key={section.id} className="p-3 bg-semantic-subtle border border-semantic-border rounded-xl">
+                      <button
+                        key={section.id}
+                        type="button"
+                        onClick={() => setSelectedSectionId(section.id)}
+                        aria-label={`Open ${section.name} section details`}
+                        className="group w-full rounded-xl border border-semantic-border bg-semantic-subtle p-3 text-left transition hover:border-semantic-info hover:bg-semantic-panel focus:outline-none focus:ring-2 focus:ring-semantic-info/40"
+                      >
                         <div className="flex items-start justify-between gap-2">
                           <div className="font-bold text-xs text-semantic-primary">{section.name}</div>
-                          <span className="px-1.5 py-0.5 rounded bg-semantic-neutral-surface text-semantic-secondary text-micro font-mono">
-                            {section.code}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-1.5 py-0.5 rounded bg-semantic-neutral-surface text-semantic-secondary text-micro font-mono">{section.code}</span>
+                            <ChevronRight className="h-3.5 w-3.5 text-semantic-jira-icon transition group-hover:translate-x-0.5 group-hover:text-semantic-info" />
+                          </div>
                         </div>
                         <div className="mt-2 text-label text-semantic-jira-muted-strong">
                           {section.memberCount || 0} members
                         </div>
-                      </div>
+                        <div className="mt-2 text-caption font-bold text-semantic-info">View section details</div>
+                      </button>
                     ))}
                   </div>
                 ) : (
@@ -979,7 +1094,7 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
 
       {/* Add Member Modal */}
       {isAddMemberOpen && (
-        <div className="fixed inset-0 z-dsOverlay flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-4">
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-4">
           <div className="bg-semantic-panel border border-semantic-border rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-semantic-border pb-3">
               <h3 className="font-extrabold text-sm text-semantic-primary">Add Staff to {dept.name}</h3>
@@ -1052,7 +1167,7 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
 
       {/* Add Connection Modal */}
       {isAddConnOpen && (
-        <div className="fixed inset-0 z-dsOverlay flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-4">
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-black/60 backdrop-blur-[2px] p-4">
           <div className="bg-semantic-panel border border-semantic-border rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-semantic-border pb-3">
               <h3 className="font-extrabold text-sm text-semantic-primary">Add Connector to {dept.name}</h3>

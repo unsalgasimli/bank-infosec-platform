@@ -75,6 +75,76 @@ test('Universal Enterprise Work Orchestration Platform', async (t) => {
     assert.deepEqual(resolved.map((user) => user.id).sort(), expectedIds);
   });
 
+  await t.test('human-work routing exposes AD sections and never derives a selected person route from their first group', () => {
+    reset();
+    const actor = admin();
+    const department = db.data.departments.find((item) => item.id === actor.departmentId) || db.data.departments[0];
+    const section = {
+      id: 'section-workflow-routing-test',
+      departmentId: department.id,
+      name: 'Technical Support',
+      code: 'SEC_TECHNICAL_SUPPORT',
+      managerId: 'usr-section-routing-member',
+      isActive: true,
+      directorySource: 'ACTIVE_DIRECTORY' as const,
+    };
+    const sectionMember: BankUser = {
+      ...structuredClone(actor),
+      id: 'usr-section-routing-member',
+      username: 'section.routing.member',
+      email: 'section.routing.member@example.test',
+      fullName: 'Section Routing Member',
+      roles: ['REQUESTER'],
+      departmentId: department.id,
+      sectionId: section.id,
+      // Deliberately ordered so a first-group fallback would be observable.
+      teamIds: ['team-unrelated', 'team-technical-support'],
+      isActive: true,
+      directorySource: 'ACTIVE_DIRECTORY',
+    };
+    db.data.departmentSections.push(section);
+    db.data.users.push(sectionMember);
+
+    const directory = WorkflowOrchestrationService.directoryOptions(actor);
+    assert.ok(directory.sections.some((item) => item.id === section.id && item.departmentId === department.id));
+
+    const node: any = { id: 'section-task', key: 'section-task', type: 'TASK', title: 'Support task', position: { x: 0, y: 0 } };
+    const fixed = WorkflowOrchestrationService.resolveAssignment({
+      strategy: 'FIXED_PERSON', departmentId: department.id, sectionId: section.id, assigneeId: sectionMember.id,
+    }, {}, node, actor.id);
+    assert.equal(fixed.assigneeId, sectionMember.id);
+    assert.equal(fixed.groupId, department.id);
+    assert.match(fixed.explanation, /Technical Support/);
+
+    const queue = WorkflowOrchestrationService.resolveAssignment({
+      strategy: 'UNASSIGNED_TEAM_QUEUE', departmentId: department.id, sectionId: section.id,
+    }, {}, node, actor.id);
+    assert.equal(queue.groupId, department.id);
+    assert.match(queue.explanation, /Technical Support/);
+  });
+
+  await t.test('dynamic department approval never permits a saved specific user to override runtime routing', () => {
+    reset();
+    const actor = admin();
+    const dynamicDepartmentId = actor.departmentId;
+    const fixedUser = db.data.users.find((user) => user.isActive && user.departmentId !== dynamicDepartmentId)!;
+    const node: any = {
+      id: 'dynamic-department-approval', key: 'dynamic-department-approval', type: 'APPROVAL', title: 'Dynamic department approval', position: { x: 0, y: 0 },
+      approval: { approverSource: 'SPECIFIC_USER', departmentSource: 'REQUESTER_DEPARTMENT', specificUserIds: [fixedUser.id], approvalMode: 'ANY_ONE', preventSelfApproval: false },
+    };
+    const resolved = WorkflowOrchestrationService.resolveApprovers(node, { requesterId: actor.id }, actor.id);
+    const expectedIds = db.data.users.filter((user) => user.isActive && user.departmentId === dynamicDepartmentId).map((user) => user.id).sort();
+    assert.deepEqual(resolved.map((user) => user.id).sort(), expectedIds);
+
+    const source = WorkflowOrchestrationService.getTemplate('template-standard-task');
+    const draft = WorkflowOrchestrationService.saveDraft({
+      workflowDefinitionId: source.definition.id,
+      version: { ...structuredClone(source.version), status: 'DRAFT', nodes: [{ ...node }], changeLog: 'Normalize dynamic department approval.' },
+    }, actor);
+    assert.equal(draft.version.nodes[0].approval?.approverSource, 'DEPARTMENT_MEMBERS');
+    assert.equal(draft.version.nodes[0].approval?.specificUserIds, undefined);
+  });
+
   await t.test('dynamic intake resolves dependent options, calculated values, reusable groups, and protected fields', () => {
     reset();
     const actor = admin();

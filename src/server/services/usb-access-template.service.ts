@@ -60,12 +60,12 @@ export class UsbAccessTemplateService {
             fields: [
               { id: 'usb-summary', key: 'summary', label: 'Request title', type: 'TEXT', required: true, validation: { min: 5, max: 160 }, placeholder: 'USB access for approved business activity' },
               { id: 'usb-justification', key: 'businessJustification', label: 'Business justification', type: 'TEXTAREA', required: true, validation: { min: 10, max: 4000 }, placeholder: 'Explain why removable media is required and why an approved alternative is insufficient.' },
-              { id: 'usb-device', key: 'deviceSerial', label: 'USB device serial / asset tag', type: 'TEXT', required: true, validation: { min: 2, max: 120 } },
+              { id: 'usb-device', key: 'deviceSerial', label: 'USB device serial / asset tag (if known)', type: 'TEXT', required: false, validation: { min: 2, max: 120 }, placeholder: 'Optional — add it if available' },
               { id: 'usb-scope', key: 'accessScope', label: 'Access scope', type: 'SELECT', required: true, options: [
                 { value: 'READ_ONLY', label: 'Read only' },
                 { value: 'READ_WRITE', label: 'Read and write' },
               ] },
-              { id: 'usb-until', key: 'requestedUntil', label: 'Access required until', type: 'DATE', required: true },
+              { id: 'usb-until', key: 'requestedUntil', label: 'Access required until', type: 'DATE', required: true, validation: { min: 'today' } },
               { id: 'usb-classification', key: 'dataClassification', label: 'Highest data classification', type: 'SELECT', required: true, options: [
                 { value: 'INTERNAL', label: 'Internal' },
                 { value: 'RESTRICTED', label: 'Restricted' },
@@ -81,7 +81,6 @@ export class UsbAccessTemplateService {
             description: 'Confirm the handling controls that apply to the requested device.',
             fields: [
               { id: 'usb-encryption', key: 'encryptedDevice', label: 'The device is bank-approved and encrypted', type: 'CHECKBOX', required: true },
-              { id: 'usb-evidence', key: 'supportingEvidence', label: 'Supporting evidence', type: 'EVIDENCE', validation: { maxFileSizeMb: 25 } },
             ],
           },
         ],
@@ -149,8 +148,8 @@ export class UsbAccessTemplateService {
             inputConfig: {
               fields: [
                 { id: 'usb-scope', key: 'accessScope', label: 'Access scope', type: 'SELECT', required: true, options: [{ value: 'READ_ONLY', label: 'Read only' }, { value: 'READ_WRITE', label: 'Read and write' }] },
-                { id: 'usb-device', key: 'deviceSerial', label: 'USB device serial / asset tag', type: 'TEXT', required: true, placeholder: 'e.g. USB-2026-X89' },
-                { id: 'usb-until', key: 'requestedUntil', label: 'Access required until', type: 'DATE', required: true },
+                { id: 'usb-device', key: 'deviceSerial', label: 'USB device serial / asset tag (if known)', type: 'TEXT', required: false, placeholder: 'Optional — add it if available' },
+                { id: 'usb-until', key: 'requestedUntil', label: 'Access required until', type: 'DATE', required: true, validation: { min: 'today' } },
                 { id: 'usb-encryption', key: 'encryptedDevice', label: 'Device is bank-approved and hardware encrypted', type: 'CHECKBOX', required: true },
               ],
             },
@@ -219,6 +218,51 @@ export class UsbAccessTemplateService {
         installedVersion.checksum = checksum({ ...installedVersion, checksum: undefined });
         changed = true;
       }
+    }
+
+    // Keep the published USB starter compatible with requests where a
+    // non-technical requester does not know the device identifier yet.
+    const installedFormVersion = db.data.formVersions.find((item) => item.formDefinitionId === FORM_ID && item.version === 1);
+    const installedFormField = installedFormVersion?.sections.flatMap((section) => section.fields).find((field) => field.key === 'deviceSerial');
+    if (installedFormField && (installedFormField.required || installedFormField.label !== 'USB device serial / asset tag (if known)')) {
+      installedFormField.required = false;
+      installedFormField.label = 'USB device serial / asset tag (if known)';
+      installedFormField.placeholder = 'Optional — add it if available';
+      changed = true;
+    }
+
+    const installedUntilField = installedFormVersion?.sections.flatMap((section) => section.fields).find((field) => field.key === 'requestedUntil');
+    if (installedUntilField && installedUntilField.validation?.min !== 'today') {
+      installedUntilField.validation = { ...installedUntilField.validation, min: 'today' };
+      changed = true;
+    }
+
+    if (installedFormVersion) {
+      const sectionsWithoutEvidence = installedFormVersion.sections.map((section) => ({
+        ...section,
+        fields: section.fields.filter((field) => field.key !== 'supportingEvidence'),
+      }));
+      if (sectionsWithoutEvidence.some((section, index) => section.fields.length !== installedFormVersion.sections[index].fields.length)) {
+        installedFormVersion.sections = sectionsWithoutEvidence;
+        changed = true;
+      }
+    }
+
+    const installedInput = installedVersion?.nodes.find((node) => node.id === 'usb-input');
+    const installedInputField = installedInput?.inputConfig?.fields?.find((field) => field.key === 'deviceSerial');
+    if (installedInputField && (installedInputField.required || installedInputField.label !== 'USB device serial / asset tag (if known)')) {
+      installedInputField.required = false;
+      installedInputField.label = 'USB device serial / asset tag (if known)';
+      installedInputField.placeholder = 'Optional — add it if available';
+      installedVersion!.checksum = checksum({ ...installedVersion, checksum: undefined });
+      changed = true;
+    }
+
+    const installedInputUntilField = installedInput?.inputConfig?.fields?.find((field) => field.key === 'requestedUntil');
+    if (installedInputUntilField && installedInputUntilField.validation?.min !== 'today') {
+      installedInputUntilField.validation = { ...installedInputUntilField.validation, min: 'today' };
+      installedVersion!.checksum = checksum({ ...installedVersion, checksum: undefined });
+      changed = true;
     }
 
     if (!db.data.requestTypesV2.some((item) => item.id === REQUEST_TYPE_ID)) {

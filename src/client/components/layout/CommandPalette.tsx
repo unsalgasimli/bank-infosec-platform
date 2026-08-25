@@ -38,7 +38,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   const quickViews = [
     { label: 'My Work Overview', view: 'my-work-overview', icon: CheckCircle2 },
-    { label: 'Projects & Tasks (Spreadsheet / Kanban / Gantt)', view: 'projects-tasks', icon: Layers },
+    { label: 'Projects & Tasks (Spreadsheet / Kanban)', view: 'projects-tasks', icon: Layers },
     { label: 'Workflows & Orchestration Pipelines', view: 'workflows', icon: Layers },
     { label: 'Risk Management (5×5 Matrix)', view: 'risk-management', icon: FileText },
     { label: 'Audit & Regulatory Compliance', view: 'audit-compliance', icon: CheckCircle2 },
@@ -49,7 +49,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   ].filter((v) => v.label.toLowerCase().includes(query.toLowerCase()));
 
   return (
-    <div className="fixed inset-0 z-dsOverlay flex items-start justify-center pt-20 p-4">
+      <div className="fixed inset-0 z-dsDialog flex items-start justify-center pt-20 p-4">
       <div className="fixed inset-0 bg-black/65 backdrop-blur-[2px]" onClick={onClose} />
       <div className="relative w-full max-w-xl bg-semantic-panel border border-semantic-jira-border rounded-md shadow-2xl overflow-hidden z-dsContent">
         <div className="flex items-center px-4 py-3 border-b border-semantic-jira-border bg-semantic-panel">

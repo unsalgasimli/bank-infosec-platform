@@ -68,7 +68,7 @@ jira-lozenge-review, jira-lozenge-blocked, jira-lozenge-done
 jira-table
 mini-label
 wrike-btn-primary, wrike-btn-secondary
-wrike-canvas-grid, wrike-card, wrike-dropdown-menu, wrike-gantt-grid
+wrike-canvas-grid, wrike-card, wrike-dropdown-menu
 wrike-input, wrike-pill, wrike-pill-green, wrike-pill-blue,
 wrike-pill-amber, wrike-select, wrike-table
 ```

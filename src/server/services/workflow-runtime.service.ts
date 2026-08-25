@@ -15,6 +15,7 @@ import type {
   WorkflowVersion,
 } from '../../shared/types/orchestration.js';
 import { db } from '../db/database.js';
+import { ApprovalService } from './approval.service.js';
 import { OrchestrationExpressionService } from './orchestration-expression.service.js';
 import { OrchestrationError, WorkflowOrchestrationService } from './workflow-orchestration.service.js';
 import { WorkflowPreflightService } from './workflow-preflight.service.js';
@@ -56,11 +57,15 @@ export class WorkflowRuntimeService {
     title?: string;
   }) {
     const { actor } = params;
+    if (!actor.isActive) throw new OrchestrationError('Inactive users cannot launch workflows.', 403);
     if (params.idempotencyKey) {
       const prior = db.data.workflowInstances.find((item) => item.idempotencyKey === params.idempotencyKey && item.requesterId === actor.id);
       if (prior) return { instance: prior, replayed: true, execution: this.getExecution(prior.id, actor) };
     }
     const definition = WorkflowOrchestrationService.getDefinition(params.workflowDefinitionId);
+    if ((params.triggerType || 'MANUAL') === 'MANUAL') {
+      WorkflowOrchestrationService.assertCanLaunchDefinition(definition, actor);
+    }
     const version = WorkflowOrchestrationService.getVersion(definition.id, params.workflowVersion);
     if (version.status !== 'PUBLISHED') throw new OrchestrationError('Only a published workflow version can be launched.', 422);
     const preflight = WorkflowPreflightService.validate(version, actor);
@@ -157,7 +162,18 @@ export class WorkflowRuntimeService {
 
   public static launchQuickWork(params: { requestTypeId: string; values: Record<string, unknown>; actor: BankUser; idempotencyKey?: string }) {
     const requestType = WorkflowOrchestrationService.getRequestType(params.requestTypeId);
-    const result = this.launch({ workflowDefinitionId: requestType.workflowDefinitionId, workflowVersion: requestType.workflowVersion, requestTypeId: requestType.id, context: params.values, actor: params.actor, idempotencyKey: params.idempotencyKey, title: String(params.values.summary || requestType.name) });
+    let launchValues = { ...params.values };
+    const targetSectionId = typeof launchValues.targetSectionId === 'string' ? launchValues.targetSectionId : undefined;
+    if (targetSectionId) {
+      const section = db.data.departmentSections.find((candidate) => candidate.id === targetSectionId && candidate.isActive !== false && candidate.directorySource === 'ACTIVE_DIRECTORY');
+      if (!section) throw new OrchestrationError('Target section does not exist, is inactive, or is not AD-confirmed.', 422);
+      const targetDepartmentId = typeof launchValues.targetDepartmentId === 'string' ? launchValues.targetDepartmentId : undefined;
+      if (targetDepartmentId && targetDepartmentId !== section.departmentId) {
+        throw new OrchestrationError('Target section does not belong to the selected department.', 422);
+      }
+      launchValues = { ...launchValues, targetDepartmentId: targetDepartmentId || section.departmentId };
+    }
+    const result = this.launch({ workflowDefinitionId: requestType.workflowDefinitionId, workflowVersion: requestType.workflowVersion, requestTypeId: requestType.id, context: launchValues, actor: params.actor, idempotencyKey: params.idempotencyKey, title: String(launchValues.summary || requestType.name) });
 
     // Ensure corresponding Ticket entry exists in db.data.tickets for unified views
     const instance = result.instance;
@@ -174,45 +190,47 @@ export class WorkflowRuntimeService {
       const defaultWorkflow = (db.data.workflows || [])[0];
       const initialStatus = defaultWorkflow?.states?.[0] || { id: 'OPEN', name: 'Open', category: 'TO_DO' };
       const defaultSlaPolicy = (db.data.slaPolicies || [])[0] || { id: 'sla-p1-emergency' };
-      const slaPolicyId = (params.values.slaPolicyId as string) || defaultSlaPolicy.id;
-      const technicalSeverity = (params.values.technicalSeverity as any) || 'MEDIUM';
+      const slaPolicyId = (launchValues.slaPolicyId as string) || defaultSlaPolicy.id;
+      const technicalSeverity = (launchValues.technicalSeverity as any) || 'MEDIUM';
       const slaDeadlines = TicketLifecycleService.calculateSlaDeadlines(slaPolicyId, technicalSeverity, now);
-      const targetDepartmentId = (params.values.targetDepartmentId as string) || undefined;
-      const departmentId = targetDepartmentId || (params.values.departmentId as string) || params.actor.departmentId;
-      const assigneeId = (params.values.assigneeId as string) || undefined;
+      const targetDepartmentId = (launchValues.targetDepartmentId as string) || undefined;
+      const targetSectionId = (launchValues.targetSectionId as string) || undefined;
+      const departmentId = targetDepartmentId || (launchValues.departmentId as string) || params.actor.departmentId;
+      const assigneeId = (launchValues.assigneeId as string) || undefined;
 
       const ticket: Ticket = {
         id: `tick-${instance.id.replace(/^wfi-/, '')}`,
         key,
         projectCode,
-        ticketTypeId: (params.values.workType as any) || 'SERVICE_REQUEST',
+        ticketTypeId: (launchValues.workType as any) || 'SERVICE_REQUEST',
         ticketTypeName: 'Standard Task',
-        type: (params.values.workType as any) || 'SERVICE_REQUEST',
-        category: (params.values.category as any) || 'GENERAL_REQUEST',
+        type: (launchValues.workType as any) || 'SERVICE_REQUEST',
+        category: (launchValues.category as any) || 'GENERAL_REQUEST',
         securityDomain: 'GENERAL_INFOSEC',
-        title: String(params.values.summary || instance.title),
-        description: String(params.values.description || params.values.summary || ''),
+        title: String(launchValues.summary || instance.title),
+        description: String(launchValues.description || launchValues.summary || ''),
         statusId: initialStatus.id,
         statusName: initialStatus.name,
         statusCategory: (initialStatus.category || 'TO_DO') as any,
         workflowId: 'wf-standard-task',
         workflowVersion: 1,
         technicalSeverity,
-        businessPriority: (params.values.businessPriority as any) || 'P3_MEDIUM',
-        businessImpact: (params.values.businessImpact as any) || 'MODERATE',
-        urgency: (params.values.urgency as any) || 'MEDIUM',
+        businessPriority: (launchValues.businessPriority as any) || 'P3_MEDIUM',
+        businessImpact: (launchValues.businessImpact as any) || 'MODERATE',
+        urgency: (launchValues.urgency as any) || 'MEDIUM',
         inherentRisk: 'MEDIUM',
         residualRisk: 'LOW',
         riskScore: 50,
         confidentiality: 'INTERNAL',
         restrictedUserIds: [],
         restrictedTeamIds: [],
-        reporterId: (params.values.reporterId as string) || params.actor.id,
-        requesterId: (params.values.requesterId as string) || params.actor.id,
+        reporterId: (launchValues.reporterId as string) || params.actor.id,
+        requesterId: (launchValues.requesterId as string) || params.actor.id,
         assigneeId,
         departmentId,
         targetDepartmentId,
-        assignmentGroupId: (params.values.assignmentGroupId as string) || (params.values.routingStrategy === 'TEAM_QUEUE' ? targetDepartmentId : undefined),
+        targetSectionId,
+        assignmentGroupId: (launchValues.assignmentGroupId as string) || (launchValues.routingStrategy === 'TEAM_QUEUE' && !targetSectionId ? targetDepartmentId : undefined),
         watcherIds: [params.actor.id],
         participantIds: [params.actor.id],
         customFields: [],
@@ -224,7 +242,7 @@ export class WorkflowRuntimeService {
         slaPolicyId,
         slaState: 'SAFE',
         version: 1,
-        tags: Array.isArray(params.values.labels) ? (params.values.labels as string[]) : ['quick-work'],
+        tags: Array.isArray(launchValues.labels) ? (launchValues.labels as string[]) : ['quick-work'],
         workflowRunId: instance.id,
       };
       const sla = SLAService.calculateSLA(ticket);
@@ -257,6 +275,7 @@ export class WorkflowRuntimeService {
         name: actor.fullName,
         email: actor.email,
         departmentId: actor.departmentId,
+        sectionId: actor.sectionId,
         departmentName: department?.name,
         managerId: manager?.id,
         roles: actor.roles,
@@ -301,6 +320,9 @@ export class WorkflowRuntimeService {
           }
         }
         this.refreshInstanceState(instance, version, now, actor);
+        if (instance.status === 'COMPLETED') {
+          TicketLifecycleService.archiveForCompletedWorkflow(instance.id, actor);
+        }
         for (const event of WorkflowGovernanceService.evaluateClocks(instance, now)) {
           this.appendEvent(instance, event.type, actor, { clockId: event.clock.id, clockType: event.clock.clockType, targetAt: event.clock.targetAt });
           const delivery = WorkflowGovernanceService.dispatchNotification(instance, event.type, undefined, now);
@@ -437,7 +459,7 @@ export class WorkflowRuntimeService {
       commentsMandatoryOnReject: approval.commentsMandatoryOnReject,
       allowDelegation: approval.allowDelegation,
       steps: approvers.length
-        ? approvers.map((user, index) => ({ id: `step-${uuidv4().slice(0, 8)}`, stepNumber: index + 1, name: `${node.title} — ${user.fullName}`, assignedApproverId: user.id, assignedApproverName: user.fullName, requiredRole: approval.role, status: 'PENDING' as const, isMandatory: true, deadlineAt: approval.timeoutMinutes ? new Date(now.getTime() + approval.timeoutMinutes * 60_000).toISOString() : undefined }))
+        ? approvers.map((user, index) => ({ id: `step-${uuidv4().slice(0, 8)}`, stepNumber: index + 1, name: `${node.title} — ${user.fullName}`, assignedApproverId: user.id, assignedApproverName: user.fullName, resolverType: approval.approverSource === 'REQUESTER_MANAGER' ? 'REQUESTER_MANAGER' : undefined, requiredRole: approval.role, status: 'PENDING' as const, isMandatory: true, deadlineAt: approval.timeoutMinutes ? new Date(now.getTime() + approval.timeoutMinutes * 60_000).toISOString() : undefined }))
         : [{ id: `step-${uuidv4().slice(0, 8)}`, stepNumber: 1, name: `${node.title} — ${approval.role || approval.approverSource} queue`, requiredRole: approval.role, status: 'PENDING', isMandatory: true, deadlineAt: approval.timeoutMinutes ? new Date(now.getTime() + approval.timeoutMinutes * 60_000).toISOString() : undefined }],
     };
     db.data.approvals.push(chain);
@@ -810,12 +832,13 @@ export class WorkflowRuntimeService {
     if (!workItem) throw new OrchestrationError('Work item not found.', 404);
     const instance = this.requireInstance(workItem.workflowInstanceId);
     const isAdmin = actor.roles.some((role) => ['PLATFORM_ADMIN', 'CISO', 'DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER'].includes(role));
-    const inGroup = Boolean(workItem.assignmentGroupId && actor.teamIds.includes(workItem.assignmentGroupId));
     const nodeInstance = db.data.nodeInstances.find((item) => item.id === workItem.nodeInstanceId);
     const node = nodeInstance && WorkflowOrchestrationService.getVersion(instance.workflowDefinitionId, instance.workflowVersion).nodes.find((item) => item.id === nodeInstance.nodeId);
+    const sectionEligible = !node?.assignment?.sectionId || node.assignment.sectionId === actor.sectionId;
+    const inGroup = Boolean(workItem.assignmentGroupId && actor.teamIds.includes(workItem.assignmentGroupId) && sectionEligible);
     if (node?.type === 'APPROVAL') throw new OrchestrationError('Approval work items must be decided through the approval action.', 409);
     const isRoleEligible = Boolean(node?.assignment?.strategy === 'ROLE_BASED' && node.assignment.role && actor.roles.includes(node.assignment.role));
-    const isDepartmentEligible = Boolean(node?.assignment?.departmentId && node.assignment.departmentId === actor.departmentId);
+    const isDepartmentEligible = Boolean(node?.assignment?.departmentId && node.assignment.departmentId === actor.departmentId && sectionEligible);
     if (node?.assignment?.strategy === 'UNASSIGNED_TEAM_QUEUE' && node.assignment.role && !workItem.assigneeId) {
       throw new OrchestrationError('Claim this queue ticket before completing it.', 409);
     }
@@ -850,10 +873,14 @@ export class WorkflowRuntimeService {
     if (workItem.status === 'COMPLETED' || workItem.status === 'CANCELLED') throw new OrchestrationError('A completed or cancelled work item cannot be claimed.', 409);
     const nodeInstance = db.data.nodeInstances.find((item) => item.id === workItem.nodeInstanceId);
     const node = nodeInstance && WorkflowOrchestrationService.getVersion(instance.workflowDefinitionId, instance.workflowVersion).nodes.find((item) => item.id === nodeInstance.nodeId);
+    if (node?.type === 'APPROVAL' || workItem.workType === 'APPROVAL_REQUEST') {
+      throw new OrchestrationError('Approval work items must be decided through the approval action.', 409);
+    }
     const isAdmin = actor.roles.some((role) => ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER'].includes(role));
-    const inGroup = Boolean(workItem.assignmentGroupId && actor.teamIds.includes(workItem.assignmentGroupId));
+    const sectionEligible = !node?.assignment?.sectionId || node.assignment.sectionId === actor.sectionId;
+    const inGroup = Boolean(workItem.assignmentGroupId && actor.teamIds.includes(workItem.assignmentGroupId) && sectionEligible);
     const roleEligible = Boolean((node?.assignment?.role && actor.roles.includes(node.assignment.role)) || (node?.approval?.role && actor.roles.includes(node.approval.role)));
-    const departmentEligible = Boolean(node?.assignment?.departmentId && node.assignment.departmentId === actor.departmentId);
+    const departmentEligible = Boolean(node?.assignment?.departmentId && node.assignment.departmentId === actor.departmentId && sectionEligible);
     if (!isAdmin && !inGroup && !roleEligible && !departmentEligible && workItem.assigneeId !== actor.id) throw new OrchestrationError('You are not authorized to claim this work item.', 403);
     db.transaction(() => {
       const now = new Date();
@@ -1051,7 +1078,15 @@ export class WorkflowRuntimeService {
     const version = WorkflowOrchestrationService.getVersion(instance.workflowDefinitionId, instance.workflowVersion);
     const nodes = db.data.nodeInstances.filter((item) => item.workflowInstanceId === instance.id);
     const workItems = db.data.workItemsV2.filter((item) => item.workflowInstanceId === instance.id);
-    const approvals = db.data.approvals.filter((item) => item.workflowInstanceId === instance.id);
+    const approvals = db.data.approvals
+      .filter((item) => item.workflowInstanceId === instance.id)
+      .map((chain) => ({
+        ...chain,
+        steps: chain.steps.map((step) => ({
+          ...step,
+          canDecide: ApprovalService.canUserDecideStep(chain, step, actor),
+        })),
+      }));
     const events = db.data.executionEvents.filter((item) => item.workflowInstanceId === instance.id).sort((left, right) => left.sequence - right.sequence);
     const comments = events.filter((event) => event.type === 'COMMENT_ADDED').map((event) => ({ id: event.id, body: String(event.data.body || ''), authorId: event.actorId, authorName: event.actorName, createdAt: event.timestamp }));
     const slaClocks = db.data.workflowSlaClocks.filter((item) => item.workflowInstanceId === instance.id);
@@ -1142,8 +1177,13 @@ export class WorkflowRuntimeService {
     if (instance.requesterId === actor.id || instance.ownerId === actor.id || instance.allowedUserIds.includes(actor.id)) return true;
     if (instance.allowedRoleIds.some((role) => actor.roles.includes(role))) return true;
     if (instance.allowedDepartmentIds.includes(actor.departmentId)) return true;
-    const assigned = db.data.nodeInstances.some((node) => node.workflowInstanceId === instance.id && (node.assigneeId === actor.id || (node.assignmentGroupId && actor.teamIds.includes(node.assignmentGroupId))));
     const version = WorkflowOrchestrationService.getVersion(instance.workflowDefinitionId, instance.workflowVersion);
+    const assigned = db.data.nodeInstances.some((node) => {
+      if (node.workflowInstanceId !== instance.id || node.assigneeId === actor.id) return node.workflowInstanceId === instance.id && node.assigneeId === actor.id;
+      if (!node.assignmentGroupId || !actor.teamIds.includes(node.assignmentGroupId)) return false;
+      const definitionNode = version.nodes.find((candidate) => candidate.id === node.nodeId);
+      return !definitionNode?.assignment?.sectionId || definitionNode.assignment.sectionId === actor.sectionId;
+    });
     const assignedByRole = db.data.nodeInstances.some((node) => {
       if (node.workflowInstanceId !== instance.id || !['WAITING', 'READY', 'RUNNING'].includes(node.status)) return false;
       const definitionNode = version.nodes.find((candidate) => candidate.id === node.nodeId);

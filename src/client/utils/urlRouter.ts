@@ -71,6 +71,7 @@ PATH_TO_DESTINATION['/projects-tasks'] = 'projects-tasks';
 PATH_TO_DESTINATION['/table'] = 'projects-tasks';
 PATH_TO_DESTINATION['/board'] = 'projects-tasks';
 PATH_TO_DESTINATION['/gantt'] = 'projects-tasks';
+// Calendar view was removed; keep old links useful by opening the task table.
 PATH_TO_DESTINATION['/calendar'] = 'projects-tasks';
 PATH_TO_DESTINATION['/workload'] = 'projects-tasks';
 PATH_TO_DESTINATION['/workflows'] = 'workflows';
@@ -140,14 +141,10 @@ export function parseCurrentUrl(): {
   // Parse viewMode
   const rawView = searchParams.get('view');
   let viewMode: ViewMode = 'spreadsheet';
-  if (rawView && ['spreadsheet', 'kanban', 'gantt', 'calendar', 'capacity'].includes(rawView)) {
+  if (rawView && ['spreadsheet', 'kanban', 'capacity'].includes(rawView)) {
     viewMode = rawView as ViewMode;
   } else if (pathname === '/board') {
     viewMode = 'kanban';
-  } else if (pathname === '/gantt') {
-    viewMode = 'gantt';
-  } else if (pathname === '/calendar') {
-    viewMode = 'calendar';
   } else if (pathname === '/workload') {
     viewMode = 'capacity';
   }

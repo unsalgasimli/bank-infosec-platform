@@ -20,12 +20,10 @@ import { ProjectBlueprint } from '../../../shared/types/blueprints.js';
 
 interface WrikeAutomationsViewProps {
   onRefreshTickets?: () => void;
-  onNavigate?: (view: string) => void;
 }
 
 export const WrikeAutomationsView: React.FC<WrikeAutomationsViewProps> = ({
   onRefreshTickets,
-  onNavigate,
 }) => {
   const { fetchWithAuth } = useAuth();
   const [activeTab, setActiveTab] = useState<'RULES' | 'BLUEPRINTS'>('RULES');
@@ -140,14 +138,6 @@ export const WrikeAutomationsView: React.FC<WrikeAutomationsViewProps> = ({
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span>{launchedMessage}</span>
               </div>
-              {onNavigate && (
-                <button
-                  onClick={() => onNavigate('gantt')}
-                  className="px-2.5 py-1 rounded bg-semantic-brand text-white font-bold text-label hover:bg-semantic-brandHover"
-                >
-                  View in Gantt
-                </button>
-              )}
             </div>
           )}
 

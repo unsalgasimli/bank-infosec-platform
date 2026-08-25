@@ -87,7 +87,7 @@ const parseJson = <T>(value: unknown, fallback: T): T => {
   return fallback;
 };
 
-const rowToUser = (row: JsonRecord): BankUser => {
+export const rowToUser = (row: JsonRecord): BankUser => {
   const payload = parseJson<JsonRecord>(row.source_payload, {});
   return {
     ...payload,
@@ -118,7 +118,7 @@ const rowToUser = (row: JsonRecord): BankUser => {
   };
 };
 
-const directoryUserColumns = `
+export const directoryUserColumns = `
   id, username, email, first_name, last_name, full_name, title,
   department_id, section_id, division_id, security_clearance, is_active,
   roles, team_ids, owned_application_ids, owned_asset_ids, owned_risk_ids,
@@ -203,10 +203,10 @@ export class DepartmentsRepository {
            d.created_at, d.updated_at, d.source_payload,
            v.name AS division_name, v.code AS division_code,
            manager.full_name AS manager_name, manager.email AS manager_email,
-           (SELECT COUNT(*) FROM bank_users u WHERE u.department_id = d.id AND u.is_active = TRUE AND u.directory_source = 'ACTIVE_DIRECTORY') AS member_count,
+           (SELECT COUNT(*) FROM bank_users u WHERE u.department_id = d.id AND u.is_active = TRUE AND u.directory_source = 'ACTIVE_DIRECTORY' AND coalesce(u.source_payload->>'organizationEligible', 'true') <> 'false') AS member_count,
            (SELECT COUNT(*) FROM department_connections c WHERE c.department_id = d.id AND c.deleted_at IS NULL) AS connection_count,
            (SELECT COUNT(*) FROM tickets t WHERE (t.department_id = d.id OR t.source_payload->>'targetDepartmentId' = d.id) AND t.status_category <> 'DONE') AS active_task_count
-           ,COALESCE((SELECT jsonb_agg(jsonb_build_object('id', s.id, 'departmentId', s.department_id, 'name', s.name, 'code', s.code, 'managerId', s.manager_id, 'managerName', (SELECT manager.full_name FROM bank_users manager WHERE manager.id = s.manager_id), 'memberCount', (SELECT COUNT(*) FROM bank_users section_member WHERE section_member.section_id = s.id AND section_member.is_active = TRUE), 'isActive', s.is_active, 'directorySource', COALESCE(s.source_payload->>'directorySource', 'ACTIVE_DIRECTORY')) ORDER BY s.name) FROM bank_department_sections s WHERE s.department_id = d.id AND s.is_active = TRUE), '[]'::jsonb) AS sections
+           ,COALESCE((SELECT jsonb_agg(jsonb_build_object('id', s.id, 'departmentId', s.department_id, 'name', s.name, 'code', s.code, 'managerId', s.manager_id, 'managerName', (SELECT manager.full_name FROM bank_users manager WHERE manager.id = s.manager_id), 'memberCount', (SELECT COUNT(*) FROM bank_users section_member WHERE section_member.section_id = s.id AND section_member.is_active = TRUE AND coalesce(section_member.source_payload->>'organizationEligible', 'true') <> 'false'), 'isActive', s.is_active, 'directorySource', COALESCE(s.source_payload->>'directorySource', 'ACTIVE_DIRECTORY')) ORDER BY s.name) FROM bank_department_sections s WHERE s.department_id = d.id AND s.is_active = TRUE), '[]'::jsonb) AS sections
       FROM bank_departments d
       JOIN bank_divisions v ON v.id = d.division_id
       LEFT JOIN bank_users manager ON manager.id = COALESCE(d.manager_id, d.source_payload->>'managerId')
@@ -231,7 +231,7 @@ export class DepartmentsRepository {
   private static async assertUsers(client: PoolClient, ids: string[]): Promise<void> {
     const unique = [...new Set(ids.filter(Boolean))];
     if (!unique.length) return;
-    const result = await client.query(`SELECT id FROM bank_users WHERE id = ANY($1::text[]) AND is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY'`, [unique]);
+    const result = await client.query(`SELECT id FROM bank_users WHERE id = ANY($1::text[]) AND is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY' AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false'`, [unique]);
     if (result.rowCount !== unique.length) throw new DepartmentRepositoryError(400, 'Only active Active Directory users can receive department management rights.');
   }
 
@@ -252,7 +252,7 @@ export class DepartmentsRepository {
   public static async list(): Promise<Array<BankDepartment & JsonRecord>> {
     const [result, usersResult] = await Promise.all([
       pgClient.query(`${this.departmentSelect} WHERE d.is_active = TRUE ORDER BY v.name, d.name`),
-      pgClient.query(`SELECT ${directoryUserColumns} FROM bank_users WHERE is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY'`),
+      pgClient.query(`SELECT ${directoryUserColumns} FROM bank_users WHERE is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY' AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false'`),
     ]);
     const users = usersResult.rows
       .map(rowToUser)
@@ -284,11 +284,11 @@ export class DepartmentsRepository {
       const department = rowToDepartment(departmentRow);
       const members = await client.query(
         `SELECT ${directoryUserColumns}
-           FROM bank_users WHERE department_id = $1 AND is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY' ORDER BY full_name, username`, [department.id]
+           FROM bank_users WHERE department_id = $1 AND is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY' AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false' ORDER BY full_name, username`, [department.id]
       );
       const leadershipIds = [...new Set([department.managerId || '', ...(department.adminUserIds || [])].filter(Boolean))];
       const leadership = leadershipIds.length
-        ? await client.query(`SELECT ${directoryUserColumns} FROM bank_users WHERE id = ANY($1::text[]) AND is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY'`, [leadershipIds])
+        ? await client.query(`SELECT ${directoryUserColumns} FROM bank_users WHERE id = ANY($1::text[]) AND is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY' AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false'`, [leadershipIds])
         : { rows: [] as JsonRecord[] };
       const connections = await client.query(
         `SELECT id,department_id,name,type,provider,endpoint_url,auth_type,status,last_sync_at,latency_ms,health_score,sync_frequency_minutes,description,config_summary,source_payload,created_at,updated_at
@@ -310,7 +310,7 @@ export class DepartmentsRepository {
 
   /** Directory-only projection used by member assignment. No JSON fallback is allowed here. */
   public static async listActiveDirectoryUsers(): Promise<BankUser[]> {
-    const result = await pgClient.query(`SELECT ${directoryUserColumns} FROM bank_users WHERE is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY' ORDER BY full_name, username`);
+    const result = await pgClient.query(`SELECT ${directoryUserColumns} FROM bank_users WHERE is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY' AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false' ORDER BY full_name, username`);
     return result.rows
       .map(rowToUser)
       .filter((user) => isGenuineEmployeeOrIntern(user, user.distributionGroups || [], user.sAMAccountName || user.username));
@@ -356,6 +356,7 @@ export class DepartmentsRepository {
       `SELECT ${directoryUserColumns}
        FROM bank_users
        WHERE is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY'
+         AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false'
          AND department_id = ANY($1::text[])
        ORDER BY full_name, username`,
       [[...departmentIds]]

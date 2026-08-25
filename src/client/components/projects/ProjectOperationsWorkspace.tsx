@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   Building2,
-  Calendar as CalendarIcon,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -45,21 +44,20 @@ import {
 import { useAuth } from '../../context/AuthContext.js';
 import { Ticket } from '../../../shared/types/ticket.js';
 import type { BankDepartment, BankUser, LDAPGroupInfo } from '../../../shared/types/auth.js';
-import type { Project, ProjectHealth, ProjectMember, ProjectMilestone, ProjectRole, ProjectSummary } from '../../../shared/types/project.js';
+import { PROJECT_WORK_ITEM_TYPES, type Project, type ProjectHealth, type ProjectMember, type ProjectMilestone, type ProjectRole, type ProjectSummary } from '../../../shared/types/project.js';
 import { Modal } from '../common/Modal.js';
 import { CustomSelect, type SelectOption } from '../common/CustomSelect.js';
 import { DirectoryAssignmentSelect } from '../common/DirectoryAssignmentSelect.js';
 import { AccessibleDatePicker } from '../common/AccessibleDatePicker.js';
 
 type ProjectPayload = ProjectSummary & { tasks?: Ticket[]; activity?: any[] };
-type WorkspaceTab = 'overview' | 'tasks' | 'kanban' | 'timeline' | 'calendar' | 'capacity' | 'files' | 'activity' | 'settings' | 'access';
+type WorkspaceTab = 'overview' | 'tasks' | 'kanban' | 'timeline' | 'capacity' | 'files' | 'activity' | 'settings' | 'access';
 
 const tabs: Array<[WorkspaceTab, string]> = [
   ['overview', 'Overview'],
   ['tasks', 'Tasks'],
   ['kanban', 'Kanban'],
   ['timeline', 'Timeline'],
-  ['calendar', 'Calendar'],
   ['capacity', 'Capacity'],
   ['files', 'Files'],
   ['activity', 'Activity'],
@@ -163,9 +161,9 @@ export const ProjectOperationsWorkspace: React.FC = () => {
     await loadProjects();
   };
 
-  const post = async (url: string, body: unknown) => {
+  const request = async (method: 'POST' | 'PATCH', url: string, body: unknown) => {
     const res = await fetchWithAuth(url, {
-      method: 'POST',
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
@@ -173,6 +171,8 @@ export const ProjectOperationsWorkspace: React.FC = () => {
     if (!data.success) throw new Error(data.error || 'Operation failed.');
     return data;
   };
+  const post = (url: string, body: unknown) => request('POST', url, body);
+  const patch = (url: string, body: unknown) => request('PATCH', url, body);
 
   if (selected) {
     return (
@@ -191,6 +191,7 @@ export const ProjectOperationsWorkspace: React.FC = () => {
         }}
         onRefresh={refreshSelected}
         post={post}
+        patch={patch}
         fetchWithAuth={fetchWithAuth}
         showTaskForm={showTaskForm}
         setShowTaskForm={setShowTaskForm}
@@ -409,6 +410,7 @@ const ProjectDetail: React.FC<any> = ({
   onBack,
   onRefresh,
   post,
+  patch,
   fetchWithAuth,
   showTaskForm,
   setShowTaskForm,
@@ -530,12 +532,14 @@ const ProjectDetail: React.FC<any> = ({
             allUsers={allUsers}
             onTask={() => setShowTaskForm(true)}
             post={post}
+            patch={patch}
             onRefresh={onRefresh}
+            fetchWithAuth={fetchWithAuth}
+            currentUserId={currentUserId}
           />
         )}
-        {tab === 'kanban' && <Kanban data={projectData} allUsers={allUsers} post={post} onRefresh={onRefresh} />}
+        {tab === 'kanban' && <Kanban data={projectData} allUsers={allUsers} patch={patch} onRefresh={onRefresh} />}
         {tab === 'timeline' && <Timeline data={projectData} />}
-        {tab === 'calendar' && <Calendar data={projectData} />}
         {tab === 'capacity' && <Capacity data={projectData} allUsers={allUsers} />}
         {tab === 'files' && <Files />}
         {tab === 'activity' && <Activity data={projectData} allUsers={allUsers} />}
@@ -553,7 +557,7 @@ const ProjectDetail: React.FC<any> = ({
             fetchWithAuth={fetchWithAuth}
           />
         )}
-        {tab === 'settings' && <Settings project={project} />}
+        {tab === 'settings' && <Settings project={project} patch={patch} onRefresh={onRefresh} fetchWithAuth={fetchWithAuth} />}
       </main>
 
       {showTaskForm && (
@@ -907,16 +911,38 @@ const StatusUpdateForm: React.FC<{ onSubmit: (body: string) => Promise<void> }> 
   );
 };
 
-const Tasks: React.FC<any> = ({ data, allUsers = [], onTask, post, onRefresh }) => {
+const Tasks: React.FC<any> = ({ data, allUsers = [], onTask, post, patch, onRefresh, fetchWithAuth, currentUserId }) => {
   const [filter, setFilter] = useState('ALL');
+  const [query, setQuery] = useState('');
+  const [serverTasks, setServerTasks] = useState<Ticket[] | null>(null);
+  const [taskDetail, setTaskDetail] = useState<any>(null);
+  const [detailError, setDetailError] = useState('');
   const userMap = useMemo(() => new Map<string, BankUser>(allUsers.map((u: BankUser) => [u.id, u])), [allUsers]);
 
-  const tasks = (data.tasks || []).filter(
-    (task: Ticket) =>
-      filter === 'ALL' ||
-      task.projectTaskStatus === filter ||
-      (filter === 'OVERDUE' && task.statusCategory !== 'DONE' && new Date(task.dueDate).getTime() < Date.now())
-  );
+  const openTask = async (task: Ticket) => {
+    setDetailError('');
+    try {
+      const response = await fetchWithAuth(`/api/projects/${data.project.id}/tasks/${task.id}`);
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || 'Unable to open work item.');
+      setTaskDetail(result);
+    } catch (cause: any) {
+      setDetailError(cause.message || 'Unable to open work item.');
+    }
+  };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams({ taskStatus: filter });
+      if (query.trim()) params.set('taskSearch', query.trim());
+      void fetchWithAuth(`/api/projects/${data.project.id}?${params.toString()}`).then((response: Response) => response.json()).then((result: any) => {
+        if (result.success) setServerTasks(result.tasks || []);
+      }).catch(() => setServerTasks(null));
+    }, query ? 250 : 0);
+    return () => window.clearTimeout(timer);
+  }, [data.project.id, fetchWithAuth, filter, query]);
+
+  const tasks = serverTasks || data.tasks || [];
 
   return (
     <section className="overflow-hidden rounded-xl border border-semantic-border bg-white shadow-sm">
@@ -926,6 +952,10 @@ const Tasks: React.FC<any> = ({ data, allUsers = [], onTask, post, onRefresh }) 
           <p className="text-xs text-semantic-muted">Project-scoped work only. Use All Tasks for cross-project work.</p>
         </div>
         <div className="flex gap-2">
+          <label className="relative min-w-[180px]">
+            <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-semantic-muted" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} className="wrike-input w-full py-2 pl-8 text-xs" placeholder="Search key or summary…" />
+          </label>
           <select value={filter} onChange={(e) => setFilter(e.target.value)} className="wrike-select text-xs">
             <option value="ALL">All tasks</option>
             <option value="IN_PROGRESS">In progress</option>
@@ -938,6 +968,7 @@ const Tasks: React.FC<any> = ({ data, allUsers = [], onTask, post, onRefresh }) 
           </button>
         </div>
       </div>
+      {detailError && <p role="alert" className="px-4 pt-3 text-xs font-semibold text-rose-700">{detailError}</p>}
       {tasks.length ? (
         <div className="overflow-auto">
           <table className="wrike-table min-w-[1000px]">
@@ -961,9 +992,11 @@ const Tasks: React.FC<any> = ({ data, allUsers = [], onTask, post, onRefresh }) 
 
                 return (
                   <tr key={task.id}>
-                    <td className="font-mono text-xs font-bold text-semantic-info">{task.key}</td>
+                    <td className="font-mono text-xs font-bold text-semantic-info">
+                      <button type="button" onClick={() => openTask(task)} className="hover:underline">{task.key}</button>
+                    </td>
                     <td>
-                      <div className="font-semibold text-semantic-content-alt">{task.title}</div>
+                      <button type="button" onClick={() => openTask(task)} className="text-left font-semibold text-semantic-content-alt hover:text-semantic-success hover:underline">{task.title}</button>
                       <div className="mt-1 text-caption text-semantic-muted">
                         {task.estimatedHours ? `${task.estimatedHours}h estimated` : 'No estimate'}
                       </div>
@@ -972,20 +1005,21 @@ const Tasks: React.FC<any> = ({ data, allUsers = [], onTask, post, onRefresh }) 
                       <select
                         value={task.projectTaskStatus || 'TO_DO'}
                         onChange={async (event) => {
-                          await post(`/api/projects/${data.project.id}/tasks/${task.id}`, {
+                          await patch(`/api/projects/${data.project.id}/tasks/${task.id}`, {
                             status: event.target.value,
+                            expectedVersion: task.version,
                             blockedReason: event.target.value === 'BLOCKED' ? task.blockedReason || 'Blocker requires review' : undefined,
                           });
                           await onRefresh();
                         }}
                         className="wrike-select text-label"
                       >
-                        <option>BACKLOG</option>
-                        <option>TO_DO</option>
-                        <option>IN_PROGRESS</option>
-                        <option>IN_REVIEW</option>
-                        <option>BLOCKED</option>
-                        <option>DONE</option>
+                        <option value="BACKLOG">BACKLOG</option>
+                        <option value="TO_DO">TO_DO</option>
+                        <option value="IN_PROGRESS">IN_PROGRESS</option>
+                        <option value="IN_REVIEW">IN_REVIEW</option>
+                        <option value="BLOCKED">BLOCKED</option>
+                        <option value="DONE">DONE</option>
                       </select>
                     </td>
                     <td className="text-xs">
@@ -1030,11 +1064,145 @@ const Tasks: React.FC<any> = ({ data, allUsers = [], onTask, post, onRefresh }) 
           onClick={onTask}
         />
       )}
+      {taskDetail && (
+        <ProjectTaskDetail
+          detail={taskDetail}
+          projectId={data.project.id}
+          currentUserId={currentUserId}
+          tasks={data.tasks || []}
+          post={post}
+          onClose={() => setTaskDetail(null)}
+          onCommentAdded={(comment) => setTaskDetail((current: any) => ({ ...current, comments: [comment, ...(current.comments || [])] }))}
+          onAttachmentAdded={(attachment) => setTaskDetail((current: any) => ({ ...current, attachments: [attachment, ...(current.attachments || [])] }))}
+          onDependencyAdded={(dependency) => setTaskDetail((current: any) => ({ ...current, dependencies: [dependency, ...(current.dependencies || [])] }))}
+        />
+      )}
     </section>
   );
 };
 
-const Kanban: React.FC<any> = ({ data, allUsers = [], post, onRefresh }) => {
+const ProjectTaskDetail: React.FC<any> = ({ detail, projectId, currentUserId, tasks = [], post, onClose, onCommentAdded, onAttachmentAdded, onDependencyAdded }) => {
+  const [content, setContent] = useState('');
+  const [dependencyTargetId, setDependencyTargetId] = useState('');
+  const [dependencyType, setDependencyType] = useState('BLOCKS');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const task = detail.task as Ticket;
+  const [watching, setWatching] = useState(task.watcherIds.includes(currentUserId));
+
+  const addComment = async () => {
+    if (!content.trim()) return;
+    setSaving(true);
+    setError('');
+    try {
+      const result = await post(`/api/projects/${projectId}/tasks/${task.id}/comments`, { content: content.trim() });
+      onCommentAdded(result.comment);
+      setContent('');
+    } catch (cause: any) {
+      setError(cause.message || 'Unable to add comment.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const uploadEvidence = async (file?: File) => {
+    if (!file) return;
+    setSaving(true);
+    setError('');
+    try {
+      const fileBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Unable to read the selected file.'));
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.readAsDataURL(file);
+      });
+      const result = await post('/api/storage/upload', { ticketId: task.id, fileName: file.name, fileBase64, mimeType: file.type || 'application/octet-stream', evidenceType: 'AUDIT_WORKPAPER' });
+      onAttachmentAdded(result.attachment);
+    } catch (cause: any) {
+      setError(cause.message || 'Unable to upload evidence.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addDependency = async () => {
+    if (!dependencyTargetId) return;
+    setSaving(true);
+    setError('');
+    try {
+      const result = await post(`/api/projects/${projectId}/tasks/${task.id}/dependencies`, { sourceTaskId: task.id, targetTaskId: dependencyTargetId, type: dependencyType });
+      onDependencyAdded(result.dependency);
+      setDependencyTargetId('');
+    } catch (cause: any) {
+      setError(cause.message || 'Unable to add dependency.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleWatch = async () => {
+    setSaving(true); setError('');
+    try {
+      const result = await post(`/api/projects/${projectId}/tasks/${task.id}/watchers/toggle`, {});
+      setWatching(result.watching);
+    } catch (cause: any) { setError(cause.message || 'Unable to update watcher status.'); } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} title={`${task.key} · ${task.title}`} subtitle={`${task.projectWorkItemType || 'TASK'} · ${(task.projectTaskStatus || 'TO_DO').replace(/_/g, ' ')}`} icon={<ListChecks className="h-5 w-5" />} maxWidth="3xl">
+      <div className="space-y-6 text-sm">
+        <div className="flex justify-end"><button type="button" onClick={toggleWatch} disabled={saving} className="wrike-btn-secondary px-3 py-2 text-xs disabled:opacity-50">{watching ? 'Unwatch' : 'Watch'}</button></div>
+        <div className="grid gap-3 rounded-xl border border-semantic-border bg-semantic-subtle p-4 sm:grid-cols-3">
+          <div><div className="text-caption font-semibold uppercase text-semantic-muted">Assignee</div><div className="mt-1 font-semibold text-semantic-content-alt">{task.assigneeId || 'Unassigned'}</div></div>
+          <div><div className="text-caption font-semibold uppercase text-semantic-muted">Due date</div><div className="mt-1 font-semibold text-semantic-content-alt">{display(task.dueDate)}</div></div>
+          <div><div className="text-caption font-semibold uppercase text-semantic-muted">Priority</div><div className="mt-1 font-semibold text-semantic-content-alt">{task.businessPriority?.replace(/_/g, ' ') || '—'}</div></div>
+        </div>
+        <div>
+          <h3 className="text-sm font-bold text-semantic-content-alt">Description</h3>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-semantic-jira-muted-stronger">{task.description || 'No description provided.'}</p>
+        </div>
+        <div>
+          <h3 className="text-sm font-bold text-semantic-content-alt">Dependencies</h3>
+          {(detail.dependencies || []).length ? (
+            <ul className="mt-2 space-y-1 text-xs text-semantic-jira-muted-stronger">
+              {detail.dependencies.map((dependency: any) => <li key={dependency.id}>{dependency.type.replace(/_/g, ' ')} · {dependency.sourceTaskId === task.id ? 'Blocks' : 'Blocked by'} a project work item</li>)}
+            </ul>
+          ) : <p className="mt-2 text-xs text-semantic-muted">No project dependencies recorded.</p>}
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <select value={dependencyType} onChange={(event) => setDependencyType(event.target.value)} className="wrike-select text-xs"><option value="BLOCKS">Blocks</option><option value="DEPENDS_ON">Depends on</option><option value="REQUIRED_BY">Required by</option><option value="RELATES_TO">Relates to</option><option value="DUPLICATES">Duplicates</option></select>
+            <select value={dependencyTargetId} onChange={(event) => setDependencyTargetId(event.target.value)} className="wrike-select min-w-0 flex-1 text-xs"><option value="">Select project work item…</option>{tasks.filter((candidate: Ticket) => candidate.id !== task.id).map((candidate: Ticket) => <option key={candidate.id} value={candidate.id}>{candidate.key} · {candidate.title}</option>)}</select>
+            <button type="button" disabled={!dependencyTargetId || saving} onClick={addDependency} className="wrike-btn-secondary px-3 py-2 text-xs disabled:opacity-50">Link</button>
+          </div>
+        </div>
+        <div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-bold text-semantic-content-alt">Evidence & attachments</h3><label className="cursor-pointer text-xs font-semibold text-semantic-success hover:underline">{saving ? 'Uploading…' : 'Attach evidence'}<input type="file" className="sr-only" disabled={saving} onChange={(event) => { void uploadEvidence(event.target.files?.[0]); event.currentTarget.value = ''; }} /></label></div>
+          {(detail.attachments || []).length ? <ul className="mt-2 space-y-2">{detail.attachments.map((attachment: any) => <li key={attachment.id} className="flex items-center justify-between gap-3 rounded-lg border border-semantic-border px-3 py-2 text-xs"><span className="min-w-0 truncate font-semibold text-semantic-content-alt">{attachment.fileName}</span><a className="shrink-0 font-semibold text-semantic-success hover:underline" href={`/api/storage/attachments/${encodeURIComponent(attachment.id)}/download`}>Download</a></li>)}</ul> : <p className="mt-2 text-xs text-semantic-muted">No evidence attached to this work item.</p>}
+        </div>
+        <div className="border-t border-semantic-border pt-5">
+          <h3 className="text-sm font-bold text-semantic-content-alt">Discussion</h3>
+          <div className="mt-3 space-y-3">
+            {(detail.comments || []).map((comment: any) => (
+              <article key={comment.id} className="rounded-lg border border-semantic-border bg-white p-3">
+                <div className="flex items-center justify-between gap-3 text-xs"><span className="font-bold text-semantic-content-alt">{comment.authorName}</span><time className="text-semantic-muted">{display(comment.createdAt)}</time></div>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-semantic-jira-muted-stronger">{comment.content}</p>
+              </article>
+            ))}
+            {!(detail.comments || []).length && <p className="text-xs text-semantic-muted">No comments yet.</p>}
+          </div>
+          <textarea value={content} onChange={(event) => setContent(event.target.value)} className="wrike-input mt-4 min-h-[92px] w-full text-sm" placeholder="Add a project-scoped comment…" />
+          {error && <p role="alert" className="mt-2 text-xs font-semibold text-rose-700">{error}</p>}
+          <div className="mt-2 flex justify-end"><button type="button" onClick={addComment} disabled={!content.trim() || saving} className="wrike-btn-primary px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60">{saving ? 'Posting…' : 'Post comment'}</button></div>
+        </div>
+        <div className="border-t border-semantic-border pt-5">
+          <h3 className="text-sm font-bold text-semantic-content-alt">Work item history</h3>
+          {(detail.activity || []).length ? <ul className="mt-2 space-y-1 text-xs text-semantic-jira-muted-stronger">{detail.activity.map((event: any) => <li key={event.id}>{event.action.replace(/_/g, ' ')} · {display(event.createdAt)}</li>)}</ul> : <p className="mt-2 text-xs text-semantic-muted">No task-specific project activity recorded.</p>}
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
+const Kanban: React.FC<any> = ({ data, allUsers = [], patch, onRefresh }) => {
   const userMap = useMemo(() => new Map<string, BankUser>(allUsers.map((u: BankUser) => [u.id, u])), [allUsers]);
 
   return (
@@ -1065,20 +1233,21 @@ const Kanban: React.FC<any> = ({ data, allUsers = [], post, onRefresh }) => {
                     <select
                       value={status}
                       onChange={async (event) => {
-                        await post(`/api/projects/${data.project.id}/tasks/${task.id}`, {
+                        await patch(`/api/projects/${data.project.id}/tasks/${task.id}`, {
                           status: event.target.value,
+                          expectedVersion: task.version,
                           blockedReason: event.target.value === 'BLOCKED' ? task.blockedReason || 'Blocker requires review' : undefined,
                         });
                         await onRefresh();
                       }}
                       className="mt-2 w-full border-0 bg-transparent text-caption font-semibold text-semantic-success focus:ring-0"
                     >
-                      <option>BACKLOG</option>
-                      <option>TO_DO</option>
-                      <option>IN_PROGRESS</option>
-                      <option>IN_REVIEW</option>
-                      <option>BLOCKED</option>
-                      <option>DONE</option>
+                      <option value="BACKLOG">BACKLOG</option>
+                      <option value="TO_DO">TO_DO</option>
+                      <option value="IN_PROGRESS">IN_PROGRESS</option>
+                      <option value="IN_REVIEW">IN_REVIEW</option>
+                      <option value="BLOCKED">BLOCKED</option>
+                      <option value="DONE">DONE</option>
                     </select>
                   </article>
                 );
@@ -1114,29 +1283,6 @@ const Timeline: React.FC<any> = ({ data }) => (
               <div className="text-caption uppercase tracking-wide text-semantic-muted">
                 {item.type} · {String(item.state || '').replace('_', ' ')}
               </div>
-            </div>
-          </div>
-        ))}
-    </div>
-  </section>
-);
-
-const Calendar: React.FC<any> = ({ data }) => (
-  <section className="rounded-xl border border-semantic-border bg-white shadow-sm">
-    <SectionTitle title="Calendar agenda" />
-    <div className="divide-y divide-semantic-border-subtle">
-      {[
-        ...data.tasks.map((t: Ticket) => ({ id: t.id, title: `${t.key} ${t.title}`, date: t.dueDate, kind: 'Task' })),
-        ...data.milestones.map((m: ProjectMilestone) => ({ id: m.id, title: m.name, date: m.targetDate, kind: 'Milestone' })),
-      ]
-        .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
-        .map((item: any) => (
-          <div className="flex items-center gap-4 px-5 py-3" key={item.id}>
-            <div className="w-24 text-xs font-semibold text-semantic-jira-muted-stronger">{display(item.date)}</div>
-            <CalendarDays className="h-4 w-4 text-semantic-info" />
-            <div className="text-sm text-semantic-content-alt">
-              {item.title}
-              <span className="ml-2 text-caption uppercase text-semantic-muted">{item.kind}</span>
             </div>
           </div>
         ))}
@@ -1750,20 +1896,104 @@ const Access: React.FC<{
   );
 };
 
-const Settings: React.FC<any> = ({ project }) => (
-  <section className="rounded-xl border border-semantic-border bg-white shadow-sm">
-    <SectionTitle title="Project settings" />
-    <div className="space-y-3 p-5 text-sm text-semantic-jira-muted-stronger">
-      <p>
-        Progress weighting: <b className="text-semantic-content-alt">{project.progressWeighting.replace('_', ' ')}</b>
-      </p>
-      <p>
-        Project status: <b className="text-semantic-content-alt">{project.status.replace('_', ' ')}</b>
-      </p>
-      <p>Archiving preserves project history, ticket links, and LDAP access audit events.</p>
-    </div>
-  </section>
-);
+const Settings: React.FC<any> = ({ project, patch, onRefresh, fetchWithAuth }) => {
+  const configuredTypes = project.workItemTypes?.length ? project.workItemTypes : [...PROJECT_WORK_ITEM_TYPES];
+  const [workItemTypes, setWorkItemTypes] = useState<string[]>(configuredTypes);
+  const [workflowId, setWorkflowId] = useState(project.workflowId || '');
+  const [workflows, setWorkflows] = useState<Array<{ id: string; name: string; version: number }>>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setWorkItemTypes(project.workItemTypes?.length ? project.workItemTypes : [...PROJECT_WORK_ITEM_TYPES]);
+    setWorkflowId(project.workflowId || '');
+    setError('');
+    setSaved(false);
+  }, [project.id, project.workItemTypes]);
+
+  useEffect(() => {
+    void fetchWithAuth('/api/projects/workflow-options').then((response: Response) => response.json()).then((result: any) => {
+      if (result.success) setWorkflows(result.workflows || []);
+    }).catch(() => setWorkflows([]));
+  }, [fetchWithAuth]);
+
+  const toggleType = (type: string) => {
+    setSaved(false);
+    setWorkItemTypes((current) => (current.includes(type) ? current.filter((value) => value !== type) : [...current, type]));
+  };
+
+  const save = async () => {
+    if (workItemTypes.length === 0) {
+      setError('Enable at least one work-item type.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setSaved(false);
+    try {
+      await patch(`/api/projects/${project.id}`, { workItemTypes, workflowId: workflowId || undefined });
+      await onRefresh();
+      setSaved(true);
+    } catch (cause: any) {
+      setError(cause.message || 'Unable to save the work-item scheme.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="rounded-xl border border-semantic-border bg-white shadow-sm">
+      <SectionTitle title="Project settings" />
+      <div className="space-y-6 p-5 text-sm text-semantic-jira-muted-stronger">
+        <div className="space-y-3">
+          <p>
+            Progress weighting: <b className="text-semantic-content-alt">{project.progressWeighting.replace('_', ' ')}</b>
+          </p>
+          <p>
+            Project status: <b className="text-semantic-content-alt">{project.status.replace('_', ' ')}</b>
+          </p>
+        </div>
+
+        <div className="border-t border-semantic-border pt-5">
+          <div className="mb-5 max-w-xl">
+            <label className="text-sm font-bold text-semantic-content-alt" htmlFor="project-workflow-scheme">Workflow scheme</label>
+            <p className="mt-1 text-xs text-semantic-jira-icon">When selected, work-item transitions are validated by the platform workflow graph and its role rules.</p>
+            <select id="project-workflow-scheme" value={workflowId} onChange={(event) => { setWorkflowId(event.target.value); setSaved(false); }} className="wrike-select mt-2 w-full text-sm">
+              <option value="">Platform project default</option>
+              {workflows.map((workflow) => <option key={workflow.id} value={workflow.id}>{workflow.name} · v{workflow.version}</option>)}
+            </select>
+          </div>
+          <div className="mb-3">
+            <h3 className="text-sm font-bold text-semantic-content-alt">Work-item type scheme</h3>
+            <p className="mt-1 text-xs text-semantic-jira-icon">Only enabled types can be created in this project. Existing work remains available for audit even if its type is later disabled.</p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {PROJECT_WORK_ITEM_TYPES.map((type) => {
+              const selected = workItemTypes.includes(type);
+              return (
+                <label key={type} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${selected ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-semantic-border bg-white text-semantic-jira-muted-stronger hover:border-emerald-200'}`}>
+                  <input type="checkbox" checked={selected} onChange={() => toggleType(type)} className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                  {type.replace(/_/g, ' ')}
+                </label>
+              );
+            })}
+          </div>
+          {error && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">{error}</p>}
+          {saved && <p role="status" className="mt-3 text-xs font-semibold text-emerald-700">Work-item type scheme saved.</p>}
+          <div className="mt-4 flex justify-end">
+            <button type="button" onClick={save} disabled={saving} className="wrike-btn-primary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              {saving ? 'Saving…' : 'Save type scheme'}
+            </button>
+          </div>
+        </div>
+
+        <p className="text-xs">Archiving preserves project history, ticket links, and LDAP access audit events.</p>
+      </div>
+    </section>
+  );
+};
 
 const Field: React.FC<{
   label: string;
@@ -1958,6 +2188,7 @@ const ProjectForm: React.FC<{
     businessCriticality: 'MEDIUM',
     category: 'INFORMATION_SECURITY',
     progressWeighting: 'EQUAL',
+    workItemTypes: ['TASK', 'SUBTASK'],
     tags: '',
   });
   const [userEditedKey, setUserEditedKey] = useState(false);
@@ -2166,6 +2397,27 @@ const ProjectForm: React.FC<{
             />
           </Field>
 
+          <div className="md:col-span-2">
+            <Field label="Enabled work-item types" hint="Only these types can be created in this project.">
+              <div className="grid grid-cols-2 gap-2 rounded-lg border border-semantic-border-subtle bg-semantic-subtle p-3 sm:grid-cols-3">
+                {PROJECT_WORK_ITEM_TYPES.map((type) => {
+                  const selected = form.workItemTypes.includes(type);
+                  return (
+                    <label key={type} className="flex cursor-pointer items-center gap-2 text-xs font-medium text-semantic-content-alt">
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => set('workItemTypes', selected ? form.workItemTypes.filter((value: string) => value !== type) : [...form.workItemTypes, type])}
+                        className="h-3.5 w-3.5 rounded border-semantic-border text-semantic-success focus:ring-semantic-success"
+                      />
+                      {type.replace(/_/g, ' ')}
+                    </label>
+                  );
+                })}
+              </div>
+            </Field>
+          </div>
+
           <Field label="Tags" hint="Comma-separated labels">
             <div className="relative">
               <input
@@ -2207,6 +2459,7 @@ const TaskForm: React.FC<{
 }> = ({ project, milestones, tasks, allUsers = [], departments = [], onClose, onCreate }) => {
   const [form, setForm] = useState<any>({
     title: '',
+    projectWorkItemType: 'TASK',
     description: '',
     status: 'TO_DO',
     dueDate: project.targetDate || '',
@@ -2338,6 +2591,14 @@ const TaskForm: React.FC<{
         className="space-y-6"
       >
         <FormSection title="Task Overview">
+          <Field label="Work item type" required>
+            <CustomSelect
+              value={form.projectWorkItemType}
+              onChange={(value) => set('projectWorkItemType', value)}
+              options={(project.workItemTypes?.length ? project.workItemTypes : [...PROJECT_WORK_ITEM_TYPES]).map((value) => ({ value, label: value.replace(/_/g, ' ') }))}
+              searchable={false}
+            />
+          </Field>
           <div className="md:col-span-2">
             <Field label="Task summary" required>
               <input
@@ -2376,7 +2637,7 @@ const TaskForm: React.FC<{
           <Field label="Parent task (optional subtask)">
             <CustomSelect
               value={form.parentTicketId || ''}
-              onChange={(value) => set('parentTicketId', value)}
+              onChange={(value) => setForm((current: any) => ({ ...current, parentTicketId: value, projectWorkItemType: value ? 'SUBTASK' : current.projectWorkItemType === 'SUBTASK' ? 'TASK' : current.projectWorkItemType }))}
               options={parentTaskOptions}
               searchable={tasks.length > 5}
             />

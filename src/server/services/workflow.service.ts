@@ -142,6 +142,7 @@ export class WorkflowService {
     ticket.slaRemainingMinutes = sla.remainingMinutes;
     ticket.slaPausedReason = sla.pausedReason;
     TicketLifecycleService.refreshSlaMetrics(ticket);
+    TicketLifecycleService.archiveIfFinalLifecycle(ticket, user);
 
     // Add comment if provided
     if (comment && comment.trim().length > 0) {

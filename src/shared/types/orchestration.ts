@@ -128,7 +128,7 @@ export interface FormFieldDefinition {
   calculatedValue?: { function: string; arguments: unknown[] };
   visibilityCondition?: ConditionGroup;
   requiredCondition?: ConditionGroup;
-  validation?: { min?: number; max?: number; pattern?: string; allowedValues?: unknown[]; maxRows?: number; maxFileSizeMb?: number };
+  validation?: { min?: number | string; max?: number | string; pattern?: string; allowedValues?: unknown[]; maxRows?: number; maxFileSizeMb?: number };
   options?: Array<{ value: string; label: string; parentValue?: string }>;
   dependsOnFieldKey?: string;
   reusableGroupId?: string;
@@ -249,6 +249,8 @@ export interface AssignmentConfiguration {
     | 'UNASSIGNED_TEAM_QUEUE';
   /** The department / branch that owns this human activity. */
   departmentId?: string;
+  /** Optional AD-confirmed child section. When present it narrows the department queue and eligible employees. */
+  sectionId?: string;
   groupId?: string;
   assigneeId?: string;
   role?: BankRole;
@@ -257,10 +259,19 @@ export interface AssignmentConfiguration {
   ruleSetId?: string;
 }
 
+export type ApprovalDepartmentSource =
+  | 'STATIC'
+  | 'REQUESTER_DEPARTMENT'
+  | 'REQUESTER_PARENT_DEPARTMENT'
+  | 'TICKET_DEPARTMENT'
+  | 'TICKET_PARENT_DEPARTMENT';
+
 export interface ApprovalConfiguration {
   approverSource: ApproverResolverType | 'DEPARTMENT_MEMBERS' | 'MANAGERS_MANAGER' | 'APPLICATION_OWNER' | 'CI_OWNER' | 'DYNAMIC_EXPRESSION';
   approvalMode: ApprovalMode;
-  /** Limits department-based approval routing to this department / branch. */
+  /** Selects the runtime origin of a department / branch approval route. */
+  departmentSource?: ApprovalDepartmentSource;
+  /** Used only when departmentSource is STATIC (or by legacy definitions). */
   departmentId?: string;
   specificUserIds?: string[];
   groupId?: string;
@@ -406,6 +417,8 @@ export interface WorkflowCatalogTemplate {
   requestTypeId?: string;
   /** Server-calculated catalog management permission for the current actor. */
   canDelete?: boolean;
+  /** Server-calculated definition edit permission for the current actor. */
+  canEdit?: boolean;
 }
 
 export interface WorkflowPolicySet {

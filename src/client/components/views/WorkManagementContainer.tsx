@@ -2,8 +2,6 @@ import React, { useState, useMemo } from 'react';
 import { DestinationViewHeader } from '../layout/DestinationViewHeader.js';
 import { WrikeTableView } from './WrikeTableView.js';
 import { TicketKanbanBoard } from '../tickets/TicketKanbanBoard.js';
-import { WrikeGanttView } from './WrikeGanttView.js';
-import { WrikeCalendarView } from './WrikeCalendarView.js';
 import { WrikeWorkloadView } from './WrikeWorkloadView.js';
 import { Ticket } from '../../../shared/types/ticket.js';
 import { BankApplication, BankAsset } from '../../../shared/types/asset.js';
@@ -45,7 +43,7 @@ export const WorkManagementContainer: React.FC<WorkManagementContainerProps> = (
   createButtonLabel = 'New Task',
   supportsViewSwitcher = true,
   dataScope = 'authorized',
-  allowedViewModes = ['spreadsheet', 'kanban', 'gantt', 'calendar'],
+  allowedViewModes = ['spreadsheet', 'kanban'],
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('ALL');
@@ -137,22 +135,7 @@ export const WorkManagementContainer: React.FC<WorkManagementContainerProps> = (
           <TicketKanbanBoard
             tickets={filteredTickets}
             onSelectTicket={onSelectTicket}
-          />
-        )}
-
-        {effectiveViewMode === 'gantt' && (
-          <WrikeGanttView
-            tickets={filteredTickets}
-            onSelectTicket={onSelectTicket}
-            onOpenCreate={onOpenCreate}
-            dataScope={dataScope}
-          />
-        )}
-
-        {effectiveViewMode === 'calendar' && (
-          <WrikeCalendarView
-            tickets={filteredTickets}
-            onSelectTicket={onSelectTicket}
+            onRefreshTickets={onRefreshTickets}
           />
         )}
 

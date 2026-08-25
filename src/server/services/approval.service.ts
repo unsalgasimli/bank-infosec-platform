@@ -77,8 +77,41 @@ export class ApprovalService {
     }
   }
 
-  public static getPendingApprovalsForUser(user: BankUser): { chain: TicketApprovalChain; step: ApprovalStep }[] {
-    const results: { chain: TicketApprovalChain; step: ApprovalStep }[] = [];
+  public static getPendingApprovalsForUser(user: BankUser): Array<{
+    chain: TicketApprovalChain;
+    step: ApprovalStep;
+    /**
+     * A small, authorization-scoped summary for the queue card. Approval
+     * chains created by the orchestration runtime do not have a Ticket id;
+     * their `ticketId` is kept for legacy audit compatibility and points to
+     * the node instance. Returning this explicit work context prevents the
+     * client from treating that node id as a ticket id.
+     */
+    work?: {
+      kind: 'TICKET' | 'WORKFLOW';
+      key: string;
+      title: string;
+      requesterName?: string;
+      workflowInstanceId?: string;
+      currentStage?: string;
+      startedAt?: string;
+      dueAt?: string;
+    };
+  }> {
+    const results: Array<{
+      chain: TicketApprovalChain;
+      step: ApprovalStep;
+      work?: {
+        kind: 'TICKET' | 'WORKFLOW';
+        key: string;
+        title: string;
+        requesterName?: string;
+        workflowInstanceId?: string;
+        currentStage?: string;
+        startedAt?: string;
+        dueAt?: string;
+      };
+    }> = [];
 
     for (const chain of db.data.approvals) {
       if (chain.status !== 'PENDING') continue;
@@ -93,12 +126,70 @@ export class ApprovalService {
         const hasRole = currentStep.requiredRole && user.roles.includes(currentStep.requiredRole);
         const isSuper = user.roles.includes('PLATFORM_ADMIN') || user.roles.includes('CISO');
         if (isAssigned || isCandidate || hasRole || isSuper) {
-          results.push({ chain, step: currentStep });
+          const ticket = chain.workflowInstanceId
+            ? undefined
+            : db.data.tickets.find((item) => item.id === chain.ticketId);
+          const instance = chain.workflowInstanceId
+            ? db.data.workflowInstances.find((item) => item.id === chain.workflowInstanceId)
+            : undefined;
+          const approvalWorkItem = chain.nodeInstanceId
+            ? db.data.workItemsV2.find((item) => item.nodeInstanceId === chain.nodeInstanceId && item.workflowInstanceId === chain.workflowInstanceId)
+            : undefined;
+          const requesterId = instance?.requesterId || ticket?.reporterId || chain.requesterId;
+          const requesterName = requesterId
+            ? db.data.users.find((candidate) => candidate.id === requesterId)?.fullName
+            : undefined;
+
+          results.push({
+            chain,
+            step: currentStep,
+            work: instance
+              ? {
+                  kind: 'WORKFLOW',
+                  key: instance.key,
+                  title: instance.title,
+                  requesterName,
+                  workflowInstanceId: instance.id,
+                  currentStage: instance.currentStageId,
+                  startedAt: instance.startedAt,
+                  dueAt: approvalWorkItem?.dueAt || currentStep.deadlineAt,
+                }
+              : ticket
+                ? {
+                    kind: 'TICKET',
+                    key: ticket.key,
+                    title: ticket.title,
+                    requesterName,
+                    startedAt: ticket.createdAt,
+                    dueAt: currentStep.deadlineAt,
+                  }
+                : undefined,
+          });
         }
       }
     }
 
     return results;
+  }
+
+  /**
+   * One authorization rule for both the decision endpoint and the runtime
+   * projection. This prevents a requester from being offered a decision that
+   * the server will subsequently reject.
+   */
+  public static canUserDecideStep(chain: TicketApprovalChain, step: ApprovalStep, user: BankUser): boolean {
+    if (!user.isActive || chain.status !== 'PENDING' || step.status !== 'PENDING') return false;
+    if (chain.preventSelfApproval && chain.requesterId === user.id) return false;
+    if ((chain.mode || 'SEQUENTIAL') === 'SEQUENTIAL') {
+      const currentStep = chain.steps.find((candidate) => candidate.status === 'PENDING');
+      if (currentStep?.id !== step.id) return false;
+    }
+
+    const isResolvedRequesterManager = step.resolverType === 'REQUESTER_MANAGER';
+    return step.assignedApproverId === user.id
+      || Boolean(step.candidateUserIds?.includes(user.id))
+      || Boolean(step.requiredRole && user.roles.includes(step.requiredRole))
+      || (!isResolvedRequesterManager && (user.roles.includes('PLATFORM_ADMIN') || user.roles.includes('CISO')));
   }
 
   public static submitDecision(params: {
@@ -131,20 +222,7 @@ export class ApprovalService {
       return { success: false, error: 'Delegation is not allowed by this approval policy.' };
     }
 
-    if ((chain.mode || 'SEQUENTIAL') === 'SEQUENTIAL') {
-      const currentStep = chain.steps.find((candidate) => candidate.status === 'PENDING');
-      if (currentStep?.id !== step.id) {
-        return { success: false, error: 'Approval stages must be completed in sequence.' };
-      }
-    }
-
-    // Role check
-    const isAssigned = step.assignedApproverId === user.id;
-    const isCandidate = step.candidateUserIds?.includes(user.id);
-    const hasRole = step.requiredRole && user.roles.includes(step.requiredRole);
-    const isSuper = user.roles.includes('PLATFORM_ADMIN') || user.roles.includes('CISO');
-
-    if (!isAssigned && !isCandidate && !hasRole && !isSuper) {
+    if (!this.canUserDecideStep(chain, step, user)) {
       return { success: false, error: 'User is not authorized to sign this approval step.' };
     }
 

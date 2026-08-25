@@ -4,6 +4,7 @@ import { db } from '../server/db/database.js';
 import { ProjectService } from '../server/services/project.service.js';
 import { ProjectsController } from '../server/controllers/projects.controller.js';
 import { DepartmentsController } from '../server/controllers/departments.controller.js';
+import { StorageController } from '../server/controllers/storage.controller.js';
 import type { BankUser } from '../shared/types/auth.js';
 import type { Project } from '../shared/types/project.js';
 import type { Ticket } from '../shared/types/ticket.js';
@@ -153,6 +154,259 @@ test('health calculation surfaces blocked high-priority work and overdue schedul
   assert.equal(health.health, 'BLOCKED');
   assert.ok(health.reasons.some((reason) => reason.includes('overdue')));
   assert.ok(health.reasons.some((reason) => reason.includes('blocked critical')));
+});
+
+test('project work-item permissions prevent viewers and restricted contributors from transitioning work', () => {
+  const snapshot = { projects: db.data.projects, projectMembers: db.data.projectMembers, tickets: db.data.tickets };
+  try {
+    const p = project('prj-work-access');
+    const contributor = user('contributor');
+    const restricted = user('restricted');
+    const owner = user('owner');
+    const assignedTask = { ...task('assigned', 'IN_PROGRESS', 1), projectId: p.id, assigneeId: contributor.id, reporterId: owner.id, version: 4 };
+    db.data.projects = [p];
+    db.data.projectMembers = [
+      { id: 'owner-member', projectId: p.id, subjectType: 'USER', subjectId: owner.id, role: 'OWNER', addedByUserId: owner.id, createdAt: new Date().toISOString() },
+      { id: 'contributor-member', projectId: p.id, subjectType: 'USER', subjectId: contributor.id, role: 'CONTRIBUTOR', addedByUserId: owner.id, createdAt: new Date().toISOString() },
+      { id: 'restricted-member', projectId: p.id, subjectType: 'USER', subjectId: restricted.id, role: 'RESTRICTED_CONTRIBUTOR', addedByUserId: owner.id, createdAt: new Date().toISOString() },
+    ];
+    db.data.tickets = [assignedTask];
+
+    assert.equal(ProjectService.canUseProjectTask(p.id, assignedTask, contributor, 'TRANSITION').allowed, true);
+    assert.equal(ProjectService.canUseProjectTask(p.id, assignedTask, restricted, 'TRANSITION').allowed, false);
+    assert.equal(ProjectService.canUseProjectTask(p.id, assignedTask, restricted, 'COMMENT').allowed, false, 'restricted users cannot comment on a task they cannot see');
+
+    const { req: deniedReq, res: deniedRes } = mockReqRes({ status: 'DONE', expectedVersion: 4 }, { id: p.id, taskId: assignedTask.id }, {}, restricted);
+    ProjectsController.updateTask(deniedReq, deniedRes);
+    assert.equal(deniedRes.getStatus(), 404, 'hidden work remains non-enumerable to restricted users');
+    assert.equal(assignedTask.projectTaskStatus, 'IN_PROGRESS');
+
+    const { req: staleReq, res: staleRes } = mockReqRes({ status: 'DONE', expectedVersion: 3 }, { id: p.id, taskId: assignedTask.id }, {}, contributor);
+    ProjectsController.updateTask(staleReq, staleRes);
+    assert.equal(staleRes.getStatus(), 409);
+
+    const { req: transitionReq, res: transitionRes } = mockReqRes({ status: 'DONE', expectedVersion: 4 }, { id: p.id, taskId: assignedTask.id }, {}, contributor);
+    ProjectsController.updateTask(transitionReq, transitionRes);
+    assert.equal(transitionRes.getStatus(), 200);
+    assert.equal(assignedTask.projectTaskStatus, 'DONE');
+  } finally {
+    db.data.projects = snapshot.projects;
+    db.data.projectMembers = snapshot.projectMembers;
+    db.data.tickets = snapshot.tickets;
+  }
+});
+
+test('configured project workflows reject transitions outside the engine graph or caller role', () => {
+  const snapshot = { projects: db.data.projects, projectMembers: db.data.projectMembers, tickets: db.data.tickets, workflows: db.data.workflows, notifications: db.data.notifications };
+  try {
+    const owner = user('owner', ['REQUESTER']);
+    const contributor = user('contributor', ['REQUESTER']);
+    const p = { ...project('prj-workflow'), workflowId: 'wf-project' };
+    const work = { ...task('workflow-task', 'TO_DO', 1), projectId: p.id, workflowId: 'wf-project', workflowVersion: 1, assigneeId: contributor.id, reporterId: owner.id, watcherIds: [owner.id], version: 1 };
+    db.data.projects = [p];
+    db.data.projectMembers = [
+      { id: 'owner-member', projectId: p.id, subjectType: 'USER', subjectId: owner.id, role: 'OWNER', addedByUserId: owner.id, createdAt: new Date().toISOString() },
+      { id: 'contributor-member', projectId: p.id, subjectType: 'USER', subjectId: contributor.id, role: 'CONTRIBUTOR', addedByUserId: owner.id, createdAt: new Date().toISOString() },
+    ];
+    db.data.tickets = [work];
+    db.data.notifications = [];
+    db.data.workflows = [{
+      id: 'wf-project', name: 'Project delivery', description: '', ticketTypeId: 'PROJECT_WORK', version: 1, isActive: true,
+      states: [
+        { id: 'TO_DO', name: 'To Do', category: 'TO_DO', color: '#94a3b8', isInitial: true },
+        { id: 'IN_PROGRESS', name: 'In Progress', category: 'IN_PROGRESS', color: '#2563eb' },
+        { id: 'DONE', name: 'Done', category: 'DONE', color: '#16a34a', isTerminal: true },
+      ],
+      transitions: [{ id: 'start', name: 'Start work', fromStateId: 'TO_DO', toStateId: 'IN_PROGRESS', allowedRoles: ['REQUESTER'], requireComment: true }],
+    }];
+
+    const { req: forbiddenGraphReq, res: forbiddenGraphRes } = mockReqRes({ status: 'DONE', expectedVersion: 1 }, { id: p.id, taskId: work.id }, {}, contributor);
+    ProjectsController.updateTask(forbiddenGraphReq, forbiddenGraphRes);
+    assert.equal(forbiddenGraphRes.getStatus(), 403);
+    assert.equal(work.projectTaskStatus, 'TO_DO');
+
+    const { req: missingCommentReq, res: missingCommentRes } = mockReqRes({ status: 'IN_PROGRESS', expectedVersion: 1 }, { id: p.id, taskId: work.id }, {}, contributor);
+    ProjectsController.updateTask(missingCommentReq, missingCommentRes);
+    assert.equal(missingCommentRes.getStatus(), 400);
+
+    const { req: allowedReq, res: allowedRes } = mockReqRes({ status: 'IN_PROGRESS', expectedVersion: 1, transitionComment: 'Starting approved work.' }, { id: p.id, taskId: work.id }, {}, contributor);
+    ProjectsController.updateTask(allowedReq, allowedRes);
+    assert.equal(allowedRes.getStatus(), 200);
+    assert.equal(work.projectTaskStatus, 'IN_PROGRESS');
+    assert.equal(db.data.notifications[0]?.userId, owner.id);
+  } finally {
+    db.data.projects = snapshot.projects;
+    db.data.projectMembers = snapshot.projectMembers;
+    db.data.tickets = snapshot.tickets;
+    db.data.workflows = snapshot.workflows;
+    db.data.notifications = snapshot.notifications;
+  }
+});
+
+test('project members can toggle only their own watcher subscription', () => {
+  const snapshot = { projects: db.data.projects, projectMembers: db.data.projectMembers, tickets: db.data.tickets, users: db.data.users };
+  try {
+    const owner = user('owner');
+    const contributor = user('contributor');
+    const p = project('prj-watchers');
+    const work = { ...task('watch-task', 'TO_DO', 1), projectId: p.id, reporterId: owner.id, watcherIds: [] };
+    db.data.projects = [p];
+    db.data.projectMembers = [
+      { id: 'owner-member', projectId: p.id, subjectType: 'USER', subjectId: owner.id, role: 'OWNER', addedByUserId: owner.id, createdAt: new Date().toISOString() },
+      { id: 'contributor-member', projectId: p.id, subjectType: 'USER', subjectId: contributor.id, role: 'CONTRIBUTOR', addedByUserId: owner.id, createdAt: new Date().toISOString() },
+    ];
+    db.data.tickets = [work];
+    db.data.users = [owner, contributor];
+
+    const { req: watchReq, res: watchRes } = mockReqRes({}, { id: p.id, taskId: work.id }, {}, contributor);
+    ProjectsController.toggleWatcher(watchReq, watchRes);
+    assert.equal(watchRes.getStatus(), 200);
+    assert.equal(watchRes.getData().watching, true);
+    assert.deepEqual(work.watcherIds, [contributor.id]);
+
+    const { req: forbiddenReq, res: forbiddenRes } = mockReqRes({ userId: owner.id }, { id: p.id, taskId: work.id }, {}, contributor);
+    ProjectsController.toggleWatcher(forbiddenReq, forbiddenRes);
+    assert.equal(forbiddenRes.getStatus(), 403);
+  } finally {
+    db.data.projects = snapshot.projects;
+    db.data.projectMembers = snapshot.projectMembers;
+    db.data.tickets = snapshot.tickets;
+    db.data.users = snapshot.users;
+  }
+});
+
+test('project task list filters are evaluated on the authorized server projection', () => {
+  const snapshot = { projects: db.data.projects, projectMembers: db.data.projectMembers, tickets: db.data.tickets };
+  try {
+    const owner = user('owner');
+    const p = project('prj-server-filter');
+    db.data.projects = [p];
+    db.data.projectMembers = [{ id: 'owner-member', projectId: p.id, subjectType: 'USER', subjectId: owner.id, role: 'OWNER', addedByUserId: owner.id, createdAt: new Date().toISOString() }];
+    db.data.tickets = [
+      { ...task('first', 'TO_DO', 1), projectId: p.id, title: 'First delivery item' },
+      { ...task('second', 'IN_PROGRESS', 1), projectId: p.id, title: 'Second delivery item' },
+    ];
+    const { req, res } = mockReqRes({}, { id: p.id }, { taskStatus: 'IN_PROGRESS', taskSearch: 'second' }, owner);
+    ProjectsController.get(req, res);
+    assert.equal(res.getStatus(), 200);
+    assert.equal(res.getData().tasks.length, 1);
+    assert.equal(res.getData().tasks[0].title, 'Second delivery item');
+  } finally {
+    db.data.projects = snapshot.projects;
+    db.data.projectMembers = snapshot.projectMembers;
+    db.data.tickets = snapshot.tickets;
+  }
+});
+
+test('project work-item type schemes and assignment boundaries are validated on creation', () => {
+  const snapshot = { projects: db.data.projects, projectMembers: db.data.projectMembers, tickets: db.data.tickets, users: db.data.users };
+  try {
+    const owner = user('owner');
+    const outsider = user('outsider');
+    const p = { ...project('prj-work-types'), workItemTypes: ['TASK'] as const };
+    db.data.projects = [p];
+    db.data.projectMembers = [{ id: 'owner-member', projectId: p.id, subjectType: 'USER', subjectId: owner.id, role: 'OWNER', addedByUserId: owner.id, createdAt: new Date().toISOString() }];
+    db.data.users = [owner, outsider];
+    db.data.tickets = [];
+
+    const { req: disabledTypeReq, res: disabledTypeRes } = mockReqRes({ title: 'Security finding', projectWorkItemType: 'SECURITY_FINDING' }, { id: p.id }, {}, owner);
+    ProjectsController.createTask(disabledTypeReq, disabledTypeRes);
+    assert.equal(disabledTypeRes.getStatus(), 400);
+
+    const { req: outsiderReq, res: outsiderRes } = mockReqRes({ title: 'Task', projectWorkItemType: 'TASK', assigneeId: outsider.id }, { id: p.id }, {}, owner);
+    ProjectsController.createTask(outsiderReq, outsiderRes);
+    assert.equal(outsiderRes.getStatus(), 400);
+  } finally {
+    db.data.projects = snapshot.projects;
+    db.data.projectMembers = snapshot.projectMembers;
+    db.data.tickets = snapshot.tickets;
+    db.data.users = snapshot.users;
+  }
+});
+
+test('project managers can persist a work-item type scheme and empty schemes are rejected', () => {
+  const snapshot = { projects: db.data.projects, projectMembers: db.data.projectMembers, projectActivities: db.data.projectActivities, auditEvents: db.data.auditEvents };
+  try {
+    const owner = user('owner');
+    const p = { ...project('prj-work-types-settings'), workItemTypes: ['TASK', 'SUBTASK'] as const };
+    db.data.projects = [p];
+    db.data.projectMembers = [{ id: 'owner-member', projectId: p.id, subjectType: 'USER', subjectId: owner.id, role: 'OWNER', addedByUserId: owner.id, createdAt: new Date().toISOString() }];
+    db.data.projectActivities = [];
+    db.data.auditEvents = [];
+
+    const { req: updateReq, res: updateRes } = mockReqRes({ workItemTypes: ['TASK', 'BUG', 'SECURITY_FINDING'] }, { id: p.id }, {}, owner);
+    ProjectsController.update(updateReq, updateRes);
+    assert.equal(updateRes.getStatus(), 200);
+    assert.deepEqual(p.workItemTypes, ['TASK', 'BUG', 'SECURITY_FINDING']);
+    assert.equal(db.data.projectActivities[0]?.action, 'PROJECT_UPDATED');
+    assert.equal(db.data.auditEvents[0]?.action, 'PROJECT_UPDATED');
+
+    const { req: emptyReq, res: emptyRes } = mockReqRes({ workItemTypes: [] }, { id: p.id }, {}, owner);
+    ProjectsController.update(emptyReq, emptyRes);
+    assert.equal(emptyRes.getStatus(), 400);
+    assert.deepEqual(p.workItemTypes, ['TASK', 'BUG', 'SECURITY_FINDING']);
+  } finally {
+    db.data.projects = snapshot.projects;
+    db.data.projectMembers = snapshot.projectMembers;
+    db.data.projectActivities = snapshot.projectActivities;
+    db.data.auditEvents = snapshot.auditEvents;
+  }
+});
+
+test('project task detail is project-scoped and only returns public comments for visible work', () => {
+  const snapshot = { projects: db.data.projects, projectMembers: db.data.projectMembers, tickets: db.data.tickets, comments: db.data.comments, attachments: db.data.attachments, projectTaskDependencies: db.data.projectTaskDependencies, projectActivities: db.data.projectActivities };
+  try {
+    const owner = user('owner');
+    const restricted = user('restricted');
+    const p = project('prj-task-detail');
+    const visibleTask = { ...task('visible', 'TO_DO', 1), projectId: p.id, reporterId: owner.id };
+    const hiddenTask = { ...task('hidden', 'TO_DO', 1), projectId: p.id, reporterId: owner.id };
+    db.data.projects = [p];
+    db.data.projectMembers = [
+      { id: 'owner-member', projectId: p.id, subjectType: 'USER', subjectId: owner.id, role: 'OWNER', addedByUserId: owner.id, createdAt: new Date().toISOString() },
+      { id: 'restricted-member', projectId: p.id, subjectType: 'USER', subjectId: restricted.id, role: 'RESTRICTED_CONTRIBUTOR', addedByUserId: owner.id, createdAt: new Date().toISOString() },
+    ];
+    db.data.tickets = [visibleTask, hiddenTask];
+    db.data.comments = [
+      { id: 'public-comment', ticketId: visibleTask.id, authorId: owner.id, authorName: owner.fullName, authorRole: 'OWNER', content: 'Public progress note', visibility: 'PUBLIC', confidentiality: 'INTERNAL', mentions: [], createdAt: new Date().toISOString(), isEdited: false, reactions: [] },
+      { id: 'internal-comment', ticketId: visibleTask.id, authorId: owner.id, authorName: owner.fullName, authorRole: 'OWNER', content: 'Not for this projection', visibility: 'INTERNAL', confidentiality: 'INTERNAL', mentions: [], createdAt: new Date().toISOString(), isEdited: false, reactions: [] },
+    ];
+    db.data.attachments = [{ id: 'attachment-hidden', ticketId: hiddenTask.id, fileName: 'hidden.txt', fileSizeBytes: 4, mimeType: 'text/plain', evidenceType: 'AUDIT_WORKPAPER', sha256Checksum: 'a'.repeat(64), isEncrypted: true, virusScanStatus: 'CLEAN', confidentiality: 'INTERNAL', uploaderId: owner.id, uploaderName: owner.fullName, uploadedAt: new Date().toISOString(), isImmutableEvidence: false, retentionUntil: new Date().toISOString(), downloadCount: 0, storageKey: 'hidden.txt' }];
+    db.data.projectTaskDependencies = [{ id: 'dep-1', projectId: p.id, sourceTaskId: visibleTask.id, targetTaskId: hiddenTask.id, type: 'BLOCKS', createdByUserId: owner.id, createdAt: new Date().toISOString() }];
+    db.data.projectActivities = [{ id: 'act-1', projectId: p.id, actorId: owner.id, action: 'PROJECT_COMMENT_ADDED', objectType: 'TASK', objectId: visibleTask.id, createdAt: new Date().toISOString() }];
+
+    const { req: detailReq, res: detailRes } = mockReqRes({}, { id: p.id, taskId: visibleTask.id }, {}, owner);
+    ProjectsController.getTask(detailReq, detailRes);
+    assert.equal(detailRes.getStatus(), 200);
+    assert.equal(detailRes.getData().comments.length, 1);
+    assert.equal(detailRes.getData().comments[0].id, 'public-comment');
+    assert.equal(detailRes.getData().dependencies.length, 1);
+
+    const { req: deniedReq, res: deniedRes } = mockReqRes({}, { id: p.id, taskId: hiddenTask.id }, {}, restricted);
+    ProjectsController.getTask(deniedReq, deniedRes);
+    assert.equal(deniedRes.getStatus(), 404);
+
+    const { req: attachmentReq, res: attachmentRes } = mockReqRes({}, { attachmentId: 'attachment-hidden' }, {}, restricted);
+    void StorageController.getDownloadUrl(attachmentReq, attachmentRes);
+    assert.equal(attachmentRes.getStatus(), 403, 'project attachment lookup must not leak a hidden work item');
+
+    const { req: mismatchedDependencyReq, res: mismatchedDependencyRes } = mockReqRes(
+      { sourceTaskId: hiddenTask.id, targetTaskId: visibleTask.id, type: 'BLOCKS' },
+      { id: p.id, taskId: visibleTask.id },
+      {},
+      owner
+    );
+    ProjectsController.addDependency(mismatchedDependencyReq, mismatchedDependencyRes);
+    assert.equal(mismatchedDependencyRes.getStatus(), 400, 'path task and dependency source must match');
+  } finally {
+    db.data.projects = snapshot.projects;
+    db.data.projectMembers = snapshot.projectMembers;
+    db.data.tickets = snapshot.tickets;
+    db.data.comments = snapshot.comments;
+    db.data.attachments = snapshot.attachments;
+    db.data.projectTaskDependencies = snapshot.projectTaskDependencies;
+    db.data.projectActivities = snapshot.projectActivities;
+  }
 });
 
 test('project member access management via controller handles LDAP USER, DEPARTMENT, GROUP, TEAM and protects sole owner', () => {
