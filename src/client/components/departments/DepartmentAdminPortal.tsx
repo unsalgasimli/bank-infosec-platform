@@ -276,7 +276,12 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
     );
   }
 
-  const totalMembers = data.stats?.totalMembers ?? data.members?.length ?? 0;
+  // The detail response's member array is the canonical rendered set. Prefer
+  // its length so a stale/legacy stats field can never disagree with the
+  // Staff tab or the section-level live member lists.
+  const totalMembers = Array.isArray(data.members)
+    ? data.members.length
+    : data.stats?.totalMembers ?? dept.memberCount ?? 0;
   const connectedConnectors = (data.connections || []).filter((connection: DepartmentConnection) => connection.status === 'CONNECTED');
   const measuredHealthScores = connectedConnectors
     .map((connection: DepartmentConnection) => connection.healthScore)
@@ -288,13 +293,14 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
   const childUnitIds = selectedSection && (selectedSection.sectionType === 'SOBE' || !selectedSection.parentSectionId)
     ? dept.sections?.filter((s) => s.parentSectionId === selectedSection.id).map((s) => s.id) || []
     : [];
+  const getSectionMembers = (sectionId: string, childIds: string[] = []) => (data.members || []).filter((member: BankUser) =>
+    member.sectionId === sectionId ||
+    member.unitId === sectionId ||
+    (member as any).section?.id === sectionId ||
+    childIds.includes(member.unitId || '')
+  );
   const selectedSectionMembers = selectedSection
-    ? (data.members || []).filter((member: BankUser) => 
-        member.sectionId === selectedSection.id || 
-        member.unitId === selectedSection.id ||
-        (member as any).section?.id === selectedSection.id ||
-        childUnitIds.includes(member.unitId || '')
-      )
+    ? getSectionMembers(selectedSection.id, childUnitIds)
     : [];
   const selectedSectionTickets = selectedSection
     ? (data.activeTickets || []).filter((ticket: any) => ticket.targetSectionId === selectedSection.id || childUnitIds.includes(ticket.targetSectionId))
@@ -649,11 +655,7 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
                       .filter((section: any) => section.sectionType === 'SOBE' || !section.parentSectionId)
                       .map((sobe: any) => {
                         const childUnits = dept.sections?.filter((u: any) => u.parentSectionId === sobe.id) || [];
-                        const sobeMembers = (data.members || []).filter((m: BankUser) => 
-                          m.sectionId === sobe.id || 
-                          (m as any).section?.id === sobe.id ||
-                          childUnits.some((u: any) => u.id === m.unitId)
-                        );
+                        const sobeMembers = getSectionMembers(sobe.id, childUnits.map((unit: any) => unit.id));
 
                         return (
                           <div key={sobe.id} className="rounded-2xl border border-semantic-border bg-semantic-subtle/50 p-4 space-y-3">
@@ -705,7 +707,7 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                                   {childUnits.map((unit: any) => {
-                                    const unitMembers = (data.members || []).filter((m: BankUser) => m.unitId === unit.id);
+                                    const unitMembers = getSectionMembers(unit.id);
                                     return (
                                       <div
                                         key={unit.id}

@@ -3,7 +3,13 @@ import { RedisStore } from 'rate-limit-redis';
 import { config } from '../config/index.js';
 import { cacheService } from '../services/cache.service.js';
 
-function createRateLimiter(options: { windowMs: number; max: number; message: string; skipSuccessfulRequests?: boolean }) {
+function createRateLimiter(options: {
+  windowMs: number;
+  max: number;
+  message: string;
+  keyPrefix: string;
+  skipSuccessfulRequests?: boolean;
+}) {
   const redisClient = cacheService.getRedisClient();
 
   return rateLimit({
@@ -25,10 +31,14 @@ function createRateLimiter(options: { windowMs: number; max: number; message: st
     keyGenerator: (req) => req.ip || '127.0.0.1',
     store:
       config.REDIS_ENABLED && redisClient
-        ? new RedisStore({
+          ? new RedisStore({
             // @ts-ignore
             sendCommand: (...args: string[]) => redisClient.call(...args),
-            prefix: 'rl:',
+            // Each limiter must have its own namespace. The general API
+            // limiter and the auth limiter both see login requests, so sharing
+            // a Redis key would make one request count twice and trigger
+            // express-rate-limit's ERR_ERL_DOUBLE_COUNT validation.
+            prefix: options.keyPrefix,
           })
         : undefined,
     message: {
@@ -45,6 +55,7 @@ function createRateLimiter(options: { windowMs: number; max: number; message: st
 export const generalRateLimiter = createRateLimiter({
   windowMs: config.RATE_LIMIT_WINDOW_MS,
   max: config.RATE_LIMIT_MAX_REQUESTS,
+  keyPrefix: 'rl:api:',
   message: 'API request rate limit exceeded. Please slow down your requests.',
 });
 
@@ -52,6 +63,7 @@ export const generalRateLimiter = createRateLimiter({
 export const authRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: config.AUTH_RATE_LIMIT_MAX,
+  keyPrefix: 'rl:auth:',
   skipSuccessfulRequests: true,
-  message: 'Too many authentication attempts. Account access temporarily throttled for security.',
+  message: 'Too many sign-in attempts. Please wait before trying again.',
 });

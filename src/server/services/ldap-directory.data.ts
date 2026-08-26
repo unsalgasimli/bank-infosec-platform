@@ -219,16 +219,54 @@ export function parseJobTitleAndHierarchy(
   department: any = '',
   relevantOUs: string[] = []
 ): ParsedHierarchy {
-  const cleanTitle = normalizeDirectoryText(title);
+  let cleanTitle = normalizeDirectoryText(title);
   const cleanDept = normalizeDirectoryText(department);
   let deptCand: string | undefined;
   let sectionCand: string | undefined;
   let unitCand: string | undefined;
   let posTitle = cleanTitle;
 
-  if (cleanTitle.includes('/')) {
-    const parts = cleanTitle.split('/').map((p) => p.trim()).filter(Boolean);
-    posTitle = parts[parts.length - 1] || cleanTitle;
+  // 1. Normalize backslashes to slashes
+  cleanTitle = cleanTitle.replaceAll('\\', '/');
+
+  // 2. Pre-process Azerbaijani genitive phrasings into standard hierarchy format:
+  // e.g. "İnfrastruktur şöbəsinin Sistemlərin avtomatlaşdırılması bölməsinin mütəxəssisi" -> "İnfrastruktur şöbəsi / Sistemlərin avtomatlaşdırılması bölməsi / Mütəxəssis"
+  let processedTitle = cleanTitle
+    .replace(/ şöbəsinin /gi, ' şöbəsi / ')
+    .replace(/ bölməsinin /gi, ' bölməsi / ')
+    .replace(/ departamentinin /gi, ' Departamenti / ')
+    .replace(/ şöbəsinin\b/gi, ' şöbəsi')
+    .replace(/ bölməsinin\b/gi, ' bölməsi');
+
+  // 3. Executive check: if title is Director / Deputy Director / CISO / Member of Board
+  const normProcessed = normalizeAzerbaijani(processedTitle);
+  const isExecutiveTitle =
+    normProcessed === 'direktor muavini' ||
+    normProcessed === 'direktor' ||
+    normProcessed === 'departament direktoru' ||
+    normProcessed === 'departament mudiri' ||
+    normProcessed === 'departament reisi' ||
+    normProcessed === 'ciso' ||
+    normProcessed === 'chief information security officer' ||
+    normProcessed.includes('idare heyetinin uzvu') ||
+    normProcessed.includes('idare heyeti sedrinin muavini') ||
+    normProcessed.includes('idare heyeti sedri');
+
+  if (isExecutiveTitle) {
+    return {
+      departmentCandidate: undefined,
+      sectionCandidate: undefined,
+      unitCandidate: undefined,
+      positionTitle: cleanTitle,
+      isDepartmentHead: true,
+      isSectionHead: false,
+    };
+  }
+
+  // 4. Parse '/' separated segments
+  if (processedTitle.includes('/')) {
+    const parts = processedTitle.split('/').map((p) => p.trim()).filter(Boolean);
+    posTitle = parts[parts.length - 1] || processedTitle;
 
     const upperSegments = parts.slice(0, -1);
     for (const seg of upperSegments) {
@@ -242,7 +280,8 @@ export function parseJobTitleAndHierarchy(
         normSeg.includes('bolme') ||
         normSeg.includes('sektor') ||
         normSeg.includes('qrup') ||
-        normSeg.includes('unit')
+        normSeg.includes('unit') ||
+        normSeg.includes('keyfiyyet teminati uzre')
       ) {
         unitCand = seg;
       } else {
@@ -252,32 +291,52 @@ export function parseJobTitleAndHierarchy(
     }
   }
 
+  // Clean trailing genitive suffixes from position title if needed
+  posTitle = posTitle
+    .replace(/\bmütəxəssisi\b/gi, 'Mütəxəssis')
+    .replace(/\bmütəxəss\b/gi, 'Mütəxəssis')
+    .replace(/\bmüdiri\b/gi, 'Müdir')
+    .replace(/\bdirektoru\b/gi, 'Direktor')
+    .replace(/\bauditoru\b/gi, 'Auditor')
+    .replace(/\bkoordinatoru\b/gi, 'Koordinator')
+    .replace(/\bmütəxəssisi$/gi, 'Mütəxəssis')
+    .replace(/\bmütəxəss$/gi, 'Mütəxəssis')
+    .replace(/\bmüdiri$/gi, 'Müdir');
+
   // Also extract candidates from OUs if not already found in title
-  for (const ou of relevantOUs) {
-    const normOu = normalizeAzerbaijani(ou);
-    if (normOu.includes('tarcuba') || normOu.includes('tercume')) {
-      if (!sectionCand) sectionCand = 'Katiblik və Tərcümə şöbəsi';
-      if (!unitCand) unitCand = 'Tərcümə bölməsi';
-    } else if (normOu.includes('satinalma')) {
-      if (!sectionCand) sectionCand = 'Satınalma bölməsi';
-      if (!unitCand) unitCand = 'Satınalma bölməsi';
-    } else if (normOu.includes('anbar')) {
-      if (!sectionCand) sectionCand = 'Anbar bölməsi';
-      if (!unitCand) unitCand = 'Anbar bölməsi';
-    } else if (normOu.includes('umumi') && (normOu.includes('bolme') || normOu.includes('teserrufat'))) {
-      if (!sectionCand) sectionCand = 'Ümumi bölmə';
-      if (!unitCand) unitCand = 'Ümumi bölmə';
-    } else if (normOu.includes('ekvayrinq')) {
-      if (!sectionCand) sectionCand = 'Ekvayrinq bölməsi';
-      if (!unitCand) unitCand = 'Ekvayrinq bölməsi';
-    } else if (normOu.includes('terefdas')) {
-      if (!sectionCand) sectionCand = 'Tərəfdaşlarla iş şöbəsi';
-    } else if (normOu.includes('icra') || normOu.includes('mehkeme')) {
-      if (!sectionCand) sectionCand = 'Məhkəmə və icra işlərinə nəzarət şöbəsi';
-    } else if (!sectionCand && (normOu.includes('şöbə') || normOu.includes('sobe') || normOu.includes('section') || normOu.includes('devops') || normOu.includes('soc') || normOu.includes('appsec'))) {
-      sectionCand = ou;
-    } else if (!unitCand && (normOu.includes('bölmə') || normOu.includes('bolme') || normOu.includes('sektor') || normOu.includes('qrup'))) {
-      unitCand = ou;
+  if (!sectionCand || !unitCand) {
+    for (const ou of relevantOUs) {
+      const normOu = normalizeAzerbaijani(ou);
+      if (normOu.includes('tarcuba') || normOu.includes('tercume')) {
+        // Tərçüməçi/Təcrübəçi containers are generic AD folders. An explicit
+        // section in the title (for example "Texniki dəstək şöbəsi /
+        // Mütəxəssis") is authoritative and must not inherit a fake
+        // "Tərcümə bölməsi" from the user's generic container.
+        if (!sectionCand) {
+          sectionCand = 'Katiblik və Tərcümə şöbəsi';
+          if (!unitCand) unitCand = 'Tərcümə bölməsi';
+        }
+      } else if (normOu.includes('satinalma')) {
+        if (!sectionCand) sectionCand = 'Satınalma bölməsi';
+        if (!unitCand) unitCand = 'Satınalma bölməsi';
+      } else if (normOu.includes('anbar')) {
+        if (!sectionCand) sectionCand = 'Anbar bölməsi';
+        if (!unitCand) unitCand = 'Anbar bölməsi';
+      } else if (normOu.includes('umumi') && (normOu.includes('bolme') || normOu.includes('teserrufat'))) {
+        if (!sectionCand) sectionCand = 'Ümumi bölmə';
+        if (!unitCand) unitCand = 'Ümumi bölmə';
+      } else if (normOu.includes('ekvayrinq')) {
+        if (!sectionCand) sectionCand = 'Ekvayrinq bölməsi';
+        if (!unitCand) unitCand = 'Ekvayrinq bölməsi';
+      } else if (normOu.includes('terefdas')) {
+        if (!sectionCand) sectionCand = 'Tərəfdaşlarla iş şöbəsi';
+      } else if (normOu.includes('icra') || normOu.includes('mehkeme')) {
+        if (!sectionCand) sectionCand = 'Məhkəmə və icra işlərinə nəzarət şöbəsi';
+      } else if (!sectionCand && (normOu.includes('şöbə') || normOu.includes('sobe') || normOu.includes('section') || normOu.includes('devops') || normOu.includes('soc') || normOu.includes('appsec'))) {
+        sectionCand = ou;
+      } else if (!unitCand && (normOu.includes('bölmə') || normOu.includes('bolme') || normOu.includes('sektor') || normOu.includes('qrup'))) {
+        unitCand = ou;
+      }
     }
   }
 
@@ -292,7 +351,6 @@ export function parseJobTitleAndHierarchy(
   }
 
   const normPos = normalizeAzerbaijani(posTitle);
-  const normCleanTitle = normalizeAzerbaijani(cleanTitle);
 
   const isDeptHead =
     normPos.includes('departament müdiri') ||
@@ -301,10 +359,7 @@ export function parseJobTitleAndHierarchy(
     normPos.includes('departament reisi') ||
     normPos.includes('ciso') ||
     normPos.includes('direktor') ||
-    normPos.includes('director') ||
-    normCleanTitle.includes('chief information security officer') ||
-    normCleanTitle.includes('departament müdiri') ||
-    normCleanTitle.includes('departament mudiri');
+    normPos.includes('director');
 
   const isSecHead =
     !isDeptHead &&
@@ -314,12 +369,12 @@ export function parseJobTitleAndHierarchy(
       normPos.includes('sobe reisi') ||
       normPos.includes('head of section') ||
       normPos.includes('section head') ||
-      normCleanTitle.includes('şöbə müdiri') ||
-      normCleanTitle.includes('sobe mudiri') ||
-      (normPos.includes('müdir') && !normPos.includes('departament') && !normPos.includes('bölmə')) ||
-      (normPos.includes('mudir') && !normPos.includes('departament') && !normPos.includes('bolme')) ||
-      (normPos.includes('rəis') && !normPos.includes('departament') && !normPos.includes('bölmə')) ||
-      (normPos.includes('reis') && !normPos.includes('departament') && !normPos.includes('bolme')));
+      normPos === 'müdir' ||
+      normPos === 'mudir' ||
+      normPos === 'rəis' ||
+      normPos === 'reis' ||
+      (normPos.includes('müdir') && !normPos.includes('departament')) ||
+      (normPos.includes('mudir') && !normPos.includes('departament')));
 
   return {
     departmentCandidate: deptCand,
@@ -523,56 +578,9 @@ export function mapDepartment(
     };
   }
 
-  // 4. Marketing & Public Relations (Reklam və Marketinq)
+  // 4. IT Infrastructure, Systems & Technology (İnformasiya Texnologiyaları Departamenti)
   else if (
-    norm.includes('reklam') ||
-    norm.includes('marketinq') ||
-    norm.includes('marketing') ||
-    norm.includes('ictimaiyyet') ||
-    /\bpr\b/.test(norm) ||
-    norm.includes('dizayn') ||
-    norm.includes('brend')
-  ) {
-    let roles: BankRole[] = ['REQUESTER'];
-    if (isManagerTitle) {
-      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
-    }
-    result = {
-      departmentId: 'dept-marketing',
-      divisionId: 'div-hr',
-      teamIds: ['team-hr-ops'],
-      departmentName: 'Reklam və Marketinq Departamenti',
-      departmentCode: 'MARKETING',
-      roles,
-      securityClearance: 'INTERNAL',
-    };
-  }
-
-  // 5. PMO & Business Process Optimization (Biznes Prosesləri və Layihələr)
-  else if (
-    norm.includes('biznes proses') ||
-    norm.includes('optimallasdir') ||
-    norm.includes('pmo') ||
-    norm.includes('strategiya') ||
-    norm.includes('layihe')
-  ) {
-    let roles: BankRole[] = ['REQUESTER', 'APPROVER'];
-    if (isManagerTitle) {
-      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
-    }
-    result = {
-      departmentId: 'dept-pmo',
-      divisionId: 'div-banking',
-      teamIds: ['team-swift-eng'],
-      departmentName: 'Biznes Proseslərin Təhlili və Optimallaşdırılması Şöbəsi',
-      departmentCode: 'PMO',
-      roles,
-      securityClearance: 'INTERNAL',
-    };
-  }
-
-  // 6. IT Infrastructure, Cloud & Operations (İT İnfrastruktur və Sistemlər)
-  else if (
+    norm.includes('informasiya texnologiyalar') ||
     norm.includes('infrastruktur') ||
     norm.includes('infrastructure') ||
     norm.includes('texnologiya') ||
@@ -597,21 +605,62 @@ export function mapDepartment(
       roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'IT_ADMIN', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
     }
 
-    // Keep the AD child OU as a section under the IT department. It must not
-    // become a second top-level department, otherwise parent queues and
-    // reporting are split by OU.
-    let deptId = 'dept-it';
-    let deptName = 'İnformasiya Texnologiyaları Departamenti';
-    let deptCode = 'IT_DEPT';
-
     result = {
-      departmentId: deptId,
+      departmentId: 'dept-it',
       divisionId: 'div-it',
       teamIds: ['team-it-infra'],
-      departmentName: deptName,
-      departmentCode: deptCode,
+      departmentName: 'İnformasiya Texnologiyaları Departamenti',
+      departmentCode: 'IT_DEPT',
       roles,
       securityClearance: 'CONFIDENTIAL_SECURITY_ONLY',
+    };
+  }
+
+  // 5. Marketing & Public Relations (Reklam və Marketinq)
+  else if (
+    norm.includes('reklam') ||
+    norm.includes('marketinq') ||
+    norm.includes('marketing') ||
+    norm.includes('ictimaiyyet') ||
+    /\bpr\b/.test(norm) ||
+    norm.includes('dizayn') ||
+    norm.includes('brend')
+  ) {
+    let roles: BankRole[] = ['REQUESTER'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
+    }
+    result = {
+      departmentId: 'dept-marketing',
+      divisionId: 'div-hr',
+      teamIds: ['team-hr-ops'],
+      departmentName: 'Reklam və Marketinq Departamenti',
+      departmentCode: 'MARKETING',
+      roles,
+      securityClearance: 'INTERNAL',
+    };
+  }
+
+  // 6. PMO & Business Process Optimization (Biznes Prosesləri və Layihələr)
+  else if (
+    norm.includes('biznes proses') ||
+    norm.includes('optimallasdir') ||
+    norm.includes('pmo') ||
+    norm.includes('strategiya') ||
+    norm.includes('layihe')
+  ) {
+    let roles: BankRole[] = ['REQUESTER', 'APPROVER'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
+    }
+    result = {
+      departmentId: 'dept-pmo',
+      divisionId: 'div-banking',
+      teamIds: ['team-swift-eng'],
+      departmentName: 'Biznes Proseslərin Təhlili və Optimallaşdırılması Şöbəsi',
+      departmentCode: 'PMO',
+      roles,
+      securityClearance: 'INTERNAL',
     };
   }
 
@@ -1099,6 +1148,71 @@ export function mapDepartment(
     }
   }
 
+function cleanSectionCandidate(
+  rawSec: string | undefined,
+  departmentId: string,
+  norm: string,
+  titleNorm: string
+): string | undefined {
+  if (!rawSec) return undefined;
+  const clean = normalizeDirectoryText(rawSec);
+  const n = normalizeAzerbaijani(clean).toLowerCase();
+
+  // Exclude branches and filial terms from head-office section names
+  if (n.includes('branch') || n.includes('filial') || /filialı?$/i.test(n)) {
+    if (titleNorm.includes('filial mudiri') || titleNorm.includes('filial rehberi') || titleNorm.includes('mudir')) {
+      return 'Filiallar üzrə idarəetmə şöbəsi';
+    }
+    if (titleNorm.includes('kassir') || titleNorm.includes('kassa')) {
+      return 'Nağd vəsaitlərin və digər qiymətlilərin saxlanması və uçotu şöbəsi';
+    }
+    if (titleNorm.includes('kredit') || titleNorm.includes('mikro')) {
+      return 'Mikro kreditlər şöbəsi';
+    }
+    return 'Satış və xidmətə dəstək şöbəsi';
+  }
+
+  // Map technical acronyms to clean Azerbaijani banking sections
+  if (n === 'bbd') {
+    if (departmentId === 'dept-credit') return 'Mikro kreditlər şöbəsi';
+    if (departmentId === 'dept-corporate') return 'Biznes satışın təşkili şöbəsi';
+    if (departmentId === 'dept-customer-care') return 'Məlumat mərkəzi şöbəsi';
+    return 'Biznes satışın təşkili şöbəsi';
+  }
+
+  if (n === 'pbd') {
+    if (departmentId === 'dept-credit') return 'Pərakəndə məhsulların satışının təşkili şöbəsi';
+    if (departmentId === 'dept-retail') return 'Pərakəndə məhsulların satışının təşkili şöbəsi';
+    return 'Pərakəndə məhsulların satışının təşkili şöbəsi';
+  }
+
+  if (n === 'xidmat' || n === 'mushtari') {
+    if (departmentId === 'dept-customer-care') return 'Məlumat mərkəzi şöbəsi';
+    if (departmentId === 'dept-hesablasmalar-departamenti') return 'Əməliyyat şöbəsi';
+    return 'Satış və xidmətə dəstək şöbəsi';
+  }
+
+  if (n === 'biznessatish') {
+    if (departmentId === 'dept-credit') return 'Mikro kreditlər şöbəsi';
+    return 'Biznes satışın təşkili şöbəsi';
+  }
+
+  if (n === 'bosses') {
+    return undefined; // Senior leadership directly under executive department
+  }
+
+  if (n === 'dnd') {
+    if (departmentId === 'dept-hesablasmalar-departamenti') return 'Bank əməliyyatlarına nəzarət şöbəsi';
+    return 'Daxili nəzarət şöbəsi';
+  }
+
+  if (n === 'kassa') {
+    return 'Nağd vəsaitlərin və digər qiymətlilərin saxlanması və uçotu şöbəsi';
+  }
+
+  return clean;
+}
+
   // 3-tier hierarchy assignment: Department -> Section (Şöbə) -> Unit (Bölmə)
   const parentName = normalizeAzerbaijani(result.departmentName).replace(/\s+/g, ' ').trim();
   
@@ -1107,18 +1221,31 @@ export function mapDepartment(
   result.isSectionHead = hierarchy.isSectionHead;
 
   // Resolve Section (Şöbə) candidate
-  const sectionCandidate = [
-    hierarchy.sectionCandidate,
-    ...relevantOUs,
-    deptStr,
-  ].map((value) => normalizeDirectoryText(value)).find((value) => {
-    const normalized = normalizeAzerbaijani(value).replace(/\s+/g, ' ').trim();
-    if (!normalized || normalized === parentName) return false;
-    if (/^(bank users|ho users|branch users|users|service|disabled|disable|outlook|no policy|ie test|qmatic user|tarcubacilar|tecrubeciler?|tercubeciler?|interns?|trainees?|stajyerler?)$/.test(normalized)) return false;
-    // Don't treat unit as section if it's explicitly a bölmə
-    if (normalized.includes('bölmə') || normalized.includes('bolme') || normalized.includes('sektor')) return false;
-    return !normalized.includes('departamenti') && !normalized.includes('department');
-  }) || hierarchy.sectionCandidate;
+  let rawSectionCandidate: string | undefined = undefined;
+  if (!hierarchy.isDepartmentHead) {
+    if (hierarchy.sectionCandidate) {
+      rawSectionCandidate = hierarchy.sectionCandidate;
+    } else {
+      const candidates = [
+        ...relevantOUs,
+        deptStr,
+      ];
+      for (const value of candidates) {
+        const clean = normalizeDirectoryText(value);
+        const normalized = normalizeAzerbaijani(clean).replace(/\s+/g, ' ').trim();
+        if (!normalized || normalized === parentName) continue;
+        if (/^(bank users|ho users|branch users|users|service|disabled|disable|outlook|no policy|ie test|qmatic user|tarcubacilar|tecrubeciler?|tercubeciler?|interns?|trainees?|stajyerler?)$/.test(normalized)) continue;
+        if (normalized.includes('bölmə') || normalized.includes('bolme') || normalized.includes('sektor')) continue;
+        if (normalized.includes('departamenti') || normalized.includes('department')) continue;
+        if (clean.length > 2) {
+          rawSectionCandidate = clean;
+          break;
+        }
+      }
+    }
+  }
+
+  const sectionCandidate = cleanSectionCandidate(rawSectionCandidate, result.departmentId, norm, titleNorm);
 
   if (sectionCandidate) {
     const sectionSlug = slugifyDept(sectionCandidate);
@@ -1128,12 +1255,16 @@ export function mapDepartment(
   }
 
   // Resolve Unit (Bölmə / Sektor) candidate
-  const unitCandidate = hierarchy.unitCandidate || relevantOUs.find((ou) => {
-    const n = normalizeAzerbaijani(ou);
-    return n.includes('bölmə') || n.includes('bolme') || n.includes('sektor') || n.includes('qrup');
-  });
+  let rawUnitCandidate: string | undefined = undefined;
+  if (!hierarchy.isDepartmentHead) {
+    rawUnitCandidate = hierarchy.unitCandidate || relevantOUs.find((ou) => {
+      const n = normalizeAzerbaijani(ou);
+      return n.includes('bölmə') || n.includes('bolme') || n.includes('sektor') || n.includes('qrup');
+    });
+  }
 
-  if (unitCandidate) {
+  if (rawUnitCandidate) {
+    const unitCandidate = normalizeDirectoryText(rawUnitCandidate);
     const unitSlug = slugifyDept(unitCandidate);
     result.unitId = `unit-${result.departmentId}-${unitSlug}`;
     result.unitName = unitCandidate;

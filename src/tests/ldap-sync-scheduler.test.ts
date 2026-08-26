@@ -81,6 +81,7 @@ describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GM
     assert.strictEqual(technicalSupportTrainee.departmentId, 'dept-it');
     assert.strictEqual(technicalSupportTrainee.sectionId, 'section-dept-it-texniki-destek-sobesi');
     assert.strictEqual(technicalSupportTrainee.sectionName, 'Texniki dəstək şöbəsi');
+    assert.strictEqual(technicalSupportTrainee.unitId, undefined, 'A generic Tarcubacilar container must not override an explicit section title');
 
     // A concrete business OU wins over the broad parent department or a
     // group-like container even when the title has multiple levels.
@@ -613,4 +614,3 @@ describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GM
     assert.strictEqual(chain.approvalChain.length, 2, 'Must have direct manager and department manager nodes (deduped)');
   });
 });
-

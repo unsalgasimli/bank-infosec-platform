@@ -231,6 +231,55 @@ const rowToConnection = (row: JsonRecord): DepartmentConnection => {
 
 const isGlobalAdmin = (user: BankUser): boolean => user.roles.includes('PLATFORM_ADMIN') || user.roles.includes('CISO');
 
+/**
+ * Convert the same directory projection used by the department detail query
+ * into the members that are allowed to appear in department metrics. Keeping
+ * this predicate next to the hydration code prevents the list endpoint from
+ * counting service/test identities that the detail endpoint later removes.
+ */
+const toCurrentDirectoryMember = (row: JsonRecord): BankUser | undefined => {
+  const payload = parseJson<JsonRecord>(row.source_payload, {});
+  if (String(payload.organizationEligible ?? 'true').toLowerCase() === 'false') return undefined;
+
+  const user = rowToUser(row, { decryptProtectedIdentity: false });
+  return isGenuineEmployeeOrIntern(user, user.distributionGroups || [], user.sAMAccountName || user.username)
+    ? user
+    : undefined;
+};
+
+const buildMemberCountIndex = (members: BankUser[]): { departments: Map<string, number> } => {
+  const departments = new Map<string, number>();
+  for (const member of members) {
+    if (member.departmentId) departments.set(member.departmentId, (departments.get(member.departmentId) || 0) + 1);
+  }
+  return { departments };
+};
+
+const decorateDepartmentCounts = (
+  department: BankDepartment & JsonRecord,
+  members: BankUser[],
+): BankDepartment & JsonRecord => {
+  const counts = buildMemberCountIndex(members);
+  const sections = (department.sections || []).map((section: BankDepartmentSection) => {
+    const childIds = (department.sections || [])
+      .filter((child) => child.parentSectionId === section.id)
+      .map((child) => child.id);
+    return {
+      ...section,
+      // Match the detail view's hierarchy: a Şöbə includes its direct members
+      // and members assigned to any child Bölmə, while a Bölmə includes only
+      // its own direct assignments. Each member is counted once per section.
+      memberCount: members.filter((member) => member.sectionId === section.id || member.unitId === section.id || childIds.includes(member.unitId || '')).length,
+    };
+  });
+  return {
+    ...department,
+    memberCount: counts.departments.get(department.id) || 0,
+    sections,
+    sectionCount: sections.length,
+  };
+};
+
 export class DepartmentsRepository {
   private static readonly departmentSelect = `
     SELECT d.id, d.division_id, d.code, d.name,
@@ -305,39 +354,49 @@ export class DepartmentsRepository {
   }
 
   public static async list(): Promise<Array<BankDepartment & JsonRecord>> {
-    const result = await pgClient.query(`
-      ${this.departmentSelect}
-      WHERE d.is_active = TRUE
-        AND (SELECT COUNT(*) FROM bank_users u WHERE u.department_id = d.id AND u.is_active = TRUE AND coalesce(u.source_payload->>'organizationEligible', 'true') <> 'false') > 0
-      ORDER BY v.name, d.name
-    `);
-    // `departmentSelect` already computes member counts from the authoritative
-    // AD projection. Do not hydrate and PBKDF2-decrypt every directory identity
-    // just to count users on the department landing page. Only the referenced
-    // managers need protected identity resolution for display.
-    const managerIds = [...new Set(
-      result.rows
-        .map((row) => String(row.manager_id || '').trim())
-        .filter(Boolean)
-    )];
-    const managersResult = managerIds.length
-      ? await pgClient.query(`SELECT ${directoryUserColumns} FROM bank_users WHERE id = ANY($1::text[]) AND is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY' AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false'`, [managerIds])
-      : { rows: [] as JsonRecord[] };
-    const managersById = new Map(
-      managersResult.rows
-        .map(rowToUser)
-        .filter((user) => isGenuineEmployeeOrIntern(user, user.distributionGroups || [], user.sAMAccountName || user.username))
-        .map((user) => [user.id, user])
-    );
+    return pgClient.transaction(async (client) => {
+      const result = await client.query(`
+        ${this.departmentSelect}
+        WHERE d.is_active = TRUE
+        ORDER BY v.name, d.name
+      `);
+      const memberResult = await client.query(`
+        SELECT ${directoryUserColumns}
+        FROM bank_users
+        WHERE is_active = TRUE
+          AND directory_source = 'ACTIVE_DIRECTORY'
+          AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false'
+      `);
+      const directoryMembers = memberResult.rows.map(toCurrentDirectoryMember).filter((member): member is BankUser => Boolean(member));
+      // `departmentSelect` already computes member counts from the authoritative
+      // AD projection. The count is recomputed from the same hydrated/filterable
+      // rows used by `get()` so service/test identities cannot make the card
+      // disagree with the detail view. Decryption remains disabled for this
+      // bulk read; only referenced managers need protected identity resolution.
+      const managerIds = [...new Set(
+        result.rows
+          .map((row) => String(row.manager_id || '').trim())
+          .filter(Boolean)
+      )];
+      const managersResult = managerIds.length
+        ? await client.query(`SELECT ${directoryUserColumns} FROM bank_users WHERE id = ANY($1::text[]) AND is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY' AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false'`, [managerIds])
+        : { rows: [] as JsonRecord[] };
+      const managersById = new Map(
+        managersResult.rows
+          .map(rowToUser)
+          .filter((user) => isGenuineEmployeeOrIntern(user, user.distributionGroups || [], user.sAMAccountName || user.username))
+          .map((user) => [user.id, user])
+      );
 
-    return result.rows.map((row) => {
-      const department = rowToDepartment(row);
-      const manager = department.managerId ? managersById.get(department.managerId) : undefined;
-      return {
-        ...department,
-        managerName: manager?.fullName || department.managerName,
-        managerEmail: manager?.email || department.managerEmail,
-      };
+      return result.rows.map((row) => {
+        const department = decorateDepartmentCounts(rowToDepartment(row), directoryMembers);
+        const manager = department.managerId ? managersById.get(department.managerId) : undefined;
+        return {
+          ...department,
+          managerName: manager?.fullName || department.managerName,
+          managerEmail: manager?.email || department.managerEmail,
+        };
+      }).filter((department) => (department.memberCount || 0) > 0);
     });
   }
 
@@ -345,12 +404,16 @@ export class DepartmentsRepository {
     const result = await pgClient.transaction(async (client) => {
       const departmentRow = await this.requireDepartment(client, idOrCode);
       const department = rowToDepartment(departmentRow);
-      const members = await client.query(
+      const memberResult = await client.query(
         `SELECT ${directoryUserColumns}
            FROM bank_users WHERE department_id = $1 AND is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY' AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false' ORDER BY full_name, username`, [department.id]
       );
-      const sectionManagerIds = (department.sections || []).map((s: any) => s.managerId).filter(Boolean);
-      const leadershipIds = [...new Set([department.managerId || '', ...(department.adminUserIds || []), ...sectionManagerIds].filter(Boolean))];
+      const members = memberResult.rows
+        .map(toCurrentDirectoryMember)
+        .filter((member): member is BankUser => Boolean(member));
+      const departmentWithCounts = decorateDepartmentCounts(department, members);
+      const sectionManagerIds = (departmentWithCounts.sections || []).map((s: any) => s.managerId).filter(Boolean);
+      const leadershipIds = [...new Set([departmentWithCounts.managerId || '', ...(departmentWithCounts.adminUserIds || []), ...sectionManagerIds].filter(Boolean))];
       const leadership = leadershipIds.length
         ? await client.query(`SELECT ${directoryUserColumns} FROM bank_users WHERE id = ANY($1::text[]) AND is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY' AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false'`, [leadershipIds])
         : { rows: [] as JsonRecord[] };
@@ -359,10 +422,8 @@ export class DepartmentsRepository {
            FROM department_connections WHERE department_id = $1 AND deleted_at IS NULL ORDER BY name`, [department.id]
       );
       return {
-        department,
-        members: members.rows
-          .map((row) => rowToUser(row, { decryptProtectedIdentity: false }))
-          .filter((member) => isGenuineEmployeeOrIntern(member, member.distributionGroups || [], member.sAMAccountName || member.username)),
+        department: departmentWithCounts,
+        members,
         leadership: leadership.rows
           .map((row) => rowToUser(row, { decryptProtectedIdentity: false }))
           .filter((member) => isGenuineEmployeeOrIntern(member, member.distributionGroups || [], member.sAMAccountName || member.username)),
