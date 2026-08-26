@@ -208,11 +208,11 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
 
             <div className="flex items-center gap-2 overflow-x-auto">
               {[
-                { id: 'ALL', label: 'All Divisions' },
-                { id: 'div-sec', label: 'Cyber Defense' },
-                { id: 'div-it', label: 'IT Infrastructure' },
-                { id: 'div-banking', label: 'Core Banking' },
-                { id: 'div-hr', label: 'HR & Legal' },
+                { id: 'ALL', label: 'Bütün Diviziyalar' },
+                { id: 'div-sec', label: 'İnformasiya Təhlükəsizliyi' },
+                { id: 'div-it', label: 'İnformasiya Texnologiyaları' },
+                { id: 'div-banking', label: 'Bank əməliyyatları və biznes' },
+                { id: 'div-hr', label: 'İnsan Resursları' },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -234,6 +234,8 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
             {filteredDepts.map((dept) => {
               const Icon = getDeptIcon(dept.icon || 'Building2');
               const isUserAdminHere = dept.isDeptAdmin || isSuperAdmin;
+              const sobeCount = (dept.sections || []).filter((s: any) => s.sectionType === 'SOBE' || !s.parentSectionId).length;
+              const bolmeCount = (dept.sections || []).filter((s: any) => s.sectionType === 'BOLME' || s.parentSectionId).length;
 
               return (
                 <div
@@ -273,35 +275,39 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
                       {dept.description}
                     </p>
 
-                    <div className="mt-3 rounded-lg border border-semantic-border bg-semantic-subtle/60 px-3 py-2">
+                    <div className="mt-3 rounded-lg border border-semantic-border bg-semantic-subtle/60 px-3 py-2 space-y-1.5">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-caption font-extrabold uppercase tracking-wide text-semantic-jira-muted-strong">
-                          Sections
+                          Şöbə və Bölmələr
                         </span>
                         <span className="text-caption font-bold text-semantic-info">
-                          {dept.sectionCount || dept.sections?.length || 0}
+                          {sobeCount > 0 ? `${sobeCount} Şöbə${bolmeCount > 0 ? `, ${bolmeCount} Bölmə` : ''}` : 'Kataloq'}
                         </span>
                       </div>
                       {(dept.sections?.length || 0) > 0 ? (
-                        <div className="flex flex-wrap gap-1.5 mt-1.5">
-                          {dept.sections.slice(0, 3).map((section: any) => (
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          {dept.sections.slice(0, 4).map((section: any) => (
                             <span
                               key={section.id}
-                              className="px-2 py-0.5 rounded-full bg-semantic-panel border border-semantic-border text-caption font-semibold text-semantic-primary"
-                              title={section.code}
+                              className={`px-2 py-0.5 rounded-full border text-micro font-semibold ${
+                                section.sectionType === 'BOLME'
+                                  ? 'bg-semantic-info/10 text-semantic-info border-semantic-info/30'
+                                  : 'bg-semantic-panel border-semantic-border text-semantic-primary'
+                              }`}
+                              title={`${section.sectionType === 'BOLME' ? 'Bölmə' : 'Şöbə'}: ${section.name}`}
                             >
-                              {section.name}
+                              {section.sectionType === 'BOLME' ? `↳ ${section.name}` : section.name}
                             </span>
                           ))}
-                          {(dept.sectionCount || dept.sections.length) > 3 && (
-                            <span className="px-2 py-0.5 rounded-full bg-semantic-neutral-surface text-caption font-semibold text-semantic-secondary">
-                              +{(dept.sectionCount || dept.sections.length) - 3} more
+                          {(dept.sectionCount || dept.sections.length) > 4 && (
+                            <span className="px-2 py-0.5 rounded-full bg-semantic-neutral-surface text-micro font-semibold text-semantic-secondary">
+                              +{(dept.sectionCount || dept.sections.length) - 4} əlavə
                             </span>
                           )}
                         </div>
                       ) : (
                         <div className="text-caption text-semantic-jira-muted-strong mt-1">
-                          No active sections in directory
+                          Kataloqda aktiv şöbə yoxdur
                         </div>
                       )}
                     </div>

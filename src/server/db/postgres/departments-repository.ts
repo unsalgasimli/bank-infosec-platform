@@ -136,6 +136,10 @@ export const rowToUser = (row: JsonRecord, options: { decryptProtectedIdentity?:
     divisionId: row.division_id || payload.divisionId || '',
     departmentId: row.department_id || payload.departmentId || '',
     sectionId: row.section_id || payload.sectionId || undefined,
+    unitId: row.unit_id || payload.unitId || undefined,
+    unitName: row.unit_name || payload.unitName || undefined,
+    sectionName: row.section_name || payload.sectionName || undefined,
+    primaryUsername: row.primary_username || payload.primaryUsername || undefined,
     teamIds: parseJson<string[]>(row.team_ids, payload.teamIds || []),
     roles: parseJson<BankRole[]>(row.roles, payload.roles || []),
     securityClearance: row.security_clearance || payload.securityClearance || 'INTERNAL',
@@ -143,7 +147,7 @@ export const rowToUser = (row: JsonRecord, options: { decryptProtectedIdentity?:
     ownedAssetIds: parseJson<string[]>(row.owned_asset_ids, payload.ownedAssetIds || []),
     ownedRiskIds: parseJson<string[]>(row.owned_risk_ids, payload.ownedRiskIds || []),
     isActive: Boolean(row.is_active),
-    managerId: payload.managerId || undefined,
+    managerId: row.manager_id || payload.managerId || undefined,
     sAMAccountName: row.sam_account_name || payload.sAMAccountName || undefined,
     userPrincipalName: protectedIdentity.userPrincipalName || (!hasProtectedIdentity && shouldDecryptProtectedIdentity ? row.user_principal_name || payload.userPrincipalName : undefined),
     distinguishedName: protectedIdentity.distinguishedName || (!hasProtectedIdentity && shouldDecryptProtectedIdentity ? row.distinguished_name || payload.distinguishedName : undefined),
@@ -158,7 +162,7 @@ export const rowToUser = (row: JsonRecord, options: { decryptProtectedIdentity?:
 
 export const directoryUserColumns = `
   id, username, email, first_name, last_name, full_name, title,
-  department_id, section_id, division_id, security_clearance, is_active,
+  department_id, section_id, unit_id, manager_id, unit_name, section_name, primary_username, division_id, security_clearance, is_active,
   roles, team_ids, owned_application_ids, owned_asset_ids, owned_risk_ids,
   sam_account_name, user_principal_name, distinguished_name, identity_ciphertext, email_lookup_hash, last_login_at,
   ldap_domain, ldap_bind_status, distribution_groups, directory_source,
@@ -244,7 +248,20 @@ export class DepartmentsRepository {
            (SELECT COUNT(*) FROM bank_users u WHERE u.department_id = d.id AND u.is_active = TRUE AND u.directory_source = 'ACTIVE_DIRECTORY' AND coalesce(u.source_payload->>'organizationEligible', 'true') <> 'false') AS member_count,
            (SELECT COUNT(*) FROM department_connections c WHERE c.department_id = d.id AND c.deleted_at IS NULL) AS connection_count,
            (SELECT COUNT(*) FROM tickets t WHERE (t.department_id = d.id OR t.source_payload->>'targetDepartmentId' = d.id) AND t.status_category <> 'DONE') AS active_task_count
-           ,COALESCE((SELECT jsonb_agg(jsonb_build_object('id', s.id, 'departmentId', s.department_id, 'name', s.name, 'code', s.code, 'managerId', s.manager_id, 'managerName', (SELECT manager.full_name FROM bank_users manager WHERE manager.id = s.manager_id), 'memberCount', (SELECT COUNT(*) FROM bank_users section_member WHERE section_member.section_id = s.id AND section_member.is_active = TRUE AND coalesce(section_member.source_payload->>'organizationEligible', 'true') <> 'false'), 'isActive', s.is_active, 'directorySource', COALESCE(s.source_payload->>'directorySource', 'ACTIVE_DIRECTORY')) ORDER BY s.name) FROM bank_department_sections s WHERE s.department_id = d.id AND s.is_active = TRUE), '[]'::jsonb) AS sections
+           ,COALESCE((SELECT jsonb_agg(jsonb_build_object(
+             'id', s.id,
+             'departmentId', s.department_id,
+             'name', s.name,
+             'code', s.code,
+             'managerId', s.manager_id,
+             'managerName', (SELECT manager.full_name FROM bank_users manager WHERE manager.id = s.manager_id),
+             'sectionType', COALESCE(s.section_type, s.source_payload->>'sectionType', 'SOBE'),
+             'parentSectionId', COALESCE(s.parent_section_id, s.source_payload->>'parentSectionId', NULL),
+             'hasOwnManager', COALESCE(s.has_own_manager, (s.source_payload->>'hasOwnManager')::boolean, TRUE),
+             'memberCount', (SELECT COUNT(*) FROM bank_users section_member WHERE (section_member.section_id = s.id OR section_member.unit_id = s.id OR section_member.source_payload->>'unitId' = s.id) AND section_member.is_active = TRUE AND coalesce(section_member.source_payload->>'organizationEligible', 'true') <> 'false'),
+             'isActive', s.is_active,
+             'directorySource', COALESCE(s.source_payload->>'directorySource', 'ACTIVE_DIRECTORY')
+           ) ORDER BY s.name) FROM bank_department_sections s WHERE s.department_id = d.id AND s.is_active = TRUE), '[]'::jsonb) AS sections
       FROM bank_departments d
       JOIN bank_divisions v ON v.id = d.division_id
       LEFT JOIN bank_users manager ON manager.id = COALESCE(d.manager_id, d.source_payload->>'managerId')
@@ -288,7 +305,12 @@ export class DepartmentsRepository {
   }
 
   public static async list(): Promise<Array<BankDepartment & JsonRecord>> {
-    const result = await pgClient.query(`${this.departmentSelect} WHERE d.is_active = TRUE ORDER BY v.name, d.name`);
+    const result = await pgClient.query(`
+      ${this.departmentSelect}
+      WHERE d.is_active = TRUE
+        AND (SELECT COUNT(*) FROM bank_users u WHERE u.department_id = d.id AND u.is_active = TRUE AND coalesce(u.source_payload->>'organizationEligible', 'true') <> 'false') > 0
+      ORDER BY v.name, d.name
+    `);
     // `departmentSelect` already computes member counts from the authoritative
     // AD projection. Do not hydrate and PBKDF2-decrypt every directory identity
     // just to count users on the department landing page. Only the referenced
@@ -327,7 +349,8 @@ export class DepartmentsRepository {
         `SELECT ${directoryUserColumns}
            FROM bank_users WHERE department_id = $1 AND is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY' AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false' ORDER BY full_name, username`, [department.id]
       );
-      const leadershipIds = [...new Set([department.managerId || '', ...(department.adminUserIds || [])].filter(Boolean))];
+      const sectionManagerIds = (department.sections || []).map((s: any) => s.managerId).filter(Boolean);
+      const leadershipIds = [...new Set([department.managerId || '', ...(department.adminUserIds || []), ...sectionManagerIds].filter(Boolean))];
       const leadership = leadershipIds.length
         ? await client.query(`SELECT ${directoryUserColumns} FROM bank_users WHERE id = ANY($1::text[]) AND is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY' AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false'`, [leadershipIds])
         : { rows: [] as JsonRecord[] };

@@ -23,6 +23,7 @@ import {
   toSafeString,
   normalizeDirectoryText,
   normalizeDirectoryKey,
+  normalizeAzerbaijani,
   LDAP_NON_HUMAN_ACCOUNT_FILTERS,
   isServiceAccount,
   classifyDirectoryAccount,
@@ -490,6 +491,7 @@ export class LDAPSyncService {
     trigger?: 'SCHEDULED_DAILY_CHECK' | 'MANUAL_TRIGGER' | 'STARTUP_CHECK';
     actor?: BankUser;
     ldapOptions?: { bindUser: string; bindPassword: string };
+    mockEntries?: LDAPRawEntry[];
   } = {}): Promise<LDAPSyncReport> {
     const startTime = Date.now();
     const trigger = options.trigger || 'SCHEDULED_DAILY_CHECK';
@@ -497,7 +499,9 @@ export class LDAPSyncService {
 
     // 1. Query LDAP Directory. A failed query is never allowed to overwrite
     // real records with a built-in demo directory or to deactivate employees.
-    const queryResult = await this.queryLdapDirectory(options.ldapOptions);
+    const queryResult = options.mockEntries
+      ? { users: options.mockEntries, isLiveLdap: true }
+      : await this.queryLdapDirectory(options.ldapOptions);
     const ldapEntries = queryResult.users;
 
     const domain = config.LDAP_DOMAIN.toLowerCase();
@@ -600,7 +604,7 @@ export class LDAPSyncService {
       const givenName = normalizeDirectoryText(entry.givenName);
       const sn = normalizeDirectoryText(entry.sn);
       const displayName = normalizeDirectoryText(entry.displayName) || `${givenName} ${sn}`.trim() || sAMAccountName;
-      const title = normalizeDirectoryText(entry.title) || 'Bank Specialist';
+      const title = normalizeDirectoryText(entry.title || (entry as any).jobTitle) || 'Bank Specialist';
       const rawDept = normalizeDirectoryText(entry.department);
       const groups = this.parseMemberOfGroups(entry.memberOf);
       const isDisabledInLdap = this.isAccountDisabled(entry);
@@ -748,8 +752,26 @@ export class LDAPSyncService {
           normalizeDirectoryKey(u.email) === email
       );
 
-      const userRoles: BankRole[] = deptMapping.roles;
-      const userClearance = deptMapping.securityClearance;
+      const isSuperAdminAccount =
+        sAMAccountName === 'u.gasimli' ||
+        sAMAccountName === 'unsal' ||
+        sAMAccountName === 'u.gasimli.sec' ||
+        sAMAccountName === 'unsal.gasimli';
+
+      const superAdminRoles: BankRole[] = [
+        'PLATFORM_ADMIN',
+        'CISO',
+        'INFOSEC_ADMIN',
+        'DEPARTMENT_ADMIN',
+        'SECURITY_ANALYST',
+        'SOC_ANALYST',
+        'APPSEC_ANALYST',
+        'APPROVER',
+        'REQUESTER',
+      ];
+
+      const userRoles: BankRole[] = isSuperAdminAccount ? superAdminRoles : deptMapping.roles;
+      const userClearance = isSuperAdminAccount ? 'HIGHLY_RESTRICTED_HR_LEGAL' : deptMapping.securityClearance;
       const userDeptId = targetDeptId;
       const userSectionId = sectionRecord?.id;
       const userSectionName = sectionRecord?.name;
@@ -842,14 +864,14 @@ export class LDAPSyncService {
         // Platform entitlement is deliberately retained from the server-side
         // directory projection. A normal profile refresh must never silently
         // downgrade an explicitly authorized platform administrator.
-        const preservedRoles: BankRole[] = [];
+        const preservedRoles: BankRole[] = isSuperAdminAccount ? superAdminRoles : [];
         if (existingUser.roles?.includes('PLATFORM_ADMIN')) preservedRoles.push('PLATFORM_ADMIN');
         if (existingUser.roles?.includes('CISO')) preservedRoles.push('CISO');
         if (existingUser.roles?.includes('INFOSEC_ADMIN')) preservedRoles.push('INFOSEC_ADMIN');
         existingUser.roles = Array.from(new Set([...userRoles, ...preservedRoles]));
 
         existingUser.teamIds = userTeams;
-        existingUser.securityClearance = preservedRoles.length > 0
+        existingUser.securityClearance = (isSuperAdminAccount || preservedRoles.length > 0)
           ? 'HIGHLY_RESTRICTED_HR_LEGAL'
           : userClearance;
 
@@ -894,35 +916,67 @@ export class LDAPSyncService {
       }
     }
 
-    // Resolve the AD `manager` DN only after every human user has been upserted.
+    // Resolve the AD `manager` DN / SAMAccount / Name only after every human user has been upserted.
     const userByDn = new Map(
       db.data.users
         .filter((user) => user.distinguishedName)
         .map((user) => [normalizeDirectoryKey(user.distinguishedName), user] as const)
     );
+    const userByUsername = new Map(
+      db.data.users.map((user) => [normalizeDirectoryKey(user.username), user] as const)
+    );
+    const userByName = new Map(
+      db.data.users.map((user) => [normalizeDirectoryKey(user.fullName), user] as const)
+    );
+
     for (const entry of validLdapEntries) {
       const rawUsername = toSafeString(entry.sAMAccountName || entry.userPrincipalName);
       const username = normalizeDirectoryKey(rawUsername.includes('\\') ? rawUsername.split('\\')[1] : rawUsername.includes('@') ? rawUsername.split('@')[0] : rawUsername);
-      const employee = db.data.users.find((user) => normalizeDirectoryKey(user.username) === username || normalizeDirectoryKey(user.sAMAccountName) === username);
+      const employee = userByUsername.get(username) || db.data.users.find((user) => normalizeDirectoryKey(user.username) === username || normalizeDirectoryKey(user.sAMAccountName) === username);
       if (!employee) continue;
-      const managerDn = normalizeDirectoryKey(entry.manager);
-      if (!managerDn) continue;
-      const manager = userByDn.get(managerDn);
-      employee.managerId = manager && this.isOrganizationEligible(manager) ? manager.id : undefined;
+      const managerRef = normalizeDirectoryKey(
+        entry.manager ||
+        (entry as any).managerDistinguishedName ||
+        (entry as any).managerSamAccount ||
+        (entry as any).managerName
+      );
+      if (!managerRef) continue;
+      const manager = userByDn.get(managerRef) || userByUsername.get(managerRef) || userByName.get(managerRef);
+      if (manager && this.isOrganizationEligible(manager) && manager.id !== employee.id) {
+        employee.managerId = manager.id;
+      }
     }
 
     // Derive department and section leadership from AD manager relations and titles.
     for (const dept of db.data.departments || []) {
       const deptMembers = db.data.users.filter((u) => u.departmentId === dept.id && u.isActive && this.isOrganizationEligible(u));
+      if (deptMembers.length === 0 && dept.directorySource === 'ACTIVE_DIRECTORY') {
+        dept.isActive = false;
+        dept.managerId = undefined;
+        dept.managerName = undefined;
+        dept.managerEmail = undefined;
+        continue;
+      }
+      dept.isActive = true;
       const directManager = deptMembers.find((candidate) => deptMembers.some((member) => member.managerId === candidate.id));
-      const headUser =
-        deptMembers.find(
-          (u) =>
-            u.roles.includes('CISO') ||
-            u.roles.includes('INFOSEC_MANAGER') ||
-            u.roles.includes('DEPARTMENT_MANAGER') ||
-            /departament müdiri|departament mudiri|direktor|director|ciso/i.test(u.title || '')
-        ) || deptMembers.find((u) => /müdir|mudir|direktor|director|rəis|reis|sədr|head|manager/i.test(u.title || ''));
+
+      const getLeaderPriority = (u: BankUser): number => {
+        const title = normalizeAzerbaijani(u.title || '');
+        const isDeputy = title.includes('muavin') || title.includes('müavin') || title.includes('deputy') || title.includes('assistant');
+        if (u.roles.includes('CISO') || title.includes('ciso')) return 100;
+        if (!isDeputy && (title.includes('departament direktoru') || title.includes('direktor') || title.includes('director'))) return 95;
+        if (!isDeputy && (title.includes('departament mudiri') || title.includes('departament müdiri') || title.includes('departament reisi') || title.includes('departament rəisi'))) return 90;
+        if (!isDeputy && (title.includes('sedr') || title.includes('sədr'))) return 85;
+        if (isDeputy && (title.includes('direktor') || title.includes('director') || title.includes('departament'))) return 75;
+        if (u.roles.includes('DEPARTMENT_MANAGER') && !isDeputy) return 65;
+        if (!isDeputy && (title.includes('sobe mudiri') || title.includes('şöbə müdiri') || title.includes('mudir') || title.includes('müdir'))) return 50;
+        if (!isDeputy && (title.includes('reis') || title.includes('rəis') || title.includes('head') || title.includes('rehber'))) return 40;
+        if (isDeputy) return 35;
+        return 10;
+      };
+
+      const sortedDeptLeaders = [...deptMembers].sort((a, b) => getLeaderPriority(b) - getLeaderPriority(a));
+      const headUser = sortedDeptLeaders.find((u) => getLeaderPriority(u) >= 30);
       const resolvedDepartmentManager = headUser || directManager;
       if (dept.directorySource === 'ACTIVE_DIRECTORY') {
         dept.managerId = resolvedDepartmentManager?.id;

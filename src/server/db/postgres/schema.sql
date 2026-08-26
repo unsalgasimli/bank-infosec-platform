@@ -35,6 +35,9 @@ CREATE TABLE IF NOT EXISTS bank_department_sections (
     code VARCHAR(64) NOT NULL,
     name VARCHAR(255) NOT NULL,
     manager_id VARCHAR(64),
+    section_type VARCHAR(32) NOT NULL DEFAULT 'SOBE',
+    parent_section_id VARCHAR(128) REFERENCES bank_department_sections(id) ON DELETE SET NULL,
+    has_own_manager BOOLEAN NOT NULL DEFAULT TRUE,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     source_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -42,7 +45,11 @@ CREATE TABLE IF NOT EXISTS bank_department_sections (
     UNIQUE (department_id, code)
 );
 
+ALTER TABLE bank_department_sections ADD COLUMN IF NOT EXISTS section_type VARCHAR(32) NOT NULL DEFAULT 'SOBE';
+ALTER TABLE bank_department_sections ADD COLUMN IF NOT EXISTS parent_section_id VARCHAR(128) REFERENCES bank_department_sections(id) ON DELETE SET NULL;
+ALTER TABLE bank_department_sections ADD COLUMN IF NOT EXISTS has_own_manager BOOLEAN NOT NULL DEFAULT TRUE;
 CREATE INDEX IF NOT EXISTS idx_department_sections_department ON bank_department_sections(department_id);
+CREATE INDEX IF NOT EXISTS idx_department_sections_parent ON bank_department_sections(parent_section_id);
 
 CREATE TABLE IF NOT EXISTS bank_teams (
     id VARCHAR(64) PRIMARY KEY,
@@ -63,6 +70,8 @@ CREATE TABLE IF NOT EXISTS bank_users (
     title VARCHAR(255) NOT NULL,
     department_id VARCHAR(64) REFERENCES bank_departments(id) ON DELETE SET NULL,
     section_id VARCHAR(128) REFERENCES bank_department_sections(id) ON DELETE SET NULL,
+    unit_id VARCHAR(128) REFERENCES bank_department_sections(id) ON DELETE SET NULL,
+    manager_id VARCHAR(64) REFERENCES bank_users(id) ON DELETE SET NULL,
     division_id VARCHAR(64) REFERENCES bank_divisions(id) ON DELETE SET NULL,
     security_clearance VARCHAR(64) NOT NULL DEFAULT 'INTERNAL',
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -76,6 +85,11 @@ CREATE TABLE IF NOT EXISTS bank_users (
 );
 
 ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS section_id VARCHAR(128) REFERENCES bank_department_sections(id) ON DELETE SET NULL;
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS unit_id VARCHAR(128) REFERENCES bank_department_sections(id) ON DELETE SET NULL;
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS manager_id VARCHAR(64) REFERENCES bank_users(id) ON DELETE SET NULL;
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS unit_name VARCHAR(255);
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS section_name VARCHAR(255);
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS primary_username VARCHAR(128);
 -- Only high-sensitivity directory security metadata is application-encrypted
 -- (AES-256-GCM). Names, email, title, username, and organizational placement
 -- remain readable for ordinary administration and assignment workflows.
@@ -90,6 +104,8 @@ CREATE INDEX IF NOT EXISTS idx_users_username ON bank_users(username);
 CREATE INDEX IF NOT EXISTS idx_users_email ON bank_users(email);
 CREATE INDEX IF NOT EXISTS idx_users_dept ON bank_users(department_id);
 CREATE INDEX IF NOT EXISTS idx_users_section ON bank_users(section_id);
+CREATE INDEX IF NOT EXISTS idx_users_unit ON bank_users(unit_id);
+CREATE INDEX IF NOT EXISTS idx_users_manager ON bank_users(manager_id);
 CREATE INDEX IF NOT EXISTS idx_users_clearance ON bank_users(security_clearance);
 
 -- Opaque browser sessions. Only an HMAC digest of the cookie token is stored.

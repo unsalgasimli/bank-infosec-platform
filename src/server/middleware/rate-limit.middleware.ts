@@ -8,10 +8,18 @@ function createRateLimiter(options: { windowMs: number; max: number; message: st
 
   return rateLimit({
     windowMs: options.windowMs,
-    max: options.max,
+    max: (req) => (config.NODE_ENV === 'development' ? 2000 : options.max),
     standardHeaders: true,
     legacyHeaders: false,
     skipSuccessfulRequests: options.skipSuccessfulRequests || false,
+    skip: (req) => {
+      // In local development, never throttle localhost/loopback requests
+      if (config.NODE_ENV === 'development') {
+        const ip = req.ip || '';
+        return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip.startsWith('127.');
+      }
+      return false;
+    },
     // Express resolves req.ip through the loopback-only trusted proxy policy.
     // Reading X-Forwarded-For directly would let LAN clients bypass throttling.
     keyGenerator: (req) => req.ip || '127.0.0.1',

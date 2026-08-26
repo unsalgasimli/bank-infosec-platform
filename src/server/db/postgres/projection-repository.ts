@@ -558,11 +558,20 @@ export class PostgresProjectionRepository {
         if (!changed('departmentSections', section as RecordValue, index)) continue;
         if (!departmentIds.has(section.departmentId)) continue;
         await client.query(
-          `INSERT INTO bank_department_sections(id,department_id,code,name,manager_id,is_active,source_payload) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb)
-           ON CONFLICT(id) DO UPDATE SET department_id=EXCLUDED.department_id,code=EXCLUDED.code,name=EXCLUDED.name,manager_id=EXCLUDED.manager_id,is_active=EXCLUDED.is_active,source_payload=EXCLUDED.source_payload,updated_at=NOW()` ,
-          [section.id, section.departmentId, safeSectionCode(section.code, section.id, section.departmentId, sectionCodes), text(section.name) || section.id, section.managerId || null, section.isActive !== false, json(section)]
+          `INSERT INTO bank_department_sections(id,department_id,code,name,manager_id,section_type,parent_section_id,has_own_manager,is_active,source_payload)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
+           ON CONFLICT(id) DO UPDATE SET department_id=EXCLUDED.department_id,code=EXCLUDED.code,name=EXCLUDED.name,manager_id=EXCLUDED.manager_id,section_type=EXCLUDED.section_type,has_own_manager=EXCLUDED.has_own_manager,is_active=EXCLUDED.is_active,source_payload=EXCLUDED.source_payload,updated_at=NOW()`,
+          [section.id, section.departmentId, safeSectionCode(section.code, section.id, section.departmentId, sectionCodes), text(section.name) || section.id, section.managerId || null, section.sectionType || 'SOBE', null, section.hasOwnManager !== false, section.isActive !== false, json(section)]
         );
       }
+
+      // Resolve section parent links after all sections exist.
+      for (const section of departmentSections) {
+        if (section.parentSectionId && sectionIds.has(section.parentSectionId) && section.parentSectionId !== section.id) {
+          await client.query('UPDATE bank_department_sections SET parent_section_id=$2, updated_at=NOW() WHERE id=$1', [section.id, section.parentSectionId]);
+        }
+      }
+
       for (let index = 0; index < (data.teams || []).length; index++) {
         const team = data.teams![index];
         if (!changed('teams', team as RecordValue, index)) continue;
@@ -578,18 +587,26 @@ export class PostgresProjectionRepository {
         if (!changed('users', user as RecordValue, index)) continue;
         const name = splitName(user.fullName);
         await client.query(
-          `INSERT INTO bank_users(id,username,email,first_name,last_name,full_name,title,department_id,section_id,division_id,security_clearance,is_active,last_login_at,roles,team_ids,owned_application_ids,owned_risk_ids,sam_account_name,user_principal_name,distinguished_name,ldap_domain,ldap_bind_status,distribution_groups,directory_source,identity_ciphertext,identity_ciphertext_version,email_lookup_hash,source_payload)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15::jsonb,$16::jsonb,$17::jsonb,$18,$19,$20,$21,$22,$23::jsonb,$24,$25,$26,$27::jsonb)
-           ON CONFLICT(id) DO UPDATE SET username=EXCLUDED.username,email=EXCLUDED.email,first_name=EXCLUDED.first_name,last_name=EXCLUDED.last_name,full_name=EXCLUDED.full_name,title=EXCLUDED.title,department_id=EXCLUDED.department_id,section_id=EXCLUDED.section_id,division_id=EXCLUDED.division_id,is_active=EXCLUDED.is_active,roles=EXCLUDED.roles,team_ids=EXCLUDED.team_ids,owned_application_ids=EXCLUDED.owned_application_ids,owned_risk_ids=EXCLUDED.owned_risk_ids,user_principal_name=EXCLUDED.user_principal_name,distinguished_name=EXCLUDED.distinguished_name,distribution_groups=EXCLUDED.distribution_groups,identity_ciphertext=EXCLUDED.identity_ciphertext,identity_ciphertext_version=EXCLUDED.identity_ciphertext_version,email_lookup_hash=EXCLUDED.email_lookup_hash,source_payload=EXCLUDED.source_payload,updated_at=NOW()`,
-          [user.id, normalizeDirectoryKey(user.username), nullable(user.email), name.first, name.last, name.full, text(user.title) || 'Bank Specialist', departmentIds.has(user.departmentId) ? user.departmentId : null, sectionIds.has(user.sectionId || '') ? user.sectionId : null, divisionIds.has(user.divisionId) ? user.divisionId : null, user.securityClearance || 'INTERNAL', Boolean(user.isActive), user.lastLdapLoginAt ? iso(user.lastLdapLoginAt) : null, json(user.roles || []), json(user.teamIds || []), json(user.ownedApplicationIds || []), json(user.ownedRiskIds || []), normalizeDirectoryKey(user.sAMAccountName || user.username), null, null, nullable(user.ldapDomain), nullable(user.ldapBindStatus), json([]), nullable(user.directorySource), encryptSecret(JSON.stringify(protectedIdentity(user))), 2, identityLookupHash(user.email || user.username), json(protectedUserPayload(user))]
-         );
-       }
+          `INSERT INTO bank_users(id,username,email,first_name,last_name,full_name,title,department_id,section_id,unit_id,manager_id,unit_name,section_name,primary_username,division_id,security_clearance,is_active,last_login_at,roles,team_ids,owned_application_ids,owned_risk_ids,sam_account_name,user_principal_name,distinguished_name,ldap_domain,ldap_bind_status,distribution_groups,directory_source,identity_ciphertext,identity_ciphertext_version,email_lookup_hash,source_payload)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,$20::jsonb,$21::jsonb,$22::jsonb,$23,$24,$25,$26,$27,$28::jsonb,$29,$30,$31,$32,$33::jsonb)
+           ON CONFLICT(id) DO UPDATE SET username=EXCLUDED.username,email=EXCLUDED.email,first_name=EXCLUDED.first_name,last_name=EXCLUDED.last_name,full_name=EXCLUDED.full_name,title=EXCLUDED.title,department_id=EXCLUDED.department_id,section_id=EXCLUDED.section_id,unit_id=EXCLUDED.unit_id,unit_name=EXCLUDED.unit_name,section_name=EXCLUDED.section_name,primary_username=EXCLUDED.primary_username,division_id=EXCLUDED.division_id,is_active=EXCLUDED.is_active,roles=EXCLUDED.roles,team_ids=EXCLUDED.team_ids,owned_application_ids=EXCLUDED.owned_application_ids,owned_risk_ids=EXCLUDED.owned_risk_ids,user_principal_name=EXCLUDED.user_principal_name,distinguished_name=EXCLUDED.distinguished_name,distribution_groups=EXCLUDED.distribution_groups,identity_ciphertext=EXCLUDED.identity_ciphertext,identity_ciphertext_version=EXCLUDED.identity_ciphertext_version,email_lookup_hash=EXCLUDED.email_lookup_hash,source_payload=EXCLUDED.source_payload,updated_at=NOW()`,
+          [user.id, normalizeDirectoryKey(user.username), nullable(user.email), name.first, name.last, name.full, text(user.title) || 'Bank Specialist', departmentIds.has(user.departmentId) ? user.departmentId : null, sectionIds.has(user.sectionId || '') ? user.sectionId : null, sectionIds.has(user.unitId || '') ? user.unitId : null, null, nullable(user.unitName), nullable(user.sectionName), nullable(user.primaryUsername), divisionIds.has(user.divisionId) ? user.divisionId : null, user.securityClearance || 'INTERNAL', Boolean(user.isActive), user.lastLdapLoginAt ? iso(user.lastLdapLoginAt) : null, json(user.roles || []), json(user.teamIds || []), json(user.ownedApplicationIds || []), json(user.ownedRiskIds || []), normalizeDirectoryKey(user.sAMAccountName || user.username), null, null, nullable(user.ldapDomain), nullable(user.ldapBindStatus), json([]), nullable(user.directorySource), encryptSecret(JSON.stringify(protectedIdentity(user))), 2, identityLookupHash(user.email || user.username), json(protectedUserPayload(user))]
+        );
+      }
 
-       // Resolve department manager foreign keys only after all users exist.
-       for (const department of departments) {
-         const managerId = department.managerId && userIds.has(department.managerId) ? department.managerId : null;
-         await client.query('UPDATE bank_departments SET manager_id=$2, updated_at=NOW() WHERE id=$1', [department.id, managerId]);
-       }
+      // Resolve user manager foreign keys only after all users exist.
+      for (const user of data.users || []) {
+        if (user.managerId && userIds.has(user.managerId) && user.managerId !== user.id) {
+          await client.query('UPDATE bank_users SET manager_id=$2, updated_at=NOW() WHERE id=$1', [user.id, user.managerId]);
+        }
+      }
+
+      // Resolve department manager foreign keys only after all users exist.
+      for (const department of departments) {
+        const rawManagerId = department.managerId || (department as any).source_payload?.managerId || (department as any).sourcePayload?.managerId;
+        const managerId = rawManagerId && userIds.has(rawManagerId) ? rawManagerId : null;
+        await client.query('UPDATE bank_departments SET manager_id=$2, updated_at=NOW() WHERE id=$1', [department.id, managerId]);
+      }
 
       // CMDB is persisted in its own normalized relational model. source_payload
       // preserves full typed metadata while columns/indexes serve operational queries.

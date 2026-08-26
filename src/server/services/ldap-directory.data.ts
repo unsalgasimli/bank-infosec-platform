@@ -255,7 +255,23 @@ export function parseJobTitleAndHierarchy(
   // Also extract candidates from OUs if not already found in title
   for (const ou of relevantOUs) {
     const normOu = normalizeAzerbaijani(ou);
-    if (!sectionCand && (normOu.includes('şöbə') || normOu.includes('sobe') || normOu.includes('section') || normOu.includes('devops') || normOu.includes('soc') || normOu.includes('appsec'))) {
+    if (normOu.includes('satinalma')) {
+      if (!unitCand) unitCand = 'Satınalma bölməsi';
+      if (!sectionCand) sectionCand = 'İnzibati təsərrüfat şöbəsi';
+    } else if (normOu.includes('anbar')) {
+      if (!unitCand) unitCand = 'Anbar bölməsi';
+      if (!sectionCand) sectionCand = 'İnzibati təsərrüfat şöbəsi';
+    } else if (normOu.includes('tarcuba') || normOu.includes('tercume')) {
+      if (!unitCand) unitCand = 'Tərcümə bölməsi';
+      if (!sectionCand) sectionCand = 'Katiblik şöbəsi';
+    } else if (normOu.includes('inzibati') || normOu.includes('teserrufat')) {
+      if (!sectionCand) sectionCand = 'İnzibati təsərrüfat şöbəsi';
+    } else if (normOu.includes('umumi')) {
+      if (!unitCand) unitCand = 'Ümumi təsərrüfat bölməsi';
+      if (!sectionCand) sectionCand = 'İnzibati təsərrüfat şöbəsi';
+    } else if (normOu.includes('icra')) {
+      if (!sectionCand) sectionCand = 'Məhkəmə və İcra işləri şöbəsi';
+    } else if (!sectionCand && (normOu.includes('şöbə') || normOu.includes('sobe') || normOu.includes('section') || normOu.includes('devops') || normOu.includes('soc') || normOu.includes('appsec'))) {
       sectionCand = ou;
     } else if (!unitCand && (normOu.includes('bölmə') || normOu.includes('bolme') || normOu.includes('sektor') || normOu.includes('qrup'))) {
       unitCand = ou;
@@ -335,13 +351,24 @@ export function mapDepartment(
       'branch users',
       'users',
       'service',
+      'service accounts',
       'disabled',
       'disable',
       'outlook',
       'no policy',
       'ie test',
       'qmatic user',
-    ].includes(n);
+      'qmatic users',
+      'mailbanking clients',
+      'mailbanking',
+      'clients',
+      'test',
+      'temp',
+    ].includes(n) &&
+    !n.includes('branch') &&
+    !n.includes('filial') &&
+    !/filialı$/i.test(n) &&
+    !/filiali$/i.test(n);
   });
 
   // Parse 3-tier hierarchy from title and OUs
@@ -614,14 +641,15 @@ export function mapDepartment(
     };
   }
 
-  // 8. Legal Department & Secretariat (Hüquq Departamenti və Katiblik)
+  // 8. Legal Department (Hüquq Departamenti)
   else if (
     norm.includes('huquq') ||
     norm.includes('legal') ||
     norm.includes('mehkeme') ||
     norm.includes('muqavile') ||
     norm.includes('istehlakci') ||
-    norm.includes('katiblik') ||
+    norm.includes('icra') ||
+    titleNorm.includes('icra') ||
     norm === 'dept-legal'
   ) {
     let roles: BankRole[] = ['REQUESTER', 'APPROVER'];
@@ -629,11 +657,35 @@ export function mapDepartment(
       roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'LEGAL_ADMIN', 'APPROVER', 'REQUESTER'];
     }
     result = {
-      departmentId: norm.includes('katiblik') ? 'dept-katiblik-sobesi' : 'dept-legal',
+      departmentId: 'dept-legal',
       divisionId: 'div-hr',
       teamIds: ['team-hr-ops'],
-      departmentName: norm.includes('katiblik') ? 'Katiblik Şöbəsi' : 'Hüquq Departamenti',
-      departmentCode: norm.includes('katiblik') ? 'KATIB_DEPT' : 'LEGAL',
+      departmentName: 'Hüquq Departamenti',
+      departmentCode: 'LEGAL',
+      roles,
+      securityClearance: 'HIGHLY_RESTRICTED_HR_LEGAL',
+    };
+  }
+
+  // 8b. Secretariat & Translation (Katiblik və Tərcümə Şöbəsi)
+  else if (
+    norm.includes('katiblik') ||
+    norm.includes('katib') ||
+    norm.includes('tarcuba') ||
+    norm.includes('tercume') ||
+    norm.includes('translator') ||
+    norm === 'dept-katiblik-sobesi'
+  ) {
+    let roles: BankRole[] = ['REQUESTER', 'APPROVER'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
+    }
+    result = {
+      departmentId: 'dept-katiblik-sobesi',
+      divisionId: 'div-hr',
+      teamIds: ['team-hr-ops'],
+      departmentName: 'Katiblik və Tərcümə Şöbəsi',
+      departmentCode: 'KATIB_DEPT',
       roles,
       securityClearance: 'HIGHLY_RESTRICTED_HR_LEGAL',
     };
@@ -728,8 +780,13 @@ export function mapDepartment(
     };
   }
 
-  // 12. Payment Systems (Ödəniş Sistemləri)
-  else if (norm.includes('odenis sistem') || norm.includes('expresspay')) {
+  // 12b. Payment Systems & Acquiring (Ödəniş Sistemlərinin İdarə Edilməsi Departamenti)
+  else if (
+    norm.includes('odenis sistem') ||
+    norm.includes('expresspay') ||
+    norm.includes('ekvayrinq') ||
+    norm.includes('acquiring')
+  ) {
     let roles: BankRole[] = ['REQUESTER', 'ASSIGNEE'];
     if (isManagerTitle) {
       roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
@@ -774,8 +831,8 @@ export function mapDepartment(
     };
   }
 
-  // 14. Internal Audit (Daxili Audit)
-  else if (norm.includes('audit')) {
+  // 14. Internal Audit (Daxili Audit Departamenti)
+  else if (norm.includes('audit') || titleNorm.includes('auditor')) {
     let roles: BankRole[] = ['AUDITOR', 'REQUESTER'];
     if (isManagerTitle) {
       roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'AUDITOR', 'APPROVER', 'REQUESTER'];
@@ -839,13 +896,15 @@ export function mapDepartment(
     };
   }
 
-  // 17. Corporate / Business Banking (Biznes Bankçılıq)
+  // 17. Corporate / Business Banking & Partnerships (Biznes Bankçılıq Departamenti)
   else if (
     norm.includes('biznes bank') ||
     norm.includes('korporativ') ||
     norm.includes('bbd') ||
     norm.includes('biznessatish') ||
-    norm.includes('kombank')
+    norm.includes('kombank') ||
+    norm.includes('terefdas') ||
+    norm.includes('partner')
   ) {
     let roles: BankRole[] = ['REQUESTER', 'APPROVER'];
     if (isManagerTitle) {
@@ -879,61 +938,117 @@ export function mapDepartment(
     };
   }
 
-  // 19. Bank Branches & Branch Network (Filiallar və Şöbələr)
+  // 19. Administrative, Procurement, Warehouse & General Services (İnzibati Təsərrüfat və Satınalma Departamenti)
+  else if (
+    norm.includes('inzibati') ||
+    norm.includes('satinalma') ||
+    norm.includes('anbar') ||
+    norm.includes('teserrufat') ||
+    norm.includes('təsərrüfat') ||
+    norm.includes('umumi bolme') ||
+    norm.includes('umumi') ||
+    norm.includes('procurement') ||
+    norm.includes('administrative') ||
+    norm === 'dept-procurement'
+  ) {
+    let roles: BankRole[] = ['REQUESTER', 'ASSIGNEE'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
+    }
+    result = {
+      departmentId: 'dept-procurement',
+      divisionId: 'div-banking',
+      teamIds: ['team-swift-eng'],
+      departmentName: 'İnzibati Təsərrüfat və Satınalma Departamenti',
+      departmentCode: 'INZIBATI_DEPT',
+      roles,
+      securityClearance: 'INTERNAL',
+    };
+  }
+
+  // 20. Bank Branches & Branch Network (Filial əməkdaşları vəzifə və funksiyasına görə aidiyyəti departamentlərə təyin edilir)
   else if (norm.includes('branch') || norm.includes('filial') || norm.includes('menteqe')) {
-    const branchOu =
-      relevantOUs.find((ou) => {
-        const n = normalizeAzerbaijani(ou);
-        return n.includes('branch') || n.includes('filial');
-      }) ||
-      deptStr ||
-      'Bank Filialı';
-    const branchSlug = slugifyDept(branchOu);
-    let roles: BankRole[] = ['REQUESTER', 'ASSIGNEE'];
-    if (isManagerTitle) {
-      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'APPROVER', 'REQUESTER'];
+    if (norm.includes('kassa') || norm.includes('kassir') || titleNorm.includes('kassir') || titleNorm.includes('kassa')) {
+      result = {
+        departmentId: 'dept-hesablasmalar-departamenti',
+        divisionId: 'div-banking',
+        teamIds: ['team-swift-eng'],
+        departmentName: 'Hesablaşmalar Departamenti',
+        departmentCode: 'HESAB_DEPT',
+        roles: isManagerTitle ? ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'] : ['REQUESTER', 'ASSIGNEE'],
+        securityClearance: 'RESTRICTED',
+      };
+    } else if (norm.includes('kredit') || norm.includes('mikro') || titleNorm.includes('kredit')) {
+      result = {
+        departmentId: 'dept-credit',
+        divisionId: 'div-banking',
+        teamIds: ['team-swift-eng'],
+        departmentName: 'Kredit və Anderraytinq Departamenti',
+        departmentCode: 'CREDIT',
+        roles: isManagerTitle ? ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'] : ['REQUESTER', 'APPROVER'],
+        securityClearance: 'RESTRICTED',
+      };
+    } else if (norm.includes('biznes') || norm.includes('bbd') || titleNorm.includes('biznes')) {
+      result = {
+        departmentId: 'dept-corporate',
+        divisionId: 'div-banking',
+        teamIds: ['team-swift-eng'],
+        departmentName: 'Biznes Bankçılıq Departamenti',
+        departmentCode: 'CORP_BANK',
+        roles: isManagerTitle ? ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'] : ['REQUESTER', 'APPROVER'],
+        securityClearance: 'INTERNAL',
+      };
+    } else if (norm.includes('dnd') || norm.includes('nezaret') || titleNorm.includes('nezaret')) {
+      result = {
+        departmentId: 'dept-daxili-nezaret-departamenti',
+        divisionId: 'div-sec',
+        teamIds: ['team-soc'],
+        departmentName: 'Daxili Nəzarət Departamenti',
+        departmentCode: 'DND_DEPT',
+        roles: isManagerTitle ? ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'] : ['REQUESTER', 'APPROVER'],
+        securityClearance: 'INTERNAL',
+      };
+    } else if (norm.includes('icra') || norm.includes('huquq') || titleNorm.includes('icra')) {
+      result = {
+        departmentId: 'dept-legal',
+        divisionId: 'div-hr',
+        teamIds: ['team-hr-ops'],
+        departmentName: 'Hüquq Departamenti',
+        departmentCode: 'LEGAL',
+        roles: isManagerTitle ? ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'] : ['REQUESTER', 'APPROVER'],
+        securityClearance: 'RESTRICTED',
+      };
+    } else {
+      // Branch Managers and general retail banking specialists in branches
+      let roles: BankRole[] = ['REQUESTER', 'ASSIGNEE'];
+      if (isManagerTitle) {
+        roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
+      }
+      result = {
+        departmentId: 'dept-retail',
+        divisionId: 'div-banking',
+        teamIds: ['team-swift-eng'],
+        departmentName: 'Pərakəndə Bankçılıq Departamenti',
+        departmentCode: 'RETAIL',
+        roles,
+        securityClearance: 'INTERNAL',
+      };
     }
-    result = {
-      departmentId: `dept-${branchSlug}`,
-      divisionId: 'div-banking',
-      teamIds: ['team-swift-eng'],
-      departmentName: branchOu,
-      departmentCode: 'BRANCH_' + branchSlug.replace(/[^a-z0-9]/g, '').slice(0, 8).toUpperCase(),
-      roles,
-      securityClearance: 'INTERNAL',
-    };
   }
 
-  // 20. Other Real Department via title / OU / deptStr
-  else if (relevantOUs.length > 0 || (deptStr && deptStr.length > 1) || Boolean(hierarchy.departmentCandidate)) {
-    const candidateName = relevantOUs[0] || hierarchy.departmentCandidate || deptStr;
-    const rawSlug = slugifyDept(candidateName);
-    let roles: BankRole[] = ['REQUESTER', 'ASSIGNEE'];
-    if (isManagerTitle) {
-      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'APPROVER', 'REQUESTER'];
-    } else if (titleNorm.includes('baş') || titleNorm.includes('aparıcı') || titleNorm.includes('lead') || titleNorm.includes('senior')) {
-      roles = ['TEAM_LEAD', 'APPROVER', 'REQUESTER'];
-    }
-    result = {
-      departmentId: `dept-${rawSlug}`,
-      divisionId: 'div-banking',
-      teamIds: ['team-swift-eng'],
-      departmentName: candidateName,
-      departmentCode: generateDeptCode(candidateName),
-      roles,
-      securityClearance: 'INTERNAL',
-    };
-  }
-
-  // 21. Total Fallback (Empty department attribute)
+  // 21. General Fallback
   else {
+    let roles: BankRole[] = ['REQUESTER', 'ASSIGNEE'];
+    if (isManagerTitle) {
+      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'APPROVER', 'REQUESTER'];
+    }
     result = {
-      departmentId: 'dept-general-banking',
+      departmentId: 'dept-retail',
       divisionId: 'div-banking',
       teamIds: ['team-swift-eng'],
-      departmentName: 'Ümumi Bank Xidmətləri və Əməliyyatlar',
-      departmentCode: 'GENERAL_BANK',
-      roles: ['REQUESTER'],
+      departmentName: 'Pərakəndə Bankçılıq Departamenti',
+      departmentCode: 'RETAIL',
+      roles,
       securityClearance: 'INTERNAL',
     };
   }
@@ -1198,6 +1313,12 @@ export const KNOWN_SERVICE_ACCOUNT_NAMES = new Set([
   'fp_admin',
   'fp_dlp_svc',
   'e.review',
+  'merkez.egov',
+  'survey.merkerz',
+  'survey.merkezi',
+  'survey.merkez',
+  'merkez.test',
+  'test.branch',
 ]);
 
 /**
@@ -1227,10 +1348,10 @@ const TECHNICAL_DIRECTORY_IDENTITY = /(?:^|[._-])(?:adm|admin|svc|service|robot|
 const TECHNICAL_NAME_MARKER = /\b(?:account|admin|service|system|technical|application|qradar|splunk|zabbix|nessus|qualys|cpam|sccm|monitor(?:ing)?|scanner|backup|database|sql|ldap|ldaps|devops|mailbox|exchange|vpn|oracle|swift|gitlab|jira|keycloak|test|demo|specialist|engineer|analyst|officer|administrator|operator|developer|support|polis|police|learning|training|tool|protect|forward|vault|dwh|bookstack|audit|mbaudit|expressbank|expresspay|netadmin|fsprotect|wug|forcepoint|dlp|review)\b/i;
 
 function isPersonNamePart(value: string): boolean {
-  const normalized = normalizeDirectoryText(value);
-  if (!normalized || normalized.length < 2) return false;
+  const normalized = normalizeDirectoryText(value).replace(/[.,]/g, '');
+  if (!normalized || normalized.length < 1) return false;
   if (TECHNICAL_NAME_MARKER.test(normalized)) return false;
-  return /^\p{L}[\p{L}'’-]{1,}$/u.test(normalized);
+  return /^\p{L}[\p{L}'’-]*$/u.test(normalized);
 }
 
 /**
@@ -1247,7 +1368,8 @@ export function hasHumanDirectoryName(
 
   const displayName = normalizeDirectoryText(entry.displayName || entry.fullName);
   if (!displayName || TECHNICAL_NAME_MARKER.test(displayName)) return false;
-  const nameParts = displayName.split(/[\s,]+/).filter(Boolean);
+  const cleanName = displayName.replace(/[.,]/g, ' ');
+  const nameParts = cleanName.split(/\s+/).filter(Boolean);
   return nameParts.length >= 2 && nameParts.every(isPersonNamePart);
 }
 
@@ -1332,6 +1454,9 @@ export function isServiceAccount(
     /^bookstack-/i.test(username) ||
     /^wug_/i.test(username) ||
     /^fp_/i.test(username) ||
+    /^survey[._-]/i.test(username) ||
+    /^merkez\./i.test(username) ||
+    /\.egov$/i.test(username) ||
     /\.review$/i.test(username) ||
     /_svc$/i.test(username)
   ) {

@@ -59,9 +59,9 @@ export class DepartmentsController {
 
         return {
           ...dept,
-          memberCount: memberCount || dept.memberCount || 0,
-          connectionCount: connectionCount || dept.connectionCount || 0,
-          templateCount: templateCount || dept.templateCount || 0,
+          memberCount,
+          connectionCount,
+          templateCount,
           activeTaskCount,
           sections: childSections,
           sectionCount: childSections.length,
@@ -71,11 +71,11 @@ export class DepartmentsController {
           isSuperAdmin,
         };
       });
-
+      const filtered = enriched.filter((d) => d.memberCount > 0);
       res.json({
         success: true,
-        departments: enriched,
-        total: enriched.length,
+        departments: filtered,
+        total: filtered.length,
       });
     } catch (err: any) {
       logger.error({ err }, 'Failed to list departments');
@@ -97,14 +97,27 @@ export class DepartmentsController {
         // remains in adminUserIds after an organizational change.
         const leadersById = new Map(leadership.map((member) => [member.id, member]));
         const activeManager = department.managerId ? leadersById.get(department.managerId) : undefined;
-        const admins = (department.adminUserIds || [])
+        const sectionManagerIds = (sections || []).map((s: any) => s.managerId).filter(Boolean);
+        const adminIdSet = new Set(department.adminUserIds || []);
+        if (department.managerId) adminIdSet.add(department.managerId);
+        sectionManagerIds.forEach((id: string) => adminIdSet.add(id));
+
+        const admins = Array.from(adminIdSet)
           .map((id) => leadersById.get(id))
           .filter((admin): admin is BankUser => Boolean(admin))
-          .map((admin) => ({ id: admin.id, fullName: admin.fullName, email: admin.email, role: admin.roles.includes('DEPARTMENT_ADMIN') ? 'DEPARTMENT_ADMIN' : admin.roles[0] || 'DIRECTORY_USER' }));
+          .map((admin) => {
+            let role = 'DEPARTMENT_ADMIN';
+            if (admin.id === department.managerId) role = 'DEPARTMENT_HEAD';
+            else if (admin.roles.includes('CISO')) role = 'CISO';
+            else if (admin.roles.includes('DEPARTMENT_ADMIN')) role = 'DEPARTMENT_ADMIN';
+            else if (sectionManagerIds.includes(admin.id)) role = 'SECTION_MANAGER';
+            else role = admin.roles[0] || 'DIRECTORY_USER';
+            return { id: admin.id, fullName: admin.fullName, email: admin.email, title: admin.title, role };
+          });
         const activeTickets = (db.data.tickets || []).filter((ticket) => ticket.departmentId === department.id || ticket.targetDepartmentId === department.id);
         const isSuperAdmin = req.user!.roles.includes('PLATFORM_ADMIN') || req.user!.roles.includes('CISO');
         const isDeptAdmin = isSuperAdmin || department.adminUserIds?.includes(req.user!.id) || department.managerId === req.user!.id || (req.user!.departmentId === department.id && req.user!.roles.includes('DEPARTMENT_ADMIN'));
-        res.json({ success: true, department: { ...department, managerName: activeManager?.fullName, managerEmail: activeManager?.email, admins, sections, sectionCount: sections.length, isDeptAdmin, isSuperAdmin }, members: membersWithSections, connections, templates: (db.data.blueprints || []).filter((blueprint) => blueprint.departmentId === department.id || blueprint.participatingDepartments?.includes(department.id)), workflows: (db.data.workflows || []).filter((workflow) => !workflow.departmentId || workflow.departmentId === department.id), activeTickets: activeTickets.slice(0, 20), stats: { totalMembers: members.length, totalConnections: connections.length, totalTemplates: (db.data.blueprints || []).filter((blueprint) => blueprint.departmentId === department.id).length, openTasksCount: activeTickets.filter((ticket) => ticket.statusCategory !== 'DONE').length, slaBreachedCount: activeTickets.filter((ticket) => ticket.slaState === 'BREACHED').length } });
+        res.json({ success: true, department: { ...department, managerName: activeManager?.fullName || department.managerName, managerEmail: activeManager?.email || department.managerEmail, admins, sections, sectionCount: sections.length, isDeptAdmin, isSuperAdmin }, members: membersWithSections, connections, templates: (db.data.blueprints || []).filter((blueprint) => blueprint.departmentId === department.id || blueprint.participatingDepartments?.includes(department.id)), workflows: (db.data.workflows || []).filter((workflow) => !workflow.departmentId || workflow.departmentId === department.id), activeTickets: activeTickets.slice(0, 20), stats: { totalMembers: members.length, totalConnections: connections.length, totalTemplates: (db.data.blueprints || []).filter((blueprint) => blueprint.departmentId === department.id).length, openTasksCount: activeTickets.filter((ticket) => ticket.statusCategory !== 'DONE').length, slaBreachedCount: activeTickets.filter((ticket) => ticket.slaState === 'BREACHED').length } });
       }).catch((error) => DepartmentsController.handleRepositoryError(res, error));
       return;
     }

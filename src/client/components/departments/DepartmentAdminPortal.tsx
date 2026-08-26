@@ -285,12 +285,23 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
     ? Math.round(measuredHealthScores.reduce((total: number, score: number) => total + score, 0) / measuredHealthScores.length)
     : null;
   const selectedSection = dept.sections?.find((section) => section.id === selectedSectionId);
+  const childUnitIds = selectedSection && (selectedSection.sectionType === 'SOBE' || !selectedSection.parentSectionId)
+    ? dept.sections?.filter((s) => s.parentSectionId === selectedSection.id).map((s) => s.id) || []
+    : [];
   const selectedSectionMembers = selectedSection
-    ? (data.members || []).filter((member: BankUser) => member.sectionId === selectedSection.id)
+    ? (data.members || []).filter((member: BankUser) => 
+        member.sectionId === selectedSection.id || 
+        member.unitId === selectedSection.id ||
+        (member as any).section?.id === selectedSection.id ||
+        childUnitIds.includes(member.unitId || '')
+      )
     : [];
   const selectedSectionTickets = selectedSection
-    ? (data.activeTickets || []).filter((ticket: any) => ticket.targetSectionId === selectedSection.id)
+    ? (data.activeTickets || []).filter((ticket: any) => ticket.targetSectionId === selectedSection.id || childUnitIds.includes(ticket.targetSectionId))
     : [];
+  const parentSectionOfSelected = selectedSection?.parentSectionId
+    ? dept.sections?.find((s) => s.id === selectedSection.parentSectionId)
+    : undefined;
 
   return (
     <div className="flex-1 flex flex-col h-full bg-semantic-page overflow-hidden select-none">
@@ -331,7 +342,7 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
               {dept.description || 'Department administration console, RBAC, SLAs and system connectors.'}
             </p>
             <p className="text-label text-semantic-jira-muted-strong mt-1">
-              Department Manager: <span className="font-bold text-semantic-primary">{dept.managerName || 'Not assigned'}</span>
+              Department Manager / CISO: <span className="font-bold text-semantic-primary">{dept.managerName || 'Not assigned'}</span>
             </p>
           </div>
         </div>
@@ -348,86 +359,72 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
       </div>
 
       {/* Navigation Tabs */}
-      <div className="bg-semantic-panel border-b border-semantic-border px-6 flex items-center gap-6 text-xs font-bold text-semantic-jira-muted-strong shrink-0 overflow-x-auto">
+      <div className="bg-semantic-panel border-b border-semantic-border px-6 flex items-center gap-6 text-xs font-bold shrink-0">
         {[
           { id: 'OVERVIEW', label: 'Department Overview', icon: Activity },
-          { id: 'MEMBERS', label: `Staff & Roles (${data?.members?.length || 0})`, icon: Users },
-          { id: 'SETTINGS', label: 'Internal Settings & SLAs', icon: Sliders },
-          { id: 'TEMPLATES', label: `Task Templates (${data?.templates?.length || 0})`, icon: FileText },
-          { id: 'CONNECTIONS', label: `System Connectors (${data?.connections?.length || 0})`, icon: Link2 },
-          { id: 'FLOWS', label: `Workflows & Flows (${data?.workflows?.length || 0})`, icon: WorkflowIcon },
+          { id: 'MEMBERS', label: `Staff & Roles (${totalMembers})`, icon: Users },
+          { id: 'SETTINGS', label: 'Internal Settings & SLAs', icon: Settings },
+          { id: 'TEMPLATES', label: `Task Templates (${data.templates?.length || 0})`, icon: FileText },
+          { id: 'CONNECTIONS', label: `System Connectors (${data.connections?.length || 0})`, icon: Link2 },
+          { id: 'FLOWS', label: `Workflows & Flows (${data.workflows?.length || 0})`, icon: WorkflowIcon },
         ].map((tab) => {
           const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`py-3.5 flex items-center gap-2 relative transition-colors ${
-                isActive ? 'text-semantic-success font-extrabold' : 'hover:text-semantic-primary'
+              className={`py-3.5 border-b-2 flex items-center gap-2 transition-all ${
+                activeTab === tab.id
+                  ? 'border-semantic-brand text-semantic-brand font-extrabold'
+                  : 'border-transparent text-semantic-jira-muted-strong hover:text-semantic-primary hover:border-semantic-border'
               }`}
             >
-              <Icon className={`w-4 h-4 ${isActive ? 'text-semantic-brand' : 'text-semantic-jira-icon'}`} />
+              <Icon className="w-4 h-4" />
               <span>{tab.label}</span>
-              {isActive && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-semantic-brand rounded-t-md" />
-              )}
             </button>
           );
         })}
       </div>
 
-      {/* Main Tab Content */}
-      <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-        <div className="max-w-6xl mx-auto space-y-5">
-          {/* Global Alerts / Messages */}
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6">
+        <div className="max-w-7xl mx-auto space-y-6">
+          {/* Blueprint Launch Success Message */}
           {blueprintLaunchMsg && (
-            <div className="p-3.5 rounded-lg bg-semantic-success-surface border border-semantic-success-border text-xs font-semibold text-semantic-success flex items-center justify-between shadow-sm">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>{blueprintLaunchMsg}</span>
-              </div>
-              <button
-                onClick={() => onNavigate('table')}
-                className="px-2.5 py-1 rounded bg-semantic-brand text-white text-label font-bold"
-              >
-                View Tasks
-              </button>
+            <div className="p-3.5 rounded-xl bg-semantic-success-surface border border-semantic-success-border text-xs font-semibold text-semantic-success flex items-center gap-2 animate-fade-in shadow-xs">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{blueprintLaunchMsg}</span>
             </div>
           )}
 
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'OVERVIEW' && (
-            <div className="space-y-5">
-              {/* Metrics Grid */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="space-y-6">
+              {/* Quick Metrics Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-semantic-panel border border-semantic-border rounded-xl p-4 shadow-xs">
-                  <div className="text-label font-bold text-semantic-jira-muted-strong uppercase">Department Staff</div>
-                  <div className="text-xl font-extrabold text-semantic-primary mt-1">
-                    {totalMembers} Specialists
-                  </div>
-                  <div className="text-label text-semantic-success font-semibold mt-1">
-                    {data.department.admins?.length ?? 0} Scoped Admins
+                  <div className="text-label font-bold text-semantic-jira-muted-strong uppercase">Şöbə Əməkdaşları</div>
+                  <div className="text-xl font-extrabold text-semantic-primary mt-1">{totalMembers} Specialists</div>
+                  <div className="text-label text-semantic-brand font-semibold mt-1">
+                    {dept.adminUserIds?.length || 1} Scoped Admins
                   </div>
                 </div>
 
                 <div className="bg-semantic-panel border border-semantic-border rounded-xl p-4 shadow-xs">
-                  <div className="text-label font-bold text-semantic-jira-muted-strong uppercase">Integrated Connectors</div>
+                  <div className="text-label font-bold text-semantic-jira-muted-strong uppercase">İnteqrasiya Olunmuş Bağlayıcılar</div>
                   <div className="text-xl font-extrabold text-semantic-success mt-1">
-                    {connectedConnectors.length} Active
+                    {connectedConnectors.length} Aktiv
                   </div>
                   <div className="text-label text-semantic-jira-muted-strong mt-1">
-                    {averageHealth == null ? 'No verified health measurement' : `${averageHealth}% measured health`}
+                    {averageHealth !== null ? `${averageHealth}% Average health` : 'No verified health measurement'}
                   </div>
                 </div>
 
                 <div className="bg-semantic-panel border border-semantic-border rounded-xl p-4 shadow-xs">
-                  <div className="text-label font-bold text-semantic-jira-muted-strong uppercase">In-Flight Tasks</div>
-                  <div className="text-xl font-extrabold text-semantic-info mt-1">
-                    {data?.stats?.openTasksCount || 0} Open
-                  </div>
-                  <div className="text-label text-semantic-jira-muted-strong mt-1">
-                    {data?.stats?.slaBreachedCount || 0} SLA Breaches
+                  <div className="text-label font-bold text-semantic-jira-muted-strong uppercase">İcradakı Tapşırıqlar</div>
+                  <div className="text-xl font-extrabold text-semantic-primary mt-1">{data.stats?.openTasksCount ?? data.activeTickets?.length ?? 0} Açıq</div>
+                  <div className="text-label text-semantic-danger font-semibold mt-1">
+                    {data?.stats?.slaBreachedCount || 0} SLA pozuntuları
                   </div>
                 </div>
 
@@ -443,40 +440,47 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
                 <div className="flex items-center justify-between border-b border-semantic-border pb-3">
                   <div>
                     <h3 className="font-extrabold text-sm text-semantic-primary">
-                      Department Administrators & Managers
+                      Department Administrators & Leadership Roster
                     </h3>
                     <p className="text-xs text-semantic-jira-muted-strong">
-                      Personnel authorized to manage internal {dept.name} settings and assign roles.
+                      Personnel authorized to manage internal {dept.name} operations, sections, and approvals.
                     </p>
                   </div>
                   {isDeptAdmin && (
                     <button
                       onClick={() => setIsAddMemberOpen(true)}
-                      className="wrike-btn-primary py-1 px-3 text-xs"
+                      className="wrike-btn-primary py-1 px-3 text-xs flex items-center gap-1"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>Add Staff</span>
+                      <span>Əməkdaş əlavə et</span>
                     </button>
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {data?.department?.admins?.map((adm: any) => (
                     <div
                       key={adm.id}
-                      className="p-3 bg-semantic-subtle border border-semantic-border rounded-xl flex items-center justify-between"
+                      className="p-3 bg-semantic-subtle border border-semantic-border rounded-xl flex items-center justify-between gap-2"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-semantic-brand text-white flex items-center justify-center font-bold text-xs">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-semantic-brand text-white flex items-center justify-center font-bold text-xs shrink-0">
                           {adm.fullName?.[0] || 'A'}
                         </div>
-                        <div>
-                          <div className="font-bold text-xs text-semantic-primary">{adm.fullName}</div>
-                          <div className="text-label text-semantic-jira-muted-strong font-mono">{adm.email}</div>
+                        <div className="min-w-0">
+                          <div className="font-bold text-xs text-semantic-primary truncate">{adm.fullName}</div>
+                          <div className="text-label text-semantic-jira-muted-strong font-mono truncate">{adm.email}</div>
+                          {adm.title && <div className="text-micro text-semantic-secondary mt-0.5 truncate">{adm.title}</div>}
                         </div>
                       </div>
-                      <span className="px-2 py-0.5 rounded bg-semantic-success-surface text-semantic-success text-caption font-bold border border-semantic-success-border">
-                        {adm.role}
+                      <span className={`px-2 py-0.5 rounded text-micro font-bold border shrink-0 ${
+                        adm.role === 'DEPARTMENT_HEAD' || adm.role === 'CISO'
+                          ? 'bg-semantic-warning-amber text-semantic-warning-strong border-semantic-warning-soft-border'
+                          : adm.role === 'SECTION_MANAGER'
+                          ? 'bg-semantic-info/10 text-semantic-info border-semantic-info/30'
+                          : 'bg-semantic-success-surface text-semantic-success border-semantic-success-border'
+                      }`}>
+                        {adm.role === 'DEPARTMENT_HEAD' ? 'DEPT HEAD' : adm.role}
                       </span>
                     </div>
                   ))}
@@ -488,17 +492,32 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
                 )}
               </div>
 
-              {/* Department Sections */}
+              {/* Department Sections & Units (3-Tier Hierarchy) */}
               <div className="bg-semantic-panel border border-semantic-border rounded-xl p-5 shadow-xs space-y-4">
                 <div className="flex items-center justify-between border-b border-semantic-border pb-3">
                   <div>
-                    <h3 className="font-extrabold text-sm text-semantic-primary">
-                      {selectedSection ? selectedSection.name : `Department Sections (${dept.sections?.length || 0})`}
+                    <h3 className="font-extrabold text-sm text-semantic-primary flex items-center gap-2">
+                      {selectedSection ? (
+                        <>
+                          <span>{selectedSection.name}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-micro font-bold uppercase ${
+                            selectedSection.sectionType === 'BOLME'
+                              ? 'bg-semantic-info/10 text-semantic-info border border-semantic-info/30'
+                              : 'bg-semantic-success-surface text-semantic-success border border-semantic-success-border'
+                          }`}>
+                            {selectedSection.sectionType === 'BOLME' ? 'Bölmə' : 'Şöbə'}
+                          </span>
+                        </>
+                      ) : (
+                        `Department Sections & Units (${dept.sections?.length || 0})`
+                      )}
                     </h3>
                     <p className="text-xs text-semantic-jira-muted-strong">
                       {selectedSection
-                        ? 'Section details, directory staff and routed work.'
-                        : 'Active child sections synchronized from the directory.'}
+                        ? (selectedSection.sectionType === 'BOLME'
+                            ? `Bölmə strukturu · Ana Şöbə: ${parentSectionOfSelected?.name || 'Şöbə'} · Rəhbər: ${parentSectionOfSelected?.managerName || selectedSection.managerName || 'Şöbə Müdiri'}`
+                            : `Şöbə strukturu · Şöbə Müdiri: ${selectedSection.managerName || 'Təyin olunmayıb'}`)
+                        : 'Active organizational şöbələr and child bölmələr synchronized from Active Directory.'}
                     </p>
                   </div>
                   {selectedSection ? (
@@ -512,7 +531,7 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
                     </button>
                   ) : (
                     <span className="text-caption font-bold uppercase tracking-wide text-semantic-info">
-                      {dept.sections?.length ? 'Directory linked' : 'No active sections'}
+                      {dept.sections?.length ? '3-Tier Hierarchy Active' : 'No active sections'}
                     </span>
                   )}
                 </div>
@@ -522,16 +541,32 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
                     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-semantic-info/30 bg-semantic-info/5 p-4">
                       <div>
                         <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-semantic-primary">{selectedSection.name}</span>
                           <span className="rounded bg-semantic-neutral-surface px-2 py-0.5 font-mono text-micro font-bold text-semantic-secondary">
                             {selectedSection.code}
+                          </span>
+                          <span className={`rounded-full border px-2 py-0.5 text-micro font-bold uppercase ${
+                            selectedSection.sectionType === 'BOLME'
+                              ? 'bg-semantic-info/10 text-semantic-info border border-semantic-info/30'
+                              : 'bg-semantic-success-surface text-semantic-success border border-semantic-success-border'
+                          }`}>
+                            {selectedSection.sectionType === 'BOLME' ? 'Bölmə' : 'Şöbə'}
                           </span>
                           <span className="rounded-full border border-semantic-success-border bg-semantic-success-surface px-2 py-0.5 text-micro font-bold uppercase text-semantic-success">
                             Active Directory
                           </span>
                         </div>
-                        <p className="mt-1 text-xs text-semantic-jira-muted-strong">
-                          {selectedSection.managerName ? `Manager: ${selectedSection.managerName}` : 'No section manager assigned'}
-                          {selectedSection.managerEmail ? ` · ${selectedSection.managerEmail}` : ''}
+                        <p className="mt-1.5 text-xs text-semantic-jira-muted-strong">
+                          {selectedSection.sectionType === 'BOLME' ? (
+                            <>
+                              <span className="font-semibold text-semantic-primary">Ana Şöbə:</span> {parentSectionOfSelected?.name || 'Təyin edilməyib'} · <span className="font-semibold text-semantic-primary">Təsdiq Rəhbəri:</span> {parentSectionOfSelected?.managerName || selectedSection.managerName || 'Şöbə Müdiri'}
+                            </>
+                          ) : (
+                            <>
+                              <span className="font-semibold text-semantic-primary">Şöbə Müdiri:</span> {selectedSection.managerName || 'Təyin olunmayıb'}
+                              {selectedSection.managerEmail ? ` · ${selectedSection.managerEmail}` : ''}
+                            </>
+                          )}
                         </p>
                       </div>
                       <div className="text-right">
@@ -562,7 +597,12 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
                                     <div className="truncate font-mono text-label text-semantic-jira-muted-strong">{member.email}</div>
                                   </div>
                                 </div>
-                                <span className="shrink-0 text-right text-label text-semantic-jira-muted-strong">{member.title || 'Directory member'}</span>
+                                <div className="text-right">
+                                  <div className="text-label font-bold text-semantic-primary">{member.title || 'Directory member'}</div>
+                                  {member.unitName && (
+                                    <div className="text-micro font-semibold text-semantic-info mt-0.5">{member.unitName}</div>
+                                  )}
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -603,28 +643,108 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
                     </div>
                   </div>
                 ) : dept.sections?.length ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {dept.sections.map((section: any) => (
-                      <button
-                        key={section.id}
-                        type="button"
-                        onClick={() => setSelectedSectionId(section.id)}
-                        aria-label={`Open ${section.name} section details`}
-                        className="group w-full rounded-xl border border-semantic-border bg-semantic-subtle p-3 text-left transition hover:border-semantic-info hover:bg-semantic-panel focus:outline-none focus:ring-2 focus:ring-semantic-info/40"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="font-bold text-xs text-semantic-primary">{section.name}</div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="px-1.5 py-0.5 rounded bg-semantic-neutral-surface text-semantic-secondary text-micro font-mono">{section.code}</span>
-                            <ChevronRight className="h-3.5 w-3.5 text-semantic-jira-icon transition group-hover:translate-x-0.5 group-hover:text-semantic-info" />
+                  <div className="space-y-4">
+                    {/* Render Şöbələr (Top-level sections) with their nested child Bölmələr */}
+                    {dept.sections
+                      .filter((section: any) => section.sectionType === 'SOBE' || !section.parentSectionId)
+                      .map((sobe: any) => {
+                        const childUnits = dept.sections?.filter((u: any) => u.parentSectionId === sobe.id) || [];
+                        const sobeMembers = (data.members || []).filter((m: BankUser) => 
+                          m.sectionId === sobe.id || 
+                          (m as any).section?.id === sobe.id ||
+                          childUnits.some((u: any) => u.id === m.unitId)
+                        );
+
+                        return (
+                          <div key={sobe.id} className="rounded-2xl border border-semantic-border bg-semantic-subtle/50 p-4 space-y-3">
+                            {/* Şöbə Header Card */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-semantic-panel p-3.5 rounded-xl border border-semantic-border shadow-xs">
+                              <div className="flex items-start gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-semantic-success-surface text-semantic-success border border-semantic-success-border flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                                  Ş
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-bold text-xs text-semantic-primary">{sobe.name}</span>
+                                    <span className="px-2 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success text-micro font-bold border border-semantic-success-border uppercase">
+                                      ŞÖBƏ
+                                    </span>
+                                    <span className="px-1.5 py-0.5 rounded bg-semantic-neutral-surface text-semantic-secondary text-micro font-mono">
+                                      {sobe.code}
+                                    </span>
+                                  </div>
+                                  <div className="text-label text-semantic-jira-muted-strong mt-1">
+                                    Şöbə Müdiri: <span className="font-bold text-semantic-primary">{sobe.managerName || 'Təyin olunmayıb'}</span>
+                                    {sobe.managerEmail && <span className="text-micro font-mono ml-1">({sobe.managerEmail})</span>}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <div className="text-right px-3 py-1 bg-semantic-subtle rounded-lg border border-semantic-border">
+                                  <div className="text-xs font-extrabold text-semantic-primary">{sobeMembers.length}</div>
+                                  <div className="text-micro font-semibold text-semantic-jira-muted-strong">Specialists</div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedSectionId(sobe.id)}
+                                  className="px-3 py-1.5 rounded-lg bg-semantic-primary text-white text-caption font-bold hover:bg-semantic-primary-hover flex items-center gap-1 shadow-xs"
+                                >
+                                  <span>Bax</span>
+                                  <ChevronRight className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Child Bölmələr Grid */}
+                            {childUnits.length > 0 && (
+                              <div className="pl-4 sm:pl-6 border-l-2 border-semantic-info/40 space-y-2 mt-2">
+                                <div className="text-micro font-bold uppercase tracking-wider text-semantic-info flex items-center gap-1.5">
+                                  <span>↳ Tərkibindəki Bölmələr ({childUnits.length})</span>
+                                  <span className="text-semantic-jira-muted-strong font-normal lowercase">(müdiri olmur, ana şöbə müdirinə tabedir)</span>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                                  {childUnits.map((unit: any) => {
+                                    const unitMembers = (data.members || []).filter((m: BankUser) => m.unitId === unit.id);
+                                    return (
+                                      <div
+                                        key={unit.id}
+                                        className="bg-semantic-panel border border-semantic-border hover:border-semantic-info/60 rounded-xl p-3 flex items-center justify-between gap-3 shadow-2xs hover:shadow-xs transition-all"
+                                      >
+                                        <div className="min-w-0">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-bold text-xs text-semantic-primary truncate">{unit.name}</span>
+                                            <span className="px-1.5 py-0.5 rounded-full bg-semantic-info/10 text-semantic-info text-micro font-bold border border-semantic-info/30 uppercase">
+                                              BÖLMƏ
+                                            </span>
+                                          </div>
+                                          <div className="text-micro text-semantic-jira-muted-strong mt-0.5">
+                                            Rəhbərlik: <span className="font-semibold text-semantic-primary">{sobe.managerName || 'Şöbə Müdiri'}</span>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          <span className="text-xs font-bold text-semantic-primary px-2 py-0.5 bg-semantic-subtle rounded border border-semantic-border">
+                                            {unitMembers.length} nəfər
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => setSelectedSectionId(unit.id)}
+                                            className="p-1.5 rounded-lg bg-semantic-subtle hover:bg-semantic-border-subtle text-semantic-jira-icon hover:text-semantic-primary transition-colors"
+                                            title="Bölmənin əməkdaşlarına bax"
+                                          >
+                                            <ChevronRight className="h-4 w-4" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                        <div className="mt-2 text-label text-semantic-jira-muted-strong">
-                          {section.memberCount || 0} members
-                        </div>
-                        <div className="mt-2 text-caption font-bold text-semantic-info">View section details</div>
-                      </button>
-                    ))}
+                        );
+                      })}
                   </div>
                 ) : (
                   <div className="rounded-lg border border-dashed border-semantic-border bg-semantic-subtle px-4 py-3 text-xs text-semantic-jira-muted-strong">
@@ -730,7 +850,14 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
                             </div>
                           </td>
                           <td className="px-3 py-3 text-semantic-jira-muted-strong font-medium">
-                            {m.section?.name || dept.sections?.find((section: any) => section.id === m.sectionId)?.name || '—'}
+                            {m.unitName ? (
+                              <div>
+                                <div className="font-semibold text-semantic-primary">{m.sectionName || m.section?.name || 'Şöbə'}</div>
+                                <div className="text-micro text-semantic-info font-medium">↳ {m.unitName}</div>
+                              </div>
+                            ) : (
+                              <div>{m.sectionName || m.section?.name || dept.sections?.find((section: any) => section.id === m.sectionId)?.name || '—'}</div>
+                            )}
                           </td>
                           <td className="px-3 py-3 text-semantic-jira-muted-strong font-medium">
                             <span className={isManager ? 'font-bold text-semantic-primary' : ''}>
