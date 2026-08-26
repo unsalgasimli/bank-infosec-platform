@@ -15,6 +15,7 @@ import { generalRateLimiter, authRateLimiter } from './middleware/rate-limit.mid
 import { requestTracingMiddleware } from './middleware/logging.middleware.js';
 import { errorHandlerMiddleware } from './middleware/error.middleware.js';
 import { runMigrations } from './db/postgres/migrate.js';
+import { shutdownTelemetry, startTelemetry } from './services/telemetry.service.js';
 
 import { TicketsController } from './controllers/tickets.controller.js';
 import { ApprovalsController, FindingsController } from './controllers/approvals.controller.js';
@@ -79,6 +80,7 @@ app.use((req, res, next) => {
 
 // 2. Health & Observability Endpoints (No auth / rate limiting on health checks)
 app.get('/api/health', HealthController.getLiveness);
+app.get('/api/health/live', HealthController.getLiveness);
 app.get('/api/health/ready', HealthController.getReadiness);
 app.get('/api/metrics', HealthController.getMetrics);
 
@@ -328,6 +330,7 @@ app.use(errorHandlerMiddleware);
 let server: ReturnType<typeof app.listen> | null = null;
 
 async function startServer(): Promise<void> {
+  await startTelemetry('api');
   if (config.DB_TYPE === 'postgres') {
     await runMigrations();
     await db.initialize();
@@ -366,6 +369,7 @@ async function handleGracefulShutdown(signal: string) {
   if (!server) {
     await pgClient.close();
     await cacheService.close();
+    await shutdownTelemetry();
     process.exit(0);
     return;
   }
@@ -376,6 +380,7 @@ async function handleGracefulShutdown(signal: string) {
       await db.flush();
       await pgClient.close();
       await cacheService.close();
+      await shutdownTelemetry();
       logger.info('All database and cache connections closed cleanly. Exiting.');
       process.exit(0);
     } catch (err) {

@@ -9,21 +9,6 @@ import { WorkflowRuntimeService } from './workflow-runtime.service.js';
 type EventTriggerType = Exclude<TriggerType, 'MANUAL'>;
 
 export class WorkflowTriggerService {
-  private static timer?: NodeJS.Timeout;
-
-  public static startWorker(intervalMs = 60_000) {
-    if (this.timer) return;
-    this.timer = setInterval(() => {
-      try { this.processScheduled(); } catch { /* trigger receipts and runtime failures remain inspectable */ }
-    }, intervalMs);
-    this.timer.unref?.();
-  }
-
-  public static stopWorker() {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = undefined;
-  }
-
   public static emit(input: {
     idempotencyKey: string;
     triggerType: EventTriggerType;

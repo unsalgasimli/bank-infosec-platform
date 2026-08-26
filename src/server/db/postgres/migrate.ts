@@ -20,9 +20,18 @@ export async function runMigrations(): Promise<void> {
     }
 
     const ddl = fs.readFileSync(schemaPath, 'utf8');
-
-    const version = '001_initial_schema';
-    const checksum = crypto.createHash('sha256').update(ddl).digest('hex');
+    const migrationsDirectoryCandidates = [
+      path.resolve(process.cwd(), 'src', 'server', 'db', 'postgres', 'migrations'),
+      path.resolve(process.cwd(), 'dist', 'server', 'db', 'postgres', 'migrations'),
+    ];
+    const migrationsDirectory = migrationsDirectoryCandidates.find((candidate) => fs.existsSync(candidate));
+    const numberedMigrations = migrationsDirectory
+      ? fs.readdirSync(migrationsDirectory)
+        .filter((name) => /^\d+_.+\.sql$/i.test(name))
+        .sort()
+        .map((name) => ({ version: path.basename(name, '.sql'), sql: fs.readFileSync(path.join(migrationsDirectory, name), 'utf8') }))
+      : [];
+    const migrations = [{ version: '001_initial_schema', sql: ddl }, ...numberedMigrations];
 
     await pgClient.transaction(async (client) => {
       await client.query(`
@@ -34,23 +43,30 @@ export async function runMigrations(): Promise<void> {
       `);
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended('aegissec:schema-migrations', 0))");
 
-      const current = await client.query<{ checksum: string }>(
-        'SELECT checksum FROM schema_migrations WHERE version = $1',
-        [version]
-      );
-      if (current.rows[0]?.checksum === checksum) {
-        logger.info({ version }, 'PostgreSQL schema is already up to date.');
-        return;
-      }
+      for (const migration of migrations) {
+        const checksum = crypto.createHash('sha256').update(migration.sql).digest('hex');
+        const current = await client.query<{ checksum: string }>(
+          'SELECT checksum FROM schema_migrations WHERE version = $1',
+          [migration.version]
+        );
+        if (current.rows[0]) {
+          if (current.rows[0].checksum !== checksum) {
+            throw new Error(
+              `Migration ${migration.version} checksum differs from its applied record. ` +
+              'Do not rewrite an applied migration; add a new numbered SQL migration instead.'
+            );
+          }
+          continue;
+        }
 
-      await client.query(ddl);
-      await client.query(
-        `INSERT INTO schema_migrations(version, checksum)
-         VALUES ($1, $2)
-         ON CONFLICT (version) DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = NOW()`,
-        [version, checksum]
-      );
-      logger.info({ version }, 'PostgreSQL schema migration applied successfully.');
+        await client.query(migration.sql);
+        await client.query(
+          'INSERT INTO schema_migrations(version, checksum) VALUES ($1, $2)',
+          [migration.version, checksum]
+        );
+        logger.info({ version: migration.version }, 'PostgreSQL schema migration applied successfully.');
+      }
+      logger.info({ versions: migrations.map((migration) => migration.version) }, 'PostgreSQL schema is up to date.');
     });
   } catch (error) {
     logger.error({ error }, '❌ Database migration failed.');

@@ -159,6 +159,11 @@ export function installPostgresTestFixture(data: DatabaseSchema): void {
   ensureTicket('tick-soc-101', { key: 'SOC-2026-0101', title: 'SWIFT SOC monitoring hardening', projectCode: 'SOC', tags: ['SWIFT'] });
   ensureTicket('tick-appsec-102', { key: 'APPSEC-2026-0102', title: 'SWIFT application security review', projectCode: 'DLP', tags: ['SWIFT'] });
   ensureTicket('tick-swift-103', { key: 'SEC-2026-0103', title: 'SWIFT gateway control review', projectCode: 'SEC', tags: ['SWIFT'] });
+  // Keep the JQL fixture representative: the search contract includes a
+  // high-priority record regardless of what the hydrated development data has.
+  Object.assign(data.tickets.find((item) => item.id === 'tick-soc-101')!, {
+    businessPriority: 'P2_HIGH', technicalSeverity: 'HIGH', businessImpact: 'SIGNIFICANT',
+  });
 
   SLAService.ensurePoliciesInstalled();
   installOrchestrationFixture(data, cisoUser);

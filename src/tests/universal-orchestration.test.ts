@@ -121,6 +121,39 @@ test('Universal Enterprise Work Orchestration Platform', async (t) => {
     }, {}, node, actor.id);
     assert.equal(queue.groupId, department.id);
     assert.match(queue.explanation, /Technical Support/);
+
+    const launched = WorkflowRuntimeService.launchQuickWork({
+      requestTypeId: 'request-standard-task',
+      actor,
+      idempotencyKey: 'section-queue-routing-001',
+      values: {
+        summary: 'Section queue routing',
+        description: 'The selected section must remain the queue destination.',
+        requesterId: actor.id,
+        departmentId: department.id,
+        targetDepartmentId: department.id,
+        targetSectionId: section.id,
+        routingStrategy: 'TEAM_QUEUE',
+      },
+    });
+    const workItem = launched.execution.workItems[0];
+    assert.equal(workItem.targetDepartmentId, department.id);
+    assert.equal(workItem.targetSectionId, section.id);
+    const routedNode = launched.execution.nodes.find((item) => item.workItemId === workItem.id);
+    assert.match(routedNode?.routingExplanation || '', /Technical Support/);
+
+    const departmentOnlyMember: BankUser = {
+      ...structuredClone(sectionMember),
+      id: 'usr-department-only-member',
+      username: 'department.only.member',
+      email: 'department.only.member@example.test',
+      fullName: 'Department Only Member',
+      sectionId: undefined,
+      teamIds: [],
+    };
+    db.data.users.push(departmentOnlyMember);
+    assert.throws(() => WorkflowRuntimeService.claimWorkItem(workItem.id, departmentOnlyMember), /not authorized/i);
+    assert.equal(WorkflowRuntimeService.claimWorkItem(workItem.id, sectionMember).nodes.some((item) => item.workItemId === workItem.id && item.assigneeId === sectionMember.id), true);
   });
 
   await t.test('dynamic department approval never permits a saved specific user to override runtime routing', () => {

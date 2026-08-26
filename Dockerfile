@@ -49,6 +49,7 @@ COPY --from=builder --chown=appuser:appgroup /app/node_modules ./node_modules
 COPY --from=builder --chown=appuser:appgroup /app/dist ./dist
 COPY --from=builder --chown=appuser:appgroup /app/package.json ./package.json
 COPY --from=builder --chown=appuser:appgroup /app/src/server/db/postgres/schema.sql ./dist/server/db/postgres/schema.sql
+COPY --from=builder --chown=appuser:appgroup /app/src/server/db/postgres/migrations ./dist/server/db/postgres/migrations
 
 # Switch to non-privileged user
 USER appuser

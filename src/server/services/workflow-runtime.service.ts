@@ -29,20 +29,6 @@ const terminalInstanceStatuses: WorkflowInstance['status'][] = ['COMPLETED', 'RE
 
 export class WorkflowRuntimeService {
   private static locks = new Set<string>();
-  private static workerTimer?: NodeJS.Timeout;
-
-  public static startWorker(intervalMs = 5_000) {
-    if (this.workerTimer) return;
-    this.workerTimer = setInterval(() => {
-      try { this.resumeDueInstances(); } catch { /* individual failures are persisted on the instance */ }
-    }, intervalMs);
-    this.workerTimer.unref?.();
-  }
-
-  public static stopWorker() {
-    if (this.workerTimer) clearInterval(this.workerTimer);
-    this.workerTimer = undefined;
-  }
 
   public static launch(params: {
     workflowDefinitionId: string;
@@ -418,6 +404,17 @@ export class WorkflowRuntimeService {
     if (!route.assigneeId && !route.groupId) {
       throw new OrchestrationError(`Assignment failed for “${node.title}”: no active user or queue resolved from its configured routing policy.`, 422);
     }
+    const contextTargetSectionId = typeof instance.context.targetSectionId === 'string' && instance.context.targetSectionId
+      ? instance.context.targetSectionId
+      : undefined;
+    const configuredSection = node.assignment?.sectionId
+      ? db.data.departmentSections.find((section) => section.id === node.assignment?.sectionId && section.isActive !== false)
+      : undefined;
+    const targetSectionId = contextTargetSectionId || configuredSection?.id;
+    const targetDepartmentId = (typeof instance.context.targetDepartmentId === 'string' && instance.context.targetDepartmentId)
+      || node.assignment?.departmentId
+      || configuredSection?.departmentId
+      || undefined;
     const sequence = db.data.workItemsV2.length + 1;
     const workItem: WorkItem = {
       id: `wi-${uuidv4().slice(0, 8)}`, key: `WI-${new Date().getUTCFullYear()}-${String(sequence).padStart(5, '0')}`, workflowInstanceId: instance.id, nodeInstanceId: current.id,
@@ -426,7 +423,7 @@ export class WorkflowRuntimeService {
       description: node.description,
       instructions: node.instructions || (isInformationRequest ? 'Provide the requested information, then submit your response.' : undefined),
       acceptanceCriteria: node.acceptanceCriteria || (isInformationRequest ? ['Requested information is supplied'] : []),
-      checklist: (node.checklist || []).map((label, index) => ({ id: `${current.id}-check-${index + 1}`, label, completed: false })), status: 'OPEN', assignmentGroupId: route.groupId, assigneeId: route.assigneeId, requesterId: instance.requesterId, createdAt: now.toISOString(), updatedAt: now.toISOString(),
+      checklist: (node.checklist || []).map((label, index) => ({ id: `${current.id}-check-${index + 1}`, label, completed: false })), status: 'OPEN', assignmentGroupId: route.groupId, targetDepartmentId, targetSectionId, assigneeId: route.assigneeId, requesterId: instance.requesterId, createdAt: now.toISOString(), updatedAt: now.toISOString(),
       dueAt: node.timeoutMinutes ? new Date(now.getTime() + node.timeoutMinutes * 60_000).toISOString() : undefined,
     };
     db.data.workItemsV2.push(workItem);
@@ -832,11 +829,13 @@ export class WorkflowRuntimeService {
     const isAdmin = actor.roles.some((role) => ['PLATFORM_ADMIN', 'CISO', 'DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER'].includes(role));
     const nodeInstance = db.data.nodeInstances.find((item) => item.id === workItem.nodeInstanceId);
     const node = nodeInstance && WorkflowOrchestrationService.getVersion(instance.workflowDefinitionId, instance.workflowVersion).nodes.find((item) => item.id === nodeInstance.nodeId);
-    const sectionEligible = !node?.assignment?.sectionId || node.assignment.sectionId === actor.sectionId;
+    const targetSectionId = workItem.targetSectionId || (typeof instance.context.targetSectionId === 'string' ? instance.context.targetSectionId : undefined) || node?.assignment?.sectionId;
+    const targetDepartmentId = workItem.targetDepartmentId || (typeof instance.context.targetDepartmentId === 'string' ? instance.context.targetDepartmentId : undefined) || node?.assignment?.departmentId;
+    const sectionEligible = !targetSectionId || targetSectionId === actor.sectionId;
     const inGroup = Boolean(workItem.assignmentGroupId && actor.teamIds.includes(workItem.assignmentGroupId) && sectionEligible);
     if (node?.type === 'APPROVAL') throw new OrchestrationError('Approval work items must be decided through the approval action.', 409);
     const isRoleEligible = Boolean(node?.assignment?.strategy === 'ROLE_BASED' && node.assignment.role && actor.roles.includes(node.assignment.role));
-    const isDepartmentEligible = Boolean(node?.assignment?.departmentId && node.assignment.departmentId === actor.departmentId && sectionEligible);
+    const isDepartmentEligible = Boolean(targetDepartmentId && targetDepartmentId === actor.departmentId && sectionEligible);
     if (node?.assignment?.strategy === 'UNASSIGNED_TEAM_QUEUE' && node.assignment.role && !workItem.assigneeId) {
       throw new OrchestrationError('Claim this queue ticket before completing it.', 409);
     }
@@ -875,10 +874,12 @@ export class WorkflowRuntimeService {
       throw new OrchestrationError('Approval work items must be decided through the approval action.', 409);
     }
     const isAdmin = actor.roles.some((role) => ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER'].includes(role));
-    const sectionEligible = !node?.assignment?.sectionId || node.assignment.sectionId === actor.sectionId;
+    const targetSectionId = workItem.targetSectionId || (typeof instance.context.targetSectionId === 'string' ? instance.context.targetSectionId : undefined) || node?.assignment?.sectionId;
+    const targetDepartmentId = workItem.targetDepartmentId || (typeof instance.context.targetDepartmentId === 'string' ? instance.context.targetDepartmentId : undefined) || node?.assignment?.departmentId;
+    const sectionEligible = !targetSectionId || targetSectionId === actor.sectionId;
     const inGroup = Boolean(workItem.assignmentGroupId && actor.teamIds.includes(workItem.assignmentGroupId) && sectionEligible);
     const roleEligible = Boolean((node?.assignment?.role && actor.roles.includes(node.assignment.role)) || (node?.approval?.role && actor.roles.includes(node.approval.role)));
-    const departmentEligible = Boolean(node?.assignment?.departmentId && node.assignment.departmentId === actor.departmentId && sectionEligible);
+    const departmentEligible = Boolean(targetDepartmentId && targetDepartmentId === actor.departmentId && sectionEligible);
     if (!isAdmin && !inGroup && !roleEligible && !departmentEligible && workItem.assigneeId !== actor.id) throw new OrchestrationError('You are not authorized to claim this work item.', 403);
     db.transaction(() => {
       const now = new Date();

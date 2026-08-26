@@ -48,7 +48,12 @@ export class HealthService {
     ]);
 
     const memory = process.memoryUsage();
-    const isReady = dbHealth.status !== 'DOWN' && storageHealth.status !== 'DOWN' && queueHealth.status !== 'DOWN' && malwareScannerHealth.status !== 'DOWN';
+    const isReady =
+      dbHealth.status !== 'DOWN' &&
+      cacheHealth.status !== 'DOWN' &&
+      storageHealth.status !== 'DOWN' &&
+      queueHealth.status !== 'DOWN' &&
+      malwareScannerHealth.status !== 'DOWN';
 
     return {
       status: isReady ? 'UP' : 'DOWN',

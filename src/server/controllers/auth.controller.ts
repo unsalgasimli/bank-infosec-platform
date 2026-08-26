@@ -118,10 +118,15 @@ export class AuthController {
   public static async triggerLdapSync(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const user = req.user;
-      const report = await LDAPSchedulerService.triggerManualSync(user);
-      res.json({ success: true, report, message: 'Active Directory / LDAP user synchronization completed successfully' });
+      const job = await LDAPSchedulerService.enqueueSync('MANUAL_TRIGGER', user);
+      res.status(202).json({
+        success: true,
+        queued: true,
+        jobId: job.id,
+        message: 'Active Directory / LDAP synchronization was queued for the dedicated worker.',
+      });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message || 'Failed to execute LDAP sync' });
+      res.status(500).json({ success: false, error: err.message || 'Failed to queue LDAP sync' });
     }
   }
 

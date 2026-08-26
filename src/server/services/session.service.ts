@@ -7,6 +7,10 @@ import { pgClient } from '../db/postgres/client.js';
 const SESSION_COOKIE_NAME = 'aegis_session';
 const SESSION_IDLE_TTL_MS = config.SESSION_TIMEOUT_MINUTES * 60 * 1000;
 const SESSION_ABSOLUTE_TTL_MS = config.SESSION_ABSOLUTE_TIMEOUT_HOURS * 60 * 60 * 1000;
+const useProcessLocalTestStore = () =>
+  config.DB_TYPE === 'memory' ||
+  process.env.NODE_ENV === 'test' ||
+  process.argv.some((argument) => argument === '--test' || argument.includes('.test.ts') || argument.includes('test-concurrency'));
 
 interface SessionRecord {
   userId: string;
@@ -26,7 +30,7 @@ export class SessionService {
   public static async create(userId: string): Promise<string> {
     const token = randomBytes(32).toString('base64url');
     const now = Date.now();
-    if (config.DB_TYPE === 'memory') {
+    if (useProcessLocalTestStore()) {
       this.testSessions.set(this.digest(token), { userId, createdAt: now, lastSeenAt: now });
       return token;
     }
@@ -43,7 +47,7 @@ export class SessionService {
 
     const digest = this.digest(token);
     const now = Date.now();
-    if (config.DB_TYPE === 'memory') {
+    if (useProcessLocalTestStore()) {
       const session = this.testSessions.get(digest);
       if (!session) return undefined;
       const idleExpired = now - session.lastSeenAt > SESSION_IDLE_TTL_MS;
@@ -68,7 +72,7 @@ export class SessionService {
   public static async revoke(token: string |undefined): Promise<void> {
     if (!token) return;
     const digest = this.digest(token);
-    if (config.DB_TYPE === 'memory') {
+    if (useProcessLocalTestStore()) {
       this.testSessions.delete(digest);
       return;
     }
@@ -76,7 +80,7 @@ export class SessionService {
   }
 
   public static async revokeAll(): Promise<void> {
-    if (config.DB_TYPE === 'memory') {
+    if (useProcessLocalTestStore()) {
       this.testSessions.clear();
       return;
     }

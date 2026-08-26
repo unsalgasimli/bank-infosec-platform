@@ -257,18 +257,12 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
 
   const handleTriggerLdapSync = async () => {
     setIsLdapSyncing(true);
-    setSyncFeedback('Querying Active Directory & synchronizing real active department accounts...');
+    setSyncFeedback('Active Directory synchronisation is being queued for the dedicated worker...');
     try {
       const res = await fetchWithAuth('/api/admin/ldap/sync', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        const report = data.report;
-        setSyncFeedback(
-          `Sync successful: ${report.totalLdapUsers} real Active Directory accounts processed (${report.addedCount} added, ${report.updatedCount} updated, ${report.disabledCount} disabled, ${report.duplicatesRemovedCount} duplicates cleaned)`
-        );
-        loadLdapStatus();
-        loadAdminMetadata();
-        refreshUsers();
+        setSyncFeedback(`LDAP sync queued (job ${data.jobId}). The directory view will update after the worker completes it.`);
       } else {
         setSyncFeedback(`Sync failed: ${data.error || 'Unknown error'}`);
       }

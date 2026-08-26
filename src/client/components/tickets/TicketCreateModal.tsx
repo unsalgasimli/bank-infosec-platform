@@ -33,7 +33,7 @@ type IntakeData = {
   canAssignDirect: boolean;
   directory: { ready: boolean; message?: string };
   departments: Array<{ id: string; name: string; code: string }>;
-  sections: Array<{ id: string; departmentId: string; name: string; code: string }>;
+  sections: Array<{ id: string; departmentId: string; name: string; code: string; sectionType?: string; parentSectionId?: string | null; departmentName?: string }>;
   teams: Array<{ id: string; departmentId: string; name: string; code: string }>;
   assignees: Array<{ id: string; fullName: string; title: string; departmentId: string; sectionId?: string; sectionName?: string; sectionCode?: string; teamIds: string[] }>;
   slaPolicies: Array<{ id: string; name: string; description?: string; isDefault?: boolean }>;
@@ -56,7 +56,8 @@ type TargetOption = {
   id: string;
   name: string;
   code: string;
-  kind: 'Departament' | 'Şöbə' | 'Komanda';
+  kind: 'Departament' | 'Şöbə' | 'Bölmə' | 'Komanda';
+  sublabel?: string;
   departmentId?: string;
 };
 
@@ -104,16 +105,18 @@ const categoryExamples: Partial<Record<TicketCategory, string>> = {
 };
 
 const categoryTokens: Partial<Record<TicketCategory, string[]>> = {
-  NETWORK_INFRASTRUCTURE: ['network', 'şəbəkə', 'net'],
-  IT_SUPPORT: ['it', 'support', 'texniki', 'help'],
+  NETWORK_INFRASTRUCTURE: ['network', 'şəbəkə', 'sebeke', 'firewall', 'vpn', 'wifi', 'ip', 'vlan', 'net'],
+  INNOVATION_PROGRAMMING: ['innovasiya', 'proqram', 'kod', 'api', 'dev', 'developer', 'yazılım', 'development'],
+  IT_SUPPORT: ['it', 'support', 'texniki', 'help', 'dəstək'],
+  HARDWARE_SOFTWARE: ['hardware', 'software', 'avadanlıq', 'printer', 'scaner', 'kompüter'],
   SECURITY_REVIEW: ['security', 'təhlükəsizlik', 'infosec'],
-  VULNERABILITY: ['security', 'təhlükəsizlik', 'vuln'],
-  IAM_REQUEST: ['iam', 'identity', 'giriş', 'access'],
-  ACCESS_REQUEST: ['access', 'giriş', 'iam'],
-  HR_OPERATIONS: ['hr', 'human', 'insan', 'əmək'],
-  FINANCE_PROCUREMENT: ['finance', 'maliyyə', 'procurement', 'satın'],
-  COMPLIANCE_LEGAL: ['compliance', 'legal', 'uyğunluq', 'hüquq'],
-  DLP_ALERT: ['dlp', 'data loss', 'məlumat'],
+  VULNERABILITY: ['security', 'təhlükəsizlik', 'vuln', 'zəiflik'],
+  IAM_REQUEST: ['iam', 'identity', 'giriş', 'access', 'icazə'],
+  ACCESS_REQUEST: ['access', 'giriş', 'iam', 'icazə'],
+  HR_OPERATIONS: ['hr', 'human', 'insan', 'əmək', 'kadr'],
+  FINANCE_PROCUREMENT: ['finance', 'maliyyə', 'procurement', 'satın', 'anbar'],
+  COMPLIANCE_LEGAL: ['compliance', 'legal', 'uyğunluq', 'hüquq', 'normativ'],
+  DLP_ALERT: ['dlp', 'data loss', 'məlumat', 'sızma'],
 };
 
 const impactUrgencyFor = (priority: BusinessPriority): Pick<FormState, 'impact' | 'urgency'> => ({
@@ -316,15 +319,51 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({ isOpen, on
 
   const targetOptions = useMemo<TargetOption[]>(() => {
     if (!intake) return [];
-    return [
-      ...intake.departments.map((unit) => ({ ...unit, kind: 'Departament' as const })),
-      ...intake.sections.map((unit) => ({ ...unit, kind: 'Şöbə' as const })),
-      ...intake.teams.map((unit) => ({ ...unit, kind: 'Komanda' as const })),
-    ].sort((left, right) => left.name.localeCompare(right.name, 'az'));
+    const deptMap = new Map(intake.departments.map((d) => [d.id, d.name]));
+    const secMap = new Map(intake.sections.map((s) => [s.id, s.name]));
+
+    const deptOptions: TargetOption[] = intake.departments.map((dept) => ({
+      id: dept.id,
+      name: dept.name,
+      code: dept.code,
+      kind: 'Departament',
+      sublabel: 'Departament',
+      departmentId: dept.id,
+    }));
+
+    const secOptions: TargetOption[] = intake.sections.map((sec) => {
+      const parentDeptName = sec.departmentName || deptMap.get(sec.departmentId) || 'Departament';
+      const isBolme = sec.sectionType === 'BOLME';
+      const parentSecName = sec.parentSectionId ? secMap.get(sec.parentSectionId) : undefined;
+      const sublabel = isBolme
+        ? (parentSecName ? `${parentSecName} ↳ Bölmə` : `${parentDeptName} · Bölmə`)
+        : `${parentDeptName} · Şöbə`;
+      return {
+        id: sec.id,
+        name: sec.name,
+        code: sec.code,
+        kind: isBolme ? 'Bölmə' : 'Şöbə',
+        sublabel,
+        departmentId: sec.departmentId,
+      };
+    });
+
+    const teamOptions: TargetOption[] = intake.teams.map((team) => ({
+      id: team.id,
+      name: team.name,
+      code: team.code,
+      kind: 'Komanda',
+      sublabel: `${deptMap.get(team.departmentId) || 'Departament'} · Komanda`,
+      departmentId: team.departmentId,
+    }));
+
+    return [...deptOptions, ...secOptions, ...teamOptions].sort((left, right) =>
+      left.name.localeCompare(right.name, 'az')
+    );
   }, [intake]);
   const selectedTarget = targetOptions.find((option) => option.id === form.targetId);
-  const routingTargetDepartmentId = selectedTarget?.kind === 'Şöbə' ? selectedTarget.departmentId : form.targetId || undefined;
-  const routingTargetSectionId = selectedTarget?.kind === 'Şöbə' ? selectedTarget.id : undefined;
+  const routingTargetDepartmentId = ['Şöbə', 'Bölmə'].includes(selectedTarget?.kind || '') ? selectedTarget?.departmentId : form.targetId || undefined;
+  const routingTargetSectionId = ['Şöbə', 'Bölmə'].includes(selectedTarget?.kind || '') ? selectedTarget?.id : undefined;
   const routingAssignmentGroupId = selectedTarget?.kind === 'Komanda' ? selectedTarget.id : undefined;
   const selectedPriority = form.businessPriority;
   const priority = priorityMeta[selectedPriority] || priorityMeta.P3_MEDIUM;
@@ -347,14 +386,116 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({ isOpen, on
         ? 'Bu hesab üçün birbaşa icraçı seçimi icazəli deyil; iş bölmə növbəsinə yönləndiriləcək.'
         : undefined;
 
-  const categoryRecommendation = useMemo(() => {
-    const metadataTarget = selectedCategory?.targetDepartmentId
-      ? targetOptions.find((target) => target.id === selectedCategory.targetDepartmentId)
+  const resolveRecommendedTarget = (categoryCode: string): TargetOption | null => {
+    if (!targetOptions.length) return null;
+    const option = intake?.categories.find((c) => c.code === categoryCode);
+    const desc = (option?.description || '').toLowerCase();
+    const label = (option?.label || '').toLowerCase();
+    const catalogGroup = ((option as any)?.catalogGroup || '').toLowerCase();
+    const isInno =
+      catalogGroup.includes('innovasiya') ||
+      catalogGroup.includes('proqramlaşdırma') ||
+      catalogGroup.includes('proqramlasdirma') ||
+      desc.includes('proqramlaşdırma') ||
+      desc.includes('innovasiya') ||
+      desc.includes('tətbiq') ||
+      label.includes('innovasiya') ||
+      label.includes('proqramlaşdırma') ||
+      label.includes('api') ||
+      label.includes('funksionallıq') ||
+      categoryCode === 'INNOVATION_PROGRAMMING';
+
+    if (isInno) {
+      const innoSobe = targetOptions.find((t) =>
+        t.name.toLowerCase().includes('innovasiyalar və proqramlaşdırma') ||
+        t.name.toLowerCase().includes('proqramlaşdırma')
+      );
+      if (innoSobe) return innoSobe;
+      const itDept = targetOptions.find((t) => t.id === 'dept-it' || t.code === 'IT_DEPT');
+      if (itDept) return itDept;
+    }
+
+    const isNetwork =
+      catalogGroup.includes('şəbəkə') ||
+      catalogGroup.includes('sebeke') ||
+      catalogGroup.includes('network') ||
+      desc.includes('şəbəkə') ||
+      desc.includes('firewall') ||
+      desc.includes('port açılması') ||
+      desc.includes('vlan') ||
+      desc.includes('switch') ||
+      desc.includes('router') ||
+      label.includes('şəbəkə') ||
+      label.includes('firewall') ||
+      label.includes('vlan') ||
+      label.includes('ip təyini') ||
+      label.includes('switch') ||
+      label.includes('router') ||
+      categoryCode === 'NETWORK_INFRASTRUCTURE';
+
+    if (isNetwork) {
+      const sebekeBolme = targetOptions.find((t) =>
+        t.name.toLowerCase().includes('şəbəkə inzibatçılığı') ||
+        t.name.toLowerCase().includes('şəbəkə')
+      );
+      if (sebekeBolme) return sebekeBolme;
+      const infraSobe = targetOptions.find((t) =>
+        t.name.toLowerCase().includes('infrastruktur')
+      );
+      if (infraSobe) return infraSobe;
+      const itDept = targetOptions.find((t) => t.id === 'dept-it' || t.code === 'IT_DEPT');
+      if (itDept) return itDept;
+    }
+
+    const isHelpDesk =
+      option?.kind === 'BASIC_TICKET' ||
+      desc.includes('help desk') ||
+      desc.includes('helpdesk') ||
+      label.includes('help desk') ||
+      catalogGroup.includes('help desk') ||
+      catalogGroup.startsWith('it') ||
+      ['IT_SUPPORT', 'HARDWARE_SOFTWARE', 'GENERAL_TASK'].includes(categoryCode);
+
+    if (isHelpDesk) {
+      // Prioritize Texniki dəstək şöbəsi / Texniki dəstək bölməsi for help desk / IT tasks
+      const texnikiDestek = targetOptions.find((t) =>
+        t.name.toLowerCase().includes('texniki dəstək') || t.name.toLowerCase().includes('texniki destek')
+      );
+      if (texnikiDestek) return texnikiDestek;
+      const itDept = targetOptions.find((t) => t.id === 'dept-it' || t.code === 'IT_DEPT');
+      if (itDept) return itDept;
+    }
+
+    if (['SECURITY_REVIEW', 'VULNERABILITY', 'INCIDENT', 'IAM_REQUEST', 'ACCESS_REQUEST', 'DLP_ALERT', 'THIRD_PARTY_ASSESSMENT'].includes(categoryCode)) {
+      const secSobe = targetOptions.find((t) =>
+        t.name.toLowerCase().includes('kibertəhlükəsizlik') || t.name.toLowerCase().includes('informasiya təhlükəsizliyi şöbəsi')
+      );
+      if (secSobe) return secSobe;
+      const secDept = targetOptions.find((t) => t.id === 'dept-secops' || t.code === 'INFOSEC');
+      if (secDept) return secDept;
+    }
+
+    if (['HR_OPERATIONS'].includes(categoryCode)) {
+      const hrTarget = targetOptions.find((t) => t.id === 'dept-hr' || t.name.toLowerCase().includes('insan resursları'));
+      if (hrTarget) return hrTarget;
+    }
+
+    if (['FINANCE_PROCUREMENT'].includes(categoryCode)) {
+      const procTarget = targetOptions.find((t) => t.id === 'dept-procurement' || t.id === 'dept-finance' || t.name.toLowerCase().includes('satınalma'));
+      if (procTarget) return procTarget;
+    }
+
+    if (['COMPLIANCE_LEGAL'].includes(categoryCode)) {
+      const legalTarget = targetOptions.find((t) => t.id === 'dept-legal' || t.id === 'dept-grc' || t.name.toLowerCase().includes('hüquq'));
+      if (legalTarget) return legalTarget;
+    }
+
+    const metadataTarget = option?.targetDepartmentId
+      ? targetOptions.find((target) => target.id === option.targetDepartmentId)
       : undefined;
     if (metadataTarget) return metadataTarget;
-    const tokens = selectedCategory?.kind === 'BASIC_TICKET'
-      ? ['it', 'help', 'desk', 'texniki']
-      : categoryTokens[form.category as TicketCategory] || [];
+
+    const tokens = categoryTokens[categoryCode as TicketCategory] || [];
     if (!tokens.length) return null;
     const ranked = targetOptions.map((target) => {
       const searchable = `${target.name} ${target.code}`.toLocaleLowerCase('az');
@@ -362,7 +503,11 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({ isOpen, on
       return { target, score };
     }).sort((left, right) => right.score - left.score);
     return ranked[0]?.score ? ranked[0].target : null;
-  }, [form.category, selectedCategory?.kind, selectedCategory?.targetDepartmentId, targetOptions]);
+  };
+
+  const categoryRecommendation = useMemo(() => {
+    return resolveRecommendedTarget(form.category);
+  }, [form.category, targetOptions, intake]);
 
   const isDirty = Boolean(form.title.trim() || form.description.trim() || form.targetId || form.assigneeId || affectedCiId || pendingFiles.length);
   const update = <Key extends keyof FormState>(key: Key, value: FormState[Key]) => setForm((current) => ({ ...current, [key]: value }));
@@ -437,25 +582,21 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({ isOpen, on
   }
 
   function changeCategory(value: string) {
-    const option = intake?.categories.find((candidate) => candidate.code === value);
     const category = value;
     const recommendedPriority: BusinessPriority = ['INCIDENT', 'INCIDENT_MANAGEMENT', 'VULNERABILITY', 'DLP_ALERT'].includes(category) ? 'P2_HIGH' : 'P3_MEDIUM';
-    const tokens = option?.kind === 'BASIC_TICKET' ? ['it', 'help', 'desk', 'texniki'] : categoryTokens[category as TicketCategory] || [];
-    const recommendedTarget = targetOptions.map((target) => {
-      const searchable = `${target.name} ${target.code}`.toLocaleLowerCase('az');
-      const score = tokens.reduce((total, token) => total + (searchable.includes(token.toLocaleLowerCase('az')) ? 1 : 0), 0);
-      return { target, score };
-    }).sort((left, right) => right.score - left.score)[0];
-    const metadataTarget = option?.targetDepartmentId ? targetOptions.find((target) => target.id === option.targetDepartmentId) : undefined;
-    const nextTarget = metadataTarget || (recommendedTarget?.score ? recommendedTarget.target : null);
-    setForm((current) => ({
-      ...current,
-      category,
-      businessPriority: recommendedPriority,
-      ...impactUrgencyFor(recommendedPriority),
-      targetId: (!current.targetId || targetWasAutoSelected) && nextTarget ? nextTarget.id : current.targetId,
-      assigneeId: (!current.targetId || targetWasAutoSelected) && nextTarget ? '' : current.assigneeId,
-    }));
+    const nextTarget = resolveRecommendedTarget(category);
+
+    setForm((current) => {
+      const shouldAutoSelect = (!current.targetId || targetWasAutoSelected) && Boolean(nextTarget);
+      return {
+        ...current,
+        category,
+        businessPriority: recommendedPriority,
+        ...impactUrgencyFor(recommendedPriority),
+        targetId: shouldAutoSelect ? nextTarget!.id : current.targetId,
+        assigneeId: shouldAutoSelect ? '' : current.assigneeId,
+      };
+    });
     setTargetWasAutoSelected(Boolean((!form.targetId || targetWasAutoSelected) && nextTarget));
   }
 
@@ -589,7 +730,7 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({ isOpen, on
               </section>
 
               <aside className="min-w-0 border-t border-semantic-border pt-6 min-[900px]:sticky min-[900px]:top-0 min-[900px]:border-l min-[900px]:border-t-0 min-[900px]:pl-8 min-[900px]:pt-0">
-       <section aria-labelledby="routing-heading"><p className="text-xs font-extrabold uppercase tracking-[0.14em] text-semantic-success">02 · Yönləndirmə</p><h3 id="routing-heading" className="sr-only">Yönləndirmə</h3><div className="mt-4 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5"><UserRound className="h-4 w-4 text-semantic-success" /><span className="min-w-0 truncate text-sm font-bold text-semantic-primary">{intake?.requester.fullName || 'Cari istifadəçi'}</span><span className="ml-auto text-[11px] text-semantic-muted">Müraciət edən</span></div><div className="mt-4 space-y-4"><SelectField label="Kateqoriya" value={form.category} onChange={changeCategory} recommended searchable searchPlaceholder="Kateqoriya axtarın…" placeholder="Kateqoriya seçin" options={[{ value: '', label: 'Kateqoriya seçin' }, ...(intake?.categories || []).map((category) => ({ value: category.code, label: category.label, sublabel: category.kind === 'BASIC_TICKET' ? `${category.catalogGroup || 'IT'} · Help Desk task` : category.description }))]} /><SelectField label="İcraçı bölmə" value={form.targetId} onChange={changeTarget} disabled={!intake?.directory.ready} recommended={Boolean(categoryRecommendation && (!form.targetId || targetWasAutoSelected))} searchable searchPlaceholder="Bölmə, şöbə və ya kod axtarın…" placeholder="Bölmə seçin" hint={categoryRecommendation && (!form.targetId || targetWasAutoSelected) ? `${categoryRecommendation.name} kateqoriyaya uyğun bölmə kimi təklif edilir.` : undefined} options={[{ value: '', label: 'Bölmə seçin' }, ...targetOptions.map((unit) => ({ value: unit.id, label: unit.name, sublabel: unit.kind === 'Şöbə' ? `Şöbə · ${unit.code} · ${intake?.departments.find((department) => department.id === unit.departmentId)?.name || 'Departament'}` : `${unit.kind} · ${unit.code}` }))]} /><SelectField label="İcraçı" value={form.assigneeId} onChange={(value) => update('assigneeId', value)} disabled={assigneeSelectionLocked} searchable searchPlaceholder="Ad, vəzifə və ya istifadəçi axtarın…" placeholder={assigneePlaceholder} hint={assigneeHint} options={[{ value: '', label: assigneePlaceholder }, ...(intake?.assignees || []).map((person) => ({ value: person.id, label: person.fullName, sublabel: [person.sectionName, person.title].filter(Boolean).join(' / ') }))]} /></div>{selectedTarget && <p className="mt-3 flex items-start gap-1.5 text-xs text-semantic-muted"><ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-semantic-success" /> {form.assigneeId ? 'Birbaşa seçilmiş icraçıya yönləndiriləcək.' : `${selectedTarget.name} növbəsinə yönləndiriləcək.`}</p>}</section>
+       <section aria-labelledby="routing-heading"><p className="text-xs font-extrabold uppercase tracking-[0.14em] text-semantic-success">02 · Yönləndirmə</p><h3 id="routing-heading" className="sr-only">Yönləndirmə</h3><div className="mt-4 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5"><UserRound className="h-4 w-4 text-semantic-success" /><span className="min-w-0 truncate text-sm font-bold text-semantic-primary">{intake?.requester.fullName || 'Cari istifadəçi'}</span><span className="ml-auto text-[11px] text-semantic-muted">Müraciət edən</span></div><div className="mt-4 space-y-4"><SelectField label="Kateqoriya" value={form.category} onChange={changeCategory} recommended searchable searchPlaceholder="Kateqoriya axtarın…" placeholder="Kateqoriya seçin" options={[{ value: '', label: 'Kateqoriya seçin' }, ...(intake?.categories || []).map((category) => ({ value: category.code, label: category.label, sublabel: category.kind === 'BASIC_TICKET' ? `${category.catalogGroup || 'IT'} · Help Desk task` : category.description }))]} /><SelectField label="İcraçı bölmə" value={form.targetId} onChange={changeTarget} disabled={!intake?.directory.ready} recommended={Boolean(categoryRecommendation && (!form.targetId || targetWasAutoSelected))} searchable searchPlaceholder="Bölmə, şöbə və ya komanda axtarın…" placeholder="Bölmə seçin" hint={categoryRecommendation && (!form.targetId || targetWasAutoSelected) ? `${categoryRecommendation.name} kateqoriyaya uyğun bölmə kimi təklif edilir.` : undefined} options={[{ value: '', label: 'Bölmə seçin' }, ...targetOptions.map((unit) => ({ value: unit.id, label: unit.name, sublabel: unit.sublabel }))]} /><SelectField label="İcraçı" value={form.assigneeId} onChange={(value) => update('assigneeId', value)} disabled={assigneeSelectionLocked} searchable searchPlaceholder="Ad, vəzifə və ya istifadəçi axtarın…" placeholder={assigneePlaceholder} hint={assigneeHint} options={[{ value: '', label: assigneePlaceholder }, ...(intake?.assignees || []).map((person) => ({ value: person.id, label: person.fullName, sublabel: [person.sectionName, person.title].filter(Boolean).join(' / ') }))]} /></div>{selectedTarget && <p className="mt-3 flex items-start gap-1.5 text-xs text-semantic-muted"><ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-semantic-success" /> {form.assigneeId ? 'Birbaşa seçilmiş icraçıya yönləndiriləcək.' : `Seçilmiş “${selectedTarget.name}” növbəsinə yönləndiriləcək.`}</p>}</section>
 
        <section aria-labelledby="priority-heading" className="mt-7 border-t border-semantic-border pt-6"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-extrabold uppercase tracking-[0.14em] text-semantic-success">03 · Prioritet &amp; SLA</p><h3 id="priority-heading" className="mt-2 text-lg font-bold tracking-tight text-semantic-primary">Nə qədər təcilidir?</h3></div><Sparkles className="h-4 w-4 text-semantic-success" /></div><div className="mt-4 grid grid-cols-4 gap-1.5" role="radiogroup" aria-label="Prioritet">{(Object.keys(priorityMeta) as BusinessPriority[]).map((value) => { const meta = priorityMeta[value]; const selected = value === selectedPriority; return <button key={value} type="button" role="radio" aria-checked={selected} onClick={() => changePriority(value)} className={`rounded-lg border px-1 py-2 text-center transition focus:outline-none focus:ring-4 focus:ring-semantic-brand/10 ${selected ? meta.tone : 'border-semantic-border bg-white text-semantic-muted hover:border-semantic-border-strong hover:bg-slate-50'}`}><span className="block text-xs font-extrabold">{meta.short}</span><span className="mt-0.5 block text-[10px] font-semibold">{meta.label}</span>{selected && <Check className="mx-auto mt-1 h-3 w-3" />}</button>; })}</div><div key={`priority-summary-${selectedPriority}`} className="mt-3 rounded-xl bg-semantic-success-surface/70 px-3 py-2.5"><div className="flex items-center justify-between gap-3"><span className="text-xs font-semibold text-semantic-success">{priority.short} {priority.label} · xidmət hədəfi</span><CheckCircle2 className="h-4 w-4 text-semantic-success" /></div><p className="mt-1 text-xs text-semantic-strong">Cavab: {priority.response} <span className="mx-1 text-semantic-muted">·</span> Həll: {priority.resolution}</p></div><div className="mt-4"><SelectField label="SLA siyasəti" value={form.slaPolicyId} onChange={(value) => update('slaPolicyId', value)} recommended searchable searchPlaceholder="SLA siyasəti axtarın…" placeholder="Sistem standartı" hint={selectedSla?.description || 'Seçiminiz serverdə yenidən yoxlanılır.'} options={[{ value: '', label: 'Sistem standartı' }, ...(intake?.slaPolicies || []).map((policy) => ({ value: policy.id, label: policy.name, sublabel: policy.description }))]} /></div><div className="mt-4 flex items-start gap-2 text-xs text-semantic-muted"><UsersRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-semantic-success" /><span>{selectedTarget ? `${selectedTarget.name} → ${form.assigneeId ? 'seçilmiş icraçı' : 'növbə'} · ${priority.short} · ${selectedSla?.name || 'Sistem standartı'}` : 'Bölmə seçdikdən sonra yekun yönləndirmə burada görünəcək.'}</span></div></section>
               </aside>

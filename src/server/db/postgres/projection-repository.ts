@@ -126,7 +126,7 @@ export class PostgresProjectionRepository {
       pgClient.query('SELECT id, ticket_id, author_id, content, visibility, is_audit_note, is_resolution_summary, created_at, updated_at, source_payload FROM ticket_comments ORDER BY created_at ASC'),
       pgClient.query('SELECT id, ticket_id, workflow_id, transition_id, status, initiated_by_user_id, initiated_at, completed_at, steps, created_at, updated_at, source_payload FROM ticket_approvals ORDER BY created_at ASC'),
       pgClient.query('SELECT id, ticket_id, file_name, file_size_bytes, mime_type, storage_key, sha256_hash, uploaded_by_user_id, uploaded_at, is_forensic_artifact, source_payload FROM ticket_attachments ORDER BY uploaded_at ASC'),
-      pgClient.query('SELECT id, event_type, action, actor_id, actor_name, actor_role, ip_address, user_agent, entity_type, entity_id, timestamp, source_payload FROM audit_events ORDER BY timestamp DESC'),
+      pgClient.query('SELECT id, event_type, action, actor_id, actor_name, actor_role, ip_address, user_agent, correlation_id, entity_type, entity_id, timestamp, source_payload FROM audit_events ORDER BY timestamp DESC'),
       pgClient.query('SELECT id, source_ticket_id, target_ticket_id, relationship_type, note, created_by_user_id, created_at, source_payload FROM ticket_relationships ORDER BY created_at ASC'),
       pgClient.query('SELECT id, ticket_id, title, description, owner_id, group_id, status, due_at, dependency_task_ids, completion_condition, created_by_user_id, created_at, updated_at, completed_at, source_payload FROM ticket_tasks ORDER BY created_at ASC'),
       pgClient.query('SELECT id, ticket_id, agent_id, started_at, duration_minutes, description, billable, activity_type, created_at, source_payload FROM ticket_worklogs ORDER BY started_at DESC'),
@@ -249,7 +249,7 @@ export class PostgresProjectionRepository {
       actorRole: row.actor_role || 'BANK_USER',
       ipAddress: row.ip_address || '',
       userAgent: row.user_agent || '',
-      correlationId: row.id,
+      correlationId: row.correlation_id || row.id,
       action: row.action,
       entityType: row.entity_type,
       entityId: row.entity_id,
@@ -455,10 +455,10 @@ export class PostgresProjectionRepository {
       if (updated.rowCount !== 1) throw new Error(`Active Directory user ${user.id} is missing from PostgreSQL.`);
 
       await client.query(
-        `INSERT INTO audit_events(id,event_type,action,actor_id,actor_name,actor_role,ip_address,user_agent,entity_type,entity_id,timestamp,source_payload)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)
+        `INSERT INTO audit_events(id,event_type,action,actor_id,actor_name,actor_role,ip_address,user_agent,correlation_id,entity_type,entity_id,timestamp,source_payload)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)
          ON CONFLICT(id) DO NOTHING`,
-        [event.id, event.action || 'USER_LOGIN', event.action, event.actorId, event.actorName, event.actorRole || null, event.ipAddress || null, event.userAgent || null, event.entityType, event.entityId, iso(event.timestamp), json(event)]
+        [event.id, event.action || 'USER_LOGIN', event.action, event.actorId, event.actorName, event.actorRole || null, event.ipAddress || null, event.userAgent || null, event.correlationId || null, event.entityType, event.entityId, iso(event.timestamp), json(event)]
       );
     });
     this.persistedHashes.get('users')?.set(user.id, this.hash(user));
@@ -831,9 +831,9 @@ export class PostgresProjectionRepository {
         const event = data.auditEvents![index];
         if (!changed('auditEvents', event as RecordValue, index)) continue;
         await client.query(
-          `INSERT INTO audit_events(id,event_type,action,actor_id,actor_name,actor_role,ip_address,user_agent,entity_type,entity_id,timestamp,source_payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)
-           ON CONFLICT(id) DO UPDATE SET action=EXCLUDED.action,source_payload=EXCLUDED.source_payload`,
-          [event.id, event.action || 'LEGACY_EVENT', event.action || 'LEGACY_EVENT', event.actorId || 'usr-system-admin', event.actorName || 'System Administrator', event.actorRole || null, event.ipAddress || null, event.userAgent || null, event.entityType || 'SYSTEM', event.entityId || event.id, iso(event.timestamp), json(event)]
+          `INSERT INTO audit_events(id,event_type,action,actor_id,actor_name,actor_role,ip_address,user_agent,correlation_id,entity_type,entity_id,timestamp,source_payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)
+           ON CONFLICT(id) DO NOTHING`,
+          [event.id, event.action || 'LEGACY_EVENT', event.action || 'LEGACY_EVENT', event.actorId || 'usr-system-admin', event.actorName || 'System Administrator', event.actorRole || null, event.ipAddress || null, event.userAgent || null, event.correlationId || null, event.entityType || 'SYSTEM', event.entityId || event.id, iso(event.timestamp), json(event)]
         );
       }
 

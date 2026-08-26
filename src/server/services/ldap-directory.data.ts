@@ -255,22 +255,25 @@ export function parseJobTitleAndHierarchy(
   // Also extract candidates from OUs if not already found in title
   for (const ou of relevantOUs) {
     const normOu = normalizeAzerbaijani(ou);
-    if (normOu.includes('satinalma')) {
-      if (!unitCand) unitCand = 'Satınalma bölməsi';
-      if (!sectionCand) sectionCand = 'İnzibati təsərrüfat şöbəsi';
-    } else if (normOu.includes('anbar')) {
-      if (!unitCand) unitCand = 'Anbar bölməsi';
-      if (!sectionCand) sectionCand = 'İnzibati təsərrüfat şöbəsi';
-    } else if (normOu.includes('tarcuba') || normOu.includes('tercume')) {
+    if (normOu.includes('tarcuba') || normOu.includes('tercume')) {
+      if (!sectionCand) sectionCand = 'Katiblik və Tərcümə şöbəsi';
       if (!unitCand) unitCand = 'Tərcümə bölməsi';
-      if (!sectionCand) sectionCand = 'Katiblik şöbəsi';
-    } else if (normOu.includes('inzibati') || normOu.includes('teserrufat')) {
-      if (!sectionCand) sectionCand = 'İnzibati təsərrüfat şöbəsi';
-    } else if (normOu.includes('umumi')) {
-      if (!unitCand) unitCand = 'Ümumi təsərrüfat bölməsi';
-      if (!sectionCand) sectionCand = 'İnzibati təsərrüfat şöbəsi';
-    } else if (normOu.includes('icra')) {
-      if (!sectionCand) sectionCand = 'Məhkəmə və İcra işləri şöbəsi';
+    } else if (normOu.includes('satinalma')) {
+      if (!sectionCand) sectionCand = 'Satınalma bölməsi';
+      if (!unitCand) unitCand = 'Satınalma bölməsi';
+    } else if (normOu.includes('anbar')) {
+      if (!sectionCand) sectionCand = 'Anbar bölməsi';
+      if (!unitCand) unitCand = 'Anbar bölməsi';
+    } else if (normOu.includes('umumi') && (normOu.includes('bolme') || normOu.includes('teserrufat'))) {
+      if (!sectionCand) sectionCand = 'Ümumi bölmə';
+      if (!unitCand) unitCand = 'Ümumi bölmə';
+    } else if (normOu.includes('ekvayrinq')) {
+      if (!sectionCand) sectionCand = 'Ekvayrinq bölməsi';
+      if (!unitCand) unitCand = 'Ekvayrinq bölməsi';
+    } else if (normOu.includes('terefdas')) {
+      if (!sectionCand) sectionCand = 'Tərəfdaşlarla iş şöbəsi';
+    } else if (normOu.includes('icra') || normOu.includes('mehkeme')) {
+      if (!sectionCand) sectionCand = 'Məhkəmə və icra işlərinə nəzarət şöbəsi';
     } else if (!sectionCand && (normOu.includes('şöbə') || normOu.includes('sobe') || normOu.includes('section') || normOu.includes('devops') || normOu.includes('soc') || normOu.includes('appsec'))) {
       sectionCand = ou;
     } else if (!unitCand && (normOu.includes('bölmə') || normOu.includes('bolme') || normOu.includes('sektor') || normOu.includes('qrup'))) {

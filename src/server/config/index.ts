@@ -1,9 +1,28 @@
 import dotenv from 'dotenv';
 import { z } from 'zod';
 import path from 'path';
+import fs from 'fs';
 
 // Load .env file
 dotenv.config();
+
+// Docker/Kubernetes secret volumes and most secret-manager injectors expose
+// values as files. Support the standard NAME_FILE convention without ever
+// copying a production credential into a repository-managed environment file.
+const fileBackedSecrets = [
+  'DATABASE_URL', 'DB_PASSWORD', 'REDIS_URL', 'REDIS_PASSWORD',
+  'RABBITMQ_URL', 'JWT_SECRET', 'DATA_ENCRYPTION_KEY',
+  'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY', 'LDAP_BIND_PASSWORD',
+] as const;
+
+for (const key of fileBackedSecrets) {
+  const filePath = process.env[`${key}_FILE`];
+  if (!filePath) continue;
+  if (process.env[key]) throw new Error(`${key} and ${key}_FILE cannot both be set.`);
+  const value = fs.readFileSync(filePath, 'utf8').replace(/\r?\n$/, '');
+  if (!value) throw new Error(`${key}_FILE points to an empty secret file.`);
+  process.env[key] = value;
+}
 
 const configSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
@@ -95,6 +114,9 @@ const configSchema = z.object({
   // Logging & Observability
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   ENABLE_METRICS: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(true),
+  OTEL_TRACES_ENABLED: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(false),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+  OTEL_SERVICE_NAME: z.string().min(1).max(128).default('aegissec-platform'),
 });
 
 export type Config = z.infer<typeof configSchema>;
@@ -119,6 +141,15 @@ function loadConfig(): Config {
   }
   if (parsed.data.NODE_ENV === 'production' && parsed.data.STORAGE_PROVIDER !== 's3') {
     throw new Error('STORAGE_PROVIDER must be s3 in production; local disk is not an attachment authority.');
+  }
+  if (parsed.data.NODE_ENV === 'production' && !parsed.data.DATA_ENCRYPTION_KEY) {
+    throw new Error('DATA_ENCRYPTION_KEY must be supplied separately in production; JWT_SECRET must not double as an encryption key.');
+  }
+  if (parsed.data.OTEL_TRACES_ENABLED && !parsed.data.OTEL_EXPORTER_OTLP_ENDPOINT) {
+    throw new Error('OTEL_EXPORTER_OTLP_ENDPOINT is required when OTEL_TRACES_ENABLED=true.');
+  }
+  if (parsed.data.NODE_ENV === 'production' && !parsed.data.OTEL_TRACES_ENABLED) {
+    throw new Error('OTEL_TRACES_ENABLED must be true in production; send traces to the bank-approved collector.');
   }
 
   return parsed.data;

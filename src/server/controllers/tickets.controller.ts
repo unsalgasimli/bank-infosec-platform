@@ -20,7 +20,7 @@ import { WorkflowOrchestrationService } from '../services/workflow-orchestration
 
 const memoryTicketCategories = [
   'GENERAL_REQUEST', 'GENERAL_TASK', 'IT_SUPPORT', 'ACCESS_REQUEST', 'HARDWARE_SOFTWARE', 'NETWORK_INFRASTRUCTURE',
-  'CHANGE_REQUEST', 'INCIDENT_MANAGEMENT', 'PROJECT_DELIVERY', 'FINANCE_PROCUREMENT', 'HR_OPERATIONS', 'COMPLIANCE_LEGAL',
+  'INNOVATION_PROGRAMMING', 'CHANGE_REQUEST', 'INCIDENT_MANAGEMENT', 'PROJECT_DELIVERY', 'FINANCE_PROCUREMENT', 'HR_OPERATIONS', 'COMPLIANCE_LEGAL',
   'BUSINESS_OPERATIONS', 'SECURITY_REVIEW', 'VULNERABILITY', 'INCIDENT', 'SECURITY_EXCEPTION', 'RISK_ACCEPTANCE',
   'AUDIT_FINDING', 'IAM_REQUEST', 'DLP_ALERT', 'THIRD_PARTY_ASSESSMENT',
 ];
@@ -88,29 +88,124 @@ export class TicketsController {
    */
   public static async intakeOptions(req: AuthenticatedRequest, res: Response): Promise<void> {
     const user = req.user!;
-    db.reload();
+    const isUnitTest = process.env.NODE_ENV === 'test' || process.argv.some((arg) => arg === '--test' || arg.includes('.test.ts'));
+    const isPostgres = config.DB_TYPE === 'postgres' && !isUnitTest;
 
-    const departments = (db.data.departments || [])
-      .filter((department) => department.isActive !== false && department.directorySource === 'ACTIVE_DIRECTORY');
+    let departments: Array<{ id: string; name: string; code: string }> = [];
+    let sections: Array<{ id: string; departmentId: string; name: string; code: string; sectionType?: string; parentSectionId?: string | null; departmentName?: string }> = [];
+    let teams: Array<{ id: string; departmentId: string; name: string; code: string }> = [];
+
+    if (isPostgres) {
+      const deptRows = await pgClient.query<{ id: string; name: string; code: string }>(`
+        SELECT d.id, d.name, d.code
+        FROM bank_departments d
+        WHERE d.is_active = TRUE
+          AND (SELECT COUNT(*) FROM bank_users u WHERE u.department_id = d.id AND u.is_active = TRUE AND coalesce(u.source_payload->>'organizationEligible', 'true') <> 'false') > 0
+        ORDER BY d.name
+      `);
+      departments = deptRows.rows;
+      const deptIds = new Set(departments.map((d) => d.id));
+
+      const secRows = await pgClient.query<{ id: string; department_id: string; name: string; code: string; section_type: string; parent_section_id: string | null; dept_name: string }>(`
+        SELECT s.id, s.department_id, s.name, s.code, s.section_type, s.parent_section_id, d.name as dept_name
+        FROM bank_department_sections s
+        JOIN bank_departments d ON d.id = s.department_id
+        WHERE s.is_active = TRUE
+          AND d.is_active = TRUE
+          AND (SELECT COUNT(*) FROM bank_users u WHERE (u.section_id = s.id OR u.unit_id = s.id) AND u.is_active = TRUE AND coalesce(u.source_payload->>'organizationEligible', 'true') <> 'false') > 0
+          AND s.name !~* '^(bosses|bbd|pbd|xidmat|biznessatish|microsoft exchange|dnd|mxd|kassa)$'
+          AND LENGTH(TRIM(s.name)) > 3
+        ORDER BY d.name, s.name
+      `);
+      sections = secRows.rows
+        .filter((s) => deptIds.has(s.department_id))
+        .map((s) => ({
+          id: s.id,
+          departmentId: s.department_id,
+          name: s.name,
+          code: s.code,
+          sectionType: s.section_type,
+          parentSectionId: s.parent_section_id,
+          departmentName: s.dept_name,
+        }));
+
+      const teamRows = await pgClient.query<{ id: string; department_id: string; name: string; email: string }>(`
+        SELECT id, department_id, name, email FROM bank_teams
+      `);
+      teams = teamRows.rows
+        .filter((t) => deptIds.has(t.department_id))
+        .map((t) => ({ id: t.id, departmentId: t.department_id, name: t.name, code: t.id }));
+    } else {
+      db.reload();
+      departments = (db.data.departments || [])
+        .filter((department) => department.isActive !== false && department.directorySource === 'ACTIVE_DIRECTORY');
+      const departmentIds = new Set(departments.map((department) => department.id));
+      sections = (db.data.departmentSections || [])
+        .filter((section) => section.isActive !== false && section.directorySource === 'ACTIVE_DIRECTORY' && departmentIds.has(section.departmentId))
+        .map((section) => ({
+          id: section.id,
+          departmentId: section.departmentId,
+          name: section.name,
+          code: section.code,
+          sectionType: section.sectionType,
+          parentSectionId: section.parentSectionId,
+          departmentName: departments.find((d) => d.id === section.departmentId)?.name,
+        }));
+      teams = (db.data.teams || []).filter((team) => departmentIds.has(team.departmentId));
+    }
+
     const departmentIds = new Set(departments.map((department) => department.id));
-    const sections = (db.data.departmentSections || [])
-      .filter((section) => section.isActive !== false && section.directorySource === 'ACTIVE_DIRECTORY' && departmentIds.has(section.departmentId));
-    const teams = (db.data.teams || []).filter((team) => departmentIds.has(team.departmentId));
     const targetId = typeof req.query.targetId === 'string' ? req.query.targetId.trim() : '';
     const targetDepartment = departments.find((department) => department.id === targetId);
     const targetTeam = teams.find((team) => team.id === targetId);
     const targetSection = sections.find((section) => section.id === targetId);
     const targetDepartmentId = targetTeam?.departmentId || targetSection?.departmentId || targetDepartment?.id;
 
-    const assignees = targetDepartmentId
-      ? (db.data.users || [])
+    let assignees: Array<{ id: string; fullName: string; title: string; departmentId: string; sectionId?: string; sectionName?: string; sectionCode?: string; teamIds: string[] }> = [];
+
+    if (targetDepartmentId) {
+      if (isPostgres) {
+        let userQuery = `
+          SELECT u.id, u.full_name, u.title, u.department_id, u.section_id, u.unit_id, coalesce(u.team_ids, '[]'::jsonb) as team_ids
+          FROM bank_users u
+          WHERE u.is_active = TRUE
+            AND u.directory_source = 'ACTIVE_DIRECTORY'
+            AND coalesce(u.source_payload->>'organizationEligible', 'true') <> 'false'
+        `;
+        const params: any[] = [];
+        if (targetSection) {
+          params.push(targetSection.id);
+          userQuery += ` AND (u.section_id = $1 OR u.unit_id = $1)`;
+        } else if (targetTeam) {
+          params.push(targetTeam.id);
+          userQuery += ` AND u.team_ids @> jsonb_build_array($1::text)`;
+        } else {
+          params.push(targetDepartmentId);
+          userQuery += ` AND u.department_id = $1`;
+        }
+        userQuery += ` ORDER BY u.full_name`;
+        const userRows = await pgClient.query(userQuery, params);
+        assignees = userRows.rows
+          .filter((row) => isGenuineEmployeeOrIntern(row as any, [], row.id))
+          .map((row) => ({
+            id: row.id,
+            fullName: row.full_name,
+            title: row.title || 'Bank Specialist',
+            departmentId: row.department_id,
+            sectionId: row.section_id || row.unit_id,
+            sectionName: sections.find((s) => s.id === (row.section_id || row.unit_id))?.name,
+            sectionCode: sections.find((s) => s.id === (row.section_id || row.unit_id))?.code,
+            teamIds: Array.isArray(row.team_ids) ? row.team_ids : [],
+          }));
+      } else {
+        assignees = (db.data.users || [])
           .filter((candidate) =>
             candidate.isActive &&
             candidate.directorySource === 'ACTIVE_DIRECTORY' &&
             isGenuineEmployeeOrIntern(candidate, candidate.distributionGroups || [], candidate.sAMAccountName || candidate.username) &&
             departmentIds.has(candidate.departmentId) &&
             (targetSection
-              ? candidate.sectionId === targetSection.id
+              ? candidate.sectionId === targetSection.id || candidate.unitId === targetSection.id
               : candidate.departmentId === targetDepartmentId || Boolean(targetTeam && candidate.teamIds?.includes(targetTeam.id)))
           )
           .sort((left, right) => left.fullName.localeCompare(right.fullName, 'az'))
@@ -123,19 +218,16 @@ export class TicketsController {
             sectionName: sections.find((section) => section.id === sectionId)?.name,
             sectionCode: sections.find((section) => section.id === sectionId)?.code,
             teamIds,
-          }))
-      : [];
+          }));
+      }
+    }
 
-    const directoryReady = departments.length > 0 && (db.data.users || []).some((candidate) =>
-      candidate.isActive && candidate.directorySource === 'ACTIVE_DIRECTORY' &&
-      isGenuineEmployeeOrIntern(candidate, candidate.distributionGroups || [], candidate.sAMAccountName || candidate.username) &&
-      departmentIds.has(candidate.departmentId)
-    );
+    const directoryReady = departments.length > 0;
     const canAssignDirect = user.roles.some((role) =>
       ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'TEAM_LEAD', 'SECURITY_ANALYST', 'SOC_ANALYST', 'APPSEC_ANALYST', 'VULN_ANALYST', 'GRC_ANALYST', 'DLP_ANALYST'].includes(role)
     );
 
-    const categories: TicketIntakeCategoryOption[] = config.DB_TYPE === 'postgres'
+    const categories: TicketIntakeCategoryOption[] = isPostgres
       ? (await pgClient.query<{ code: TicketCategoryOption['code']; displayName: string; description: string }>(
           'SELECT code, display_name AS "displayName", description FROM ticket_categories WHERE is_active = TRUE ORDER BY sort_order ASC, code ASC'
         )).rows.map((row) => ({
@@ -187,11 +279,11 @@ export class TicketsController {
           message: directoryReady ? undefined : 'Canlı Active Directory sinxronizasiyası tələb olunur. İcraçı və növbə seçimi əlçatan deyil.',
         },
         departments: departments.map(({ id, name, code }) => ({ id, name, code })),
-        sections: sections.map(({ id, departmentId, name, code }) => ({ id, departmentId, name, code })),
+        sections: sections.map(({ id, departmentId, name, code, sectionType, parentSectionId, departmentName }) => ({ id, departmentId, name, code, sectionType, parentSectionId, departmentName })),
         teams: teams.map(({ id, departmentId, name, code }) => ({ id, departmentId, name, code })),
         assignees,
         slaPolicies: (db.data.slaPolicies || []).map(({ id, name, description, isDefault }) => ({ id, name, description, isDefault })),
-         categories,
+        categories,
       },
     });
   }

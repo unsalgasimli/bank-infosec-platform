@@ -133,7 +133,7 @@ export class SearchService {
         return ticket.technicalSeverity;
       case 'priority':
       case 'businesspriority':
-        return ticket.businessPriority;
+        return ticket.businessPriority || (ticket as any).priority || SearchService.legacyBusinessPriority(ticket);
       case 'status':
       case 'statusid':
         return ticket.statusId;
@@ -191,5 +191,17 @@ export class SearchService {
         const value = (ticket as any)[field];
         return value === undefined || value === null ? undefined : String(value);
     }
+  }
+
+  /**
+   * Historical projections predate the explicit businessPriority column.
+   * Preserve deterministic JQL semantics while they are progressively
+   * re-saved through the current lifecycle model.
+   */
+  private static legacyBusinessPriority(ticket: Ticket): string {
+    if (ticket.technicalSeverity === 'CRITICAL') return 'P1_URGENT';
+    if (ticket.technicalSeverity === 'HIGH') return 'P2_HIGH';
+    if (ticket.technicalSeverity === 'MEDIUM') return 'P3_MEDIUM';
+    return 'P4_LOW';
   }
 }

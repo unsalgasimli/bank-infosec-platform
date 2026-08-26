@@ -1,4 +1,4 @@
-import amqp, { type Channel, type ChannelModel, type ConsumeMessage } from 'amqplib';
+import amqp, { type Channel, type ChannelModel, type ConfirmChannel, type ConsumeMessage } from 'amqplib';
 import { config } from '../config/index.js';
 import { logger } from './logger.service.js';
 import type { OutboxEvent } from './outbox.service.js';
@@ -15,7 +15,9 @@ export class RetryableWorkerError extends Error {
 
 export class QueueService {
   private static connection: ChannelModel | null = null;
-  private static channel: Channel | null = null;
+  // Confirm channels make the outbox relay wait for a broker acknowledgement
+  // before its PostgreSQL row may be marked PUBLISHED.
+  private static channel: ConfirmChannel | null = null;
 
   public static enabled(): boolean {
     return config.RABBITMQ_ENABLED;
@@ -24,7 +26,7 @@ export class QueueService {
   public static async connect(): Promise<void> {
     if (!this.enabled() || this.channel) return;
     const connection = await amqp.connect(config.RABBITMQ_URL);
-    const channel = await connection.createChannel();
+    const channel = await connection.createConfirmChannel();
     await channel.assertExchange(config.RABBITMQ_EXCHANGE, 'topic', { durable: true });
     await channel.assertExchange(`${config.RABBITMQ_EXCHANGE}.dlx`, 'topic', { durable: true });
     for (const queue of WORKER_QUEUES) {
@@ -64,6 +66,7 @@ export class QueueService {
       { contentType: 'application/json', contentEncoding: 'utf-8', deliveryMode: 2, messageId: event.id, timestamp: Date.now(), type: event.topic }
     );
     if (!accepted) await new Promise<void>((resolve) => this.channel!.once('drain', resolve));
+    await this.channel.waitForConfirms();
   }
 
   public static async consume(queue: string, handler: (event: OutboxEvent) => Promise<void>): Promise<void> {

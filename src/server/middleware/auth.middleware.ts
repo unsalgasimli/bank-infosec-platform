@@ -11,6 +11,11 @@ export interface AuthenticatedRequest extends Request {
   sessionToken?: string;
 }
 
+const useFixtureIdentityStore = () =>
+  config.DB_TYPE === 'memory' ||
+  process.env.NODE_ENV === 'test' ||
+  process.argv.some((argument) => argument === '--test' || argument.includes('.test.ts') || argument.includes('test-concurrency'));
+
 export const authMiddleware = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `req-${Date.now()}`;
   req.correlationId = correlationId;
@@ -18,7 +23,7 @@ export const authMiddleware = async (req: AuthenticatedRequest, res: Response, n
     const sessionToken = SessionService.readToken(req);
     const userId = await SessionService.resolve(sessionToken);
     const user: BankUser | undefined = userId
-      ? config.DB_TYPE === 'postgres'
+      ? config.DB_TYPE === 'postgres' && !useFixtureIdentityStore()
         ? await DepartmentsRepository.findActiveDirectoryUserById(userId)
         : AuthService.getUserById(userId)
       : undefined;

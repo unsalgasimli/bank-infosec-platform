@@ -11,11 +11,24 @@ import { storageService } from './storage.service.js';
 import { AuditService } from './audit.service.js';
 import { SLAService } from './sla.service.js';
 import { TicketLifecycleService } from './ticket-lifecycle.service.js';
+import { WorkflowRuntimeService } from './workflow-runtime.service.js';
+import { LDAPSchedulerService } from './ldap-scheduler.service.js';
+import { withTelemetrySpan } from './telemetry.service.js';
 
 const CONSUMER_NAME = 'aegissec-general-worker-v1';
 
 export class WorkerEventService {
   public static async process(event: OutboxEvent): Promise<void> {
+    return withTelemetrySpan('outbox.process', {
+      'messaging.system': 'rabbitmq',
+      'messaging.operation': 'process',
+      'messaging.message.id': event.id,
+      'messaging.destination.name': event.topic,
+      'aegissec.correlation_id': event.correlationId || '',
+    }, async () => this.processCommittedEvent(event));
+  }
+
+  private static async processCommittedEvent(event: OutboxEvent): Promise<void> {
     const receipt = await pgClient.query<{ event_id: string }>(
       'SELECT event_id FROM event_consumer_receipts WHERE consumer_name=$1 AND event_id=$2',
       [CONSUMER_NAME, event.id]
@@ -33,6 +46,12 @@ export class WorkerEventService {
       await this.scanAttachment(event);
     } else if (event.topic === 'sla.tick') {
       SLAService.refreshAllTicketSLAs();
+    } else if (event.topic === 'workflow.schedule.tick') {
+      WorkflowTriggerService.processScheduled(new Date(String(event.payload.scheduledAt || event.occurredAt)));
+    } else if (event.topic === 'workflow.runtime.tick') {
+      WorkflowRuntimeService.resumeDueInstances(new Date(String(event.payload.scheduledAt || event.occurredAt)));
+    } else if (event.topic === 'ldap.sync.requested') {
+      await this.syncLdapDirectory(event);
     } else if (event.topic === 'ai.analysis.requested') {
       await this.analyzeTicket(event);
     } else {
@@ -137,5 +156,15 @@ export class WorkerEventService {
       metadata: { lifecycleAction: 'AI_RECOMMENDATION_CREATED', recommendationId: recommendation.id, outboxEventId: event.id },
       persist: false,
     });
+  }
+
+  private static async syncLdapDirectory(event: OutboxEvent): Promise<void> {
+    const trigger = String(event.payload.trigger || 'SCHEDULED_DAILY_CHECK');
+    if (trigger !== 'SCHEDULED_DAILY_CHECK' && trigger !== 'STARTUP_CHECK' && trigger !== 'MANUAL_TRIGGER') {
+      throw new Error(`LDAP sync event ${event.id} has an unsupported trigger.`);
+    }
+    const actorId = typeof event.payload.actorId === 'string' ? event.payload.actorId : undefined;
+    const actor = actorId ? db.data.users.find((user) => user.id === actorId) : undefined;
+    await LDAPSchedulerService.executeScheduledSync(trigger, actor);
   }
 }

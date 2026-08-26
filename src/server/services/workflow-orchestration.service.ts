@@ -466,6 +466,10 @@ export class WorkflowOrchestrationService {
 
   public static resolveAssignment(configuration: AssignmentConfiguration | undefined, context: Record<string, unknown>, node: WorkflowNodeDefinition, requesterId: string): { groupId?: string; assigneeId?: string; explanation: string } {
     const directAssigneeId = typeof context.assigneeId === 'string' && context.assigneeId ? context.assigneeId : undefined;
+    const directSectionId = typeof context.targetSectionId === 'string' && context.targetSectionId ? context.targetSectionId : undefined;
+    const directSection = directSectionId
+      ? db.data.departmentSections.find((section) => section.id === directSectionId && section.isActive !== false)
+      : undefined;
     const directGroupId = typeof context.targetDepartmentId === 'string' && context.targetDepartmentId
       ? context.targetDepartmentId
       : typeof context.assignmentGroupId === 'string' && context.assignmentGroupId
@@ -488,10 +492,11 @@ export class WorkflowOrchestrationService {
       }
       const group = db.data.departments.find((d) => d.id === groupId) || db.data.teams.find((t) => t.id === groupId);
       const assignee = db.data.users.find((u) => u.id === assigneeId);
+      const destination = directSection?.name || group?.name;
       const explanation = assignee
-        ? `Assigned directly to ${assignee.fullName}${group ? ` (${group.name})` : ''} as specified in intake.`
-        : group
-          ? `Routed directly to ${group.name} queue as specified in intake.`
+        ? `Assigned directly to ${assignee.fullName}${destination ? ` (${destination})` : ''} as specified in intake.`
+        : destination
+          ? `Routed directly to ${destination} queue as specified in intake.`
           : `Assigned based on intake routing context.`;
       return { groupId, assigneeId, explanation };
     }

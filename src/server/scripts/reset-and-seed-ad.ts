@@ -69,13 +69,8 @@ export async function resetAndSeedActiveDirectory(): Promise<void> {
     // Clear sessions
     await client.query('DELETE FROM auth_sessions');
     
-    // Delete old sections and departments
+    // Clean old department sections & divisions (departments & users are updated in-place via upsert)
     await client.query('DELETE FROM bank_department_sections');
-    await client.query('DELETE FROM bank_departments');
-    await client.query('DELETE FROM bank_divisions');
-    
-    // Clean old bank_users
-    await client.query('DELETE FROM bank_users');
     await client.query('DELETE FROM legacy_json_records WHERE collection IN (\'users\', \'departments\', \'departmentSections\', \'divisions\')');
   });
 

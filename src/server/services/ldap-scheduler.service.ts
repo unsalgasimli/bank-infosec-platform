@@ -3,6 +3,9 @@ import { logger } from './logger.service.js';
 import { config } from '../config/index.js';
 import { db } from '../db/database.js';
 import { BankUser } from '../../shared/types/auth.js';
+import { OutboxService } from './outbox.service.js';
+
+type LDAPSyncTrigger = 'SCHEDULED_DAILY_CHECK' | 'MANUAL_TRIGGER' | 'STARTUP_CHECK';
 
 export interface LDAPSchedulerStatus {
   isSchedulerActive: boolean;
@@ -110,7 +113,7 @@ export class LDAPSchedulerService {
     // 2. Arm the 60-second heartbeat ticker for clock drift / wake-up protection
     this.startHeartbeatTicker(targetHour, targetMinute);
 
-    // 3. Execute startup verification check if DB has not been synchronized
+    // 3. Queue startup verification; LDAP I/O belongs to the worker role.
     this.runStartupCheck();
   }
 
@@ -128,7 +131,7 @@ export class LDAPSchedulerService {
 
     this.timerHandle = setTimeout(async () => {
       try {
-        await this.executeScheduledSync('SCHEDULED_DAILY_CHECK');
+        await this.enqueueSync('SCHEDULED_DAILY_CHECK');
       } catch (err: any) {
         logger.error({ err: err.message }, 'Scheduled LDAP Daily Sync check failed');
       } finally {
@@ -163,7 +166,7 @@ export class LDAPSchedulerService {
         if (curHour === targetHour && curMinute === targetMinute) {
           if (this.lastExecutedDateKey !== dateKey) {
             logger.info({ dateKey, time: `${curHour}:${curMinute} GMT+4` }, '⏰ Heartbeat ticker detected exact 13:30 GMT+4 daily check window!');
-            await this.executeScheduledSync('SCHEDULED_DAILY_CHECK');
+            await this.enqueueSync('SCHEDULED_DAILY_CHECK');
           }
         }
       } catch (tickerErr: any) {
@@ -180,7 +183,7 @@ export class LDAPSchedulerService {
    * Executes the daily synchronization pipeline and updates scheduler metadata
    */
   public static async executeScheduledSync(
-    trigger: 'SCHEDULED_DAILY_CHECK' | 'MANUAL_TRIGGER' | 'STARTUP_CHECK' = 'SCHEDULED_DAILY_CHECK',
+    trigger: LDAPSyncTrigger = 'SCHEDULED_DAILY_CHECK',
     actor?: BankUser
   ): Promise<LDAPSyncReport> {
     const report = await LDAPSyncService.syncAllUsers({ trigger, actor });
@@ -191,6 +194,32 @@ export class LDAPSchedulerService {
     this.lastExecutedDateKey = `${nowGmt4.getUTCFullYear()}-${String(nowGmt4.getUTCMonth() + 1).padStart(2, '0')}-${String(nowGmt4.getUTCDate()).padStart(2, '0')}`;
 
     return report;
+  }
+
+  /**
+   * Scheduler-side action: atomically enqueue, but never perform LDAP I/O.
+   * The correlation key makes multiple scheduler replicas safe at the
+   * PostgreSQL outbox boundary.
+   */
+  public static async enqueueSync(trigger: LDAPSyncTrigger, actor?: BankUser): Promise<{ id: string }> {
+    const now = new Date();
+    const gmt4 = new Date(now.getTime() + 4 * 3600 * 1000);
+    const dateKey = `${gmt4.getUTCFullYear()}-${String(gmt4.getUTCMonth() + 1).padStart(2, '0')}-${String(gmt4.getUTCDate()).padStart(2, '0')}`;
+    const bucket = trigger === 'SCHEDULED_DAILY_CHECK' ? dateKey : now.toISOString().slice(0, 16);
+    const event = OutboxService.enqueue({
+      topic: 'ldap.sync.requested',
+      aggregateType: 'DIRECTORY',
+      aggregateId: bucket,
+      payload: { trigger, scheduledAt: now.toISOString(), actorId: actor?.id },
+      correlationId: trigger === 'MANUAL_TRIGGER'
+        ? `ldap:${trigger}:${actor?.id || 'system'}:${bucket}`
+        : `ldap:${trigger}:${bucket}`,
+    });
+    db.persist();
+    await db.flush();
+    this.lastRunAt = now;
+    if (trigger === 'SCHEDULED_DAILY_CHECK') this.lastExecutedDateKey = dateKey;
+    return { id: event.id };
   }
 
   /**
@@ -208,8 +237,8 @@ export class LDAPSchedulerService {
       }
       // Small 1.5s delay to allow server middleware & DB to settle
       this.startupTimerHandle = setTimeout(async () => {
-        logger.info('Performing initial Active Directory / LDAP user synchronization on startup...');
-        await this.executeScheduledSync('STARTUP_CHECK');
+        logger.info('Queueing initial Active Directory / LDAP user synchronization on startup...');
+        await this.enqueueSync('STARTUP_CHECK');
       }, 1500);
       if (this.startupTimerHandle && typeof this.startupTimerHandle.unref === 'function') {
         this.startupTimerHandle.unref();

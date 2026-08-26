@@ -648,6 +648,9 @@ export interface WorkItem {
   checklist: Array<{ id: string; label: string; completed: boolean }>;
   status: WorkItemStatus;
   assignmentGroupId?: string;
+  /** Server-resolved organisational queue scope. A section narrows its parent department. */
+  targetDepartmentId?: string;
+  targetSectionId?: string;
   assigneeId?: string;
   requesterId: string;
   dueAt?: string;

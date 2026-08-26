@@ -52,6 +52,24 @@ const SERVICE_DESK_TASKS: ServiceDeskTask[] = [
     ['06', 'UPT'], ['07', 'Western Union'], ['08', 'Xezri'], ['09', 'Zolotaya korona'],
   ]),
   ...tasks('IT · RəqəmsalBanking', [['01', 'RəqəmsalBanking']]),
+  ...tasks('IT · İnnovasiyalar və Proqramlaşdırma', [
+    ['01', 'Yeni tətbiq / funksionallıq hazırlanması'],
+    ['02', 'API və inteqrasiya sorğusu'],
+    ['03', 'Daxili proqram təminatının təkmilləşdirilməsi'],
+    ['04', 'Veb və mobil servis dəyişikliyi'],
+    ['05', 'Məlumat bazası skripti / SQL icrası'],
+    ['06', 'Avtomatlaşdırma və bot inteqrasiyası'],
+    ['07', 'Proqram xətasının (Bug) aradan qaldırılması'],
+  ]),
+  ...tasks('IT · Şəbəkə İnzibatçılığı', [
+    ['01', 'Şəbəkə bağlantısı problemi'],
+    ['02', 'Firewall / Port açılması sorğusu'],
+    ['03', 'VPN və uzaqdan giriş sazlanması'],
+    ['04', 'Yeni IP təyini və VLAN ayrılması'],
+    ['05', 'Wi-Fi bağlantısı və sazlama'],
+    ['06', 'Switch / Router konfiqurasiyası'],
+    ['07', 'Şəbəkə marşrutlaşdırma və monitorinq'],
+  ]),
 ];
 
 const checksum = (value: unknown) =>

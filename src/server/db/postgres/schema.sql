@@ -399,6 +399,7 @@ CREATE TABLE IF NOT EXISTS audit_events (
     actor_role VARCHAR(64),
     ip_address VARCHAR(64),
     user_agent TEXT,
+    correlation_id VARCHAR(128),
     entity_type VARCHAR(64) NOT NULL,
     entity_id VARCHAR(64) NOT NULL,
     before_state JSONB,
@@ -407,9 +408,31 @@ CREATE TABLE IF NOT EXISTS audit_events (
     timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Existing installations predate correlation_id; add it before creating its
+-- index so the schema remains an in-place migration rather than a fresh-db
+-- only definition.
+ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS correlation_id VARCHAR(128);
+
 CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_events(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_events(actor_id);
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_events(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_correlation ON audit_events(correlation_id) WHERE correlation_id IS NOT NULL;
+
+-- Audit evidence is append-only. Operational roles can add evidence but may
+-- not rewrite or delete an existing event; retention is handled outside the
+-- application by the bank-approved archive policy.
+CREATE OR REPLACE FUNCTION prevent_audit_event_mutation()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION 'audit_events is append-only; % is not permitted', TG_OP
+        USING ERRCODE = '55000';
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS audit_events_append_only ON audit_events;
+CREATE TRIGGER audit_events_append_only
+    BEFORE UPDATE OR DELETE ON audit_events
+    FOR EACH ROW EXECUTE FUNCTION prevent_audit_event_mutation();
 
 -- ----------------------------------------------------------------------------
 -- 8b. Transactional Outbox and Worker Idempotency
@@ -1248,28 +1271,29 @@ CREATE INDEX IF NOT EXISTS idx_ticket_categories_active_sort
     ON ticket_categories(is_active, sort_order, code);
 
 INSERT INTO ticket_categories(code, display_name, description, sort_order) VALUES
-    ('GENERAL_REQUEST', 'General Request', 'General business request', 10),
-    ('GENERAL_TASK', 'General Task', 'General operational task', 20),
-    ('IT_SUPPORT', 'IT Support', 'End-user technology support', 30),
-    ('ACCESS_REQUEST', 'Access Request', 'System or facility access request', 40),
-    ('HARDWARE_SOFTWARE', 'Hardware Software', 'Hardware or software service request', 50),
-    ('NETWORK_INFRASTRUCTURE', 'Network Infrastructure', 'Network and infrastructure request', 60),
-    ('CHANGE_REQUEST', 'Change Request', 'Controlled change request', 70),
-    ('INCIDENT_MANAGEMENT', 'Incident Management', 'Operational incident handling', 80),
-    ('PROJECT_DELIVERY', 'Project Delivery', 'Project delivery work item', 90),
-    ('FINANCE_PROCUREMENT', 'Finance Procurement', 'Finance or procurement request', 100),
-    ('HR_OPERATIONS', 'HR Operations', 'Human resources operations request', 110),
-    ('COMPLIANCE_LEGAL', 'Compliance Legal', 'Compliance or legal request', 120),
-    ('BUSINESS_OPERATIONS', 'Business Operations', 'Business operations request', 130),
-    ('SECURITY_REVIEW', 'Security Review', 'Information-security review', 140),
-    ('VULNERABILITY', 'Vulnerability', 'Vulnerability management item', 150),
-    ('INCIDENT', 'Incident', 'Security incident', 160),
-    ('SECURITY_EXCEPTION', 'Security Exception', 'Security exception request', 170),
-    ('RISK_ACCEPTANCE', 'Risk Acceptance', 'Risk acceptance request', 180),
-    ('AUDIT_FINDING', 'Audit Finding', 'Audit finding remediation', 190),
-    ('IAM_REQUEST', 'IAM Request', 'Identity and access management request', 200),
-    ('DLP_ALERT', 'DLP Alert', 'Data loss prevention alert', 210),
-    ('THIRD_PARTY_ASSESSMENT', 'Third Party Assessment', 'Third-party assessment request', 220)
+    ('GENERAL_REQUEST', 'General Request', 'Ümumi biznes müraciəti', 10),
+    ('GENERAL_TASK', 'General Task', 'Ümumi əməliyyat tapşırığı', 20),
+    ('IT_SUPPORT', 'Texniki Dəstək (IT Help Desk)', 'Son istifadəçi texniki dəstəyi və iş yeri xidmətləri', 30),
+    ('ACCESS_REQUEST', 'Access Request', 'Sistem və ya resurslara giriş hüququ sorğusu', 40),
+    ('HARDWARE_SOFTWARE', 'Hardware & Software', 'Avadanlıq və proqram təminatı quraşdırılması', 50),
+    ('NETWORK_INFRASTRUCTURE', 'Şəbəkə və İnfrastruktur', 'Şəbəkə bağlantısı, Firewall, VPN və infrastruktur sorğuları', 60),
+    ('INNOVATION_PROGRAMMING', 'İnnovasiyalar və Proqramlaşdırma', 'Tətbiqlərin hazırlanması, inteqrasiyası və proqram təminatının inkişafı', 65),
+    ('CHANGE_REQUEST', 'Change Request', 'Dəyişikliklərin idarə edilməsi sorğusu', 70),
+    ('INCIDENT_MANAGEMENT', 'Incident Management', 'Əməliyyat insidentlərinin həlli', 80),
+    ('PROJECT_DELIVERY', 'Project Delivery', 'Layihə icrası və təhvil tapşırığı', 90),
+    ('FINANCE_PROCUREMENT', 'Finance Procurement', 'Maliyyə və satınalma sorğusu', 100),
+    ('HR_OPERATIONS', 'HR Operations', 'İnsan resursları və kadr əməliyyatları', 110),
+    ('COMPLIANCE_LEGAL', 'Compliance Legal', 'Komplayens və hüquqi rəy sorğusu', 120),
+    ('BUSINESS_OPERATIONS', 'Business Operations', 'Biznes əməliyyatları müraciəti', 130),
+    ('SECURITY_REVIEW', 'Security Review', 'İnformasiya təhlükəsizliyi baxışı və qiymətləndirməsi', 140),
+    ('VULNERABILITY', 'Vulnerability', 'Təhlükəsizlik zəifliklərinin aradan qaldırılması', 150),
+    ('INCIDENT', 'Incident', 'Kibertəhlükəsizlik insidenti', 160),
+    ('SECURITY_EXCEPTION', 'Security Exception', 'Təhlükəsizlik istisnası sorğusu', 170),
+    ('RISK_ACCEPTANCE', 'Risk Acceptance', 'Risk qəbulu sorğusu', 180),
+    ('AUDIT_FINDING', 'Audit Finding', 'Audit nöqsanlarının aradan qaldırılması', 190),
+    ('IAM_REQUEST', 'IAM Request', 'Kimlik və giriş idarəetməsi sorğusu', 200),
+    ('DLP_ALERT', 'DLP Alert', 'Məlumat sızmasının qarşısının alınması siqnalı', 210),
+    ('THIRD_PARTY_ASSESSMENT', 'Third Party Assessment', 'Üçüncü tərəf vendor təhlükəsizlik qiymətləndirməsi', 220)
 ON CONFLICT (code) DO UPDATE SET
     display_name = EXCLUDED.display_name,
     description = EXCLUDED.description,

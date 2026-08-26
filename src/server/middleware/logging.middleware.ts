@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { logger } from '../services/logger.service.js';
 import { MetricsService } from '../services/metrics.service.js';
+import { finishHttpSpan, runWithActiveSpan, startHttpSpan, traceIdFor } from '../services/telemetry.service.js';
 
 export interface TraceableRequest extends Request {
   requestId?: string;
@@ -11,11 +12,18 @@ export interface TraceableRequest extends Request {
 export function requestTracingMiddleware(req: TraceableRequest, res: Response, next: NextFunction): void {
   const incomingId = req.header('x-request-id') || req.header('x-correlation-id');
   const requestId = incomingId || `req-${crypto.randomUUID()}`;
+  const span = startHttpSpan(`HTTP ${req.method}`, req.headers, {
+    'http.request.method': req.method,
+    'url.path': req.path,
+    'aegissec.request_id': requestId,
+  });
 
   req.requestId = requestId;
   req.startTime = Date.now();
   res.setHeader('X-Request-Id', requestId);
   res.setHeader('X-Correlation-Id', requestId);
+  const traceId = traceIdFor(span);
+  if (traceId) res.setHeader('X-Trace-Id', traceId);
 
   MetricsService.incrementRequests();
 
@@ -30,6 +38,7 @@ export function requestTracingMiddleware(req: TraceableRequest, res: Response, n
 
     const logData = {
       requestId,
+      traceId: finishHttpSpan(span, statusCode),
       method: req.method,
       url: req.originalUrl || req.url,
       statusCode,
@@ -47,5 +56,5 @@ export function requestTracingMiddleware(req: TraceableRequest, res: Response, n
     }
   });
 
-  next();
+  runWithActiveSpan(span, next);
 }
