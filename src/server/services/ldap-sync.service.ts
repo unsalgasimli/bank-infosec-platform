@@ -1,13 +1,22 @@
 import { StrictReadOnlyLdapClient } from '../utils/readonly-ldap-client.js';
-import { BankUser, BankRole, SecurityClearanceLevel, BankDepartment, BankDepartmentSection } from '../../shared/types/auth.js';
+import {
+  BankUser,
+  BankRole,
+  SecurityClearanceLevel,
+  BankDepartment,
+  BankDepartmentSection,
+  ApprovalChainNode,
+  UserApprovalHierarchy,
+} from '../../shared/types/auth.js';
 import { db } from '../db/database.js';
 import { config } from '../config/index.js';
 import { logger } from './logger.service.js';
 import { AuditService } from './audit.service.js';
 import { resolveSecret } from '../utils/crypto.js';
-import type { LDAPRawEntry, DepartmentMappingResult } from './ldap-directory.data.js';
+import type { LDAPRawEntry, DepartmentMappingResult, ParsedHierarchy } from './ldap-directory.data.js';
 import {
   mapDepartment,
+  parseJobTitleAndHierarchy,
   isAccountDisabled,
   isGenuineEmployeeOrIntern,
   parseMemberOfGroups,
@@ -18,11 +27,14 @@ import {
   isServiceAccount,
   classifyDirectoryAccount,
   hasHumanDirectoryName,
+  isExcludedPrivilegedAccount,
+  getBaseUsername,
+  calculateCanonicalScore,
   getDepartmentColor,
   getDepartmentIcon,
 } from './ldap-directory.data.js';
 
-export type { LDAPRawEntry, DepartmentMappingResult };
+export type { LDAPRawEntry, DepartmentMappingResult, ParsedHierarchy, UserApprovalHierarchy, ApprovalChainNode };
 
 export const LDAP_HUMAN_ACCOUNT_FILTER = [
   '(&(objectCategory=person)(objectClass=user)',
@@ -32,6 +44,10 @@ export const LDAP_HUMAN_ACCOUNT_FILTER = [
   '(!(sAMAccountName=*.si))',
   '(!(sAMAccountName=*.sec))',
   '(!(sAMAccountName=*.abs))',
+  '(!(sAMAccountName=*.sh))',
+  '(!(sAMAccountName=*.adm))',
+  '(!(sAMAccountName=*.rdp))',
+  '(!(sAMAccountName=*.admin))',
   ')',
 ].join('');
 
@@ -312,7 +328,8 @@ export class LDAPSyncService {
   }
 
   /**
-   * Scans and removes duplicate user entries across database and fixes all relational keys
+   * Scans and removes duplicate user entries across database and fixes all relational keys.
+   * Leverages canonical scoring and Azerbaijan-name phonetic/identity keys.
    */
   public static deduplicateUsers(options: { persist?: boolean } = {}): { removedCount: number; duplicateUsernames: string[] } {
     const users = db.data.users || [];
@@ -321,21 +338,12 @@ export class LDAPSyncService {
     const uniqueUsers: BankUser[] = [];
     const idRemap = new Map<string, string>(); // oldId -> canonicalId
 
-    const canonicalScore = (user: BankUser): number =>
-      (user.directorySource === 'ACTIVE_DIRECTORY' ? 16 : 0) +
-      (user.isActive ? 8 : 0) +
-      (user.organizationEligible !== false ? 4 : 0) +
-      (user.sAMAccountName ? 2 : 0) +
-      (user.distinguishedName ? 1 : 0);
-
     // Current AD identities win over stale local variants irrespective of
     // storage order, e.g. a legacy `firstname` versus `f.surname` account.
-    const orderedUsers = [...users].sort((left, right) => canonicalScore(right) - canonicalScore(left));
+    const orderedUsers = [...users].sort((left, right) => calculateCanonicalScore(right) - calculateCanonicalScore(left));
 
     for (const u of orderedUsers) {
       // Canonicalize persisted identity columns before uniqueness checks.
-      // This keeps username/sAMAccountName/email stable across AD casing and
-      // Unicode/whitespace variants.
       if (u.username) u.username = normalizeDirectoryKey(u.username);
       if (u.sAMAccountName) u.sAMAccountName = normalizeDirectoryKey(u.sAMAccountName);
       if (u.email) u.email = normalizeDirectoryKey(u.email);
@@ -347,8 +355,15 @@ export class LDAPSyncService {
             .filter(Boolean)
         )
       );
+
+      // Base username key for secondary suffix accounts (.si, .sec, .abs, .adm)
+      const baseKey = getBaseUsername(u.username || u.sAMAccountName || '');
+      if (baseKey && baseKey !== u.username) {
+        identityKeys.push(`base:${baseKey}`);
+      }
+
       // A verified full name is a stable reconciliation key across legacy
-      // username formats. Technical identities never receive this key.
+      // username formats (e.g. `unsal` vs `u.gasimli`). Technical identities never receive this key.
       const nameKey = hasHumanDirectoryName(u)
         ? normalizeDirectoryText(u.fullName || '').split(/[\s,]+/).map(normalizeDirectoryKey).filter(Boolean).join(' ')
         : '';
@@ -361,11 +376,18 @@ export class LDAPSyncService {
       }
 
       const canonical = identityKeys.map((key) => seenByIdentityKey.get(key)).find(Boolean);
-      if (canonical) {
+      if (canonical && canonical.id !== u.id) {
         duplicateUsernames.push(lookupKey);
         idRemap.set(u.id, canonical.id);
 
-        // Merge roles and permissions
+        // If u is a secondary suffix account, mark link to canonical
+        if (isExcludedPrivilegedAccount(u.username || '')) {
+          u.primaryUsername = canonical.username;
+          u.organizationEligible = false;
+          u.isActive = false;
+        }
+
+        // Merge roles and permissions into canonical
         canonical.roles = Array.from(new Set([...(canonical.roles || []), ...(u.roles || [])]));
         canonical.distributionGroups = Array.from(
           new Set([...(canonical.distributionGroups || []), ...(u.distributionGroups || [])])
@@ -637,6 +659,7 @@ export class LDAPSyncService {
       deptRecord.directorySource = 'ACTIVE_DIRECTORY';
       deptRecord.isActive = true;
 
+      // Auto-register or refresh Section (Şöbə) in db.data.departmentSections
       let sectionRecord: BankDepartmentSection | undefined;
       if (deptMapping.sectionId && deptMapping.sectionName && deptMapping.sectionCode) {
         syncedSectionIds.add(deptMapping.sectionId);
@@ -647,6 +670,8 @@ export class LDAPSyncService {
             departmentId: targetDeptId,
             name: deptMapping.sectionName,
             code: deptMapping.sectionCode,
+            sectionType: 'SOBE',
+            hasOwnManager: true,
             isActive: true,
             memberCount: 0,
             createdAt: new Date().toISOString(),
@@ -658,9 +683,47 @@ export class LDAPSyncService {
           sectionRecord.departmentId = targetDeptId;
           sectionRecord.name = deptMapping.sectionName;
           sectionRecord.code = deptMapping.sectionCode;
+          sectionRecord.sectionType = 'SOBE';
+          sectionRecord.hasOwnManager = true;
           sectionRecord.isActive = true;
           sectionRecord.directorySource = 'ACTIVE_DIRECTORY';
           sectionRecord.updatedAt = new Date().toISOString();
+        }
+      }
+
+      // Auto-register or refresh Sub-unit (Bölmə / Sektor) in db.data.departmentSections
+      let unitRecord: BankDepartmentSection | undefined;
+      if (deptMapping.unitId && deptMapping.unitName && deptMapping.unitCode) {
+        syncedSectionIds.add(deptMapping.unitId);
+        unitRecord = (db.data.departmentSections || []).find((section) => section.id === deptMapping.unitId);
+        if (!unitRecord) {
+          unitRecord = {
+            id: deptMapping.unitId,
+            departmentId: targetDeptId,
+            name: deptMapping.unitName,
+            code: deptMapping.unitCode,
+            sectionType: 'BOLME',
+            parentSectionId: deptMapping.sectionId,
+            hasOwnManager: false, // Bölmə has NO separate manager
+            managerId: undefined,
+            isActive: true,
+            memberCount: 0,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            directorySource: 'ACTIVE_DIRECTORY',
+          };
+          db.data.departmentSections.push(unitRecord);
+        } else {
+          unitRecord.departmentId = targetDeptId;
+          unitRecord.name = deptMapping.unitName;
+          unitRecord.code = deptMapping.unitCode;
+          unitRecord.sectionType = 'BOLME';
+          unitRecord.parentSectionId = deptMapping.sectionId;
+          unitRecord.hasOwnManager = false;
+          unitRecord.managerId = undefined;
+          unitRecord.isActive = true;
+          unitRecord.directorySource = 'ACTIVE_DIRECTORY';
+          unitRecord.updatedAt = new Date().toISOString();
         }
       }
 
@@ -689,8 +752,12 @@ export class LDAPSyncService {
       const userClearance = deptMapping.securityClearance;
       const userDeptId = targetDeptId;
       const userSectionId = sectionRecord?.id;
+      const userSectionName = sectionRecord?.name;
+      const userUnitId = unitRecord?.id;
+      const userUnitName = unitRecord?.name;
       const userDivId = deptMapping.divisionId;
       const userTeams = deptMapping.teamIds;
+      const userPositionTitle = deptMapping.positionTitle || title;
 
       if (!existingUser) {
         // === ADDED NEW USER ===
@@ -701,9 +768,12 @@ export class LDAPSyncService {
           sAMAccountName,
           email,
           fullName: displayName,
-          title,
+          title: userPositionTitle,
           departmentId: userDeptId,
           sectionId: userSectionId,
+          sectionName: userSectionName,
+          unitId: userUnitId,
+          unitName: userUnitName,
           divisionId: userDivId,
           teamIds: userTeams,
           roles: userRoles,
@@ -746,9 +816,9 @@ export class LDAPSyncService {
           existingUser.email = email;
         }
 
-        if (existingUser.title !== title) {
-          changes.push(`title: ${existingUser.title} -> ${title}`);
-          existingUser.title = title;
+        if (existingUser.title !== userPositionTitle) {
+          changes.push(`title: ${existingUser.title} -> ${userPositionTitle}`);
+          existingUser.title = userPositionTitle;
         }
 
         if (existingUser.departmentId !== userDeptId) {
@@ -760,6 +830,13 @@ export class LDAPSyncService {
         if (existingUser.sectionId !== userSectionId) {
           changes.push(`sectionId: ${existingUser.sectionId || '(none)'} -> ${userSectionId || '(none)'}`);
           existingUser.sectionId = userSectionId;
+          existingUser.sectionName = userSectionName;
+        }
+
+        if (existingUser.unitId !== userUnitId) {
+          changes.push(`unitId: ${existingUser.unitId || '(none)'} -> ${userUnitId || '(none)'}`);
+          existingUser.unitId = userUnitId;
+          existingUser.unitName = userUnitName;
         }
 
         // Platform entitlement is deliberately retained from the server-side
@@ -834,20 +911,24 @@ export class LDAPSyncService {
       employee.managerId = manager && this.isOrganizationEligible(manager) ? manager.id : undefined;
     }
 
-    // Derive department and section leadership from AD manager relations
-    // first, then explicit Head/Müdir titles. This mirrors AD Properties.
+    // Derive department and section leadership from AD manager relations and titles.
     for (const dept of db.data.departments || []) {
       const deptMembers = db.data.users.filter((u) => u.departmentId === dept.id && u.isActive && this.isOrganizationEligible(u));
       const directManager = deptMembers.find((candidate) => deptMembers.some((member) => member.managerId === candidate.id));
-      const headUser = deptMembers.find(
-        (u) =>
-          u.roles.includes('INFOSEC_MANAGER') ||
-          u.roles.includes('DEPARTMENT_MANAGER') ||
-          u.roles.includes('CISO') ||
-          /müdir|mudir|direktor|director|rəis|reis|sədr|head|manager/i.test(u.title || '')
-      );
+      const headUser =
+        deptMembers.find(
+          (u) =>
+            u.roles.includes('CISO') ||
+            u.roles.includes('INFOSEC_MANAGER') ||
+            u.roles.includes('DEPARTMENT_MANAGER') ||
+            /departament müdiri|departament mudiri|direktor|director|ciso/i.test(u.title || '')
+        ) || deptMembers.find((u) => /müdir|mudir|direktor|director|rəis|reis|sədr|head|manager/i.test(u.title || ''));
       const resolvedDepartmentManager = headUser || directManager;
-      if (dept.directorySource === 'ACTIVE_DIRECTORY') dept.managerId = resolvedDepartmentManager?.id;
+      if (dept.directorySource === 'ACTIVE_DIRECTORY') {
+        dept.managerId = resolvedDepartmentManager?.id;
+        dept.managerName = resolvedDepartmentManager?.fullName;
+        dept.managerEmail = resolvedDepartmentManager?.email;
+      }
       if (resolvedDepartmentManager) {
         dept.adminUserIds = Array.from(new Set([...(dept.adminUserIds || []), resolvedDepartmentManager.id]));
       }
@@ -858,10 +939,28 @@ export class LDAPSyncService {
         section.isActive = false;
         section.updatedAt = new Date().toISOString();
       }
+
+      // Rule: Bölmə has NO separate manager. Its approval routes to parent Şöbə manager.
+      if (section.sectionType === 'BOLME' || section.hasOwnManager === false) {
+        section.managerId = undefined;
+        section.managerName = undefined;
+        section.managerEmail = undefined;
+        const unitMembers = db.data.users.filter((user) => user.unitId === section.id && user.isActive && this.isOrganizationEligible(user));
+        section.memberCount = unitMembers.length;
+        continue;
+      }
+
+      // Şöbə (Section) Leadership Resolution
       const sectionMembers = db.data.users.filter((user) => user.sectionId === section.id && user.isActive && this.isOrganizationEligible(user));
       const directManager = sectionMembers.find((candidate) => sectionMembers.some((member) => member.managerId === candidate.id));
-      const titleManager = sectionMembers.find((candidate) => /müdir|mudir|direktor|director|rəis|reis|sədr|head|manager/i.test(candidate.title || ''));
-      section.managerId = titleManager?.id || directManager?.id;
+      const titleManager = sectionMembers.find((candidate) =>
+        /şöbə müdiri|sobe mudiri|şöbə rəisi|sobe reisi|head of section|section head/i.test(candidate.title || '') ||
+        (/müdir|mudir|direktor|director|rəis|reis|sədr|head|manager/i.test(candidate.title || '') && !/departament/i.test(candidate.title || ''))
+      );
+      const resolvedSectionManager = titleManager || directManager;
+      section.managerId = resolvedSectionManager?.id;
+      section.managerName = resolvedSectionManager?.fullName;
+      section.managerEmail = resolvedSectionManager?.email;
       section.memberCount = sectionMembers.length;
     }
 
@@ -928,6 +1027,12 @@ export class LDAPSyncService {
     // 9. Commit the complete directory projection atomically.
     });
 
+    // The compatibility transaction queues PostgreSQL persistence because the
+    // HTTP runtime flushes that queue at its request boundary. This standalone
+    // sync command exits immediately after returning the report, so explicitly
+    // await the queued projection write before allowing the process to exit.
+    await db.persistAsync();
+
     report.executionDurationMs = Date.now() - startTime;
     this.lastSyncReport = report;
 
@@ -967,4 +1072,112 @@ export class LDAPSyncService {
 
     return report;
   }
+
+  /**
+   * Resolves the 3-tier Approval and Escalation Hierarchy for any employee:
+   * Level 1: Direct Manager (AD manager)
+   * Level 2: Section Head (Şöbə Müdiri) - If employee is in a Bölmə, routes to parent Şöbə Müdiri.
+   * Level 3: Department Head (Departament Müdiri / CISO)
+   */
+  public static getApprovalChain(userId: string): UserApprovalHierarchy | null {
+    const normKey = normalizeDirectoryKey(userId);
+    const user = (db.data.users || []).find(
+      (u) => u.id === userId || normalizeDirectoryKey(u.username) === normKey || normalizeDirectoryKey(u.sAMAccountName) === normKey
+    );
+    if (!user) return null;
+
+    const department = (db.data.departments || []).find((d) => d.id === user.departmentId);
+    
+    // Find Section (Şöbə) and Unit (Bölmə)
+    const section = user.sectionId ? (db.data.departmentSections || []).find((s) => s.id === user.sectionId) : undefined;
+    const unit = user.unitId ? (db.data.departmentSections || []).find((u) => u.id === user.unitId) : undefined;
+
+    // Resolve Manager objects
+    const directManager = user.managerId ? (db.data.users || []).find((u) => u.id === user.managerId) : undefined;
+    
+    // For Section Manager: if user is in a Bölmə, it routes to parent Section's manager!
+    let sectionManagerUser: BankUser | undefined;
+    if (section?.managerId) {
+      sectionManagerUser = (db.data.users || []).find((u) => u.id === section.managerId);
+    } else if (unit?.parentSectionId) {
+      const parentSec = (db.data.departmentSections || []).find((s) => s.id === unit.parentSectionId);
+      if (parentSec?.managerId) {
+        sectionManagerUser = (db.data.users || []).find((u) => u.id === parentSec.managerId);
+      }
+    }
+
+    const deptManagerUser = department?.managerId ? (db.data.users || []).find((u) => u.id === department.managerId) : undefined;
+
+    const chain: ApprovalChainNode[] = [];
+    const seenUserIds = new Set<string>([user.id]);
+
+    // Level 1: Direct Manager (if exists, active, and not self)
+    if (directManager && !seenUserIds.has(directManager.id) && directManager.isActive) {
+      seenUserIds.add(directManager.id);
+      chain.push({
+        level: 'DIRECT_MANAGER',
+        userId: directManager.id,
+        userName: directManager.username,
+        fullName: directManager.fullName,
+        title: directManager.title,
+        email: directManager.email,
+        entityType: 'DIRECT_REPORT',
+        entityName: directManager.fullName,
+      });
+    }
+
+    // Level 2: Section Head (Şöbə Müdiri) (if exists, active, and not self)
+    if (sectionManagerUser && !seenUserIds.has(sectionManagerUser.id) && sectionManagerUser.isActive) {
+      seenUserIds.add(sectionManagerUser.id);
+      chain.push({
+        level: 'SECTION_MANAGER',
+        userId: sectionManagerUser.id,
+        userName: sectionManagerUser.username,
+        fullName: sectionManagerUser.fullName,
+        title: sectionManagerUser.title,
+        email: sectionManagerUser.email,
+        entityType: 'SECTION',
+        entityName: section?.name || 'Şöbə Rəhbərliyi',
+      });
+    }
+
+    // Level 3: Department Head / CISO (if exists, active, and not self)
+    if (deptManagerUser && !seenUserIds.has(deptManagerUser.id) && deptManagerUser.isActive) {
+      seenUserIds.add(deptManagerUser.id);
+      chain.push({
+        level: deptManagerUser.roles.includes('CISO') ? 'CISO' : 'DEPARTMENT_MANAGER',
+        userId: deptManagerUser.id,
+        userName: deptManagerUser.username,
+        fullName: deptManagerUser.fullName,
+        title: deptManagerUser.title,
+        email: deptManagerUser.email,
+        entityType: 'DEPARTMENT',
+        entityName: department?.name || 'Departament Rəhbərliyi',
+      });
+    }
+
+    return {
+      userId: user.id,
+      username: user.username,
+      fullName: user.fullName,
+      title: user.title,
+      departmentId: user.departmentId,
+      departmentName: department?.name || 'Ümumi Bank Xidmətləri',
+      departmentManager: deptManagerUser
+        ? { id: deptManagerUser.id, name: deptManagerUser.fullName, email: deptManagerUser.email, title: deptManagerUser.title }
+        : undefined,
+      sectionId: section?.id,
+      sectionName: section?.name,
+      sectionManager: sectionManagerUser
+        ? { id: sectionManagerUser.id, name: sectionManagerUser.fullName, email: sectionManagerUser.email, title: sectionManagerUser.title }
+        : undefined,
+      unitId: unit?.id,
+      unitName: unit?.name,
+      directManager: directManager
+        ? { id: directManager.id, name: directManager.fullName, email: directManager.email, title: directManager.title }
+        : undefined,
+      approvalChain: chain,
+    };
+  }
 }
+

@@ -58,6 +58,7 @@ import type {
 import { createEmptyDatabaseSchema } from './seed.js';
 import { config } from '../config/index.js';
 import { PostgresProjectionRepository } from './postgres/projection-repository.js';
+import { OutboxService } from '../services/outbox.service.js';
 
 export interface DatabaseSchema {
   divisions: BankDivision[];
@@ -161,6 +162,7 @@ export class Database {
 
   public async initialize(): Promise<void> {
     if (config.DB_TYPE !== 'postgres') return;
+    await PostgresProjectionRepository.protectLegacyIdentityData();
     this.data = await PostgresProjectionRepository.hydrate();
     this.postgresQueuedSnapshotChecksum = this.snapshotChecksum(this.data);
   }
@@ -174,7 +176,8 @@ export class Database {
       if (isUnitTestProcess()) return;
       const serialized = JSON.stringify(this.data);
       const checksum = crypto.createHash('sha256').update(serialized).digest('hex');
-      if (checksum === this.postgresQueuedSnapshotChecksum) return;
+      const pendingOutboxEvents = OutboxService.pending();
+      if (checksum === this.postgresQueuedSnapshotChecksum && pendingOutboxEvents.length === 0) return;
       this.postgresQueuedSnapshotChecksum = checksum;
       const snapshot = JSON.parse(serialized) as DatabaseSchema;
       // Keep writes ordered. Every caller still receives the synchronous
@@ -182,9 +185,12 @@ export class Database {
       // PostgreSQL transaction before returning a response.
       this.postgresWriteQueue = this.postgresWriteQueue
         .catch(() => undefined)
-        .then(() => PostgresProjectionRepository.persist(snapshot))
+        .then(() => PostgresProjectionRepository.persist(snapshot, pendingOutboxEvents))
         .then(
-          () => { this.postgresLastWriteError = null; },
+          () => {
+            OutboxService.markCommitted(pendingOutboxEvents.map((event) => event.id));
+            this.postgresLastWriteError = null;
+          },
           (error: unknown) => {
             this.postgresLastWriteError = error instanceof Error ? error : new Error(String(error));
             this.postgresQueuedSnapshotChecksum = null;
@@ -198,12 +204,14 @@ export class Database {
 
   public transaction<T>(operation: () => T): T {
     const snapshot = JSON.parse(JSON.stringify(this.data)) as DatabaseSchema;
+    const outboxCheckpoint = OutboxService.checkpoint();
     try {
       const result = operation();
       this.persist();
       return result;
     } catch (error) {
       this.data = snapshot;
+      OutboxService.rollbackTo(outboxCheckpoint);
       throw error;
     }
   }

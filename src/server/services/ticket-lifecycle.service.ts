@@ -466,7 +466,7 @@ export class TicketLifecycleService {
     return output;
   }
 
-  public static initializeSlaMetrics(ticket: Ticket): TicketSLAInstance[] {
+  public static initializeSlaMetrics(ticket: Ticket, persist = true): TicketSLAInstance[] {
     const existing = db.data.ticketSlaInstances.filter((metric) => metric.ticketId === ticket.id);
     if (existing.length > 0) return TicketLifecycleService.refreshSlaMetrics(ticket);
 
@@ -500,7 +500,7 @@ export class TicketLifecycleService {
       accruedPausedMinutes: 0,
     }));
     db.data.ticketSlaInstances.push(...created);
-    db.persist();
+    if (persist) db.persist();
     return TicketLifecycleService.refreshSlaMetrics(ticket);
   }
 
@@ -957,11 +957,15 @@ export class TicketLifecycleService {
     return satisfaction;
   }
 
-  public static analyze(ticket: Ticket): TicketAIRecommendation {
-    return TicketLifecycleService.analyzeTicket(ticket);
+  public static analyze(ticket: Ticket, outboxEventId?: string, persist = true): TicketAIRecommendation {
+    return TicketLifecycleService.analyzeTicket(ticket, outboxEventId, persist);
   }
 
-  public static analyzeTicket(ticket: Ticket): TicketAIRecommendation {
+  public static analyzeTicket(ticket: Ticket, outboxEventId?: string, persist = true): TicketAIRecommendation {
+    if (outboxEventId) {
+      const existing = db.data.ticketAiRecommendations.find((item) => item.ticketId === ticket.id && item.outboxEventId === outboxEventId);
+      if (existing) return existing;
+    }
     const text = `${ticket.title} ${ticket.description}`.toLowerCase();
     const tags = new Set<string>(ticket.tags || []);
     const evidence: string[] = [];
@@ -1025,9 +1029,10 @@ export class TicketLifecycleService {
       engineVersion: 'aegis-deterministic-advisor-v1',
       requiresHumanConfirmation: true,
       createdAt: new Date().toISOString(),
+      outboxEventId,
     };
     db.data.ticketAiRecommendations.push(recommendation);
-    db.persist();
+    if (persist) db.persist();
     return recommendation;
   }
 

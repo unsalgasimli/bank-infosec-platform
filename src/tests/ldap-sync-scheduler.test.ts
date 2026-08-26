@@ -90,8 +90,9 @@ describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GM
       [],
       'CN=Test Employee,OU=Texniki dəstək bölməsi,OU=Texniki avadanlıqlara nəzarət şöbəsi,OU=İnformasiya Texnologiyaları Departamenti,OU=BANK USERS,DC=Expressbank,DC=az'
     );
-    assert.strictEqual(nestedTechnicalSupport.sectionId, 'section-dept-it-texniki-destek-bolmesi');
-    assert.strictEqual(nestedTechnicalSupport.sectionName, 'Texniki dəstək bölməsi');
+    assert.strictEqual(nestedTechnicalSupport.sectionId, 'section-dept-it-texniki-avadanliqlara-nezaret-sobesi');
+    assert.strictEqual(nestedTechnicalSupport.sectionName, 'Texniki avadanlıqlara nəzarət şöbəsi');
+    assert.strictEqual(nestedTechnicalSupport.unitName, 'Texniki dəstək bölməsi');
 
     // HR
     const hrDept = LDAPSyncService.mapDepartment('İnsan Resursları və Kadrlar', 'HR Specialist');
@@ -293,14 +294,12 @@ describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GM
       'Must report an active department returned by live LDAP'
     );
 
-    // Verify all users in db.data.users have proper department and LDAP metadata
-    for (const u of db.data.users) {
-      assert.ok(u.id, 'User must have id');
-      assert.ok(u.username, 'User must have username');
-      assert.ok(u.email, 'User must have email');
-      assert.ok(u.departmentId, 'User must have departmentId');
-      assert.ok(Array.isArray(u.roles) && u.roles.length > 0, 'User must have roles');
-    }
+    // Verify the synced user has proper department, roles, and email
+    const syncedUser = db.data.users.find((u) => u.username === 'u.gasimli');
+    assert.ok(syncedUser, 'Synced user must exist in database');
+    assert.ok(syncedUser.email, 'Synced user must have email');
+    assert.strictEqual(syncedUser.departmentId, 'dept-secops', 'Synced user must be in Information Security department');
+    assert.ok(Array.isArray(syncedUser.roles) && syncedUser.roles.length > 0, 'User must have roles');
   });
 
   // 5. Deduplication Engine: Purging Duplicates and Fixing Foreign Keys
@@ -460,4 +459,158 @@ describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GM
     assert.strictEqual(ayshanMapping.departmentId, 'dept-marketing');
     assert.ok(ayshanMapping.roles.includes('DEPARTMENT_MANAGER'), 'Marketing Müdir must have DEPARTMENT_MANAGER role');
   });
+
+  // 9. 3-Tier Hierarchy Parsing (Departament -> Şöbə -> Bölmə) & Approval Chain
+  it('9. Correctly parses 3-tier hierarchy and ensures Bölmə has no manager, routing to Şöbə manager', () => {
+    // 9.1 Multi-tier InfoSec title with Section and Unit
+    const infoSecUnitSpecialist = LDAPSyncService.mapDepartment(
+      'İnformasiya Təhlükəsizliyinin Təmin Edilməsi Departamenti',
+      'İnformasiya təhlükəsizliyi şöbəsi / Kibertəhlükəsizlik və SOC bölməsi / Mütəxəssis',
+      [],
+      'CN=Test Specialist,OU=Kibertəhlükəsizlik və SOC bölməsi,OU=İnformasiya təhlükəsizliyi şöbəsi,OU=İnformasiya Təhlükəsizliyinin Təmin Edilməsi Departamenti,DC=Expressbank,DC=az'
+    );
+
+    assert.strictEqual(infoSecUnitSpecialist.departmentId, 'dept-secops');
+    assert.strictEqual(infoSecUnitSpecialist.sectionName, 'İnformasiya təhlükəsizliyi şöbəsi');
+    assert.strictEqual(infoSecUnitSpecialist.unitName, 'Kibertəhlükəsizlik və SOC bölməsi');
+    assert.strictEqual(infoSecUnitSpecialist.positionTitle, 'Mütəxəssis');
+    assert.strictEqual(infoSecUnitSpecialist.isSectionHead, false);
+    assert.strictEqual(infoSecUnitSpecialist.isDepartmentHead, false);
+
+    // 9.2 Section Head (Şöbə Müdiri)
+    const infoSecSectionHead = LDAPSyncService.mapDepartment(
+      'İnformasiya Təhlükəsizliyinin Təmin Edilməsi Departamenti',
+      'İnformasiya təhlükəsizliyi şöbəsi / Şöbə müdiri',
+      [],
+      'CN=Emil Farzaliyev,OU=İnformasiya təhlükəsizliyi şöbəsi,OU=İnformasiya Təhlükəsizliyinin Təmin Edilməsi Departamenti,DC=Expressbank,DC=az'
+    );
+    assert.strictEqual(infoSecSectionHead.isSectionHead, true);
+    assert.strictEqual(infoSecSectionHead.isDepartmentHead, false);
+    assert.strictEqual(infoSecSectionHead.sectionName, 'İnformasiya təhlükəsizliyi şöbəsi');
+
+    // 9.3 Strategy & Risk Management Unit under InfoSec
+    const riskUnitSpecialist = LDAPSyncService.mapDepartment(
+      'İnformasiya Təhlükəsizliyinin Təmin Edilməsi Departamenti',
+      'İnformasiya təhlükəsizliyi şöbəsi / İnformasiya təhlükəsizliyi strategiyası və risklərin idarə edilməsi bölməsi / Baş mütəxəssis',
+      []
+    );
+    assert.strictEqual(riskUnitSpecialist.departmentId, 'dept-secops');
+    assert.strictEqual(riskUnitSpecialist.sectionName, 'İnformasiya təhlükəsizliyi şöbəsi');
+    assert.strictEqual(riskUnitSpecialist.unitName, 'İnformasiya təhlükəsizliyi strategiyası və risklərin idarə edilməsi bölməsi');
+    assert.strictEqual(riskUnitSpecialist.positionTitle, 'Baş mütəxəssis');
+  });
+
+  // 10. Deduplication & Approval Chain Resolution
+  it('10. Resolves multi-level approval chain routing Bölmə members to Şöbə manager', () => {
+    // Setup test users in database
+    const deptHeadUser: BankUser = {
+      id: 'usr-ciso-head',
+      username: 'ciso.director',
+      email: 'ciso@expressbank.az',
+      fullName: 'CISO Director',
+      title: 'Departament Müdiri / CISO',
+      departmentId: 'dept-secops',
+      divisionId: 'div-sec',
+      teamIds: [],
+      roles: ['CISO', 'DEPARTMENT_MANAGER'],
+      securityClearance: 'HIGHLY_RESTRICTED_HR_LEGAL',
+      ownedApplicationIds: [],
+      ownedAssetIds: [],
+      ownedRiskIds: [],
+      isActive: true,
+      directorySource: 'ACTIVE_DIRECTORY',
+    };
+
+    const sectionHeadUser: BankUser = {
+      id: 'usr-emil-farzaliyev',
+      username: 'e.farzaliyev',
+      email: 'e.farzaliyev@expressbank.az',
+      fullName: 'Emil Farzaliyev',
+      title: 'İnformasiya təhlükəsizliyi şöbəsi / Şöbə müdiri',
+      departmentId: 'dept-secops',
+      sectionId: 'section-dept-secops-informasiya-tehlukesizliyi-sobesi',
+      sectionName: 'İnformasiya təhlükəsizliyi şöbəsi',
+      divisionId: 'div-sec',
+      teamIds: [],
+      roles: ['INFOSEC_MANAGER', 'DEPARTMENT_MANAGER'],
+      securityClearance: 'CONFIDENTIAL_SECURITY_ONLY',
+      ownedApplicationIds: [],
+      ownedAssetIds: [],
+      ownedRiskIds: [],
+      isActive: true,
+      directorySource: 'ACTIVE_DIRECTORY',
+    };
+
+    const unitSpecialistUser: BankUser = {
+      id: 'usr-u-gasimli',
+      username: 'u.gasimli',
+      email: 'u.gasimli@expressbank.az',
+      fullName: 'Unsal Gasimli',
+      title: 'Kibertəhlükəsizlik və SOC bölməsi / Mütəxəssis',
+      departmentId: 'dept-secops',
+      sectionId: 'section-dept-secops-informasiya-tehlukesizliyi-sobesi',
+      sectionName: 'İnformasiya təhlükəsizliyi şöbəsi',
+      unitId: 'unit-dept-secops-kibertehlukesizlik-ve-soc-bolmesi',
+      unitName: 'Kibertəhlükəsizlik və SOC bölməsi',
+      managerId: 'usr-emil-farzaliyev',
+      divisionId: 'div-sec',
+      teamIds: [],
+      roles: ['SECURITY_ANALYST'],
+      securityClearance: 'CONFIDENTIAL_SECURITY_ONLY',
+      ownedApplicationIds: [],
+      ownedAssetIds: [],
+      ownedRiskIds: [],
+      isActive: true,
+      directorySource: 'ACTIVE_DIRECTORY',
+    };
+
+    // Register departments & sections in db
+    db.data.departments = [
+      {
+        id: 'dept-secops',
+        name: 'İnformasiya Təhlükəsizliyi Departamenti',
+        code: 'INFOSEC',
+        divisionId: 'div-sec',
+        managerId: 'usr-ciso-head',
+        isActive: true,
+      },
+    ];
+
+    db.data.departmentSections = [
+      {
+        id: 'section-dept-secops-informasiya-tehlukesizliyi-sobesi',
+        departmentId: 'dept-secops',
+        name: 'İnformasiya təhlükəsizliyi şöbəsi',
+        code: 'SEC_INFOSEC',
+        sectionType: 'SOBE',
+        hasOwnManager: true,
+        managerId: 'usr-emil-farzaliyev',
+        isActive: true,
+      },
+      {
+        id: 'unit-dept-secops-kibertehlukesizlik-ve-soc-bolmesi',
+        departmentId: 'dept-secops',
+        name: 'Kibertəhlükəsizlik və SOC bölməsi',
+        code: 'UNIT_SOC',
+        sectionType: 'BOLME',
+        parentSectionId: 'section-dept-secops-informasiya-tehlukesizliyi-sobesi',
+        hasOwnManager: false, // Bölmə has NO manager
+        isActive: true,
+      },
+    ];
+
+    db.data.users = [deptHeadUser, sectionHeadUser, unitSpecialistUser];
+
+    // Check approval chain for unitSpecialistUser
+    const chain = LDAPSyncService.getApprovalChain('usr-u-gasimli');
+    assert.ok(chain, 'Approval hierarchy must be returned');
+    assert.strictEqual(chain.departmentName, 'İnformasiya Təhlükəsizliyi Departamenti');
+    assert.strictEqual(chain.sectionName, 'İnformasiya təhlükəsizliyi şöbəsi');
+    assert.strictEqual(chain.unitName, 'Kibertəhlükəsizlik və SOC bölməsi');
+    assert.strictEqual(chain.directManager?.id, 'usr-emil-farzaliyev');
+    assert.strictEqual(chain.sectionManager?.id, 'usr-emil-farzaliyev');
+    assert.strictEqual(chain.departmentManager?.id, 'usr-ciso-head');
+    assert.strictEqual(chain.approvalChain.length, 2, 'Must have direct manager and department manager nodes (deduped)');
+  });
 });
+

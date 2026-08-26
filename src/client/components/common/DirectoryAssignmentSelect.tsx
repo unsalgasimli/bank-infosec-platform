@@ -31,6 +31,7 @@ export type DirectoryAssignmentSelectProps = {
   onChange: (value: string) => void;
   departmentId?: string;
   sectionId?: string;
+  excludeUserIds?: string[];
   placeholder?: string;
   searchPlaceholder?: string;
   disabled?: boolean;

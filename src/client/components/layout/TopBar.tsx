@@ -74,6 +74,12 @@ export const TopBar: React.FC<TopBarProps> = ({
       .slice(0, 2);
   };
 
+  const isEncryptedIdentityPlaceholder = (value?: string) => /^pii\+[A-Za-z0-9_-]+@encrypted\.invalid$/i.test(value || '');
+  const displayName = currentUser?.fullName && currentUser.fullName !== 'Encrypted Directory User'
+    ? currentUser.fullName
+    : currentUser?.sAMAccountName || currentUser?.username || 'Authenticated user';
+  const displayEmail = currentUser?.email && !isEncryptedIdentityPlaceholder(currentUser.email) ? currentUser.email : undefined;
+
   return (
     <>
       <header
@@ -251,11 +257,11 @@ export const TopBar: React.FC<TopBarProps> = ({
               className="flex items-center gap-2.5 p-1.5 rounded-lg hover:bg-semantic-subtle transition-colors border border-transparent hover:border-semantic-border-strong"
             >
               <div className="w-8 h-8 rounded-full bg-semantic-brand text-white flex items-center justify-center font-bold text-xs shadow-sm">
-                {currentUser ? getInitials(currentUser.fullName) : '--'}
+                {currentUser ? getInitials(displayName) : '--'}
               </div>
               <div className="hidden lg:block text-left">
                 <div className="text-sm font-bold text-semantic-primary leading-tight">
-                  {currentUser?.fullName || 'Authenticated user'}
+                  {displayName}
                 </div>
                 <div className="text-xs text-semantic-success font-bold leading-tight">
                   {currentUser?.roles[0] || 'USER'}
@@ -267,8 +273,8 @@ export const TopBar: React.FC<TopBarProps> = ({
             {activeMenu === 'userMenu' && (
               <div className="wrike-dropdown-menu absolute right-0 mt-2 w-68 p-3.5 z-dsOverlay text-sm shadow-lg">
                 <div className="border-b border-semantic-border pb-2.5 mb-2.5">
-                  <div className="font-bold text-base text-semantic-primary">{currentUser?.fullName}</div>
-                  <div className="text-xs text-semantic-secondary font-mono">{currentUser?.email}</div>
+                  <div className="font-bold text-base text-semantic-primary">{displayName}</div>
+                  {displayEmail && <div className="text-xs text-semantic-secondary font-mono">{displayEmail}</div>}
                   <span className="inline-block mt-1.5 px-2.5 py-0.5 bg-semantic-success-surface text-semantic-success border border-semantic-success-border rounded-full text-xs font-bold">
                     {currentUser?.securityClearance}
                   </span>

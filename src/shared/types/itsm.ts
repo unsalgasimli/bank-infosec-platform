@@ -208,6 +208,8 @@ export interface TicketAIRecommendation {
   createdAt: string;
   reviewedAt?: string;
   reviewedByUserId?: string;
+  /** Outbox event identity makes worker redelivery idempotent. */
+  outboxEventId?: string;
 }
 
 export interface TicketLifecycleBundle {

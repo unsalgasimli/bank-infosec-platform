@@ -34,4 +34,6 @@ export interface TicketAttachment {
    * only be resolved after ticket-level authorization succeeds.
    */
   storageKey?: string;
+  /** Internal-only locator for bytes awaiting or failing malware scanning. */
+  quarantineStorageKey?: string;
 }

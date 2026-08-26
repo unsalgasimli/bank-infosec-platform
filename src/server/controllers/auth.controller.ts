@@ -34,8 +34,8 @@ export class AuthController {
         return;
       }
 
-      SessionService.revoke(req.sessionToken);
-      const sessionToken = SessionService.create(result.user.id);
+      await SessionService.revoke(req.sessionToken);
+      const sessionToken = await SessionService.create(result.user.id);
       SessionService.setCookie(res, sessionToken);
       res.json({ success: true, user: result.user });
     } catch {
@@ -92,7 +92,7 @@ export class AuthController {
     res.json({ success: true, users });
   }
 
-  public static logout(req: AuthenticatedRequest, res: Response): void {
+  public static async logout(req: AuthenticatedRequest, res: Response): Promise<void> {
     const user = req.user;
     if (user) {
       AuditService.log({
@@ -110,7 +110,7 @@ export class AuthController {
         ],
       });
     }
-    SessionService.revoke(req.sessionToken);
+    await SessionService.revoke(req.sessionToken);
     SessionService.clearCookie(res);
     res.json({ success: true, message: 'Logged out successfully' });
   }

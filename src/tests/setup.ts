@@ -8,3 +8,6 @@ const { installPostgresTestFixture } = await import('./fixtures/postgres-fixture
 await db.initialize();
 installPostgresTestFixture(db.data);
 await pgClient.close();
+
+export {};
+

@@ -10,9 +10,10 @@ export default defineConfig({
       },
     },
     server: {
-      // Listen on every local interface so other devices on the same LAN can
-      // open the development UI via http://<this-computer-ip>:5173.
-      host: '0.0.0.0',
+      // Listen on the IPv6 unspecified address so localhost resolves quickly
+      // on Windows even when the browser prefers ::1. Node accepts IPv4
+      // connections on this listener as well, so LAN access remains available.
+      host: '::',
       port: 5173,
       strictPort: true,
       proxy: {

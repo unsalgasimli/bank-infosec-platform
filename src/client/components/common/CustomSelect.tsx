@@ -84,7 +84,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   // active fullscreen element while it is open there.
   useEffect(() => {
     const updatePortalTarget = () => {
-      setPortalTarget(document.fullscreenElement || document.body);
+      setPortalTarget((document.fullscreenElement as HTMLElement | null) || document.body);
     };
     updatePortalTarget();
     document.addEventListener('fullscreenchange', updatePortalTarget);

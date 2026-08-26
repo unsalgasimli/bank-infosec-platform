@@ -507,7 +507,7 @@ export class GraphOrchestratorService {
 
     // Initialize SLA clocks & audit events
     for (const ticket of createdTickets) {
-      TicketLifecycleService.initializeSlaMetrics(ticket);
+      TicketLifecycleService.initializeSlaMetrics(ticket, false);
       AuditService.log({
         actor,
         action: 'TICKET_CREATED',
@@ -520,8 +520,8 @@ export class GraphOrchestratorService {
           graphNodeId: ticket.graphNodeId,
           assigneeId: ticket.assigneeId,
         },
+        persist: false,
       });
-      AutomationService.triggerEvent('TICKET_CREATED', ticket, actor);
     }
 
     db.persist();

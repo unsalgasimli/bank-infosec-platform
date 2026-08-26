@@ -7,6 +7,7 @@ import { WorkflowService } from '../services/workflow.service.js';
 import { SLAService } from '../services/sla.service.js';
 import { AuditService } from '../services/audit.service.js';
 import { AutomationService } from '../services/automation.service.js';
+import { OutboxService } from '../services/outbox.service.js';
 import { SearchService } from '../services/search.service.js';
 import type { Ticket, TicketCategoryOption, TicketIntakeCategoryOption } from '../../shared/types/ticket.js';
 import { TicketLifecycleService } from '../services/ticket-lifecycle.service.js';
@@ -420,7 +421,7 @@ export class TicketsController {
           }))]
         : [];
       for (const ciId of affectedCiIds) CMDBService.linkTicketOnCreate(ciId, newTicket.id, user);
-      TicketLifecycleService.initializeSlaMetrics(newTicket);
+      TicketLifecycleService.initializeSlaMetrics(newTicket, false);
 
       // Audit log
       AuditService.log({
@@ -430,11 +431,11 @@ export class TicketsController {
         entityId: newTicket.id,
         entityKey: newTicket.key,
         metadata: { title: newTicket.title, severity: newTicket.technicalSeverity },
+        persist: false,
       });
 
-      // Run Automations
-      AutomationService.triggerEvent('TICKET_CREATED', newTicket, user);
-
+      // AuditService stages ticket.created in the transactional outbox before
+      // this single domain persist; workers own all subsequent side effects.
       db.persist();
       res.status(201).json({ success: true, ticket: newTicket });
     } catch (err: any) {
@@ -821,16 +822,23 @@ export class TicketsController {
   public static analyze(req: AuthenticatedRequest, res: Response): void {
     const ticket = TicketsController.getAuthorizedTicket(req, res, 'WRITE');
     if (!ticket) return;
-    const recommendation = TicketLifecycleService.analyze(ticket);
+    const event = OutboxService.enqueue({
+      topic: 'ai.analysis.requested',
+      aggregateType: 'TICKET',
+      aggregateId: ticket.id,
+      payload: { ticketId: ticket.id, actorId: req.user!.id },
+    });
     AuditService.log({
       actor: req.user!,
       action: 'TICKET_UPDATED',
       entityType: 'TICKET',
       entityId: ticket.id,
       entityKey: ticket.key,
-      metadata: { lifecycleAction: 'AI_RECOMMENDATION_CREATED', recommendationId: recommendation.id },
+      metadata: { lifecycleAction: 'AI_ANALYSIS_QUEUED', outboxEventId: event.id },
+      persist: false,
     });
-    res.status(201).json({ success: true, recommendation });
+    db.persist();
+    res.status(202).json({ success: true, queued: true, jobId: event.id });
   }
 
   public static applyRecommendation(req: AuthenticatedRequest, res: Response): void {

@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { AuditEvent } from '../../shared/types/audit.js';
 import { BankUser } from '../../shared/types/auth.js';
 import { db } from '../db/database.js';
+import { OutboxService } from './outbox.service.js';
 
 export class AuditService {
   /**
@@ -42,6 +43,24 @@ export class AuditService {
       db.data.auditEvents = [];
     }
     db.data.auditEvents.unshift(event);
+    // Domain-event production is centralized at the immutable audit boundary.
+    // This covers every supported ticket-creation route without asking each
+    // controller to hand-roll an event, and enqueueing happens before any
+    // optional compatibility persist() call below.
+    if (
+      event.action === 'TICKET_CREATED' &&
+      event.entityType === 'TICKET' &&
+      !String(event.metadata?.action || '').startsWith('LAUNCHED_') &&
+      db.data.tickets.some((ticket) => ticket.id === event.entityId)
+    ) {
+      OutboxService.enqueue({
+        topic: 'ticket.created',
+        aggregateType: 'TICKET',
+        aggregateId: event.entityId,
+        payload: { ticketId: event.entityId, actorId: event.actorId },
+        correlationId: event.correlationId,
+      });
+    }
     if (params.persist !== false) db.persist();
     return event;
   }

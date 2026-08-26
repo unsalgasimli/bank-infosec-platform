@@ -5,7 +5,6 @@ import { db } from '../db/database.js';
 import { logger } from '../services/logger.service.js';
 import { AuditService } from '../services/audit.service.js';
 import { SLAService } from '../services/sla.service.js';
-import { AutomationService } from '../services/automation.service.js';
 import { IdeaNode } from '../../shared/types/ideate.js';
 import { Ticket } from '../../shared/types/ticket.js';
 import { RequestFormDefinition, RequestFormSubmission } from '../../shared/types/request-forms.js';
@@ -112,8 +111,6 @@ export class WrikeController {
 
       db.data.ideas = db.data.ideas || [];
       db.data.ideas.push(newIdea);
-      db.persist();
-
       AuditService.log({
         actor: currentUser,
         action: 'TICKET_CREATED',
@@ -247,9 +244,9 @@ export class WrikeController {
         entityId: ticketId,
         entityKey: ticketKey,
         metadata: { action: 'CONVERTED_IDEATE_TO_TASK', ideaId: idea.id, title: idea.title },
+        persist: false,
       });
-
-      AutomationService.triggerEvent('TICKET_CREATED', newTicket, currentUser);
+      db.persist();
 
       res.json({ success: true, ticket: newTicket, idea });
     } catch (err: any) {
@@ -564,7 +561,7 @@ export class WrikeController {
       newTicket.slaRemainingMinutes = sla.remainingMinutes;
 
       db.data.tickets.unshift(newTicket);
-      TicketLifecycleService.initializeSlaMetrics(newTicket);
+      TicketLifecycleService.initializeSlaMetrics(newTicket, false);
 
       const submission: RequestFormSubmission = {
         id: `sub-${Date.now()}`,
@@ -580,8 +577,6 @@ export class WrikeController {
       db.data.requestSubmissions = db.data.requestSubmissions || [];
       db.data.requestSubmissions.push(submission);
 
-      db.persist();
-
       AuditService.log({
         actor: currentUser,
         action: 'TICKET_CREATED',
@@ -589,9 +584,11 @@ export class WrikeController {
         entityId: ticketId,
         entityKey: ticketKey,
         metadata: { action: 'SUBMITTED_REQUEST_FORM', formId: form.id, title: newTicket.title },
+        persist: false,
       });
-
-      AutomationService.triggerEvent('TICKET_CREATED', newTicket, currentUser);
+      // AuditService stages ticket.created. Do not execute automations in the
+      // HTTP request; the worker processes the committed outbox event.
+      db.persist();
 
       res.status(201).json({ success: true, ticket: newTicket, submission });
     } catch (err: any) {

@@ -3,6 +3,9 @@ import { Writable } from 'node:stream';
 import { config } from '../config/index.js';
 import { LDAPSyncService } from '../services/ldap-sync.service.js';
 import { maskSecret, resolveSecret } from '../utils/crypto.js';
+import { db } from '../db/database.js';
+import { runMigrations } from '../db/postgres/migrate.js';
+import { pgClient } from '../db/postgres/client.js';
 
 /** Runs the production, read-only directory synchronization pipeline locally. */
 async function prompt(query: string, hidden = false): Promise<string> {
@@ -27,6 +30,14 @@ async function prompt(query: string, hidden = false): Promise<string> {
 }
 
 async function main(): Promise<void> {
+  if (config.DB_TYPE !== 'postgres') {
+    throw new Error('sync:ad requires DB_TYPE=postgres. Memory mode is test-only and cannot be used for directory synchronization.');
+  }
+  // The synchronizer updates the current DB projection; starting with an empty
+  // process snapshot could otherwise overwrite records that were not part of
+  // the LDAP response. Migrate + hydrate before reading or writing anything.
+  await runMigrations();
+  await db.initialize();
   const args = process.argv.slice(2);
   const userIndex = args.indexOf('--user');
   const bindUser = (userIndex >= 0 ? args[userIndex + 1] : undefined) || process.env.AD_USER || config.LDAP_BIND_USER || (await prompt('AD service account: '));
@@ -49,4 +60,6 @@ async function main(): Promise<void> {
 main().catch((error: Error) => {
   console.error(`AD sync failed: ${error.message}`);
   process.exitCode = 1;
+}).finally(async () => {
+  await pgClient.close();
 });

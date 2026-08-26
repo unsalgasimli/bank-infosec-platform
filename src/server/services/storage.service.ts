@@ -7,6 +7,7 @@ import {
   GetObjectCommand,
   DeleteObjectCommand,
   HeadObjectCommand,
+  CopyObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../config/index.js';
@@ -19,6 +20,10 @@ export interface StorageUploadResult {
   fileSizeBytes: number;
   mimeType: string;
   url?: string;
+}
+
+export interface QuarantinedStorageUpload extends StorageUploadResult {
+  quarantineStorageKey: string;
 }
 
 export const ALLOWED_MIME_TYPES = [
@@ -98,14 +103,12 @@ export class StorageService {
     return crypto.createHash('sha256').update(buffer).digest('hex');
   }
 
-  /**
-   * Uploads an artifact to configured storage provider (S3 or local disk).
-   */
-  public async upload(
+  /** Writes an object where no download path can ever resolve it. */
+  public async stageUpload(
     fileName: string,
     fileBuffer: Buffer,
     mimeType: string
-  ): Promise<StorageUploadResult> {
+  ): Promise<QuarantinedStorageUpload> {
     if (fileBuffer.length > config.MAX_UPLOAD_SIZE_BYTES) {
       throw new Error(`File size (${fileBuffer.length} bytes) exceeds maximum limit of ${config.MAX_UPLOAD_SIZE_BYTES} bytes.`);
     }
@@ -115,12 +118,13 @@ export class StorageService {
     }
 
     const storageKey = this.generateStorageKey(fileName);
+    const quarantineStorageKey = `quarantine/${storageKey}`;
     const sha256Hash = this.calculateSha256(fileBuffer);
 
     if (config.STORAGE_PROVIDER === 's3' && this.s3Client) {
       const command = new PutObjectCommand({
         Bucket: config.S3_BUCKET,
-        Key: storageKey,
+        Key: quarantineStorageKey,
         Body: fileBuffer,
         ContentType: mimeType,
         ChecksumSHA256: Buffer.from(sha256Hash, 'hex').toString('base64'),
@@ -132,10 +136,11 @@ export class StorageService {
       });
 
       await this.s3Client.send(command);
-      logger.info({ storageKey, bucket: config.S3_BUCKET, sha256Hash }, 'File successfully stored in Cloud S3');
+      logger.info({ quarantineStorageKey, bucket: config.S3_BUCKET, sha256Hash }, 'File staged in object-storage quarantine');
 
       return {
         storageKey,
+        quarantineStorageKey,
         storageProvider: 's3',
         sha256Hash,
         fileSizeBytes: fileBuffer.length,
@@ -143,7 +148,7 @@ export class StorageService {
       };
     } else {
       // Store to local encrypted/secured filesystem
-      const targetFilePath = path.join(config.LOCAL_STORAGE_PATH, storageKey);
+      const targetFilePath = this.localPathFor(quarantineStorageKey);
       const targetDir = path.dirname(targetFilePath);
 
       if (!fs.existsSync(targetDir)) {
@@ -151,16 +156,54 @@ export class StorageService {
       }
 
       fs.writeFileSync(targetFilePath, fileBuffer);
-      logger.info({ targetFilePath, sha256Hash }, 'File successfully stored in local secure disk storage');
+      logger.info({ targetFilePath, sha256Hash }, 'File staged in local storage quarantine');
 
       return {
         storageKey,
+        quarantineStorageKey,
         storageProvider: 'local',
         sha256Hash,
         fileSizeBytes: fileBuffer.length,
         mimeType,
       };
     }
+  }
+
+  /**
+   * Compatibility helper for trusted internal callers. HTTP upload endpoints
+   * must use stageUpload and the worker-driven promotion path instead.
+   */
+  public async upload(fileName: string, fileBuffer: Buffer, mimeType: string): Promise<StorageUploadResult> {
+    const staged = await this.stageUpload(fileName, fileBuffer, mimeType);
+    await this.promoteQuarantinedObject(staged.quarantineStorageKey, staged.storageKey);
+    return { storageKey: staged.storageKey, storageProvider: staged.storageProvider, sha256Hash: staged.sha256Hash, fileSizeBytes: staged.fileSizeBytes, mimeType: staged.mimeType };
+  }
+
+  /** Promotes only a scanner-approved quarantined object into final storage. */
+  public async promoteQuarantinedObject(quarantineStorageKey: string, storageKey: string): Promise<void> {
+    if (config.STORAGE_PROVIDER === 's3' && this.s3Client) {
+      await this.s3Client.send(new CopyObjectCommand({
+        Bucket: config.S3_BUCKET,
+        Key: storageKey,
+        CopySource: `${config.S3_BUCKET}/${encodeURIComponent(quarantineStorageKey).replace(/%2F/g, '/')}`,
+        MetadataDirective: 'COPY',
+      }));
+      await this.s3Client.send(new DeleteObjectCommand({ Bucket: config.S3_BUCKET, Key: quarantineStorageKey }));
+      return;
+    }
+    const source = this.localPathFor(quarantineStorageKey);
+    const target = this.localPathFor(storageKey);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.renameSync(source, target);
+  }
+
+  public async deleteObject(storageKey: string): Promise<void> {
+    if (config.STORAGE_PROVIDER === 's3' && this.s3Client) {
+      await this.s3Client.send(new DeleteObjectCommand({ Bucket: config.S3_BUCKET, Key: storageKey }));
+      return;
+    }
+    const filePath = this.localPathFor(storageKey);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   }
 
   /**
@@ -196,7 +239,7 @@ export class StorageService {
         mimeType: response.ContentType || 'application/octet-stream',
       };
     } else {
-      const filePath = path.join(config.LOCAL_STORAGE_PATH, storageKey);
+      const filePath = this.localPathFor(storageKey);
       if (!fs.existsSync(filePath)) {
         throw new Error('File not found in local storage.');
       }
@@ -230,6 +273,13 @@ export class StorageService {
         error: isAccessible ? undefined : 'Storage directory inaccessible',
       };
     }
+  }
+
+  private localPathFor(storageKey: string): string {
+    const root = path.resolve(config.LOCAL_STORAGE_PATH);
+    const candidate = path.resolve(root, storageKey);
+    if (!candidate.startsWith(`${root}${path.sep}`)) throw new Error('Invalid storage key.');
+    return candidate;
   }
 }
 

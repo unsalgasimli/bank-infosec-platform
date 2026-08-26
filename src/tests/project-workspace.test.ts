@@ -303,7 +303,7 @@ test('project work-item type schemes and assignment boundaries are validated on 
   try {
     const owner = user('owner');
     const outsider = user('outsider');
-    const p = { ...project('prj-work-types'), workItemTypes: ['TASK'] as const };
+    const p = { ...project('prj-work-types'), workItemTypes: ['TASK'] as ('SERVICE_REQUEST' | 'INCIDENT' | 'PROBLEM' | 'CHANGE' | 'EPIC' | 'STORY' | 'TASK' | 'SUBTASK' | 'BUG' | 'IMPROVEMENT' | 'RESEARCH' | 'SECURITY_FINDING')[] };
     db.data.projects = [p];
     db.data.projectMembers = [{ id: 'owner-member', projectId: p.id, subjectType: 'USER', subjectId: owner.id, role: 'OWNER', addedByUserId: owner.id, createdAt: new Date().toISOString() }];
     db.data.users = [owner, outsider];
@@ -328,7 +328,7 @@ test('project managers can persist a work-item type scheme and empty schemes are
   const snapshot = { projects: db.data.projects, projectMembers: db.data.projectMembers, projectActivities: db.data.projectActivities, auditEvents: db.data.auditEvents };
   try {
     const owner = user('owner');
-    const p = { ...project('prj-work-types-settings'), workItemTypes: ['TASK', 'SUBTASK'] as const };
+    const p = { ...project('prj-work-types-settings'), workItemTypes: ['TASK', 'SUBTASK'] as ('SERVICE_REQUEST' | 'INCIDENT' | 'PROBLEM' | 'CHANGE' | 'EPIC' | 'STORY' | 'TASK' | 'SUBTASK' | 'BUG' | 'IMPROVEMENT' | 'RESEARCH' | 'SECURITY_FINDING')[] };
     db.data.projects = [p];
     db.data.projectMembers = [{ id: 'owner-member', projectId: p.id, subjectType: 'USER', subjectId: owner.id, role: 'OWNER', addedByUserId: owner.id, createdAt: new Date().toISOString() }];
     db.data.projectActivities = [];

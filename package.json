@@ -7,7 +7,8 @@
   "scripts": {
     "dev:server": "tsx watch src/server/index.ts",
     "dev:client": "vite",
-    "dev": "concurrently -n \"API,UI\" -c \"blue,green\" \"pnpm run dev:server\" \"pnpm run dev:client\"",
+    "dev:cleanup": "node scripts/stop-dev-processes.mjs",
+    "dev": "pnpm run dev:cleanup && concurrently --kill-others-on-fail -n \"API,UI\" -c \"blue,green\" \"pnpm run dev:server\" \"pnpm run dev:client\"",
     "build:client": "vite build",
     "build:server": "tsc -p tsconfig.server.json",
     "build": "pnpm run build:client && pnpm run build:server",
@@ -16,16 +17,21 @@
     "test": "tsx --import ./src/tests/setup.ts --test --test-concurrency=1 src/tests/**/*.test.ts",
     "sync": "tsx src/server/scripts/sync-ad-readonly.ts",
     "sync:ad": "tsx src/server/scripts/sync-ad-readonly.ts",
+    "export:ad": "tsx src/server/scripts/export-ad-users.ts",
     "directory:grant-platform-access": "tsx src/server/scripts/grant-directory-platform-access.ts",
     "directory:reconcile-sections": "tsx src/server/scripts/reconcile-ad-section-projection.ts",
     "db:migrate": "tsx src/server/db/postgres/migrate.ts",
     "db:seed": "tsx src/server/db/postgres/seed-postgres.ts",
     "db:import-json": "tsx src/server/db/postgres/import-json.ts",
-    "start": "node dist/server/index.js"
+    "start": "node dist/server/index.js",
+    "start:api": "node dist/server/index.js",
+    "start:worker": "node dist/server/worker.js",
+    "start:scheduler": "node dist/server/scheduler.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.758.0",
     "@aws-sdk/s3-request-presigner": "^3.758.0",
+    "amqplib": "^0.10.5",
     "compression": "^1.8.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -45,6 +51,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@types/amqplib": "^0.10.7",
     "@types/compression": "^1.7.5",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",

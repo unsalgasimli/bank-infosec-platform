@@ -112,24 +112,23 @@ export class LDAPAuthService {
       // development-bypass user from that durable projection, rather than a
       // stale in-memory snapshot.
       const isIsolatedTestProcess = process.env.NODE_ENV === 'test' || process.argv.some((argument) => argument === '--test' || argument.includes('.test.ts') || argument.includes('test-concurrency'));
-      const directoryUsers = allowDevelopmentBypass && config.DB_TYPE === 'postgres' && !isIsolatedTestProcess
-        ? await DepartmentsRepository.listActiveDirectoryUsers()
-        : db.data.users;
-      const developmentUser = directoryUsers.find(
-        (user) =>
-          user.isActive &&
-          (user.directorySource === 'ACTIVE_DIRECTORY' ||
-            Boolean(user.sAMAccountName && user.ldapDomain && user.distinguishedName)) &&
-          (normalizedDirectoryValue(user.username) === usernameKey ||
-            normalizedDirectoryValue(user.sAMAccountName) === usernameKey ||
-            normalizedDirectoryValue(user.email) === rawInputKey ||
-            normalizedDirectoryValue(user.userPrincipalName) === rawInputKey) &&
-          isGenuineEmployeeOrIntern(
-            user,
-            user.distributionGroups || [],
-            user.sAMAccountName || user.username
-          )
-      );
+      const developmentUser = allowDevelopmentBypass && config.DB_TYPE === 'postgres' && !isIsolatedTestProcess
+        ? await DepartmentsRepository.findActiveDirectoryUserForLogin(rawInput)
+        : db.data.users.find(
+            (user) =>
+              user.isActive &&
+              (user.directorySource === 'ACTIVE_DIRECTORY' ||
+                Boolean(user.sAMAccountName && user.ldapDomain && user.distinguishedName)) &&
+              (normalizedDirectoryValue(user.username) === usernameKey ||
+                normalizedDirectoryValue(user.sAMAccountName) === usernameKey ||
+                normalizedDirectoryValue(user.email) === rawInputKey ||
+                normalizedDirectoryValue(user.userPrincipalName) === rawInputKey) &&
+              isGenuineEmployeeOrIntern(
+                user,
+                user.distributionGroups || [],
+                user.sAMAccountName || user.username
+              )
+          );
 
       if (!allowDevelopmentBypass) {
         return { success: false, user: null as any, message: 'Active Directory password is required.' };
@@ -143,29 +142,38 @@ export class LDAPAuthService {
         };
       }
 
-      developmentUser.ldapBindStatus = 'AUTHENTICATED';
-      developmentUser.lastLdapLoginAt = new Date().toISOString();
+      // The development bypass reads the durable PostgreSQL directory because
+      // an AD sync may have changed it after this API process started. Keep the
+      // in-process authorization projection in sync as well; the next request
+      // resolves the session through AuthService -> db.data.users.
+      const runtimeUser = db.data.users.find((user) => user.id === developmentUser.id);
+      const authenticatedUser = runtimeUser
+        ? Object.assign(runtimeUser, developmentUser)
+        : (db.data.users.push(developmentUser), developmentUser);
+
+      authenticatedUser.ldapBindStatus = 'AUTHENTICATED';
+      authenticatedUser.lastLdapLoginAt = new Date().toISOString();
       const loginAudit = AuditService.log({
-        actor: developmentUser,
+        actor: authenticatedUser,
         action: 'USER_LOGIN',
         entityType: 'USER',
-        entityId: developmentUser.id,
+        entityId: authenticatedUser.id,
         ipAddress,
         userAgent: 'Development empty-password LDAP directory bypass',
         persist: config.DB_TYPE !== 'postgres',
       });
       if (config.DB_TYPE === 'postgres') {
-        await PostgresProjectionRepository.persistLogin(developmentUser, loginAudit);
+        await PostgresProjectionRepository.persistLogin(authenticatedUser, loginAudit);
       }
 
       return {
         success: true,
-        user: developmentUser,
+        user: authenticatedUser,
         ldapInfo: {
           server: 'Development directory verification',
-          bindDn: developmentUser.distinguishedName || developmentUser.username,
-          distributionGroup: developmentUser.distributionGroups?.[0] || 'No directory group recorded',
-          authenticatedAt: developmentUser.lastLdapLoginAt,
+          bindDn: authenticatedUser.distinguishedName || authenticatedUser.username,
+          distributionGroup: authenticatedUser.distributionGroups?.[0] || 'No directory group recorded',
+          authenticatedAt: authenticatedUser.lastLdapLoginAt,
           kerberosTicketIssued: false,
         },
       };

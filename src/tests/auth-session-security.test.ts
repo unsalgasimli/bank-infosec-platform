@@ -31,8 +31,8 @@ function responseMock() {
   };
 }
 
-test('server sessions isolate users and reject client-forged identities', () => {
-  SessionService.revokeAll();
+test('server sessions isolate users and reject client-forged identities', async () => {
+  await SessionService.revokeAll();
   const firstUser = db.data.users[0];
   firstUser.isActive = true;
   let secondUser = db.data.users.find((user) => user.id !== firstUser.id);
@@ -53,13 +53,13 @@ test('server sessions isolate users and reject client-forged identities', () => 
   const resolvedSecondUser = secondUser;
   resolvedSecondUser.isActive = true;
 
-  const firstToken = SessionService.create(firstUser.id);
-  const secondToken = SessionService.create(resolvedSecondUser.id);
+  const firstToken = await SessionService.create(firstUser.id);
+  const secondToken = await SessionService.create(resolvedSecondUser.id);
 
   assert.notEqual(firstToken, secondToken);
   assert.equal(firstToken.includes(firstUser.id), false, 'opaque session IDs must not disclose user IDs');
-  assert.equal(SessionService.resolve(firstToken), firstUser.id);
-  assert.equal(SessionService.resolve(secondToken), resolvedSecondUser.id);
+  assert.equal(await SessionService.resolve(firstToken), firstUser.id);
+  assert.equal(await SessionService.resolve(secondToken), resolvedSecondUser.id);
 
   const forgedRequest: any = {
     headers: {
@@ -67,16 +67,16 @@ test('server sessions isolate users and reject client-forged identities', () => 
       'x-user-id': firstUser.id,
     },
   };
-  authMiddleware(forgedRequest, responseMock().response, () => undefined);
+  await authMiddleware(forgedRequest, responseMock().response, () => undefined);
   assert.equal(forgedRequest.user, undefined, 'legacy headers must never select a user');
 
   const authenticatedRequest: any = {
     headers: { cookie: `aegis_session=${secondToken}` },
   };
-  authMiddleware(authenticatedRequest, responseMock().response, () => undefined);
+  await authMiddleware(authenticatedRequest, responseMock().response, () => undefined);
   assert.equal(authenticatedRequest.user?.id, resolvedSecondUser.id);
 
-  SessionService.revokeAll();
+  await SessionService.revokeAll();
   if (createdFixture) db.data.users = db.data.users.filter((user) => user.id !== resolvedSecondUser.id);
 });
 

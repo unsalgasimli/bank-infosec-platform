@@ -1,12 +1,12 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { Request, Response } from 'express';
 import { config } from '../config/index.js';
+import { pgClient } from '../db/postgres/client.js';
 
 // `__Host-` cookies require the Secure attribute, which browsers reject over HTTP.
 const SESSION_COOKIE_NAME = 'aegis_session';
 const SESSION_IDLE_TTL_MS = config.SESSION_TIMEOUT_MINUTES * 60 * 1000;
 const SESSION_ABSOLUTE_TTL_MS = config.SESSION_ABSOLUTE_TIMEOUT_HOURS * 60 * 60 * 1000;
-const SESSION_HASH_KEY = randomBytes(32);
 
 interface SessionRecord {
   userId: string;
@@ -15,44 +15,72 @@ interface SessionRecord {
 }
 
 export class SessionService {
-  private static readonly sessions = new Map<string, SessionRecord>();
+  // DB_TYPE=memory is limited to isolated tests. Durable runtime sessions live
+  // in PostgreSQL and only retain a HMAC of the opaque browser token.
+  private static readonly testSessions = new Map<string, SessionRecord>();
 
   private static digest(token: string): string {
-    return createHmac('sha256', SESSION_HASH_KEY).update(token).digest('hex');
+    return createHmac('sha256', config.JWT_SECRET).update(`aegissec-session:${token}`).digest('hex');
   }
 
-  public static create(userId: string): string {
+  public static async create(userId: string): Promise<string> {
     const token = randomBytes(32).toString('base64url');
     const now = Date.now();
-    this.sessions.set(this.digest(token), { userId, createdAt: now, lastSeenAt: now });
+    if (config.DB_TYPE === 'memory') {
+      this.testSessions.set(this.digest(token), { userId, createdAt: now, lastSeenAt: now });
+      return token;
+    }
+    await pgClient.query(
+      `INSERT INTO auth_sessions(token_hash,user_id,created_at,last_seen_at,expires_at)
+       VALUES($1,$2,NOW(),NOW(),NOW() + ($3 * INTERVAL '1 millisecond'))`,
+      [this.digest(token), userId, SESSION_ABSOLUTE_TTL_MS]
+    );
     return token;
   }
 
-  public static resolve(token: string | undefined): string | undefined {
+  public static async resolve(token: string | undefined): Promise<string | undefined> {
     if (!token) return undefined;
 
     const digest = this.digest(token);
-    const session = this.sessions.get(digest);
-    if (!session) return undefined;
-
     const now = Date.now();
-    const idleExpired = now - session.lastSeenAt > SESSION_IDLE_TTL_MS;
-    const absoluteExpired = now - session.createdAt > SESSION_ABSOLUTE_TTL_MS;
-    if (idleExpired || absoluteExpired) {
-      this.sessions.delete(digest);
-      return undefined;
+    if (config.DB_TYPE === 'memory') {
+      const session = this.testSessions.get(digest);
+      if (!session) return undefined;
+      const idleExpired = now - session.lastSeenAt > SESSION_IDLE_TTL_MS;
+      const absoluteExpired = now - session.createdAt > SESSION_ABSOLUTE_TTL_MS;
+      if (idleExpired || absoluteExpired) {
+        this.testSessions.delete(digest);
+        return undefined;
+      }
+      session.lastSeenAt = now;
+      return session.userId;
     }
-
-    session.lastSeenAt = now;
-    return session.userId;
+    const result = await pgClient.query<{ user_id: string }>(
+      `UPDATE auth_sessions SET last_seen_at=NOW()
+       WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at > NOW()
+         AND last_seen_at > NOW() - ($2 * INTERVAL '1 millisecond')
+       RETURNING user_id`,
+      [digest, SESSION_IDLE_TTL_MS]
+    );
+    return result.rows[0]?.user_id;
   }
 
-  public static revoke(token: string | undefined): void {
-    if (token) this.sessions.delete(this.digest(token));
+  public static async revoke(token: string |undefined): Promise<void> {
+    if (!token) return;
+    const digest = this.digest(token);
+    if (config.DB_TYPE === 'memory') {
+      this.testSessions.delete(digest);
+      return;
+    }
+    await pgClient.query('UPDATE auth_sessions SET revoked_at=NOW() WHERE token_hash=$1 AND revoked_at IS NULL', [digest]);
   }
 
-  public static revokeAll(): void {
-    this.sessions.clear();
+  public static async revokeAll(): Promise<void> {
+    if (config.DB_TYPE === 'memory') {
+      this.testSessions.clear();
+      return;
+    }
+    await pgClient.query('UPDATE auth_sessions SET revoked_at=NOW() WHERE revoked_at IS NULL');
   }
 
   public static readToken(req: Request): string | undefined {

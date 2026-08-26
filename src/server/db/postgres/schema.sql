@@ -76,12 +76,32 @@ CREATE TABLE IF NOT EXISTS bank_users (
 );
 
 ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS section_id VARCHAR(128) REFERENCES bank_department_sections(id) ON DELETE SET NULL;
+-- Only high-sensitivity directory security metadata is application-encrypted
+-- (AES-256-GCM). Names, email, title, username, and organizational placement
+-- remain readable for ordinary administration and assignment workflows.
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS identity_ciphertext TEXT;
+-- 1 = legacy profile-wide encryption; 2 = sensitive-directory-fields only.
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS identity_ciphertext_version SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE bank_users ADD COLUMN IF NOT EXISTS email_lookup_hash VARCHAR(128);
+ALTER TABLE bank_users ALTER COLUMN email DROP NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email_lookup_hash ON bank_users(email_lookup_hash) WHERE email_lookup_hash IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON bank_users(username);
 CREATE INDEX IF NOT EXISTS idx_users_email ON bank_users(email);
 CREATE INDEX IF NOT EXISTS idx_users_dept ON bank_users(department_id);
 CREATE INDEX IF NOT EXISTS idx_users_section ON bank_users(section_id);
 CREATE INDEX IF NOT EXISTS idx_users_clearance ON bank_users(security_clearance);
+
+-- Opaque browser sessions. Only an HMAC digest of the cookie token is stored.
+CREATE TABLE IF NOT EXISTS auth_sessions (
+    token_hash CHAR(64) PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL REFERENCES bank_users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_active_user ON auth_sessions(user_id, expires_at) WHERE revoked_at IS NULL;
 
 -- ----------------------------------------------------------------------------
 -- 2. CMDB Assets & Applications
@@ -374,6 +394,42 @@ CREATE TABLE IF NOT EXISTS audit_events (
 CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_events(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_events(actor_id);
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_events(timestamp DESC);
+
+-- ----------------------------------------------------------------------------
+-- 8b. Transactional Outbox and Worker Idempotency
+-- Domain mutations and their event records commit in one PostgreSQL transaction.
+-- RabbitMQ is a delivery mechanism, never the source of truth.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS outbox_events (
+    id VARCHAR(64) PRIMARY KEY,
+    topic VARCHAR(160) NOT NULL,
+    aggregate_type VARCHAR(80) NOT NULL,
+    aggregate_id VARCHAR(128) NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    correlation_id VARCHAR(128),
+    occurred_at TIMESTAMPTZ NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PROCESSING', 'PUBLISHED')),
+    attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    available_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    locked_at TIMESTAMPTZ,
+    published_at TIMESTAMPTZ,
+    last_error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_outbox_dispatch ON outbox_events(status, available_at, occurred_at);
+-- A scheduler may be active on more than one replica during rolling deploys.
+-- A stable correlation id makes a periodic domain tick exactly-once at the
+-- database boundary while leaving ordinary event correlations unconstrained.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_outbox_topic_correlation
+    ON outbox_events(topic, correlation_id)
+    WHERE correlation_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS event_consumer_receipts (
+    consumer_name VARCHAR(128) NOT NULL,
+    event_id VARCHAR(64) NOT NULL REFERENCES outbox_events(id) ON DELETE CASCADE,
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (consumer_name, event_id)
+);
 
 -- ----------------------------------------------------------------------------
 -- 9. GRC Risk Register

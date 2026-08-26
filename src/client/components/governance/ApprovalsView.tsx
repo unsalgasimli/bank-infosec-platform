@@ -302,7 +302,7 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                 </div>
               </div>
               <button
-                onClick={closeModal}
+                onClick={() => closeModal()}
                 disabled={isSubmitting}
                 className="text-semantic-muted hover:text-semantic-primary p-1 rounded-lg hover:bg-semantic-neutral-surface"
               >
@@ -361,7 +361,7 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-semantic-border">
               <button
                 disabled={isSubmitting}
-                onClick={closeModal}
+                onClick={() => closeModal()}
                 className="wrike-btn-secondary text-xs py-2 px-4"
               >
                 Cancel

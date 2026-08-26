@@ -30,15 +30,12 @@ import { DepartmentsController } from './controllers/departments.controller.js';
 import { OrchestrationController } from './controllers/orchestration.controller.js';
 import { ProjectsController } from './controllers/projects.controller.js';
 import { DirectoryController } from './controllers/directory.controller.js';
-import { LDAPSchedulerService } from './services/ldap-scheduler.service.js';
-import { WorkflowRuntimeService } from './services/workflow-runtime.service.js';
-import { WorkflowTriggerService } from './services/workflow-trigger.service.js';
 
 
 const app = express();
 
 // Trust reverse proxy (Nginx / Ingress / Load Balancer) for accurate client IP tracking
-app.set('trust proxy', 'loopback');
+app.set('trust proxy', config.TRUST_PROXY_HOPS);
 
 // 1. Core Security & Observability Middlewares
 app.use(requestTracingMiddleware);
@@ -350,12 +347,8 @@ async function startServer(): Promise<void> {
       `🛡️ AegisSec Banking GRC & SecOps Production API running on http://${config.HOST}:${config.PORT}`
     );
 
-    // Initialize and start Daily LDAP Synchronization Scheduler at 13:30 GMT+4
-    if (config.LDAP_SYNC_AUTO_ENABLED) {
-      LDAPSchedulerService.startScheduler();
-    }
-    WorkflowRuntimeService.startWorker();
-    WorkflowTriggerService.startWorker();
+    // API is request/response only. Timers and asynchronous execution run in
+    // the dedicated scheduler and worker processes started from this image.
   });
 }
 
@@ -369,9 +362,6 @@ async function handleGracefulShutdown(signal: string) {
   logger.info({ signal }, 'Received shutdown signal, terminating server gracefully...');
 
   // Stop background scheduler timers
-  LDAPSchedulerService.stopScheduler();
-  WorkflowRuntimeService.stopWorker();
-  WorkflowTriggerService.stopWorker();
 
   if (!server) {
     await pgClient.close();

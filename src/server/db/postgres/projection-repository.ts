@@ -3,8 +3,10 @@ import { directoryUserColumns, rowToUser } from './departments-repository.js';
 import type { DatabaseSchema } from '../database.js';
 import { normalizeDirectoryKey, normalizeDirectoryText } from '../../services/ldap-directory.data.js';
 import crypto from 'node:crypto';
+import { decryptSecret, encryptSecret, identityLookupHash } from '../../utils/crypto.js';
 import type { AuditEvent } from '../../../shared/types/audit.js';
 import type { BankUser } from '../../../shared/types/auth.js';
+import type { OutboxEvent } from '../../services/outbox.service.js';
 
 type RecordValue = Record<string, any>;
 
@@ -23,6 +25,26 @@ const iso = (value: unknown, fallback = new Date().toISOString()) => {
   const valueText = text(value);
   return valueText && !Number.isNaN(Date.parse(valueText)) ? new Date(valueText).toISOString() : fallback;
 };
+
+type ProtectedIdentity = {
+  userPrincipalName?: string;
+  distinguishedName?: string;
+  distributionGroups: string[];
+};
+
+function protectedIdentity(user: BankUser): ProtectedIdentity {
+  return {
+    userPrincipalName: nullable(user.userPrincipalName) || undefined,
+    distinguishedName: nullable(user.distinguishedName) || undefined,
+    distributionGroups: jsonArray(user.distributionGroups).map(text).filter(Boolean),
+  };
+}
+
+function protectedUserPayload(user: BankUser): RecordValue {
+  const payload = { ...user } as RecordValue;
+  for (const field of ['userPrincipalName', 'distinguishedName', 'distributionGroups', 'lastLdapLoginAt']) delete payload[field];
+  return payload;
+}
 
 function splitName(value: unknown): { first: string; last: string; full: string } {
   const full = text(value) || 'Unknown User';
@@ -43,6 +65,21 @@ function safeCode(value: unknown, fallback: string, used: Set<string>): string {
     suffix++;
   }
   used.add(candidate);
+  return candidate;
+}
+
+/** Section codes are scoped by department and may use the wider DB column. */
+function safeSectionCode(value: unknown, fallback: string, departmentId: string, used: Set<string>): string {
+  const maxLength = 64;
+  const base = (normalizeDirectoryKey(value) || fallback).replace(/[^a-z0-9_]/g, '_').slice(0, maxLength).toUpperCase();
+  let candidate = base || fallback.toUpperCase().slice(0, maxLength);
+  let suffix = 1;
+  while (used.has(`${departmentId}:${candidate}`)) {
+    const suffixText = String(suffix);
+    candidate = `${base.slice(0, Math.max(1, maxLength - suffixText.length - 1))}_${suffixText}`;
+    suffix++;
+  }
+  used.add(`${departmentId}:${candidate}`);
   return candidate;
 }
 
@@ -108,7 +145,11 @@ export class PostgresProjectionRepository {
     // Identity, authorization, and organizational placement are normalized
     // columns. They outrank the compatibility payload so an outdated in-memory
     // login snapshot cannot restore old roles or old section membership.
-    base.users = users.rows.map(rowToUser).filter(Boolean);
+    // Normal profile and organizational columns are sufficient for the
+    // compatibility projection. Protected directory metadata is decrypted on
+    // demand by the authoritative repository endpoints; avoiding 815 serial
+    // PBKDF2 operations here keeps application startup responsive.
+    base.users = users.rows.map((row) => rowToUser(row, { decryptProtectedIdentity: false })).filter(Boolean);
     base.assets = assets.rows.map((row) => ({
       id: row.id,
       name: row.name,
@@ -323,6 +364,82 @@ export class PostgresProjectionRepository {
   }
 
   /**
+   * Migrates the legacy profile-wide encrypted directory record to the current
+   * field-level policy. Ordinary identity and organizational fields remain
+   * readable; only UPN, DN, and directory group membership remain encrypted.
+   * Passwords are never stored by this application.
+   */
+  public static async protectLegacyIdentityData(): Promise<void> {
+    // The previous profile-wide policy left storage placeholders in the
+    // readable columns. Once a record is already on policy v2, there is no
+    // legacy profile value to recover; use the non-sensitive username as a
+    // safe plain fallback until the next real AD sync supplies the name.
+    await pgClient.query(`
+      UPDATE bank_users
+      SET first_name = CASE WHEN full_name = 'Encrypted Directory User' OR first_name IN ('Encrypted', 'Identity') THEN username ELSE first_name END,
+          last_name = CASE WHEN full_name = 'Encrypted Directory User' OR last_name IN ('Encrypted', 'Identity') THEN username ELSE last_name END,
+          full_name = CASE WHEN full_name = 'Encrypted Directory User' THEN username ELSE full_name END,
+          title = CASE WHEN title = 'Encrypted' THEN 'Authenticated directory user' ELSE title END,
+          source_payload = CASE WHEN full_name = 'Encrypted Directory User'
+            THEN jsonb_set(jsonb_set(COALESCE(source_payload, '{}'::jsonb), '{fullName}', to_jsonb(username), true), '{title}', to_jsonb(CASE WHEN title = 'Encrypted' THEN 'Authenticated directory user' ELSE title END), true)
+            ELSE source_payload END
+      WHERE identity_ciphertext_version >= 2
+        AND (full_name = 'Encrypted Directory User' OR first_name IN ('Encrypted', 'Identity') OR last_name IN ('Encrypted', 'Identity') OR title = 'Encrypted')`);
+
+    const legacy = await pgClient.query(`SELECT id, username, email, first_name, last_name, full_name, title, user_principal_name, distinguished_name, distribution_groups, identity_ciphertext, identity_ciphertext_version, source_payload
+      FROM bank_users WHERE identity_ciphertext_version < 2 OR identity_ciphertext IS NULL OR email_lookup_hash IS NULL`);
+    for (const row of legacy.rows) {
+      const payload = (row.source_payload && typeof row.source_payload === 'object' ? row.source_payload : {}) as RecordValue;
+      let legacyIdentity: RecordValue = {};
+      let legacyIdentityDecoded = !row.identity_ciphertext;
+      if (row.identity_ciphertext) {
+        try {
+          const parsed = JSON.parse(decryptSecret(row.identity_ciphertext));
+          legacyIdentity = parsed && typeof parsed === 'object' ? parsed as RecordValue : {};
+          legacyIdentityDecoded = true;
+        } catch {
+          // A record with an unavailable legacy key must not be rewritten with
+          // placeholders. Leave it on version 1 so a later run with the right
+          // key can migrate it without losing the original ciphertext.
+          continue;
+        }
+      }
+      const hasLegacyProfileFields = Boolean(
+        text(legacyIdentity.email) || text(legacyIdentity.fullName) || text(legacyIdentity.title)
+      );
+      if (!legacyIdentityDecoded || (row.identity_ciphertext_version < 2 && !hasLegacyProfileFields &&
+        (String(row.full_name || '').includes('Encrypted Directory User') || String(row.email || '').startsWith('pii+')))) {
+        continue;
+      }
+      const email = text(row.email).startsWith('pii+')
+        ? text(legacyIdentity.email) || text(payload.email)
+        : text(row.email) || text(legacyIdentity.email) || text(payload.email);
+      const fullName = text(legacyIdentity.fullName) || text(row.full_name) || text(payload.fullName) || `${text(row.first_name)} ${text(row.last_name)}`.trim() || text(row.username) || 'Directory User';
+      const title = text(legacyIdentity.title) || text(row.title);
+      const firstLast = splitName(fullName);
+      const protectedFields: ProtectedIdentity = {
+        userPrincipalName: nullable(legacyIdentity.userPrincipalName) || nullable(row.user_principal_name) || nullable(payload.userPrincipalName) || undefined,
+        distinguishedName: nullable(legacyIdentity.distinguishedName) || nullable(row.distinguished_name) || nullable(payload.distinguishedName) || undefined,
+        distributionGroups: jsonArray(legacyIdentity.distributionGroups || row.distribution_groups || payload.distributionGroups).map(text).filter(Boolean),
+      };
+      const sanitizedPayload: RecordValue = {
+        ...payload,
+        email,
+        fullName,
+        title,
+      };
+      for (const field of ['userPrincipalName', 'distinguishedName', 'distributionGroups', 'lastLdapLoginAt']) delete sanitizedPayload[field];
+      await pgClient.query(
+        `UPDATE bank_users SET email=$2, first_name=$3, last_name=$4, full_name=$5, title=$6,
+          user_principal_name=NULL, distinguished_name=NULL, distribution_groups='[]'::jsonb,
+          identity_ciphertext=$7, identity_ciphertext_version=2, email_lookup_hash=$8, source_payload=$9::jsonb, updated_at=NOW()
+         WHERE id=$1`,
+        [row.id, email || null, firstLast.first, firstLast.last, firstLast.full, title || 'Bank Specialist', encryptSecret(JSON.stringify(protectedFields)), identityLookupHash(email || row.username), json(sanitizedPayload)]
+      );
+    }
+  }
+
+  /**
    * Login is a hot path. Persist only its user state and audit event instead of
    * serializing the whole compatibility projection on every authentication.
    */
@@ -333,7 +450,7 @@ export class PostgresProjectionRepository {
         `UPDATE bank_users
          SET last_login_at = $2, ldap_bind_status = $3, source_payload = $4::jsonb, updated_at = NOW()
          WHERE id = $1`,
-        [user.id, user.lastLdapLoginAt ? iso(user.lastLdapLoginAt) : null, nullable(user.ldapBindStatus), json(user)]
+        [user.id, user.lastLdapLoginAt ? iso(user.lastLdapLoginAt) : null, nullable(user.ldapBindStatus), json(protectedUserPayload(user))]
       );
       if (updated.rowCount !== 1) throw new Error(`Active Directory user ${user.id} is missing from PostgreSQL.`);
 
@@ -348,7 +465,7 @@ export class PostgresProjectionRepository {
     this.persistedHashes.get('auditEvents')?.set(event.id, this.hash(event));
   }
 
-  public static async persist(data: DatabaseSchema): Promise<void> {
+  public static async persist(data: DatabaseSchema, outboxEvents: OutboxEvent[] = []): Promise<void> {
     const nextHashes = this.buildHashes(data);
     const changed = (collection: string, record: RecordValue, index: number) => {
       const id = recordId(record, index);
@@ -369,10 +486,12 @@ export class PostgresProjectionRepository {
       const ticketIds = new Set((data.tickets || []).map((item) => item.id));
       const divisionCodes = new Set<string>();
       const departmentCodes = new Set<string>();
+      const changedSections = departmentSections.filter((item, index) => changed('departmentSections', item as RecordValue, index));
       const changedDivisions = divisions.filter((item, index) => changed('divisions', item as RecordValue, index));
       const changedDepartments = departments.filter((item, index) => changed('departments', item as RecordValue, index));
       const normalizeDivisionCodes = changedDivisions.length > 0;
       const normalizeDepartmentCodes = changedDepartments.length > 0;
+      const normalizeSectionCodes = changedSections.length > 0;
 
       // Codes are UNIQUE and two records can legitimately exchange their
       // normalized collision suffixes between snapshots. Stage existing
@@ -392,6 +511,23 @@ export class PostgresProjectionRepository {
         );
       }
 
+      // A section code is unique within its department. Stage every existing
+      // row that will be rewritten before applying the incoming snapshot so
+      // code swaps and department moves cannot collide with the old value.
+      const sectionIdsToRewrite = new Set(changedSections.map((section) => section.id));
+      const existingSectionCodes = normalizeSectionCodes
+        ? await client.query<{ id: string; department_id: string; code: string }>(
+            'SELECT id, department_id, code FROM bank_department_sections'
+          )
+        : null;
+      if (normalizeSectionCodes) {
+        await client.query(
+          `UPDATE bank_department_sections SET code = CONCAT('__P_', LEFT(MD5(id), 28))
+           WHERE id = ANY($1::text[])`,
+          [[...sectionIdsToRewrite]]
+        );
+      }
+
       for (let index = 0; index < divisions.length; index++) {
         const division = divisions[index];
         if (!normalizeDivisionCodes && !changed('divisions', division as RecordValue, index)) continue;
@@ -408,10 +544,15 @@ export class PostgresProjectionRepository {
         await client.query(
           `INSERT INTO bank_departments(id,division_id,code,name,description,manager_id,admin_user_ids,color,icon,is_active,settings,directory_source,source_payload) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11::jsonb,$12,$13::jsonb)
            ON CONFLICT(id) DO UPDATE SET division_id=EXCLUDED.division_id,code=EXCLUDED.code,name=EXCLUDED.name,description=EXCLUDED.description,manager_id=EXCLUDED.manager_id,admin_user_ids=EXCLUDED.admin_user_ids,color=EXCLUDED.color,icon=EXCLUDED.icon,is_active=EXCLUDED.is_active,settings=EXCLUDED.settings,directory_source=EXCLUDED.directory_source,source_payload=EXCLUDED.source_payload,updated_at=NOW()`,
-          [department.id, department.divisionId, safeCode(department.code, department.id, departmentCodes), text(department.name) || department.id, department.description || '', department.managerId || null, json(department.adminUserIds || []), department.color || null, department.icon || null, department.isActive !== false, json(department.settings || {}), department.directorySource || null, json(department)]
+          // Managers reference bank_users; apply the manager link after the
+          // user projection has been written below.
+          [department.id, department.divisionId, safeCode(department.code, department.id, departmentCodes), text(department.name) || department.id, department.description || '', null, json(department.adminUserIds || []), department.color || null, department.icon || null, department.isActive !== false, json(department.settings || {}), department.directorySource || null, json(department)]
         );
       }
       const sectionCodes = new Set<string>();
+      for (const row of existingSectionCodes?.rows || []) {
+        if (!sectionIdsToRewrite.has(row.id)) sectionCodes.add(`${row.department_id}:${row.code}`);
+      }
       for (let index = 0; index < departmentSections.length; index++) {
         const section = departmentSections[index];
         if (!changed('departmentSections', section as RecordValue, index)) continue;
@@ -419,7 +560,7 @@ export class PostgresProjectionRepository {
         await client.query(
           `INSERT INTO bank_department_sections(id,department_id,code,name,manager_id,is_active,source_payload) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb)
            ON CONFLICT(id) DO UPDATE SET department_id=EXCLUDED.department_id,code=EXCLUDED.code,name=EXCLUDED.name,manager_id=EXCLUDED.manager_id,is_active=EXCLUDED.is_active,source_payload=EXCLUDED.source_payload,updated_at=NOW()` ,
-          [section.id, section.departmentId, safeCode(section.code, section.id, sectionCodes), text(section.name) || section.id, section.managerId || null, section.isActive !== false, json(section)]
+          [section.id, section.departmentId, safeSectionCode(section.code, section.id, section.departmentId, sectionCodes), text(section.name) || section.id, section.managerId || null, section.isActive !== false, json(section)]
         );
       }
       for (let index = 0; index < (data.teams || []).length; index++) {
@@ -437,12 +578,18 @@ export class PostgresProjectionRepository {
         if (!changed('users', user as RecordValue, index)) continue;
         const name = splitName(user.fullName);
         await client.query(
-          `INSERT INTO bank_users(id,username,email,first_name,last_name,full_name,title,department_id,section_id,division_id,security_clearance,is_active,last_login_at,roles,team_ids,owned_application_ids,owned_risk_ids,sam_account_name,user_principal_name,distinguished_name,ldap_domain,ldap_bind_status,distribution_groups,directory_source,source_payload)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15::jsonb,$16::jsonb,$17::jsonb,$18,$19,$20,$21,$22,$23::jsonb,$24,$25::jsonb)
-           ON CONFLICT(id) DO UPDATE SET username=EXCLUDED.username,email=EXCLUDED.email,first_name=EXCLUDED.first_name,last_name=EXCLUDED.last_name,full_name=EXCLUDED.full_name,title=EXCLUDED.title,department_id=EXCLUDED.department_id,section_id=EXCLUDED.section_id,division_id=EXCLUDED.division_id,is_active=EXCLUDED.is_active,roles=EXCLUDED.roles,team_ids=EXCLUDED.team_ids,owned_application_ids=EXCLUDED.owned_application_ids,owned_risk_ids=EXCLUDED.owned_risk_ids,source_payload=EXCLUDED.source_payload,updated_at=NOW()`,
-          [user.id, normalizeDirectoryKey(user.username), normalizeDirectoryKey(user.email), name.first, name.last, name.full, text(user.title) || 'Bank Specialist', departmentIds.has(user.departmentId) ? user.departmentId : null, sectionIds.has(user.sectionId || '') ? user.sectionId : null, divisionIds.has(user.divisionId) ? user.divisionId : null, user.securityClearance || 'INTERNAL', Boolean(user.isActive), user.lastLdapLoginAt ? iso(user.lastLdapLoginAt) : null, json(user.roles || []), json(user.teamIds || []), json(user.ownedApplicationIds || []), json(user.ownedRiskIds || []), normalizeDirectoryKey(user.sAMAccountName || user.username), nullable(user.userPrincipalName), nullable(user.distinguishedName), nullable(user.ldapDomain), nullable(user.ldapBindStatus), json(user.distributionGroups || []), nullable(user.directorySource), json(user)]
-        );
-      }
+          `INSERT INTO bank_users(id,username,email,first_name,last_name,full_name,title,department_id,section_id,division_id,security_clearance,is_active,last_login_at,roles,team_ids,owned_application_ids,owned_risk_ids,sam_account_name,user_principal_name,distinguished_name,ldap_domain,ldap_bind_status,distribution_groups,directory_source,identity_ciphertext,identity_ciphertext_version,email_lookup_hash,source_payload)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15::jsonb,$16::jsonb,$17::jsonb,$18,$19,$20,$21,$22,$23::jsonb,$24,$25,$26,$27::jsonb)
+           ON CONFLICT(id) DO UPDATE SET username=EXCLUDED.username,email=EXCLUDED.email,first_name=EXCLUDED.first_name,last_name=EXCLUDED.last_name,full_name=EXCLUDED.full_name,title=EXCLUDED.title,department_id=EXCLUDED.department_id,section_id=EXCLUDED.section_id,division_id=EXCLUDED.division_id,is_active=EXCLUDED.is_active,roles=EXCLUDED.roles,team_ids=EXCLUDED.team_ids,owned_application_ids=EXCLUDED.owned_application_ids,owned_risk_ids=EXCLUDED.owned_risk_ids,user_principal_name=EXCLUDED.user_principal_name,distinguished_name=EXCLUDED.distinguished_name,distribution_groups=EXCLUDED.distribution_groups,identity_ciphertext=EXCLUDED.identity_ciphertext,identity_ciphertext_version=EXCLUDED.identity_ciphertext_version,email_lookup_hash=EXCLUDED.email_lookup_hash,source_payload=EXCLUDED.source_payload,updated_at=NOW()`,
+          [user.id, normalizeDirectoryKey(user.username), nullable(user.email), name.first, name.last, name.full, text(user.title) || 'Bank Specialist', departmentIds.has(user.departmentId) ? user.departmentId : null, sectionIds.has(user.sectionId || '') ? user.sectionId : null, divisionIds.has(user.divisionId) ? user.divisionId : null, user.securityClearance || 'INTERNAL', Boolean(user.isActive), user.lastLdapLoginAt ? iso(user.lastLdapLoginAt) : null, json(user.roles || []), json(user.teamIds || []), json(user.ownedApplicationIds || []), json(user.ownedRiskIds || []), normalizeDirectoryKey(user.sAMAccountName || user.username), null, null, nullable(user.ldapDomain), nullable(user.ldapBindStatus), json([]), nullable(user.directorySource), encryptSecret(JSON.stringify(protectedIdentity(user))), 2, identityLookupHash(user.email || user.username), json(protectedUserPayload(user))]
+         );
+       }
+
+       // Resolve department manager foreign keys only after all users exist.
+       for (const department of departments) {
+         const managerId = department.managerId && userIds.has(department.managerId) ? department.managerId : null;
+         await client.query('UPDATE bank_departments SET manager_id=$2, updated_at=NOW() WHERE id=$1', [department.id, managerId]);
+       }
 
       // CMDB is persisted in its own normalized relational model. source_payload
       // preserves full typed metadata while columns/indexes serve operational queries.
@@ -592,7 +739,7 @@ export class PostgresProjectionRepository {
           `INSERT INTO ticket_attachments(id,ticket_id,file_name,file_size_bytes,mime_type,storage_provider,storage_key,sha256_hash,uploaded_by_user_id,uploaded_at,is_forensic_artifact,source_payload)
            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)
            ON CONFLICT(id) DO UPDATE SET file_name=EXCLUDED.file_name,file_size_bytes=EXCLUDED.file_size_bytes,mime_type=EXCLUDED.mime_type,storage_key=EXCLUDED.storage_key,sha256_hash=EXCLUDED.sha256_hash,is_forensic_artifact=EXCLUDED.is_forensic_artifact,source_payload=EXCLUDED.source_payload`,
-          [attachment.id, attachment.ticketId, attachment.fileName || attachment.id, numberValue(attachment.fileSizeBytes), attachment.mimeType || 'application/octet-stream', attachment.storageProvider || 's3', attachment.storageKey || attachment.id, checksum, attachment.uploaderId, iso(attachment.uploadedAt), Boolean(attachment.isImmutableEvidence), json(attachment)]
+          [attachment.id, attachment.ticketId, attachment.fileName || attachment.id, numberValue(attachment.fileSizeBytes), attachment.mimeType || 'application/octet-stream', attachment.storageProvider || 's3', attachment.storageKey || attachment.quarantineStorageKey || attachment.id, checksum, attachment.uploaderId, iso(attachment.uploadedAt), Boolean(attachment.isImmutableEvidence), json(attachment)]
         );
       }
       for (let index = 0; index < (data.ticketRelationships || []).length; index++) {
@@ -715,7 +862,16 @@ export class PostgresProjectionRepository {
           );
         }
       }
+      for (const event of outboxEvents) {
+        await client.query(
+          `INSERT INTO outbox_events(id,topic,aggregate_type,aggregate_id,payload,correlation_id,occurred_at)
+           VALUES($1,$2,$3,$4,$5::jsonb,$6,$7)
+           ON CONFLICT DO NOTHING`,
+          [event.id, event.topic, event.aggregateType, event.aggregateId, json(event.payload), event.correlationId || null, iso(event.occurredAt)]
+        );
+      }
     });
+
     this.persistedHashes = nextHashes;
   }
 }

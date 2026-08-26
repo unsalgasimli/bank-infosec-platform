@@ -3,6 +3,7 @@ import { db } from '../db/database.js';
 import { AppNotification, NotificationType, NotificationSeverity } from '../../shared/types/notification.js';
 
 export interface CreateNotificationParams {
+  id?: string;
   userId: string;
   title: string;
   message: string;
@@ -33,8 +34,11 @@ export class NotificationService {
       db.data.notifications = [];
     }
 
+    const notificationId = params.id || `notif-${uuidv4().substring(0, 8)}`;
+    const existing = db.data.notifications.find((notification) => notification.id === notificationId);
+    if (existing) return existing;
     const newNotif: AppNotification = {
-      id: `notif-${uuidv4().substring(0, 8)}`,
+      id: notificationId,
       userId: params.userId,
       title: params.title,
       message: params.message,

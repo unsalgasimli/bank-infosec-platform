@@ -6,6 +6,10 @@ const IV_LENGTH = 12; // 96 bits for GCM
 const SALT_LENGTH = 16;
 const KEY_LENGTH = 32; // 256 bits
 
+function dataProtectionKey(): string {
+  return config.DATA_ENCRYPTION_KEY || config.JWT_SECRET;
+}
+
 /**
  * Derives a cryptographic key using PBKDF2 from the server master secret and unique salt
  */
@@ -16,7 +20,7 @@ function deriveKey(secret: string, salt: Buffer): Buffer {
 /**
  * Encrypts plaintext string using authenticated AES-256-GCM
  */
-export function encryptSecret(plaintext: string, masterKey = config.JWT_SECRET): string {
+export function encryptSecret(plaintext: string, masterKey = dataProtectionKey()): string {
   const iv = crypto.randomBytes(IV_LENGTH);
   const salt = crypto.randomBytes(SALT_LENGTH);
   const key = deriveKey(masterKey, salt);
@@ -37,7 +41,7 @@ export function encryptSecret(plaintext: string, masterKey = config.JWT_SECRET):
 /**
  * Decrypts ciphertext string using authenticated AES-256-GCM
  */
-export function decryptSecret(encryptedPayload: string, masterKey = config.JWT_SECRET): string {
+export function decryptSecret(encryptedPayload: string, masterKey = dataProtectionKey()): string {
   const parts = encryptedPayload.split(':');
   if (parts.length !== 4) {
     throw new Error('Invalid encrypted payload format');
@@ -69,7 +73,7 @@ export function maskSecret(secret?: string): string {
 /**
  * Automatically decrypts secret if prefixed with "enc:", otherwise returns string as-is
  */
-export function resolveSecret(rawSecret?: string, masterKey = config.JWT_SECRET): string {
+export function resolveSecret(rawSecret?: string, masterKey = dataProtectionKey()): string {
   if (!rawSecret) return '';
   const trimmed = rawSecret.trim();
   if (trimmed.startsWith('enc:')) {
@@ -82,3 +86,10 @@ export function resolveSecret(rawSecret?: string, masterKey = config.JWT_SECRET)
   return trimmed;
 }
 
+/** A keyed, non-reversible lookup value for encrypted identity attributes. */
+export function identityLookupHash(value: string): string {
+  return crypto
+    .createHmac('sha256', dataProtectionKey())
+    .update(value.trim().toLowerCase(), 'utf8')
+    .digest('base64url');
+}

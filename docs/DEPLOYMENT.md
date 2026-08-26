@@ -2,7 +2,7 @@
 
 ## 1. Quickstart: Local Production Stack with Docker Compose
 
-To deploy the entire production stack (App + PostgreSQL 16 + Redis 7 + Nginx) on a host machine:
+To deploy the modular-monolith topology (API + worker + scheduler + PostgreSQL + PgBouncer + Redis + RabbitMQ + ClamAV + Nginx) on a host machine:
 
 ### Prerequisites
 - Docker Engine 24+ & Docker Compose v2+
@@ -18,8 +18,10 @@ To deploy the entire production stack (App + PostgreSQL 16 + Redis 7 + Nginx) on
 
 2. **Configure Environment**:
    ```bash
-   cp .env.example .env
+   cp .env.production.example .env
    ```
+
+   Populate values through the bank-approved secrets mechanism. Production will refuse wildcard CORS, local attachment storage, disabled RabbitMQ, or disabled malware scanning.
 
 3. **Start the Production Topology**:
    ```bash
@@ -31,17 +33,23 @@ To deploy the entire production stack (App + PostgreSQL 16 + Redis 7 + Nginx) on
    # Check container status
    docker compose ps
 
-   # Check liveness (via Nginx on 8080 or directly on 4000)
+   # Check liveness (via Nginx on 8080 or the localhost-only API listener)
    curl http://localhost:8080/api/health
    curl http://localhost:4000/api/health
 
-   # Check deep readiness (PostgreSQL + Redis + Storage)
+   # Check deep readiness (PgBouncer/PostgreSQL + Redis + RabbitMQ + storage + ClamAV)
    curl http://localhost:8080/api/health/ready
    curl http://localhost:4000/api/health/ready
    ```
 
 5. **Access the Platform**:
-   - Open your browser at `http://localhost:8080` (via Nginx Reverse Proxy) or `http://localhost:4000` (Direct App Server).
+   - Open the browser through the WAF/LB or Nginx listener. The API listener is localhost-only for break-glass diagnostics.
+
+6. **Optional observability profile**:
+   ```bash
+   docker compose --profile observability up -d
+   ```
+   Grafana binds to localhost by default and has a provisioned Prometheus datasource.
 
 ---
 
@@ -118,8 +126,14 @@ kubectl apply -f deploy/k8s/ingress.yaml
 
 ### Log Inspection
 ```bash
-# App Logs (JSON format)
+# API Logs (JSON format)
 docker compose logs -f app
+
+# Dedicated async roles
+docker compose logs -f worker scheduler
+
+# Outbox and broker
+docker compose logs -f rabbitmq pgbouncer clamav
 
 # PostgreSQL Logs
 docker compose logs -f postgres

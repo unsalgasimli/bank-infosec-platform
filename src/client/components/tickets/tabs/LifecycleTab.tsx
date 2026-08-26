@@ -103,6 +103,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
   const [satisfactionComment, setSatisfactionComment] = useState('');
 
   const [busy, setBusy] = useState(false);
+  const [aiQueued, setAiQueued] = useState(false);
   const [submittingSubTicket, setSubmittingSubTicket] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -829,13 +830,16 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
           </div>
           <button
             disabled={busy}
-            onClick={() => call(`/api/tickets/${ticket.id}/ai-analysis`, 'POST', {})}
+            onClick={() => call(`/api/tickets/${ticket.id}/ai-analysis`, 'POST', {}).then((result) => setAiQueued(Boolean(result?.queued)))}
             className="jira-btn-primary"
           >
             {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
             <span>Analiz et</span>
           </button>
         </div>
+        {aiQueued && !latestRecommendation && (
+          <p className="mt-3 text-xs text-blue-700">Analiz növbəyə alındı. Nəticə hazır olduqda səhifəni yeniləyin.</p>
+        )}
         {latestRecommendation && (
           <div className="mt-4 rounded-xl border border-blue-200 bg-white p-4 text-xs shadow-xs space-y-2">
             <div className="flex items-center justify-between gap-3 flex-wrap">

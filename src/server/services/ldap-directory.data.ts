@@ -13,6 +13,7 @@ export interface LDAPRawEntry {
   distinguishedName?: string;
   /** Active Directory distinguished name of the employee's direct manager. */
   manager?: string;
+  directReports?: string[] | string;
   memberOf?: string[] | string;
   description?: string;
   employeeType?: string;
@@ -29,12 +30,23 @@ export interface LDAPRawEntry {
 export interface DepartmentMappingResult {
   departmentId: string;
   divisionId: string;
+  departmentName: string;
+  departmentCode: string;
+  /** Section (Şöbə) - has Section Head (Şöbə Müdiri) */
   sectionId?: string;
   sectionName?: string;
   sectionCode?: string;
+  /** Sub-unit (Bölmə / Sektor) - under Section, has NO separate manager */
+  unitId?: string;
+  unitName?: string;
+  unitCode?: string;
+  /** Cleaned position title */
+  positionTitle?: string;
+  /** Whether the title indicates Department Head / CISO / Director */
+  isDepartmentHead?: boolean;
+  /** Whether the title indicates Section Head / Şöbə Müdiri */
+  isSectionHead?: boolean;
   teamIds: string[];
-  departmentName: string;
-  departmentCode: string;
   roles: BankRole[];
   securityClearance: SecurityClearanceLevel;
 }
@@ -67,7 +79,6 @@ export function normalizeDirectoryText(val: any): string {
 export function normalizeDirectoryKey(val: any): string {
   return normalizeDirectoryText(val).toLowerCase();
 }
-
 export function slugifyDept(text: string): string {
   return (
     text
@@ -188,9 +199,122 @@ function getSpecificItOrganizationalUnit(distinguishedName: any, adDepartment: s
   });
 }
 
+/** Parsed department, section and unit information derived from authoritative AD fields. */
+export interface ParsedHierarchy {
+  departmentCandidate?: string;
+  sectionCandidate?: string;   // Şöbə (has manager)
+  unitCandidate?: string;      // Bölmə / Sektor (under Şöbə, NO separate manager)
+  positionTitle: string;       // Cleaned job position title
+  isDepartmentHead: boolean;
+  isSectionHead: boolean;
+}
+
+/**
+ * Parses AD Job Title (e.g. "Şöbə / Bölmə / Vəzifə" or "Şöbə / Vəzifə") and OUs into
+ * structured 3-tier hierarchy: Departament -> Şöbə (Section) -> Bölmə (Unit).
+ * Enforces rule: Bölmə has NO separate manager; approvals route to parent Şöbə manager.
+ */
+export function parseJobTitleAndHierarchy(
+  title: any = '',
+  department: any = '',
+  relevantOUs: string[] = []
+): ParsedHierarchy {
+  const cleanTitle = normalizeDirectoryText(title);
+  const cleanDept = normalizeDirectoryText(department);
+  let deptCand: string | undefined;
+  let sectionCand: string | undefined;
+  let unitCand: string | undefined;
+  let posTitle = cleanTitle;
+
+  if (cleanTitle.includes('/')) {
+    const parts = cleanTitle.split('/').map((p) => p.trim()).filter(Boolean);
+    posTitle = parts[parts.length - 1] || cleanTitle;
+
+    const upperSegments = parts.slice(0, -1);
+    for (const seg of upperSegments) {
+      const normSeg = normalizeAzerbaijani(seg);
+      if (normSeg.includes('departament') || normSeg.includes('department')) {
+        deptCand = seg;
+      } else if (normSeg.includes('şöbə') || normSeg.includes('sobe') || normSeg.includes('section')) {
+        sectionCand = seg;
+      } else if (
+        normSeg.includes('bölmə') ||
+        normSeg.includes('bolme') ||
+        normSeg.includes('sektor') ||
+        normSeg.includes('qrup') ||
+        normSeg.includes('unit')
+      ) {
+        unitCand = seg;
+      } else {
+        if (!sectionCand) sectionCand = seg;
+        else if (!unitCand) unitCand = seg;
+      }
+    }
+  }
+
+  // Also extract candidates from OUs if not already found in title
+  for (const ou of relevantOUs) {
+    const normOu = normalizeAzerbaijani(ou);
+    if (!sectionCand && (normOu.includes('şöbə') || normOu.includes('sobe') || normOu.includes('section') || normOu.includes('devops') || normOu.includes('soc') || normOu.includes('appsec'))) {
+      sectionCand = ou;
+    } else if (!unitCand && (normOu.includes('bölmə') || normOu.includes('bolme') || normOu.includes('sektor') || normOu.includes('qrup'))) {
+      unitCand = ou;
+    }
+  }
+
+  // If department string itself specifies a section/unit
+  if (cleanDept) {
+    const normDept = normalizeAzerbaijani(cleanDept);
+    if (!sectionCand && (normDept.includes('şöbə') || normDept.includes('sobe') || normDept.includes('section'))) {
+      sectionCand = cleanDept;
+    } else if (!unitCand && (normDept.includes('bölmə') || normDept.includes('bolme') || normDept.includes('sektor'))) {
+      unitCand = cleanDept;
+    }
+  }
+
+  const normPos = normalizeAzerbaijani(posTitle);
+  const normCleanTitle = normalizeAzerbaijani(cleanTitle);
+
+  const isDeptHead =
+    normPos.includes('departament müdiri') ||
+    normPos.includes('departament mudiri') ||
+    normPos.includes('departament rəisi') ||
+    normPos.includes('departament reisi') ||
+    normPos.includes('ciso') ||
+    normPos.includes('direktor') ||
+    normPos.includes('director') ||
+    normCleanTitle.includes('chief information security officer') ||
+    normCleanTitle.includes('departament müdiri') ||
+    normCleanTitle.includes('departament mudiri');
+
+  const isSecHead =
+    !isDeptHead &&
+    (normPos.includes('şöbə müdiri') ||
+      normPos.includes('sobe mudiri') ||
+      normPos.includes('şöbə rəisi') ||
+      normPos.includes('sobe reisi') ||
+      normPos.includes('head of section') ||
+      normPos.includes('section head') ||
+      normCleanTitle.includes('şöbə müdiri') ||
+      normCleanTitle.includes('sobe mudiri') ||
+      (normPos.includes('müdir') && !normPos.includes('departament') && !normPos.includes('bölmə')) ||
+      (normPos.includes('mudir') && !normPos.includes('departament') && !normPos.includes('bolme')) ||
+      (normPos.includes('rəis') && !normPos.includes('departament') && !normPos.includes('bölmə')) ||
+      (normPos.includes('reis') && !normPos.includes('departament') && !normPos.includes('bolme')));
+
+  return {
+    departmentCandidate: deptCand,
+    sectionCandidate: sectionCand,
+    unitCandidate: unitCand,
+    positionTitle: posTitle || cleanTitle || 'Bank Specialist',
+    isDepartmentHead: isDeptHead,
+    isSectionHead: isSecHead,
+  };
+}
+
 /**
  * Intelligently maps Active Directory department/şöbə, title, distinguishedName OUs,
- * and security groups to BankDepartment with precise leadership (Müdir / Head) differentiation.
+ * and security groups to BankDepartment with precise 3-tier hierarchy & leadership.
  */
 export function mapDepartment(
   adDepartment: any = '',
@@ -220,18 +344,8 @@ export function mapDepartment(
     ].includes(n);
   });
 
-  // Extract department candidates from titles such as
-  // "Department / Section / Position". These are used as a fallback after a
-  // concrete business OU; generic shared containers are explicitly excluded.
-  let titleDept = '';
-  let titleSections: string[] = [];
-  let titlePos = titleStr;
-  if (titleStr.includes('/')) {
-    const parts = titleStr.split('/').map((p) => p.trim());
-    titleDept = parts[0];
-    titlePos = parts[parts.length - 1];
-    titleSections = parts.slice(0, -1).reverse();
-  }
+  // Parse 3-tier hierarchy from title and OUs
+  const hierarchy = parseJobTitleAndHierarchy(titleStr, deptStr, relevantOUs);
 
   // Combined context string for searching across all signals
   const combinedContext = [deptStr, titleStr, ...relevantOUs].join(' ');
@@ -243,6 +357,8 @@ export function mapDepartment(
 
   // Check if position indicates leadership (Müdir / Head / Direktor / Sədr / Rəis / Lead / Manager)
   const isManagerTitle =
+    hierarchy.isDepartmentHead ||
+    hierarchy.isSectionHead ||
     titleNorm.includes('mudir') ||
     titleNorm.includes('reis') ||
     titleNorm.includes('direktor') ||
@@ -280,6 +396,8 @@ export function mapDepartment(
   // 2. Information Security & Cyber Defense (İnformasiya Təhlükəsizliyi)
   else if (
     norm.includes('infosec') ||
+    norm.includes('information security') ||
+    norm.includes('security') ||
     norm.includes('tehlukesizliyi') ||
     norm.includes('tehlukesizlik') ||
     norm.includes('cyber') ||
@@ -787,8 +905,8 @@ export function mapDepartment(
   }
 
   // 20. Other Real Department via title / OU / deptStr
-  else if (relevantOUs.length > 0 || (deptStr && deptStr.length > 1) || (titleDept && titleDept.length > 1)) {
-    const candidateName = relevantOUs[0] || titleDept || deptStr;
+  else if (relevantOUs.length > 0 || (deptStr && deptStr.length > 1) || Boolean(hierarchy.departmentCandidate)) {
+    const candidateName = relevantOUs[0] || hierarchy.departmentCandidate || deptStr;
     const rawSlug = slugifyDept(candidateName);
     let roles: BankRole[] = ['REQUESTER', 'ASSIGNEE'];
     if (isManagerTitle) {
@@ -863,29 +981,45 @@ export function mapDepartment(
     }
   }
 
-  // AD may contain multiple şöbə/bölmə OUs under one business department.
-  // Keep the parent department stable and persist the most-specific child as
-  // a separate section so routing, reporting, and member lists remain joined.
+  // 3-tier hierarchy assignment: Department -> Section (Şöbə) -> Unit (Bölmə)
   const parentName = normalizeAzerbaijani(result.departmentName).replace(/\s+/g, ' ').trim();
+  
+  result.positionTitle = hierarchy.positionTitle;
+  result.isDepartmentHead = hierarchy.isDepartmentHead;
+  result.isSectionHead = hierarchy.isSectionHead;
+
+  // Resolve Section (Şöbə) candidate
   const sectionCandidate = [
+    hierarchy.sectionCandidate,
     ...relevantOUs,
-    ...titleSections,
-    titleDept,
-    ...(/\b(?:şöbə|şobə|bölmə|bolme|section|unit|devops|soc|appsec)\b/i.test(deptStr) ? [deptStr] : []),
+    deptStr,
   ].map((value) => normalizeDirectoryText(value)).find((value) => {
     const normalized = normalizeAzerbaijani(value).replace(/\s+/g, ' ').trim();
     if (!normalized || normalized === parentName) return false;
     if (/^(bank users|ho users|branch users|users|service|disabled|disable|outlook|no policy|ie test|qmatic user|tarcubacilar|tecrubeciler?|tercubeciler?|interns?|trainees?|stajyerler?)$/.test(normalized)) return false;
+    // Don't treat unit as section if it's explicitly a bölmə
+    if (normalized.includes('bölmə') || normalized.includes('bolme') || normalized.includes('sektor')) return false;
     return !normalized.includes('departamenti') && !normalized.includes('department');
-  });
+  }) || hierarchy.sectionCandidate;
+
   if (sectionCandidate) {
     const sectionSlug = slugifyDept(sectionCandidate);
     result.sectionId = `section-${result.departmentId}-${sectionSlug}`;
     result.sectionName = sectionCandidate;
-    // Section codes are scoped to a department in PostgreSQL. Use the stable
-    // slug rather than the short department-code heuristic, which can collide
-    // for names such as "... şöbəsi" and "... bölməsi".
-    result.sectionCode = `SEC_${sectionSlug.replace(/-/g, '_').slice(0, 60)}`;
+    result.sectionCode = `SEC_${sectionSlug.replace(/-/g, '_').slice(0, 60).toUpperCase()}`;
+  }
+
+  // Resolve Unit (Bölmə / Sektor) candidate
+  const unitCandidate = hierarchy.unitCandidate || relevantOUs.find((ou) => {
+    const n = normalizeAzerbaijani(ou);
+    return n.includes('bölmə') || n.includes('bolme') || n.includes('sektor') || n.includes('qrup');
+  });
+
+  if (unitCandidate) {
+    const unitSlug = slugifyDept(unitCandidate);
+    result.unitId = `unit-${result.departmentId}-${unitSlug}`;
+    result.unitName = unitCandidate;
+    result.unitCode = `UNIT_${unitSlug.replace(/-/g, '_').slice(0, 60).toUpperCase()}`;
   }
 
   return result;
@@ -943,16 +1077,26 @@ export function parseMemberOfGroups(rawMemberOf?: string[] | string): string[] {
 }
 
 /**
- * Privileged AD shadow accounts are intentionally excluded from the business
- * directory. Their base employee account is the only identity that may appear
- * in tickets, assignments, or department member lists.
+ * Privileged AD shadow accounts (.si, .sec, .abs, .sh, .adm, .rdp, etc.)
+ * are intentionally excluded from the business directory. Their base employee account
+ * is the only identity that may appear in tickets, assignments, or department member lists.
  */
 export function isExcludedPrivilegedAccount(sAMAccountName: string): boolean {
   const normalized = normalizeDirectoryKey(sAMAccountName);
+  if (/\.(?:rdp|si|sec|sh|shi|mie|abs|adm|admin|backup|test|old|\d{6,})$/i.test(normalized)) {
+    return true;
+  }
   const finalSegment = normalized.split('.').at(-1) || '';
-  // .si/.sec/.abs are observed delegated/service suffixes. Very short final
-  // segments are not valid "initial.surname" employee accounts either.
-  return /\.(?:rdp|si|sec|sh|abs)$/i.test(normalized) || (normalized.includes('.') && finalSegment.length > 0 && finalSegment.length < 3);
+  return normalized.includes('.') && finalSegment.length > 0 && finalSegment.length < 4 && !/^(?:az|com|net|org|int)$/i.test(finalSegment);
+}
+
+/**
+ * Extracts the base human username from a secondary/privileged account name
+ * (e.g. "u.gasimli.sec" -> "u.gasimli", "e.farzaliyev.si" -> "e.farzaliyev")
+ */
+export function getBaseUsername(sAMAccountName: string): string {
+  const normalized = normalizeDirectoryKey(sAMAccountName);
+  return normalized.replace(/\.(?:rdp|si|sec|sh|shi|mie|abs|adm|admin|backup|test|old|\d{6,})$/i, '');
 }
 
 /**
@@ -963,6 +1107,9 @@ export const KNOWN_SERVICE_ACCOUNT_NAMES = new Set([
   'ldap',
   'ldappa',
   'ldaps',
+  'devopsldap',
+  'ad.manager',
+  'admanager',
   'assetit',
   'otpuser',
   'securit1',
@@ -1022,6 +1169,10 @@ export const KNOWN_SERVICE_ACCOUNT_NAMES = new Set([
   'esd_wss_admin',
   'esd_wss_pool',
   'testinfosec',
+  'trainacc',
+  'testaccount',
+  'testacc',
+  'trainingacc',
   'qmatic.vpn1',
   'rustam.vpn.new',
   'rauf.gni',
@@ -1035,9 +1186,18 @@ export const KNOWN_SERVICE_ACCOUNT_NAMES = new Set([
   'defaultaccount',
   'rtccomponentservice',
   'xerox',
-  // Environment-specific technical identities observed in the directory.
   'cpam',
   'dnssense',
+  'fsprotect.user',
+  'dwh.user',
+  'dbms-forward',
+  'vaultadmin01',
+  'expressbank.learning',
+  'bookstack-infosec',
+  'wug_svc',
+  'fp_admin',
+  'fp_dlp_svc',
+  'e.review',
 ]);
 
 /**
@@ -1052,16 +1212,25 @@ export const LDAP_NON_HUMAN_ACCOUNT_FILTERS = [
   '(!(sAMAccountName=dnssense))',
   '(!(sAMAccountName=healthmailbox*))',
   '(!(sAMAccountName=training*))',
+  '(!(sAMAccountName=*ldap*))',
+  '(!(sAMAccountName=polis.*))',
+  '(!(sAMAccountName=mbaudit*))',
+  '(!(sAMAccountName=fp_*))',
+  '(!(sAMAccountName=wug_*))',
+  '(!(sAMAccountName=*_svc))',
 ] as const;
 
 export type DirectoryAccountType = 'HUMAN' | 'SERVICE' | 'TEST' | 'TECHNICAL' | 'PRIVILEGED';
 
-const TEST_DIRECTORY_IDENTITY = /(?:^|[._-])(?:test|qa|uat|demo|sandbox)(?:[._-]?\d+|[._-]|$)/i;
-const TECHNICAL_DIRECTORY_IDENTITY = /(?:^|[._-])(?:adm|admin|svc|service|robot|bot|gpo|keycloak|review|qradar|splunk|zabbix|nessus|qualys|cpam|dnssense|gitlab|jira|mattermost|zammad|ipam|pgadmin|sccm|msol|vault|wug|cortex)(?:[._-]|$)|(?:adm|admin)$/i;
-const TECHNICAL_NAME_MARKER = /\b(?:account|admin|service|system|technical|application|qradar|splunk|zabbix|nessus|qualys|cpam|sccm|monitor(?:ing)?|scanner|backup|database|sql|ldap|mailbox|exchange|vpn|oracle|swift|gitlab|jira|keycloak|test|demo|specialist|engineer|analyst|officer|administrator|operator|developer|support)\b/i;
+const TEST_DIRECTORY_IDENTITY = /(?:^|[._-])(?:test|qa|uat|demo|sandbox|review)(?:[._-]?\d+|[._-]|$)/i;
+const TECHNICAL_DIRECTORY_IDENTITY = /(?:^|[._-])(?:adm|admin|svc|service|robot|bot|gpo|keycloak|review|qradar|splunk|zabbix|nessus|qualys|cpam|dnssense|gitlab|jira|mattermost|zammad|ipam|pgadmin|sccm|msol|vault|wug|cortex|polis|police|learning|forward|dwh|bookstack|fsprotect|mbaudit|fp|dlp|forcepoint)(?:[._-]|$)|(?:adm|admin|_svc|_admin|_user)$/i;
+const TECHNICAL_NAME_MARKER = /\b(?:account|admin|service|system|technical|application|qradar|splunk|zabbix|nessus|qualys|cpam|sccm|monitor(?:ing)?|scanner|backup|database|sql|ldap|ldaps|devops|mailbox|exchange|vpn|oracle|swift|gitlab|jira|keycloak|test|demo|specialist|engineer|analyst|officer|administrator|operator|developer|support|polis|police|learning|training|tool|protect|forward|vault|dwh|bookstack|audit|mbaudit|expressbank|expresspay|netadmin|fsprotect|wug|forcepoint|dlp|review)\b/i;
 
 function isPersonNamePart(value: string): boolean {
-  return /^\p{L}[\p{L}'’-]{1,}$/u.test(normalizeDirectoryText(value));
+  const normalized = normalizeDirectoryText(value);
+  if (!normalized || normalized.length < 2) return false;
+  if (TECHNICAL_NAME_MARKER.test(normalized)) return false;
+  return /^\p{L}[\p{L}'’-]{1,}$/u.test(normalized);
 }
 
 /**
@@ -1083,9 +1252,8 @@ export function hasHumanDirectoryName(
 }
 
 function isLikelyPersonalUsername(username: string): boolean {
-  // Modern accounts are normally `f.surname`; older accounts may use the
-  // full first name. Exactly two alphabetic parts avoids accepting technical
-  // multi-segment/service naming conventions.
+  if (TECHNICAL_NAME_MARKER.test(username)) return false;
+  if (TECHNICAL_DIRECTORY_IDENTITY.test(username)) return false;
   return /^\p{L}{1,}[._-]\p{L}{3,}$/u.test(username);
 }
 
@@ -1131,7 +1299,11 @@ export function isServiceAccount(
     dn.includes('ou=special') ||
     dn.includes('ou=disable') ||
     dn.includes('ou=service accounts') ||
-    dn.includes('ou=service_accounts')
+    dn.includes('ou=service_accounts') ||
+    dn.includes('ou=security users') ||
+    dn.includes('ou=netadmin') ||
+    dn.includes('ou=it_nonprevileged_admins_group') ||
+    dn.includes('ou=administrator')
   ) {
     return true;
   }
@@ -1147,7 +1319,21 @@ export function isServiceAccount(
     /^healthmailbox/i.test(username) ||
     /^training/i.test(username) ||
     /^rtccomponentservice$/i.test(username) ||
-    /^xerox(?:$|[._-])/i.test(username)
+    /^xerox(?:$|[._-])/i.test(username) ||
+    /^polis\./i.test(username) ||
+    /^mbaudit/i.test(username) ||
+    /ldap(?:$|[._-])/i.test(username) ||
+    /devopsldap/i.test(username) ||
+    /^dwh\./i.test(username) ||
+    /^fsprotect\./i.test(username) ||
+    /^dbms-/i.test(username) ||
+    /^vaultadmin/i.test(username) ||
+    /^expressbank\./i.test(username) ||
+    /^bookstack-/i.test(username) ||
+    /^wug_/i.test(username) ||
+    /^fp_/i.test(username) ||
+    /\.review$/i.test(username) ||
+    /_svc$/i.test(username)
   ) {
     return true;
   }
@@ -1177,8 +1363,9 @@ export function isServiceAccount(
 
   // 3. Service prefix / suffix patterns
   if (
-    /^(svc|service|sql|backup|scanner|scan|sys|adm|sync|srv|esd|sccm|db|exb|app|iis)[_\-\.]/i.test(username) ||
-    /\.(?:rdp|si|sec|sh|adm|admin|service|srv|test|vpn|backup|notification)$/i.test(username) ||
+    /^(svc|service|sql|backup|scanner|scan|sys|adm|sync|srv|esd|sccm|db|exb|app|iis|polis|audit|tool|bot|wug|fp)[_\-\.]/i.test(username) ||
+    /\.(?:rdp|si|sec|sh|shi|mie|adm|admin|service|srv|test|vpn|backup|notification|review)$/i.test(username) ||
+    /(?:_svc|_admin|_user)$/i.test(username) ||
     username.endsWith('$')
   ) {
     return true;
@@ -1193,25 +1380,24 @@ export function isServiceAccount(
  * account or moving to a different organisational unit.
  */
 export function classifyDirectoryAccount(
-  entry: LDAPRawEntry | { username?: string; sAMAccountName?: string; distinguishedName?: string; title?: string; mail?: string; fullName?: string },
+  entry: LDAPRawEntry | { username?: string; sAMAccountName?: string; distinguishedName?: string; title?: string; mail?: string; fullName?: string; department?: string; jobTitle?: string },
 ): DirectoryAccountType {
-  const identity = entry as LDAPRawEntry & { username?: string };
+  const identity = entry as LDAPRawEntry & { username?: string; jobTitle?: string };
   const username = normalizeDirectoryKey(identity.sAMAccountName || identity.username);
   const email = normalizeDirectoryKey(identity.mail);
+  const title = normalizeDirectoryText(identity.title || identity.jobTitle || '');
+  const dept = normalizeDirectoryText(identity.department || '');
+
   if (isExcludedPrivilegedAccount(username)) return 'PRIVILEGED';
   if (isServiceAccount(entry, [])) return 'SERVICE';
   if (TEST_DIRECTORY_IDENTITY.test(username) || TEST_DIRECTORY_IDENTITY.test(email)) return 'TEST';
-  if (TECHNICAL_DIRECTORY_IDENTITY.test(username)) return 'TECHNICAL';
   if (!hasHumanDirectoryName(entry)) {
     const nameAlias = normalizeDirectoryKey(identity.displayName || identity.fullName).replace(/[._\-\s]/g, '');
     const usernameAlias = username.replace(/[._\-\s]/g, '');
-    // Older SQL projections can retain only a username-shaped display value
-    // (for example `A.Afandiyev`). The documented personal username shape is
-    // enough in that narrowly constrained legacy case, but never overrides a
-    // supplied non-person name such as "Information Security Specialist".
     const isEmptyOrUsernameAlias = !nameAlias || nameAlias === usernameAlias;
     if (!isEmptyOrUsernameAlias || !isLikelyPersonalUsername(username)) return 'TECHNICAL';
   }
+
   return 'HUMAN';
 }
 
@@ -1228,4 +1414,50 @@ export function isGenuineEmployeeOrIntern(
   if (!username) return false;
 
   return classifyDirectoryAccount({ ...entry, sAMAccountName: username }) === 'HUMAN';
+}
+
+/**
+ * Calculates a canonical score for deduplicating multiple account variants for a person.
+ * Standard bank format (e.g. `u.gasimli`) and active directory entries score highest.
+ */
+export function calculateCanonicalScore(user: {
+  username?: string;
+  sAMAccountName?: string;
+  email?: string;
+  title?: string;
+  departmentId?: string;
+  managerId?: string;
+  distinguishedName?: string;
+  isActive?: boolean;
+  directorySource?: string;
+  organizationEligible?: boolean;
+  lastLdapLoginAt?: string;
+}): number {
+  const username = normalizeDirectoryKey(user.username || user.sAMAccountName);
+  let score = 0;
+
+  if (user.directorySource === 'ACTIVE_DIRECTORY') score += 50;
+  if (user.isActive) score += 30;
+  if (user.organizationEligible !== false) score += 20;
+
+  if (isExcludedPrivilegedAccount(username)) score -= 100;
+
+  // Format preference: `f.surname` is the modern corporate standard
+  if (/^[a-z]\.[a-z0-9_-]{3,}$/i.test(username)) {
+    score += 40;
+  } else if (/^[a-z]{2}\.[a-z0-9_-]{3,}$/i.test(username)) {
+    score += 30;
+  } else if (/^[a-z]{3,}\.[a-z0-9_-]{3,}$/i.test(username)) {
+    score += 25;
+  } else if (/^[a-z]{3,}$/i.test(username)) {
+    score += 10;
+  }
+
+  if (user.email && user.email.includes('@')) score += 15;
+  if (user.title && user.title.length > 2) score += 10;
+  if (user.departmentId && user.departmentId !== 'dept-general-banking') score += 10;
+  if (user.managerId) score += 10;
+  if (user.distinguishedName) score += 5;
+
+  return score;
 }

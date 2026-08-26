@@ -104,6 +104,12 @@ export interface BankDepartmentSection {
   departmentId: string;
   name: string;
   code: string;
+  /** 'SOBE' (Section with Manager) | 'BOLME' (Sub-unit under Section, NO Manager) | 'SEKTOR' */
+  sectionType?: 'SOBE' | 'BOLME' | 'SEKTOR' | 'GROUP';
+  /** If this is a Bölmə (sub-unit), parentSectionId points to the parent Şöbə. */
+  parentSectionId?: string;
+  /** Bölmə has no manager of its own (false); Şöbə has a manager (true). */
+  hasOwnManager?: boolean;
   managerId?: string;
   managerName?: string;
   managerEmail?: string;
@@ -132,10 +138,14 @@ export interface BankUser {
   title: string;
   divisionId: string;
   departmentId: string;
-  /** AD-confirmed child organisational unit under departmentId. */
+  /** AD-confirmed Section (Şöbə) under departmentId. */
   sectionId?: string;
+  sectionName?: string;
   /** Hydrated section relation returned by department detail endpoints. */
   section?: BankDepartmentSection;
+  /** AD-confirmed Sub-unit (Bölmə) under Section (Şöbə). Has no separate manager. */
+  unitId?: string;
+  unitName?: string;
   teamIds: string[];
   roles: BankRole[];
   securityClearance: ConfidentialityTier;
@@ -160,6 +170,36 @@ export interface BankUser {
   directoryAccountType?: 'HUMAN' | 'SERVICE' | 'TEST' | 'TECHNICAL' | 'PRIVILEGED';
   /** Only verified human identities participate in department trees and assignment pickers. */
   organizationEligible?: boolean;
+  /** If this was a technical/suffix account, link to canonical username */
+  primaryUsername?: string;
+}
+
+export interface ApprovalChainNode {
+  level: 'DIRECT_MANAGER' | 'SECTION_MANAGER' | 'DEPARTMENT_MANAGER' | 'CISO';
+  userId: string;
+  userName: string;
+  fullName: string;
+  title: string;
+  email: string;
+  entityType: 'DIRECT_REPORT' | 'SECTION' | 'DEPARTMENT';
+  entityName: string;
+}
+
+export interface UserApprovalHierarchy {
+  userId: string;
+  username: string;
+  fullName: string;
+  title: string;
+  departmentId: string;
+  departmentName: string;
+  departmentManager?: { id: string; name: string; email: string; title: string };
+  sectionId?: string;
+  sectionName?: string;
+  sectionManager?: { id: string; name: string; email: string; title: string };
+  unitId?: string;
+  unitName?: string;
+  directManager?: { id: string; name: string; email: string; title: string };
+  approvalChain: ApprovalChainNode[];
 }
 
 export interface LDAPLoginPayload {

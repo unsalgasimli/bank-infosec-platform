@@ -23,7 +23,6 @@ import { WorkflowGovernanceService } from './workflow-governance.service.js';
 import { TicketLifecycleService } from './ticket-lifecycle.service.js';
 import { SLAService } from './sla.service.js';
 import { AuditService } from './audit.service.js';
-import { AutomationService } from './automation.service.js';
 
 const terminalNodeStatuses: NodeInstanceStatus[] = ['COMPLETED', 'SKIPPED', 'CANCELLED', 'FAILED', 'COMPENSATED'];
 const terminalInstanceStatuses: WorkflowInstance['status'][] = ['COMPLETED', 'REJECTED', 'CANCELLED', 'FAILED'];
@@ -748,7 +747,6 @@ export class WorkflowRuntimeService {
       entityKey: ticket.key,
       metadata: { source: 'WORKFLOW_CREATE_INCIDENT', workflowInstanceId: instance.id, workflowNodeId: node.id },
     });
-    AutomationService.triggerEvent('TICKET_CREATED', ticket, workflowActor);
     return { recordId: ticket.id, recordKey: ticket.key, relation: 'CAUSED_BY', created: true };
   }
 

@@ -5,6 +5,7 @@ import type { BankDepartment, BankDepartmentSection, BankRole, BankUser } from '
 import type { DepartmentConnection } from '../../../shared/types/connections.js';
 import { pgClient } from './client.js';
 import { isGenuineEmployeeOrIntern } from '../../services/ldap-directory.data.js';
+import { decryptSecret, identityLookupHash } from '../../utils/crypto.js';
 
 type JsonRecord = Record<string, any>;
 
@@ -87,15 +88,51 @@ const parseJson = <T>(value: unknown, fallback: T): T => {
   return fallback;
 };
 
-export const rowToUser = (row: JsonRecord): BankUser => {
+const encryptedIdentityPlaceholder = /^pii\+[A-Za-z0-9_-]+@encrypted\.invalid$/i;
+const isEncryptedIdentityPlaceholder = (value: unknown): boolean => encryptedIdentityPlaceholder.test(String(value || '').trim());
+
+export const rowToUser = (row: JsonRecord, options: { decryptProtectedIdentity?: boolean } = {}): BankUser => {
   const payload = parseJson<JsonRecord>(row.source_payload, {});
-  return {
+  const shouldDecryptProtectedIdentity = options.decryptProtectedIdentity !== false;
+  const hasProtectedIdentity = Boolean(row.identity_ciphertext);
+  let protectedIdentity: JsonRecord = {};
+  if (hasProtectedIdentity && shouldDecryptProtectedIdentity) {
+    try {
+      protectedIdentity = parseJson<JsonRecord>(JSON.parse(decryptSecret(row.identity_ciphertext)), {});
+    } catch {
+      // Never leak encrypted storage placeholders when an identity key is
+      // unavailable or a legacy ciphertext cannot be decoded in this process.
+      protectedIdentity = {};
+    }
+  }
+  const username = String(row.username || payload.username || row.sam_account_name || 'directory-user');
+  // Ordinary directory attributes stay readable for normal administration and
+  // assignment screens. Only directory security metadata is kept in the
+  // protected identity payload; legacy ciphertext fields are still accepted
+  // here until the startup migration rewrites them.
+  const email = !isEncryptedIdentityPlaceholder(row.email)
+    ? String(row.email || '')
+    : !isEncryptedIdentityPlaceholder(protectedIdentity.email) && protectedIdentity.email
+      ? String(protectedIdentity.email)
+      : '';
+  const plainName = !isEncryptedIdentityPlaceholder(row.full_name) && row.full_name && row.full_name !== 'Encrypted Directory User'
+    ? String(row.full_name)
+    : [row.first_name, row.last_name].filter((value) => value && value !== 'Encrypted' && value !== 'Identity').join(' ');
+  const fullName = plainName || (!isEncryptedIdentityPlaceholder(protectedIdentity.fullName) && protectedIdentity.fullName
+    ? String(protectedIdentity.fullName)
+    : username);
+  const title = row.title && row.title !== 'Encrypted'
+    ? String(row.title)
+    : !isEncryptedIdentityPlaceholder(protectedIdentity.title) && protectedIdentity.title
+      ? String(protectedIdentity.title)
+      : 'Authenticated directory user';
+  const user: BankUser = {
     ...payload,
     id: row.id,
-    username: row.username,
-    email: row.email,
-    fullName: row.full_name || payload.fullName || `${row.first_name} ${row.last_name}`.trim(),
-    title: row.title,
+    username,
+    email,
+    fullName,
+    title,
     divisionId: row.division_id || payload.divisionId || '',
     departmentId: row.department_id || payload.departmentId || '',
     sectionId: row.section_id || payload.sectionId || undefined,
@@ -108,21 +145,22 @@ export const rowToUser = (row: JsonRecord): BankUser => {
     isActive: Boolean(row.is_active),
     managerId: payload.managerId || undefined,
     sAMAccountName: row.sam_account_name || payload.sAMAccountName || undefined,
-    userPrincipalName: row.user_principal_name || payload.userPrincipalName || undefined,
-    distinguishedName: row.distinguished_name || payload.distinguishedName || undefined,
+    userPrincipalName: protectedIdentity.userPrincipalName || (!hasProtectedIdentity && shouldDecryptProtectedIdentity ? row.user_principal_name || payload.userPrincipalName : undefined),
+    distinguishedName: protectedIdentity.distinguishedName || (!hasProtectedIdentity && shouldDecryptProtectedIdentity ? row.distinguished_name || payload.distinguishedName : undefined),
     ldapDomain: row.ldap_domain || payload.ldapDomain || undefined,
     ldapBindStatus: row.ldap_bind_status || payload.ldapBindStatus || undefined,
-    distributionGroups: parseJson<string[]>(row.distribution_groups, payload.distributionGroups || []),
-    lastLdapLoginAt: payload.lastLdapLoginAt || undefined,
+    distributionGroups: protectedIdentity.distributionGroups || (!hasProtectedIdentity && shouldDecryptProtectedIdentity ? parseJson<string[]>(row.distribution_groups, payload.distributionGroups || []) : []),
+    lastLdapLoginAt: row.last_login_at?.toISOString?.() || row.last_login_at || payload.lastLdapLoginAt || undefined,
     directorySource: row.directory_source || payload.directorySource || undefined,
   };
+  return user;
 };
 
 export const directoryUserColumns = `
   id, username, email, first_name, last_name, full_name, title,
   department_id, section_id, division_id, security_clearance, is_active,
   roles, team_ids, owned_application_ids, owned_asset_ids, owned_risk_ids,
-  sam_account_name, user_principal_name, distinguished_name,
+  sam_account_name, user_principal_name, distinguished_name, identity_ciphertext, email_lookup_hash, last_login_at,
   ldap_domain, ldap_bind_status, distribution_groups, directory_source,
   source_payload
 `;
@@ -250,30 +288,33 @@ export class DepartmentsRepository {
   }
 
   public static async list(): Promise<Array<BankDepartment & JsonRecord>> {
-    const [result, usersResult] = await Promise.all([
-      pgClient.query(`${this.departmentSelect} WHERE d.is_active = TRUE ORDER BY v.name, d.name`),
-      pgClient.query(`SELECT ${directoryUserColumns} FROM bank_users WHERE is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY' AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false'`),
-    ]);
-    const users = usersResult.rows
-      .map(rowToUser)
-      .filter((user) => isGenuineEmployeeOrIntern(user, user.distributionGroups || [], user.sAMAccountName || user.username));
-    const usersByDepartment = new Map<string, BankUser[]>();
-    const usersById = new Map(users.map((user) => [user.id, user]));
-    for (const user of users) {
-      if (!user.departmentId) continue;
-      const departmentUsers = usersByDepartment.get(user.departmentId) || [];
-      departmentUsers.push(user);
-      usersByDepartment.set(user.departmentId, departmentUsers);
-    }
+    const result = await pgClient.query(`${this.departmentSelect} WHERE d.is_active = TRUE ORDER BY v.name, d.name`);
+    // `departmentSelect` already computes member counts from the authoritative
+    // AD projection. Do not hydrate and PBKDF2-decrypt every directory identity
+    // just to count users on the department landing page. Only the referenced
+    // managers need protected identity resolution for display.
+    const managerIds = [...new Set(
+      result.rows
+        .map((row) => String(row.manager_id || '').trim())
+        .filter(Boolean)
+    )];
+    const managersResult = managerIds.length
+      ? await pgClient.query(`SELECT ${directoryUserColumns} FROM bank_users WHERE id = ANY($1::text[]) AND is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY' AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false'`, [managerIds])
+      : { rows: [] as JsonRecord[] };
+    const managersById = new Map(
+      managersResult.rows
+        .map(rowToUser)
+        .filter((user) => isGenuineEmployeeOrIntern(user, user.distributionGroups || [], user.sAMAccountName || user.username))
+        .map((user) => [user.id, user])
+    );
 
     return result.rows.map((row) => {
       const department = rowToDepartment(row);
-      const manager = department.managerId ? usersById.get(department.managerId) : undefined;
+      const manager = department.managerId ? managersById.get(department.managerId) : undefined;
       return {
         ...department,
-        memberCount: usersByDepartment.get(department.id)?.length || 0,
-        managerName: manager?.fullName,
-        managerEmail: manager?.email,
+        managerName: manager?.fullName || department.managerName,
+        managerEmail: manager?.email || department.managerEmail,
       };
     });
   }
@@ -297,10 +338,10 @@ export class DepartmentsRepository {
       return {
         department,
         members: members.rows
-          .map(rowToUser)
+          .map((row) => rowToUser(row, { decryptProtectedIdentity: false }))
           .filter((member) => isGenuineEmployeeOrIntern(member, member.distributionGroups || [], member.sAMAccountName || member.username)),
         leadership: leadership.rows
-          .map(rowToUser)
+          .map((row) => rowToUser(row, { decryptProtectedIdentity: false }))
           .filter((member) => isGenuineEmployeeOrIntern(member, member.distributionGroups || [], member.sAMAccountName || member.username)),
         connections: connections.rows.map(rowToConnection),
       };
@@ -312,8 +353,50 @@ export class DepartmentsRepository {
   public static async listActiveDirectoryUsers(): Promise<BankUser[]> {
     const result = await pgClient.query(`SELECT ${directoryUserColumns} FROM bank_users WHERE is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY' AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false' ORDER BY full_name, username`);
     return result.rows
-      .map(rowToUser)
+      // The bulk picker only needs ordinary directory attributes. Decrypting
+      // every protected identity here performs a PBKDF2 derivation per user
+      // and can hold the shared PostgreSQL pool for tens of seconds after
+      // login, starving the workflow catalog and other authenticated pages.
+      // Protected identity fields remain available through the single-user
+      // authorization lookups above.
+      .map((row) => rowToUser(row, { decryptProtectedIdentity: false }))
       .filter((user) => isGenuineEmployeeOrIntern(user, user.distributionGroups || [], user.sAMAccountName || user.username));
+  }
+
+  /**
+   * Hot-path lookup for the development-only passwordless login flow. Do not
+   * hydrate and decrypt the complete directory projection just to identify a
+   * single login candidate.
+   */
+  public static async findActiveDirectoryUserForLogin(input: string): Promise<BankUser | undefined> {
+    const normalizedInput = input.trim().toLowerCase();
+    const result = await pgClient.query(
+      `SELECT ${directoryUserColumns}
+       FROM bank_users
+       WHERE is_active = TRUE
+         AND directory_source = 'ACTIVE_DIRECTORY'
+         AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false'
+         AND (
+           LOWER(username) = $1
+           OR LOWER(sam_account_name) = $1
+           OR LOWER(email) = $1
+           OR LOWER(user_principal_name) = $1
+           OR email_lookup_hash = $2
+         )
+       LIMIT 1`,
+      [normalizedInput, identityLookupHash(normalizedInput)]
+    );
+    const user = result.rows[0] ? rowToUser(result.rows[0]) : undefined;
+    return user && isGenuineEmployeeOrIntern(user, user.distributionGroups || [], user.sAMAccountName || user.username)
+      ? user
+      : undefined;
+  }
+
+  /** Authoritative identity lookup used by session middleware, never a snapshot. */
+  public static async findActiveDirectoryUserById(userId: string): Promise<BankUser | undefined> {
+    const result = await pgClient.query(`SELECT ${directoryUserColumns} FROM bank_users WHERE id=$1 AND is_active=TRUE AND directory_source='ACTIVE_DIRECTORY' LIMIT 1`, [userId]);
+    const user = result.rows[0] ? rowToUser(result.rows[0]) : undefined;
+    return user && isGenuineEmployeeOrIntern(user, user.distributionGroups || [], user.sAMAccountName || user.username) ? user : undefined;
   }
 
   /**
@@ -365,7 +448,7 @@ export class DepartmentsRepository {
     const sectionId = input.sectionId?.trim() || undefined;
     const query = input.query?.trim().toLocaleLowerCase('az') || '';
     const users = userResult.rows
-      .map(rowToUser)
+      .map((row) => rowToUser(row, { decryptProtectedIdentity: false }))
       .filter((user) => isGenuineEmployeeOrIntern(user, user.distributionGroups || [], user.sAMAccountName || user.username))
       .filter((user) => !departmentId || user.departmentId === departmentId)
       .filter((user) => !sectionId || user.sectionId === sectionId)
@@ -467,10 +550,7 @@ export class DepartmentsRepository {
     if (!parsed.success) throw new DepartmentRepositoryError(400, 'Select an active Active Directory user and a valid role.');
     return pgClient.transaction(async (client) => {
       const department = await this.requireScope(client, idOrCode, user, true);
-      const targetResult = await client.query(
-        `SELECT id,username,email,first_name,last_name,full_name,title,department_id,division_id,security_clearance,is_active,roles,team_ids,owned_application_ids,owned_risk_ids,source_payload,directory_source
-           FROM bank_users WHERE id=$1 AND is_active=TRUE AND directory_source='ACTIVE_DIRECTORY' FOR UPDATE`, [parsed.data.userId]
-      );
+      const targetResult = await client.query(`SELECT ${directoryUserColumns} FROM bank_users WHERE id=$1 AND is_active=TRUE AND directory_source='ACTIVE_DIRECTORY' FOR UPDATE`, [parsed.data.userId]);
       if (!targetResult.rows[0]) throw new DepartmentRepositoryError(400, 'The selected user is not an active Active Directory record.');
       const target = rowToUser(targetResult.rows[0]);
       const global = isGlobalAdmin(user);
@@ -479,10 +559,11 @@ export class DepartmentsRepository {
       const adminIds = parseJson<string[]>(department.admin_user_ids, []);
       if (parsed.data.isDeptAdminFlag && !adminIds.includes(target.id)) adminIds.push(target.id);
       const payload = { ...target, departmentId: department.id, divisionId: department.division_id, roles, isActive: true };
-      await client.query('UPDATE bank_users SET department_id=$2,division_id=$3,roles=$4::jsonb,source_payload=$5::jsonb,updated_at=NOW() WHERE id=$1', [target.id, department.id, department.division_id, JSON.stringify(roles), JSON.stringify(payload)]);
+      const { email, fullName, title, userPrincipalName, distinguishedName, distributionGroups, lastLdapLoginAt, ...safePayload } = payload;
+      await client.query('UPDATE bank_users SET department_id=$2,division_id=$3,roles=$4::jsonb,source_payload=$5::jsonb,updated_at=NOW() WHERE id=$1', [target.id, department.id, department.division_id, JSON.stringify(roles), JSON.stringify(safePayload)]);
       await client.query('UPDATE bank_departments SET admin_user_ids=$2::jsonb,source_payload=jsonb_set(COALESCE(source_payload,\'{}\'::jsonb),\'{adminUserIds}\',$2::jsonb),updated_at=NOW() WHERE id=$1', [department.id, JSON.stringify(adminIds)]);
-      await this.audit(client, user, 'USER_UPDATE', 'USER', target.id, target, payload, { action: 'ASSIGNED_DEPARTMENT_MEMBER', departmentId: department.id, grantedDepartmentAdmin: parsed.data.isDeptAdminFlag });
-      return rowToUser((await client.query('SELECT id,username,email,first_name,last_name,full_name,title,department_id,division_id,security_clearance,is_active,roles,team_ids,owned_application_ids,owned_risk_ids,source_payload FROM bank_users WHERE id=$1', [target.id])).rows[0]);
+      await this.audit(client, user, 'USER_UPDATE', 'USER', target.id, { id: target.id, departmentId: target.departmentId, divisionId: target.divisionId, roles: target.roles, isActive: target.isActive }, { id: payload.id, departmentId: payload.departmentId, divisionId: payload.divisionId, roles: payload.roles, isActive: payload.isActive }, { action: 'ASSIGNED_DEPARTMENT_MEMBER', departmentId: department.id, grantedDepartmentAdmin: parsed.data.isDeptAdminFlag });
+      return rowToUser((await client.query(`SELECT ${directoryUserColumns} FROM bank_users WHERE id=$1`, [target.id])).rows[0]);
     });
   }
 

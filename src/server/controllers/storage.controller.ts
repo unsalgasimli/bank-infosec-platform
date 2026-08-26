@@ -6,6 +6,7 @@ import { db } from '../db/database.js';
 import { AuditService } from '../services/audit.service.js';
 import { AuthService } from '../services/auth.service.js';
 import { ProjectService } from '../services/project.service.js';
+import { OutboxService } from '../services/outbox.service.js';
 import { TicketAttachment, EvidenceType } from '../../shared/types/attachment.js';
 
 export class StorageController {
@@ -47,7 +48,7 @@ export class StorageController {
       }
       const resolvedMime = mimeType || 'application/octet-stream';
 
-      const uploadResult = await storageService.upload(fileName, buffer, resolvedMime);
+      const uploadResult = await storageService.stageUpload(fileName, buffer, resolvedMime);
 
       const attachment: TicketAttachment = {
         id: `att-${uuidv4().slice(0, 8)}`,
@@ -58,7 +59,7 @@ export class StorageController {
         evidenceType: (evidenceType as EvidenceType) || 'AUDIT_WORKPAPER',
         sha256Checksum: uploadResult.sha256Hash,
         isEncrypted: true,
-        virusScanStatus: 'CLEAN',
+        virusScanStatus: 'PENDING',
         confidentiality: ticket.confidentiality,
         uploaderId: user.id,
         uploaderName: user.fullName,
@@ -66,11 +67,10 @@ export class StorageController {
         isImmutableEvidence: Boolean(isForensicArtifact),
         retentionUntil: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
         downloadCount: 0,
-        storageKey: uploadResult.storageKey,
+        quarantineStorageKey: uploadResult.quarantineStorageKey,
       };
 
       db.data.attachments.push(attachment);
-      db.persist();
 
       AuditService.log({
         actor: user,
@@ -83,10 +83,20 @@ export class StorageController {
           sha256Checksum: uploadResult.sha256Hash,
           evidenceType: attachment.evidenceType,
           isImmutableEvidence: attachment.isImmutableEvidence,
+          scanStatus: 'PENDING',
         },
+        persist: false,
       });
 
-      res.status(201).json({
+      OutboxService.enqueue({
+        topic: 'attachment.scan.requested',
+        aggregateType: 'ATTACHMENT',
+        aggregateId: attachment.id,
+        payload: { attachmentId: attachment.id, ticketId: ticket.id, actorId: user.id },
+      });
+      db.persist();
+
+      res.status(202).json({
         success: true,
         attachment,
       });
@@ -121,8 +131,8 @@ export class StorageController {
     }
 
     try {
-      if (!attachment.storageKey) {
-        res.status(410).json({ success: false, error: 'The stored file is unavailable for this legacy attachment.' });
+      if (attachment.virusScanStatus !== 'CLEAN' || !attachment.storageKey) {
+        res.status(409).json({ success: false, error: 'The attachment is not available until malware scanning completes.' });
         return;
       }
 
@@ -141,8 +151,12 @@ export class StorageController {
   public static async downloadAttachment(req: AuthenticatedRequest, res: Response): Promise<void> {
     const user = req.user!;
     const attachment = db.data.attachments.find((candidate) => candidate.id === req.params.attachmentId);
-    if (!attachment || !attachment.storageKey) {
+    if (!attachment) {
       res.status(404).json({ success: false, error: 'Stored attachment not found.' });
+      return;
+    }
+    if (attachment.virusScanStatus !== 'CLEAN' || !attachment.storageKey) {
+      res.status(409).json({ success: false, error: 'The attachment is not available until malware scanning completes.' });
       return;
     }
     const ticket = db.data.tickets.find((candidate) => candidate.id === attachment.ticketId);

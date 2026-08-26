@@ -1,0 +1,38 @@
+import { config } from './config/index.js';
+import { db } from './db/database.js';
+import { pgClient } from './db/postgres/client.js';
+import { runMigrations } from './db/postgres/migrate.js';
+import { logger } from './services/logger.service.js';
+import { OutboxRelayService } from './services/outbox-relay.service.js';
+import { QueueService } from './services/queue.service.js';
+import { WorkerEventService } from './services/worker-event.service.js';
+import { WorkflowRuntimeService } from './services/workflow-runtime.service.js';
+
+async function startWorker(): Promise<void> {
+  if (config.DB_TYPE !== 'postgres') throw new Error('The worker requires DB_TYPE=postgres.');
+  if (!QueueService.enabled()) throw new Error('The worker requires RABBITMQ_ENABLED=true.');
+  await runMigrations();
+  await db.initialize();
+  await QueueService.connect();
+  await QueueService.consume('aegissec.worker', WorkerEventService.process);
+  OutboxRelayService.start();
+  WorkflowRuntimeService.startWorker();
+  logger.info('AegisSec asynchronous worker is ready');
+}
+
+async function shutdown(signal: string): Promise<void> {
+  logger.info({ signal }, 'Stopping AegisSec worker');
+  OutboxRelayService.stop();
+  WorkflowRuntimeService.stopWorker();
+  await db.flush();
+  await QueueService.close();
+  await pgClient.close();
+  process.exit(0);
+}
+
+void startWorker().catch((error) => {
+  logger.fatal({ error }, 'Worker startup failed');
+  process.exit(1);
+});
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));

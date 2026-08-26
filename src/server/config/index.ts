@@ -33,6 +33,15 @@ const configSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   REDIS_KEY_PREFIX: z.string().default('aegissec:'),
   REDIS_TTL_SECONDS: z.coerce.number().default(300),
+
+  // Durable asynchronous processing. PostgreSQL remains authoritative; the
+  // broker only distributes events written through the transactional outbox.
+  RABBITMQ_ENABLED: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(false),
+  RABBITMQ_URL: z.string().default('amqp://localhost:5672'),
+  RABBITMQ_EXCHANGE: z.string().default('aegissec.events'),
+  OUTBOX_RELAY_INTERVAL_MS: z.coerce.number().int().min(250).max(60000).default(1000),
+  OUTBOX_RELAY_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(50),
+  SLA_SCHEDULER_INTERVAL_MS: z.coerce.number().int().min(30000).max(3600000).default(60000),
   
   // Object Storage Configuration (Cloud S3 / Local Disk - No MinIO)
   STORAGE_PROVIDER: z.enum(['s3', 'local']).default('local'),
@@ -44,15 +53,27 @@ const configSchema = z.object({
   S3_FORCE_PATH_STYLE: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(false),
   LOCAL_STORAGE_PATH: z.string().default(path.resolve(process.cwd(), 'data', 'storage')),
   MAX_UPLOAD_SIZE_BYTES: z.coerce.number().default(25 * 1024 * 1024), // 25 MB
+
+  // Attachment bytes are quarantined first. The worker promotes an object to
+  // its final key only after a malware scanner reports it clean.
+  MALWARE_SCAN_ENABLED: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(false),
+  CLAMAV_HOST: z.string().default('localhost'),
+  CLAMAV_PORT: z.coerce.number().int().min(1).max(65535).default(3310),
+  CLAMAV_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(30000),
   
   // Security & Cryptography
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be supplied through the environment.'),
+  // Dedicated application-layer data-encryption key. Supply a separate
+  // 32-byte-or-longer secret in every deployed environment; JWT_SECRET is a
+  // backwards-compatible local-development fallback only.
+  DATA_ENCRYPTION_KEY: z.string().min(32).optional(),
   JWT_EXPIRES_IN: z.string().default('8h'),
   SESSION_TIMEOUT_MINUTES: z.coerce.number().default(30),
   SESSION_ABSOLUTE_TIMEOUT_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(168),
   // Never enable outside an explicitly marked local-development environment.
   DEV_EMPTY_PASSWORD_LOGIN_ENABLED: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(false),
   CORS_ORIGIN: z.string().default('*'),
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(1),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(15 * 60 * 1000), // 15 mins
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().default(2000),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().default(60), // 60 attempts per 15 min for auth
@@ -85,6 +106,19 @@ function loadConfig(): Config {
     console.error('❌ Invalid application configuration:');
     console.error(JSON.stringify(parsed.error.format(), null, 2));
     throw new Error('Invalid configuration parameters');
+  }
+
+  if (parsed.data.NODE_ENV === 'production' && parsed.data.CORS_ORIGIN.trim() === '*') {
+    throw new Error('CORS_ORIGIN must list explicit trusted origins in production.');
+  }
+  if (parsed.data.NODE_ENV === 'production' && !parsed.data.RABBITMQ_ENABLED) {
+    throw new Error('RABBITMQ_ENABLED must be true in production so asynchronous work is durable.');
+  }
+  if (parsed.data.NODE_ENV === 'production' && !parsed.data.MALWARE_SCAN_ENABLED) {
+    throw new Error('MALWARE_SCAN_ENABLED must be true in production; attachments cannot bypass quarantine.');
+  }
+  if (parsed.data.NODE_ENV === 'production' && parsed.data.STORAGE_PROVIDER !== 's3') {
+    throw new Error('STORAGE_PROVIDER must be s3 in production; local disk is not an attachment authority.');
   }
 
   return parsed.data;

@@ -211,6 +211,9 @@ const isFixedEndpoint = (node: Pick<WorkflowNodeDefinition, "type">) =>
 const CANVAS_GRID_SIZE = 20;
 const WORKFLOW_NODE_WIDTH = 180;
 const WORKFLOW_NODE_FALLBACK_HEIGHT = 90;
+const WORKSPACE_REQUEST_TIMEOUT_MS = 15_000;
+
+type WorkspaceLoadScope = "catalog" | "instances" | "analytics" | "directory" | "current";
 
 const directoryIdFromOption = (value: string | undefined, kind: "department" | "section") => {
   if (!value) return undefined;
@@ -310,6 +313,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const loadedScopes = useRef(new Set<Exclude<WorkspaceLoadScope, "current">>());
   const [selectedTemplate, setSelectedTemplate] =
     useState<TemplateDetail | null>(null);
   const [templatePendingDeletion, setTemplatePendingDeletion] =
@@ -403,38 +407,56 @@ export const UniversalWorkflowWorkspace: React.FC<{
     };
   };
 
-  const load = async () => {
-    setLoading(true);
+  const fetchWorkspace = async (url: string): Promise<Response> => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), WORKSPACE_REQUEST_TIMEOUT_MS);
+    try {
+      return await fetchWithAuth(url, { signal: controller.signal });
+    } catch (reason: any) {
+      if (reason?.name === "AbortError") {
+        throw new Error("Workflow məlumatlarının yüklənməsi vaxt aşımına uğradı. Yenidən cəhd edin.");
+      }
+      throw reason;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  };
+
+  const load = async (requestedScope: WorkspaceLoadScope = "current") => {
+    const scope = requestedScope === "current"
+      ? tab === "EXECUTIONS" ? "instances" : tab === "ANALYTICS" ? "analytics" : tab === "BUILDER" ? "directory" : "catalog"
+      : requestedScope;
+    const shouldShowLoading = !loadedScopes.current.has(scope) || requestedScope !== "current";
+    if (shouldShowLoading) setLoading(true);
     setError("");
     try {
-      const [catalogResponse, instanceResponse, analyticsResponse, directoryResponse] =
-        await Promise.all([
-          fetchWithAuth(
-            `/api/orchestration/catalog${query ? `?q=${encodeURIComponent(query)}` : ""}`,
-          ),
-          fetchWithAuth("/api/orchestration/instances"),
-          fetchWithAuth("/api/orchestration/analytics"),
-          fetchWithAuth("/api/orchestration/directory"),
-        ]);
-      const [catalogData, instanceData, analyticsData, directoryData] = await Promise.all([
-        apiError(catalogResponse, "Catalog failed"),
-        apiError(instanceResponse, "Runtime list failed"),
-        apiError(analyticsResponse, "Analytics failed"),
-        apiError(directoryResponse, "LDAP routing directory failed"),
-      ]);
-      setCatalog(catalogData);
-      setInstances(instanceData.instances || []);
-      setAnalytics(analyticsData.analytics || null);
-      setDirectory(directoryData);
+      const response = await fetchWorkspace(
+        scope === "catalog"
+          ? `/api/orchestration/catalog${query ? `?q=${encodeURIComponent(query)}` : ""}`
+          : scope === "instances"
+            ? "/api/orchestration/instances"
+            : scope === "analytics"
+              ? "/api/orchestration/analytics"
+              : "/api/orchestration/directory",
+      );
+      const data = await apiError(
+        response,
+        scope === "catalog" ? "Catalog failed" : scope === "instances" ? "Runtime list failed" : scope === "analytics" ? "Analytics failed" : "LDAP routing directory failed",
+      );
+      if (scope === "catalog") setCatalog(data);
+      if (scope === "instances") setInstances(data.instances || []);
+      if (scope === "analytics") setAnalytics(data.analytics || null);
+      if (scope === "directory") setDirectory(data);
+      loadedScopes.current.add(scope);
     } catch (reason: any) {
-      setError(reason.message);
+      setError(reason instanceof Error ? reason.message : "Workflow məlumatları yüklənmədi.");
     } finally {
-      setLoading(false);
+      if (shouldShowLoading) setLoading(false);
     }
   };
 
   useEffect(() => {
-    void load();
+    void load("catalog");
   }, []);
   useEffect(() => {
     if (tab === "BUILDER" && !builderVersion) {
@@ -445,9 +467,14 @@ export const UniversalWorkflowWorkspace: React.FC<{
   }, [tab, builderVersion, currentUser?.id]);
   useEffect(() => {
     if (!query) return;
-    const timeout = window.setTimeout(() => void load(), 250);
+    const timeout = window.setTimeout(() => void load("catalog"), 250);
     return () => window.clearTimeout(timeout);
   }, [query]);
+  useEffect(() => {
+    if (tab === "EXECUTIONS" && !loadedScopes.current.has("instances")) void load("instances");
+    if (tab === "ANALYTICS" && !loadedScopes.current.has("analytics")) void load("analytics");
+    if (tab === "BUILDER" && !loadedScopes.current.has("directory")) void load("directory");
+  }, [tab]);
 
   const openTemplate = async (
     template: WorkflowCatalogTemplate,

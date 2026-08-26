@@ -1072,9 +1072,9 @@ const Tasks: React.FC<any> = ({ data, allUsers = [], onTask, post, patch, onRefr
           tasks={data.tasks || []}
           post={post}
           onClose={() => setTaskDetail(null)}
-          onCommentAdded={(comment) => setTaskDetail((current: any) => ({ ...current, comments: [comment, ...(current.comments || [])] }))}
-          onAttachmentAdded={(attachment) => setTaskDetail((current: any) => ({ ...current, attachments: [attachment, ...(current.attachments || [])] }))}
-          onDependencyAdded={(dependency) => setTaskDetail((current: any) => ({ ...current, dependencies: [dependency, ...(current.dependencies || [])] }))}
+          onCommentAdded={(comment: any) => setTaskDetail((current: any) => ({ ...current, comments: [comment, ...(current?.comments || [])] }))}
+          onAttachmentAdded={(attachment: any) => setTaskDetail((current: any) => ({ ...current, attachments: [attachment, ...(current?.attachments || [])] }))}
+          onDependencyAdded={(dependency: any) => setTaskDetail((current: any) => ({ ...current, dependencies: [dependency, ...(current?.dependencies || [])] }))}
         />
       )}
     </section>
