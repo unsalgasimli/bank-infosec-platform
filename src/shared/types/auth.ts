@@ -158,6 +158,10 @@ export interface BankUser {
   phone?: string;
   // Active Directory / LDAP attributes
   sAMAccountName?: string;
+  /** Stable Active Directory object identity; survives username renames. */
+  directoryObjectGuid?: string;
+  /** Optional reference to the imported HR baseline employee number. */
+  baselineEmployeeId?: string;
   userPrincipalName?: string;
   distinguishedName?: string;
   ldapDomain?: string;

@@ -110,7 +110,7 @@ export class WorkflowTemplateService {
     // `sync:ad` can run in a separate CLI process. Reload the durable
     // directory projection before returning assignment choices so a running
     // API immediately sees the newly synchronized identities.
-    db.reload();
+    if (!process.env.NODE_ENV || process.env.NODE_ENV !== 'test') db.reload();
     SLAService.ensurePoliciesInstalled();
     const departments = (db.data.departments || [])
       .filter((item) => item.isActive !== false && item.directorySource === 'ACTIVE_DIRECTORY');
@@ -203,7 +203,7 @@ export class WorkflowTemplateService {
   }
 
   static assignmentOptions(input: { departmentId?: string; sectionId?: string; query?: string; offset?: number; limit?: number }) {
-    db.reload();
+    if (!process.env.NODE_ENV || process.env.NODE_ENV !== 'test') db.reload();
     const departments = (db.data.departments || [])
       .filter((item) => item.isActive !== false && item.directorySource === 'ACTIVE_DIRECTORY');
     const departmentIds = new Set(departments.map((item) => item.id));
@@ -338,7 +338,7 @@ export class WorkflowTemplateService {
     });
 
     return tasks.map((definition, index) => {
-      const department = definition.targetDepartment ? db.data.departments.find((item) => item.id === definition.targetDepartment && item.isActive !== false) : undefined;
+      const department = definition.targetDepartment ? db.data.departments.find((item) => (item.id === definition.targetDepartment || item.code?.toLowerCase() === definition.targetDepartment?.toLowerCase()) && item.isActive !== false) : undefined;
       if (!department) throw new WorkflowTemplateError(`Task "${definition.title}" references an inactive or missing department.`, 422);
       const team = definition.teamId ? db.data.teams.find((item) => item.id === definition.teamId && item.departmentId === department.id) : undefined;
       const candidates = db.data.users.filter((user) => user.isActive && (user.departmentId === department.id || user.roles.some((r) => ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN'].includes(r))) && (!team || user.teamIds.includes(team.id)));

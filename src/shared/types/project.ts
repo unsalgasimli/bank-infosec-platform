@@ -17,6 +17,7 @@ export interface Project {
   scope?: string;
   successCriteria?: string;
   departmentId?: string;
+  sectionId?: string;
   ownerId: string;
   managerId?: string;
   sponsorId?: string;

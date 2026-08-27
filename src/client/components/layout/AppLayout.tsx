@@ -41,7 +41,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   risks = [],
   kbArticles = [],
   pendingApprovalsCount = 0,
-  departmentsCount = 5,
+  departmentsCount = 0,
   activeDepartmentId = null,
   onSelectDepartment,
   searchQuery,

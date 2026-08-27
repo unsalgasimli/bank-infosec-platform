@@ -54,9 +54,14 @@ export function installPostgresTestFixture(data: DatabaseSchema): void {
 
   const department = (id: string) => data.departments.find((item) => item.id === id);
   const ensureDepartment = (id: string, name: string) => {
-    if (!department(id)) {
+    const existing = department(id);
+    if (existing) {
+      existing.isActive = true;
+      if (!existing.managerId) existing.managerId = ciso.id;
+    } else {
       data.departments.push({
         id, divisionId: ciso.divisionId, name, code: id.toUpperCase().replaceAll('-', '_'),
+        managerId: ciso.id,
         isActive: true, directorySource: 'ACTIVE_DIRECTORY', settings: {},
       });
     }

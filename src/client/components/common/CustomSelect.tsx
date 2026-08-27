@@ -118,13 +118,12 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   };
 
   const selectValue = (optionValue: string) => {
-    closeMenu(true);
     onChange(optionValue);
+    setIsOpen(false);
+    onOpenChange?.(false);
+    requestAnimationFrame(() => triggerRef.current?.focus());
   };
 
-  // Commit pointer selections before the portal/focus teardown can dispatch a
-  // click outside the menu. This keeps controlled selects in sync when the
-  // dropdown is rendered in a portal or inside fullscreen mode.
   const handleOptionPointerDown = (optionValue: string, event: React.PointerEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -292,12 +291,12 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       >
         <div className="flex items-center gap-2 truncate min-w-0 flex-1">
           {selectedOption?.icon && <span className="shrink-0">{selectedOption.icon}</span>}
-          <span id={`${triggerId}-value`} className="truncate font-semibold text-semantic-primary">
+          <span id={`${triggerId}-value`} className="truncate font-semibold text-semantic-primary flex-1">
             {selectedOption ? selectedOption.label : placeholder}
           </span>
           {selectedOption?.badge && (
             <span
-              className={`px-1.5 py-0.5 rounded text-caption font-bold tracking-wider shrink-0 ml-auto mr-0.5 ${
+              className={`px-1.5 py-0.5 rounded text-caption font-bold tracking-wider shrink-0 mr-0.5 ${
                 selectedOption.badgeColor || 'bg-semantic-neutral-surface text-semantic-secondary'
               }`}
             >
@@ -331,32 +330,27 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           }`}
         >
           {isSearchable && (
-            <div className="sticky top-0 z-dsContent bg-white p-1 pb-2 border-b border-semantic-border mb-1.5">
-              <div className="flex items-center gap-2 px-2.5 h-9 rounded-lg border border-semantic-border-strong bg-semantic-subtle focus-within:border-semantic-brand focus-within:ring-2 focus-within:ring-semantic-brand/10">
-                <Search className="w-3.5 h-3.5 text-semantic-muted shrink-0" />
+            <div className="p-1.5 pb-2 border-b border-semantic-border">
+              <div className="relative flex items-center">
+                <Search className="w-4 h-4 text-semantic-muted absolute left-2.5 pointer-events-none" />
                 <input
                   ref={searchInputRef}
+                  type="text"
                   value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={handleListNavigation}
                   placeholder={searchPlaceholder}
-                  className="w-full min-w-0 bg-transparent outline-none text-sm text-semantic-primary placeholder:text-semantic-placeholder"
+                  className="w-full pl-8.5 pr-8 py-1.5 text-sm bg-semantic-subtle border border-semantic-border rounded-lg text-semantic-primary placeholder-semantic-muted focus:outline-hidden focus:border-semantic-brand focus:ring-1 focus:ring-semantic-brand"
+                  role="searchbox"
                   aria-label={searchPlaceholder}
-                  role="combobox"
-                  aria-autocomplete="list"
-                  aria-expanded={isOpen}
-                  aria-controls={listboxId}
-                  aria-activedescendant={
-                    filteredOptions[activeIndex]
-                      ? `${listboxId}-option-${activeIndex}`
-                      : undefined
-                  }
-                  autoComplete="off"
                 />
                 {searchQuery && (
                   <button
                     type="button"
-                    onClick={() => setSearchQuery('')}
+                    onClick={() => {
+                      setSearchQuery('');
+                      searchInputRef.current?.focus();
+                    }}
                     className="p-0.5 rounded text-semantic-muted hover:text-semantic-primary hover:bg-semantic-border"
                     aria-label="Clear search"
                   >
@@ -376,9 +370,19 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
               <button
                 id={`${listboxId}-option-${optionIndex}`}
                 type="button"
-                key={opt.value}
+                key={`${opt.value}-${optionIndex}`}
                 data-option-index={optionIndex}
                 onPointerDown={(event) => handleOptionPointerDown(opt.value, event)}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  selectValue(opt.value);
+                }}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  selectValue(opt.value);
+                }}
                 onMouseEnter={() => setActiveIndex(optionIndex)}
                 role="option"
                 aria-selected={isSelected}

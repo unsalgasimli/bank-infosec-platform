@@ -3,11 +3,12 @@ import { BankUser, LDAPLoginPayload, AuthSessionResponse, LDAPGroupInfo } from '
 import { db } from '../db/database.js';
 import { AuditService } from './audit.service.js';
 import { LDAPSyncService } from './ldap-sync.service.js';
-import { isAccountDisabled, isGenuineEmployeeOrIntern, parseMemberOfGroups } from './ldap-directory.data.js';
+import { isAccountDisabled, isGenuineEmployeeOrIntern, makeDirectoryNameMatchKey, normalizeDirectoryEmployeeId, normalizeDirectoryKey, normalizeDirectoryObjectGuid, parseMemberOfGroups, toSafeString } from './ldap-directory.data.js';
 import { config } from '../config/index.js';
 import { logger } from './logger.service.js';
 import { PostgresProjectionRepository } from '../db/postgres/projection-repository.js';
 import { DepartmentsRepository } from '../db/postgres/departments-repository.js';
+import { DirectoryBaselineService, mapBaselineRecord } from './directory-baseline.service.js';
 
 function parseActiveDirectoryError(_errorMessage: string): string {
   return 'İstifadəçi adı və ya şifrə yanlışdır, yaxud hesab giriş üçün əlçatan deyil.';
@@ -249,6 +250,8 @@ export class LDAPAuthService {
         let adDepartment = '';
         let adManagerDn = '';
         let adDistinguishedName = '';
+        let adObjectGuid = '';
+        let adEmployeeId = '';
 
         try {
           const escapedSamAccountName = escapeLdapFilterValue(sAMAccountName);
@@ -262,6 +265,8 @@ export class LDAPAuthService {
             paged: { pageSize: 100 },
             attributes: [
               'sAMAccountName',
+              'objectGUID',
+              'employeeID',
               'userPrincipalName',
               'displayName',
               'mail',
@@ -307,6 +312,8 @@ export class LDAPAuthService {
             adDepartment = (entry.department as string) || adDepartment;
             adManagerDn = (entry.manager as string) || adManagerDn;
             adDistinguishedName = (entry.distinguishedName as string) || adDistinguishedName;
+            adObjectGuid = normalizeDirectoryObjectGuid(entry.objectGUID) || adObjectGuid;
+            adEmployeeId = normalizeDirectoryEmployeeId(entry.employeeID || entry.employeeId || entry.employeeNumber) || adEmployeeId;
 
             if (parsedGroups.length > 0) {
               adGroups = parsedGroups;
@@ -328,10 +335,25 @@ export class LDAPAuthService {
           (u) =>
             u.username.toLowerCase() === sAMAccountName.toLowerCase() ||
             (u.sAMAccountName && u.sAMAccountName.toLowerCase() === sAMAccountName.toLowerCase()) ||
-            u.email.toLowerCase() === adMail.toLowerCase()
+            u.email.toLowerCase() === adMail.toLowerCase() ||
+            (adEmployeeId && normalizeDirectoryEmployeeId((u as any).baselineEmployeeId) === adEmployeeId)
         );
 
-        const deptMapping = LDAPSyncService.mapDepartment(adDepartment, adTitle, adGroups, adDistinguishedName);
+        const adMapping = LDAPSyncService.mapDepartment(adDepartment, adTitle, adGroups, adDistinguishedName);
+        let baseline: Awaited<ReturnType<typeof DirectoryBaselineService.loadCurrent>>[number] | undefined;
+        if (config.DB_TYPE === 'postgres') {
+          try {
+            baseline = (await DirectoryBaselineService.loadCurrent()).find(
+              (record) => makeDirectoryNameMatchKey(record.fullName) === makeDirectoryNameMatchKey(adDisplayName)
+            );
+          } catch {
+            // Login must remain available if the optional HR reference table is
+            // temporarily unavailable; live AD attributes remain authoritative.
+          }
+        }
+        const deptMapping = baseline && (!adDepartment || normalizeDirectoryKey(adDepartment) === normalizeDirectoryKey(baseline.structureName))
+          ? mapBaselineRecord(baseline)
+          : adMapping;
         if (!db.data.departmentSections) db.data.departmentSections = [];
         const section = deptMapping.sectionId && deptMapping.sectionName && deptMapping.sectionCode
           ? (() => {
@@ -368,6 +390,8 @@ export class LDAPAuthService {
             id,
             username: sAMAccountName.toLowerCase(),
             sAMAccountName: sAMAccountName.toLowerCase(),
+            directoryObjectGuid: adObjectGuid || undefined,
+            baselineEmployeeId: baseline?.employeeId || adEmployeeId || undefined,
             email: adMail,
             fullName: adDisplayName,
             title: adTitle,
@@ -396,6 +420,8 @@ export class LDAPAuthService {
         } else {
           user.fullName = adDisplayName;
           user.email = adMail;
+          user.directoryObjectGuid = adObjectGuid || user.directoryObjectGuid;
+          user.baselineEmployeeId = baseline?.employeeId || adEmployeeId || user.baselineEmployeeId;
           user.title = adTitle;
           user.departmentId = deptMapping.departmentId;
           user.sectionId = section?.id;

@@ -146,7 +146,7 @@ test('Enterprise Work & Workflow Orchestration Engine', async (t) => {
 
   await t.test('5. Dynamic Approver Resolution & Quorum Modes', () => {
     resetDb();
-    const testTicket = db.data.tickets[0];
+    const testTicket = { ...db.data.tickets[0], departmentId: 'dept-secops' };
 
     // Resolver: REQUESTER_MANAGER
     const managers = ApprovalService.resolveApprovers('REQUESTER_MANAGER', testTicket);

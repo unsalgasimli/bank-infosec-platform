@@ -364,6 +364,7 @@ export const App: React.FC = () => {
       risks={risks}
       kbArticles={kbArticles}
       pendingApprovalsCount={pendingApprovalsCount}
+      departmentsCount={departments.length}
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
       onRunJql={(jql) => {

@@ -119,7 +119,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   risksCount = 0,
   kbCount = 0,
   pendingApprovalsCount = 0,
-  departmentsCount = 5,
+  departmentsCount = 0,
   isMobileOpen = false,
   onCloseMobile,
 }) => {

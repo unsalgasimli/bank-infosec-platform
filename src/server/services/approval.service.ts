@@ -27,7 +27,7 @@ export class ApprovalService {
         const manager = requester?.managerId ? db.data.users.find((u) => u.id === requester.managerId) : undefined;
         if (manager && manager.isActive) return [manager];
         const deptId = ticket.departmentId || requester?.departmentId || db.data.departments[0]?.id;
-        const resolvedDept = db.data.departments.find((d) => d.id === deptId);
+        const resolvedDept = db.data.departments.find((d) => (d.id === deptId || d.code?.toLowerCase() === deptId?.toLowerCase()));
         if (resolvedDept?.managerId) {
           const deptMgr = db.data.users.find((u) => u.id === resolvedDept.managerId && u.isActive);
           if (deptMgr) return [deptMgr];

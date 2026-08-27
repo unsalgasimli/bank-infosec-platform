@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from 'node:crypto';
 import { StrictReadOnlyLdapClient } from '../utils/readonly-ldap-client.js';
 import {
   BankUser,
@@ -9,10 +10,12 @@ import {
   UserApprovalHierarchy,
 } from '../../shared/types/auth.js';
 import { db } from '../db/database.js';
+import { pgClient } from '../db/postgres/client.js';
 import { config } from '../config/index.js';
 import { logger } from './logger.service.js';
 import { AuditService } from './audit.service.js';
 import { resolveSecret } from '../utils/crypto.js';
+import { DirectoryBaselineService, mapBaselineRecord, type DirectoryBaselineRecord } from './directory-baseline.service.js';
 import type { LDAPRawEntry, DepartmentMappingResult, ParsedHierarchy } from './ldap-directory.data.js';
 import {
   mapDepartment,
@@ -21,9 +24,15 @@ import {
   isGenuineEmployeeOrIntern,
   parseMemberOfGroups,
   toSafeString,
+  normalizeDirectoryObjectGuid,
+  normalizeDirectoryEmployeeId,
+  makeDirectoryNameMatchKey,
   normalizeDirectoryText,
   normalizeDirectoryKey,
   normalizeAzerbaijani,
+  extractDirectoryBranchName,
+  makeDirectoryBranchMatchKey,
+  extractOrganizationalUnits,
   LDAP_NON_HUMAN_ACCOUNT_FILTERS,
   isServiceAccount,
   classifyDirectoryAccount,
@@ -39,7 +48,6 @@ export type { LDAPRawEntry, DepartmentMappingResult, ParsedHierarchy, UserApprov
 
 export const LDAP_HUMAN_ACCOUNT_FILTER = [
   '(&(objectCategory=person)(objectClass=user)',
-  '(!(userAccountControl:1.2.840.113556.1.4.803:=2))',
   '(!(sAMAccountName=*$))',
   ...LDAP_NON_HUMAN_ACCOUNT_FILTERS,
   '(!(sAMAccountName=*.si))',
@@ -71,10 +79,91 @@ export interface LDAPSyncReport {
   reEnabledUsers: Array<{ id: string; username: string }>;
   duplicateUsernames: string[];
   errors: string[];
+  dryRun?: boolean;
+  snapshotHash?: string;
+  snapshotAccepted?: boolean;
+  identityCoverage?: { objectGuid: number; employeeId: number; username: number; total: number };
+  snapshotRejectedReason?: string;
+}
+
+interface DirectorySnapshotQuality {
+  ok: boolean;
+  reason?: string;
+  snapshotHash: string;
+  identityCoverage: { objectGuid: number; employeeId: number; username: number; total: number };
 }
 
 export class LDAPSyncService {
   private static lastSyncReport: LDAPSyncReport | null = null;
+  private static syncInFlight: Promise<LDAPSyncReport> | null = null;
+
+  private static async persistSyncRun(report: LDAPSyncReport): Promise<void> {
+    if (config.DB_TYPE !== 'postgres') return;
+    const status = report.snapshotAccepted === false
+      ? 'REJECTED'
+      : report.errors.length > 0
+        ? 'FAILED'
+        : 'SUCCEEDED';
+    try {
+      await pgClient.query(
+        `INSERT INTO directory_sync_runs(
+         id, started_at, completed_at, status, trigger, snapshot_hash,
+         total_ldap_users, active_users, disabled_users, added_users,
+         updated_users, disabled_now, reenabled_users, duplicates_removed,
+         dry_run, error_message, metadata
+       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb)`,
+      [
+        `ldap-sync-${Date.now()}-${randomUUID().slice(0, 8)}`,
+        report.timestamp,
+        new Date().toISOString(),
+        status,
+        report.trigger,
+        report.snapshotHash || null,
+        report.totalLdapUsers,
+        report.activeUsersCount,
+        report.disabledUsersCount,
+        report.addedCount,
+        report.updatedCount,
+        report.disabledCount,
+        report.reEnabledCount,
+        report.duplicatesRemovedCount,
+        report.dryRun === true,
+        report.errors.length > 0 ? report.errors.join(' | ').slice(0, 4000) : null,
+        JSON.stringify({
+          snapshotAccepted: report.snapshotAccepted === true,
+          snapshotRejectedReason: report.snapshotRejectedReason || null,
+          identityCoverage: report.identityCoverage || null,
+        }),
+        ],
+      );
+    } catch (error: any) {
+      logger.warn({ err: error?.message || String(error), trigger: report.trigger }, 'Directory sync report could not be persisted; sync result remains authoritative');
+    }
+  }
+
+  private static async withDatabaseSyncLock<T>(operation: () => Promise<T>): Promise<T> {
+    const pool = config.DB_TYPE === 'postgres' ? pgClient.getPool() : null;
+    if (!pool) return operation();
+
+    const client = await pool.connect();
+    const lockKey = 'aegissec:active-directory-sync';
+    try {
+      const lockResult = await client.query<{ locked: boolean }>(
+        'SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked',
+        [lockKey],
+      );
+      if (!lockResult.rows[0]?.locked) {
+        throw new Error('Another Active Directory synchronization is already running.');
+      }
+      return await operation();
+    } finally {
+      try {
+        await client.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [lockKey]);
+      } finally {
+        client.release();
+      }
+    }
+  }
 
   public static getLastSyncReport(): LDAPSyncReport | null {
     return this.lastSyncReport;
@@ -117,7 +206,8 @@ export class LDAPSyncService {
   }
 
   /**
-   * Queries real Active Directory Domain Controller for live, non-disabled domain users.
+   * Queries real Active Directory Domain Controller for live human domain
+   * users, retaining disabled-account flags for lifecycle reconciliation.
    * Enforces LDAPS protocol, strict read-only execution, and paged results.
    */
   public static async queryLdapDirectory(options?: {
@@ -126,7 +216,7 @@ export class LDAPSyncService {
     url?: string;
     baseDn?: string;
     searchFilter?: string;
-  }): Promise<{ users: LDAPRawEntry[]; isLiveLdap: boolean; error?: string; searchedBaseDn?: string }> {
+  }): Promise<{ users: LDAPRawEntry[]; isLiveLdap: boolean; error?: string; searchedBaseDn?: string; requiresStableIdentity?: boolean }> {
     const ldapUrl = (options?.url || config.LDAP_URL || '').trim();
     const baseDn = options?.baseDn || config.LDAP_BASE_DN;
     const bindUser = options?.bindUser || config.LDAP_BIND_USER;
@@ -141,6 +231,7 @@ export class LDAPSyncService {
         searchedBaseDn: baseDn,
         users: [],
         error: 'Active Directory synchronization is disabled.',
+        requiresStableIdentity: true,
       };
     }
 
@@ -150,6 +241,7 @@ export class LDAPSyncService {
         searchedBaseDn: baseDn,
         users: [],
         error: 'LDAPS URL, base DN, and service-account credentials must be configured on the server.',
+        requiresStableIdentity: true,
       };
     }
 
@@ -172,6 +264,8 @@ export class LDAPSyncService {
         paged: { pageSize: 500 },
         attributes: [
           'sAMAccountName',
+          'objectGUID',
+          'employeeID',
           'userPrincipalName',
           'mail',
           'displayName',
@@ -195,10 +289,11 @@ export class LDAPSyncService {
       });
 
       if (searchRes && searchRes.searchEntries && searchRes.searchEntries.length > 0) {
-        // Filter to valid human users only (not disabled or expired)
+        // Filter to valid human users only. Disabled/expired state is retained
+        // so the reconciliation layer can deactivate the existing projection
+        // with an explicit reason instead of treating it as an incomplete read.
         const validUsers = (searchRes.searchEntries as LDAPRawEntry[]).filter((entry) => {
           if (!entry.sAMAccountName && !entry.userPrincipalName) return false;
-          if (this.isAccountDisabled(entry)) return false;
           const rawUsername = toSafeString(entry.sAMAccountName || entry.userPrincipalName);
           const sAMAccountName = rawUsername.includes('\\')
             ? rawUsername.split('\\')[1]
@@ -213,6 +308,7 @@ export class LDAPSyncService {
           isLiveLdap: true,
           searchedBaseDn: baseDn,
           users: validUsers,
+          requiresStableIdentity: true,
         };
       }
     } catch (err: any) {
@@ -221,6 +317,7 @@ export class LDAPSyncService {
         isLiveLdap: false,
         error: err.message,
         searchedBaseDn: baseDn,
+        requiresStableIdentity: true,
         users: [],
       };
     } finally {
@@ -238,6 +335,7 @@ export class LDAPSyncService {
       searchedBaseDn: baseDn,
       users: [],
       error: 'Active Directory returned no eligible user records.',
+      requiresStableIdentity: true,
     };
   }
 
@@ -483,15 +581,67 @@ export class LDAPSyncService {
     return { removedCount, duplicateUsernames };
   }
 
-  /**
-   * Core Daily LDAP Synchronization Pipeline
-   * Takes all LDAP users according to department/şöbə, fixes added/disabled users, removes duplicates, and syncs DB.
-   */
+  private static validateDirectorySnapshot(entries: LDAPRawEntry[], requiresStableIdentity: boolean): DirectorySnapshotQuality {
+    const identityCoverage = {
+      objectGuid: entries.filter((entry) => Boolean(normalizeDirectoryObjectGuid(entry.objectGUID))).length,
+      employeeId: entries.filter((entry) => Boolean(normalizeDirectoryEmployeeId(entry.employeeID ?? entry.employeeId ?? entry.employeeNumber))).length,
+      username: entries.filter((entry) => Boolean(toSafeString(entry.sAMAccountName || entry.userPrincipalName))).length,
+      total: entries.length,
+    };
+    const fingerprintRows = entries.map((entry) => ({
+      objectGuid: normalizeDirectoryObjectGuid(entry.objectGUID),
+      employeeId: normalizeDirectoryEmployeeId(entry.employeeID ?? entry.employeeId ?? entry.employeeNumber),
+      username: normalizeDirectoryKey(entry.sAMAccountName || entry.userPrincipalName),
+      displayName: normalizeDirectoryText(entry.displayName || entry.fullName),
+      department: normalizeDirectoryText(entry.department),
+      title: normalizeDirectoryText(entry.title || (entry as any).jobTitle),
+      disabled: isAccountDisabled(entry),
+    })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+    const snapshotHash = createHash('sha256').update(JSON.stringify(fingerprintRows)).digest('hex');
+
+    const duplicateValues = (values: string[]): string[] => {
+      const counts = new Map<string, number>();
+      for (const value of values.filter(Boolean)) counts.set(value, (counts.get(value) || 0) + 1);
+      return [...counts.entries()].filter(([, count]) => count > 1).map(([value]) => value);
+    };
+    const duplicateObjectGuids = duplicateValues(fingerprintRows.map((row) => row.objectGuid));
+    const duplicateEmployeeIds = duplicateValues(fingerprintRows.map((row) => row.employeeId));
+    const duplicateUsernames = duplicateValues(fingerprintRows.map((row) => row.username));
+    const reasons: string[] = [];
+    if (entries.length === 0) reasons.push('LDAP returned zero eligible directory records.');
+    if (requiresStableIdentity && identityCoverage.username < identityCoverage.total) reasons.push('One or more live LDAP records have no username.');
+    if (requiresStableIdentity && identityCoverage.objectGuid + identityCoverage.employeeId < identityCoverage.total) reasons.push('One or more live LDAP records have neither objectGUID nor employeeID.');
+    if (duplicateObjectGuids.length > 0) reasons.push(`Duplicate objectGUID values detected (${duplicateObjectGuids.length}).`);
+    if (duplicateEmployeeIds.length > 0) reasons.push(`Duplicate employeeID values detected (${duplicateEmployeeIds.length}).`);
+    if (duplicateUsernames.length > 0) reasons.push(`Duplicate username values detected (${duplicateUsernames.length}).`);
+    return { ok: reasons.length === 0, reason: reasons.join(' '), snapshotHash, identityCoverage };
+  }
+
   public static async syncAllUsers(options: {
     trigger?: 'SCHEDULED_DAILY_CHECK' | 'MANUAL_TRIGGER' | 'STARTUP_CHECK';
     actor?: BankUser;
     ldapOptions?: { bindUser: string; bindPassword: string };
     mockEntries?: LDAPRawEntry[];
+    dryRun?: boolean;
+  } = {}): Promise<LDAPSyncReport> {
+    if (this.syncInFlight) return this.syncInFlight;
+    const operation = this.withDatabaseSyncLock(() => this.performSync(options));
+    this.syncInFlight = operation.finally(() => {
+      this.syncInFlight = null;
+    });
+    return operation;
+  }
+
+  /**
+   * Core Daily LDAP Synchronization Pipeline
+   * Takes all LDAP users according to department/şöbə, fixes added/disabled users, removes duplicates, and syncs DB.
+   */
+  private static async performSync(options: {
+    trigger?: 'SCHEDULED_DAILY_CHECK' | 'MANUAL_TRIGGER' | 'STARTUP_CHECK';
+    actor?: BankUser;
+    ldapOptions?: { bindUser: string; bindPassword: string };
+    mockEntries?: LDAPRawEntry[];
+    dryRun?: boolean;
   } = {}): Promise<LDAPSyncReport> {
     const startTime = Date.now();
     const trigger = options.trigger || 'SCHEDULED_DAILY_CHECK';
@@ -526,11 +676,14 @@ export class LDAPSyncService {
       reEnabledUsers: [],
       duplicateUsernames: [],
       errors: queryResult.error ? [queryResult.error] : [],
+      dryRun: options.dryRun === true,
+      snapshotAccepted: false,
     };
 
     if (!queryResult.isLiveLdap) {
       report.executionDurationMs = Date.now() - startTime;
       this.lastSyncReport = report;
+      await this.persistSyncRun(report);
       logger.warn(
         { trigger, reason: queryResult.error || 'No live directory result' },
         'Active Directory sync skipped; existing directory data was left unchanged'
@@ -549,6 +702,66 @@ export class LDAPSyncService {
     });
 
     report.totalLdapUsers = validLdapEntries.length;
+
+    const snapshotQuality = this.validateDirectorySnapshot(validLdapEntries, queryResult.requiresStableIdentity === true);
+    report.snapshotHash = snapshotQuality.snapshotHash;
+    report.identityCoverage = snapshotQuality.identityCoverage;
+    const knownActiveHumanUsers = db.data.users.filter((user) =>
+      user.directorySource === 'ACTIVE_DIRECTORY' &&
+      user.isActive &&
+      this.isOrganizationEligible(user)
+    ).length;
+    const minimumExpectedCount = knownActiveHumanUsers > 0 ? Math.max(1, Math.floor(knownActiveHumanUsers * config.LDAP_SYNC_MIN_COVERAGE)) : 0;
+    if (queryResult.requiresStableIdentity === true && validLdapEntries.length < minimumExpectedCount) {
+      snapshotQuality.ok = false;
+      snapshotQuality.reason = `${snapshotQuality.reason ? `${snapshotQuality.reason} ` : ''}Live LDAP coverage ${validLdapEntries.length} is below the safe minimum ${minimumExpectedCount} for ${knownActiveHumanUsers} known active directory users.`;
+    }
+    report.snapshotAccepted = snapshotQuality.ok;
+    if (!snapshotQuality.ok) {
+      report.snapshotRejectedReason = snapshotQuality.reason;
+      report.errors.push(snapshotQuality.reason || 'LDAP snapshot quality validation failed.');
+      report.executionDurationMs = Date.now() - startTime;
+      this.lastSyncReport = report;
+      await this.persistSyncRun(report);
+      logger.warn({ trigger, reason: snapshotQuality.reason, snapshotHash: snapshotQuality.snapshotHash }, 'Active Directory sync skipped; snapshot quality gate rejected the result');
+      return report;
+    }
+
+    // The imported HR workbook is a reference baseline for known people and
+    // hierarchy names. AD remains authoritative for current status and any
+    // changed title/department; the baseline is only used when AD omits those
+    // fields. It never creates an operational/login user by itself.
+    let baselineByName = new Map<string, DirectoryBaselineRecord>();
+    let baselineByEmployeeId = new Map<string, DirectoryBaselineRecord>();
+    let baselineByBranch = new Map<string, DirectoryBaselineRecord>();
+    if (config.DB_TYPE === 'postgres') {
+      try {
+        const baseline = await DirectoryBaselineService.loadCurrent();
+        const baselineNameCandidates = new Map<string, DirectoryBaselineRecord[]>();
+        for (const record of baseline) {
+          const nameKey = makeDirectoryNameMatchKey(record.fullName);
+          if (!nameKey) continue;
+          const candidates = baselineNameCandidates.get(nameKey) || [];
+          candidates.push(record);
+          baselineNameCandidates.set(nameKey, candidates);
+        }
+        baselineByName = new Map(
+          [...baselineNameCandidates.entries()]
+            .filter(([, candidates]) => candidates.length === 1)
+            .map(([nameKey, candidates]) => [nameKey, candidates[0]])
+        );
+        baselineByEmployeeId = new Map(baseline.map((record) => [normalizeDirectoryEmployeeId(record.employeeId), record]));
+        for (const record of baseline) {
+          const branchName = extractDirectoryBranchName([record.structureName]);
+          const branchKey = makeDirectoryBranchMatchKey(branchName);
+          if (branchKey && !baselineByBranch.has(branchKey)) baselineByBranch.set(branchKey, record);
+        }
+      } catch (error: any) {
+        logger.warn({ err: error?.message || String(error) }, 'Directory baseline unavailable; continuing with live AD attributes');
+      }
+    }
+
+    const preSyncData = options.dryRun ? structuredClone(db.data) : undefined;
 
     // All projection, relationship repair, de-duplication, and lifecycle
     // changes commit together. A failed sync therefore leaves the previous
@@ -604,9 +817,20 @@ export class LDAPSyncService {
       const givenName = normalizeDirectoryText(entry.givenName);
       const sn = normalizeDirectoryText(entry.sn);
       const displayName = normalizeDirectoryText(entry.displayName) || `${givenName} ${sn}`.trim() || sAMAccountName;
-      const title = normalizeDirectoryText(entry.title || (entry as any).jobTitle) || 'Bank Specialist';
-      const rawDept = normalizeDirectoryText(entry.department);
+      const employeeId = normalizeDirectoryEmployeeId(entry.employeeID ?? entry.employeeId ?? entry.employeeNumber);
+      const baseline = baselineByEmployeeId.get(employeeId) || baselineByName.get(makeDirectoryNameMatchKey(displayName));
+      const title = normalizeDirectoryText(entry.title || (entry as any).jobTitle) || baseline?.title || 'Bank Specialist';
+      const rawDept = normalizeDirectoryText(entry.department) || baseline?.structureName || '';
       const groups = this.parseMemberOfGroups(entry.memberOf);
+      const branchSignal = extractDirectoryBranchName([
+        rawDept,
+        title,
+        ...groups,
+        ...extractOrganizationalUnits(entry.distinguishedName),
+      ]);
+      const branchBaseline = branchSignal
+        ? baselineByBranch.get(makeDirectoryBranchMatchKey(branchSignal))
+        : undefined;
       const isDisabledInLdap = this.isAccountDisabled(entry);
       const targetIsActive = !isDisabledInLdap;
 
@@ -614,7 +838,24 @@ export class LDAPSyncService {
       else report.disabledUsersCount++;
 
       // Department & Şöbə Mapping
-      const deptMapping = this.mapDepartment(rawDept, title, groups, toSafeString(entry.distinguishedName));
+      const adMapping = this.mapDepartment(rawDept, title, groups, toSafeString(entry.distinguishedName));
+      // For a person present in the supplied HR snapshot, an equal structure
+      // label means the workbook root is authoritative (especially branches
+      // and top-level şöbələr that the old function classified by job title).
+      // A changed AD department intentionally wins, so moves and renames are
+      // reflected on the next daily sync.
+      // A branch marker in AD department/title/OU/memberOf is stronger than
+      // the legacy functional title rules: branch users must stay under their
+      // branch root even when their job is cashier, credit, or operations.
+      // Known branches use the exact Excel root; a new branch is provisioned
+      // with a stable root from the AD signal and will be reconciled later.
+      const branchStructureName = branchBaseline?.structureName || (branchSignal ? `${branchSignal} filialı` : undefined);
+      const branchMapping = branchStructureName
+        ? mapBaselineRecord({ structureName: branchStructureName, title })
+        : undefined;
+      const deptMapping = branchMapping || (baseline && normalizeDirectoryKey(rawDept) === normalizeDirectoryKey(baseline.structureName)
+        ? mapBaselineRecord(baseline)
+        : adMapping);
       const targetDeptId = deptMapping.departmentId;
       const targetDeptName = deptMapping.departmentName;
       syncedDepartmentIds.add(targetDeptId);
@@ -745,12 +986,21 @@ export class LDAPSyncService {
       else report.departmentCounts[targetDeptId].disabled++;
 
       // Check if user exists in local database
-      const existingUser = existingUsers.find(
-        (u) =>
-          normalizeDirectoryKey(u.username) === sAMAccountName ||
-          normalizeDirectoryKey(u.sAMAccountName) === sAMAccountName ||
-          normalizeDirectoryKey(u.email) === email
+      const objectGuid = normalizeDirectoryObjectGuid(entry.objectGUID);
+      const existingByObjectGuid = objectGuid
+        ? existingUsers.find((u) => normalizeDirectoryObjectGuid((u as any).directoryObjectGuid) === objectGuid)
+        : undefined;
+      const existingByEmployeeId = existingUsers.find(
+        (u) => employeeId && normalizeDirectoryEmployeeId((u as any).baselineEmployeeId) === employeeId
       );
+      const sameNameCandidates = existingUsers.filter(
+        (u) => makeDirectoryNameMatchKey(u.fullName) === makeDirectoryNameMatchKey(displayName) && u.directorySource === 'ACTIVE_DIRECTORY'
+      );
+      const existingUser = existingByObjectGuid
+        || existingByEmployeeId
+        || existingUsers.find((u) => normalizeDirectoryKey(u.username) === sAMAccountName || normalizeDirectoryKey(u.sAMAccountName) === sAMAccountName)
+        || existingUsers.find((u) => normalizeDirectoryKey(u.email) === email)
+        || (sameNameCandidates.length === 1 ? sameNameCandidates[0] : undefined);
 
       const isSuperAdminAccount =
         sAMAccountName === 'u.gasimli' ||
@@ -788,6 +1038,8 @@ export class LDAPSyncService {
           id: newId,
           username: sAMAccountName,
           sAMAccountName,
+          directoryObjectGuid: objectGuid || undefined,
+          baselineEmployeeId: baseline?.employeeId || employeeId || undefined,
           email,
           fullName: displayName,
           title: userPositionTitle,
@@ -827,6 +1079,12 @@ export class LDAPSyncService {
       } else {
         // === EXISTING USER: CHECK UPDATES / DISABLED STATUS ===
         const changes: string[] = [];
+
+        if (normalizeDirectoryKey(existingUser.username) !== sAMAccountName) {
+          changes.push(`username: ${existingUser.username} -> ${sAMAccountName}`);
+          existingUser.username = sAMAccountName;
+          existingUser.sAMAccountName = sAMAccountName;
+        }
 
         if (existingUser.fullName !== displayName) {
           changes.push(`fullName: ${existingUser.fullName} -> ${displayName}`);
@@ -899,6 +1157,8 @@ export class LDAPSyncService {
 
         // Synchronize distribution groups
         existingUser.distributionGroups = groups;
+        existingUser.directoryObjectGuid = objectGuid || existingUser.directoryObjectGuid;
+        existingUser.baselineEmployeeId = baseline?.employeeId || employeeId || existingUser.baselineEmployeeId;
         existingUser.ldapDomain = config.LDAP_DOMAIN;
         existingUser.ldapBindStatus = 'BOUND';
         existingUser.directorySource = 'ACTIVE_DIRECTORY';
@@ -917,6 +1177,23 @@ export class LDAPSyncService {
     }
 
     // Resolve the AD `manager` DN / SAMAccount / Name only after every human user has been upserted.
+    // Clear first so a manager removal or unresolved manager reference cannot
+    // leave a stale reporting line in the next projection.
+    for (const entry of validLdapEntries) {
+      const rawUsername = toSafeString(entry.sAMAccountName || entry.userPrincipalName);
+      const username = normalizeDirectoryKey(
+        rawUsername.includes('\\') ? rawUsername.split('\\')[1] : rawUsername.includes('@') ? rawUsername.split('@')[0] : rawUsername
+      );
+      const employee = db.data.users.find(
+        (user) =>
+          (normalizeDirectoryObjectGuid(entry.objectGUID) &&
+            normalizeDirectoryObjectGuid((user as any).directoryObjectGuid) === normalizeDirectoryObjectGuid(entry.objectGUID)) ||
+          normalizeDirectoryKey(user.username) === username ||
+          normalizeDirectoryKey(user.sAMAccountName) === username
+      );
+      if (employee) employee.managerId = undefined;
+    }
+
     const userByDn = new Map(
       db.data.users
         .filter((user) => user.distinguishedName)
@@ -1079,19 +1356,24 @@ export class LDAPSyncService {
     }
 
     // 9. Commit the complete directory projection atomically.
-    });
+    }, { persist: options.dryRun !== true });
 
     // The compatibility transaction queues PostgreSQL persistence because the
     // HTTP runtime flushes that queue at its request boundary. This standalone
     // sync command exits immediately after returning the report, so explicitly
     // await the queued projection write before allowing the process to exit.
-    await db.persistAsync();
+    if (options.dryRun) {
+      db.data = preSyncData!;
+    } else {
+      await db.persistAsync();
+    }
 
     report.executionDurationMs = Date.now() - startTime;
     this.lastSyncReport = report;
+    await this.persistSyncRun(report);
 
     // 10. Log Audit Event
-    AuditService.log({
+    if (!options.dryRun) AuditService.log({
       actor: options.actor || db.data.users.find((u) => u.roles.includes('CISO')) || db.data.users[0],
       action: 'LDAP_AUTH_SUCCESS',
       entityType: 'USER',
@@ -1234,4 +1516,3 @@ export class LDAPSyncService {
     };
   }
 }
-

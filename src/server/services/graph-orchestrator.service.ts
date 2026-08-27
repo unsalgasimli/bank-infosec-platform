@@ -160,7 +160,7 @@ export class GraphOrchestratorService {
       // 3. Routing & Assignee Validation for Task / Approval nodes
       if (node.type === 'TASK' || node.type === 'APPROVAL') {
         const deptId = node.targetDepartment || (actor?.departmentId);
-        const dept = deptId ? db.data.departments.find((d) => d.id === deptId && d.isActive !== false) : undefined;
+        const dept = deptId ? db.data.departments.find((d) => (d.id === deptId || d.code?.toLowerCase() === deptId.toLowerCase()) && d.isActive !== false) : undefined;
         
         if (node.targetDepartment && !dept) {
           errors.push(`Node "${node.title}" references an inactive or missing department.`);

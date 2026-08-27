@@ -62,12 +62,11 @@ export function decryptSecret(encryptedPayload: string, masterKey = dataProtecti
 }
 
 /**
- * Safely masks credentials for log output
+ * Returns a constant redaction marker for credentials.
+ * Never reveal prefixes, suffixes, length, or any other password-derived data.
  */
 export function maskSecret(secret?: string): string {
-  if (!secret) return '***EMPTY***';
-  if (secret.length <= 4) return '****';
-  return `${secret.slice(0, 2)}****${secret.slice(-2)}`;
+  return secret ? '[REDACTED]' : '[EMPTY]';
 }
 
 /**

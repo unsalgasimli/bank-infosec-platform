@@ -51,7 +51,7 @@ export class ProjectsController {
     const project: Project = {
       id: `prj-${uuidv4().slice(0, 8)}`, identifier: ProjectService.nextIdentifier(), key, name,
       description: String(body.description || ''), objective: body.objective, scope: body.scope, successCriteria: body.successCriteria,
-      departmentId: body.departmentId || user.departmentId, ownerId: body.ownerId || user.id, managerId: body.managerId || user.id, sponsorId: body.sponsorId,
+      departmentId: body.departmentId || user.departmentId, sectionId: body.sectionId || undefined, ownerId: body.ownerId || user.id, managerId: body.managerId || user.id, sponsorId: body.sponsorId,
       status: body.status === 'DRAFT' ? 'DRAFT' : 'ACTIVE', priority: body.priority || 'MEDIUM', businessCriticality: body.businessCriticality || body.priority || 'MEDIUM',
       category: (body.category || 'INFORMATION_SECURITY') as ProjectCategory, tags: Array.isArray(body.tags) ? body.tags.map(String).slice(0, 20) : [],
       relatedAssetIds: Array.isArray(body.relatedAssetIds) ? body.relatedAssetIds.map(String) : [], slaPolicyId: body.slaPolicyId, templateId: body.templateId,

@@ -110,6 +110,7 @@ const configSchema = z.object({
   LDAP_SYNC_TIME_GMT4: z.string().default('13:30'),
   LDAP_SYNC_TIMEZONE: z.string().default('Asia/Baku'),
   LDAP_SYNC_AUTO_ENABLED: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(true),
+  LDAP_SYNC_MIN_COVERAGE: z.coerce.number().min(0.1).max(1).default(0.5),
   
   // Logging & Observability
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),

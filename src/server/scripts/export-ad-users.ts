@@ -4,7 +4,7 @@ import readline from 'node:readline';
 import { Writable } from 'node:stream';
 import { config } from '../config/index.js';
 import { StrictReadOnlyLdapClient } from '../utils/readonly-ldap-client.js';
-import { resolveSecret, maskSecret } from '../utils/crypto.js';
+import { resolveSecret } from '../utils/crypto.js';
 import { logger } from '../services/logger.service.js';
 import type { LDAPRawEntry } from '../services/ldap-directory.data.js';
 import { toSafeString, normalizeDirectoryText, normalizeDirectoryKey } from '../services/ldap-directory.data.js';
@@ -84,7 +84,7 @@ async function main(): Promise<void> {
     );
   }
 
-  console.log(`Connecting read-only to ${ldapUrl} as ${bindUser} (password ${maskSecret(bindPassword)})...`);
+  console.log(`Connecting read-only to ${ldapUrl} as ${bindUser} (password [REDACTED])...`);
 
   const client = new StrictReadOnlyLdapClient({
     url: ldapUrl,

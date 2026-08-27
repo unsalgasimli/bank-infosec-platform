@@ -56,9 +56,10 @@ function recordId(value: RecordValue, index: number): string {
   return text(value.id) || crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 32);
 }
 
-function safeCode(value: unknown, fallback: string, used: Set<string>): string {
-  const base = (normalizeDirectoryKey(value) || fallback).replace(/[^a-z0-9_]/g, '_').slice(0, 24).toUpperCase();
-  let candidate = base || fallback.toUpperCase();
+function safeCode(value: unknown, fallback: unknown, used: Set<string>): string {
+  const fallbackKey = normalizeDirectoryKey(fallback) || 'generated';
+  const base = (normalizeDirectoryKey(value) || fallbackKey).replace(/[^a-z0-9_]/g, '_').slice(0, 24).toUpperCase();
+  let candidate = base || fallbackKey.toUpperCase();
   let suffix = 1;
   while (used.has(candidate)) {
     candidate = `${base.slice(0, 24 - String(suffix).length - 1)}_${suffix}`;
@@ -69,10 +70,11 @@ function safeCode(value: unknown, fallback: string, used: Set<string>): string {
 }
 
 /** Section codes are scoped by department and may use the wider DB column. */
-function safeSectionCode(value: unknown, fallback: string, departmentId: string, used: Set<string>): string {
+function safeSectionCode(value: unknown, fallback: unknown, departmentId: string, used: Set<string>): string {
   const maxLength = 64;
-  const base = (normalizeDirectoryKey(value) || fallback).replace(/[^a-z0-9_]/g, '_').slice(0, maxLength).toUpperCase();
-  let candidate = base || fallback.toUpperCase().slice(0, maxLength);
+  const fallbackKey = normalizeDirectoryKey(fallback) || 'generated';
+  const base = (normalizeDirectoryKey(value) || fallbackKey).replace(/[^a-z0-9_]/g, '_').slice(0, maxLength).toUpperCase();
+  let candidate = base || fallbackKey.toUpperCase().slice(0, maxLength);
   let suffix = 1;
   while (used.has(`${departmentId}:${candidate}`)) {
     const suffixText = String(suffix);
@@ -108,10 +110,10 @@ export class PostgresProjectionRepository {
     }
 
     const [divisions, departments, departmentSections, teams, users, assets, applications, cmdbTypes, cmdbRelationshipTypes, configurationItems, ciRelationships, ciRecordLinks, slaPolicies, workflows, tickets, comments, approvals, attachments, auditEvents, relationships, tasks, worklogs, slaInstances, satisfaction, aiRecommendations, connections, legacy] = await Promise.all([
-      pgClient.query('SELECT source_payload FROM bank_divisions ORDER BY id'),
-      pgClient.query('SELECT source_payload FROM bank_departments ORDER BY id'),
-      pgClient.query('SELECT source_payload FROM bank_department_sections ORDER BY department_id, name'),
-      pgClient.query('SELECT source_payload FROM bank_teams ORDER BY id'),
+      pgClient.query('SELECT id, code, name, description, source_payload FROM bank_divisions ORDER BY id'),
+      pgClient.query('SELECT id, division_id, code, name, description, color, icon, is_active, settings, admin_user_ids, directory_source, source_payload FROM bank_departments ORDER BY id'),
+      pgClient.query('SELECT id, department_id, code, name, manager_id, section_type, parent_section_id, has_own_manager, is_active, source_payload FROM bank_department_sections ORDER BY department_id, name'),
+      pgClient.query('SELECT id, department_id, name, email, source_payload FROM bank_teams ORDER BY id'),
       pgClient.query(`SELECT ${directoryUserColumns} FROM bank_users ORDER BY username`),
       pgClient.query('SELECT id, tag, name, type, ip_address, fqdn, environment, critical_asset, pci_dss_scope, owner_id, custodian_id, department_id, os, created_at, updated_at FROM bank_assets ORDER BY id'),
       pgClient.query('SELECT id, code, name, tier, architecture_type, repository_url, technical_owner_id, business_owner_id, department_id, active_cve_count, created_at, updated_at FROM bank_applications ORDER BY id'),
@@ -137,11 +139,50 @@ export class PostgresProjectionRepository {
       pgClient.query('SELECT collection, payload FROM legacy_json_records ORDER BY collection, record_id'),
     ]);
 
-    const fromPayload = (row: any) => row.source_payload && typeof row.source_payload === 'object' ? row.source_payload : null;
-    base.divisions = divisions.rows.map((row) => fromPayload(row)).filter(Boolean);
-    base.departments = departments.rows.map((row) => fromPayload(row)).filter(Boolean);
-    base.departmentSections = departmentSections.rows.map((row) => fromPayload(row)).filter(Boolean);
-    base.teams = teams.rows.map((row) => fromPayload(row)).filter(Boolean);
+    // Normalized relational columns are authoritative for identity and
+    // hierarchy. Older imports stored only business fields in source_payload
+    // (for example departmentId instead of id), so hydrating payload alone can
+    // produce runtime objects with undefined IDs and crash the next sync.
+    const fromPayload = (row: any, normalized: RecordValue = {}) => {
+      const payload = row.source_payload && typeof row.source_payload === 'object' ? row.source_payload : {};
+      return { ...payload, ...normalized };
+    };
+    base.divisions = divisions.rows.map((row) => fromPayload(row, {
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      description: row.description || undefined,
+    }));
+    base.departments = departments.rows.map((row) => fromPayload(row, {
+      id: row.id,
+      divisionId: row.division_id,
+      code: row.code,
+      name: row.name,
+      description: row.description || '',
+      color: row.color || undefined,
+      icon: row.icon || undefined,
+      isActive: row.is_active !== false,
+      settings: row.settings || {},
+      adminUserIds: Array.isArray(row.admin_user_ids) ? row.admin_user_ids : [],
+      directorySource: row.directory_source || undefined,
+    }));
+    base.departmentSections = departmentSections.rows.map((row) => fromPayload(row, {
+      id: row.id,
+      departmentId: row.department_id,
+      code: row.code,
+      name: row.name,
+      managerId: row.manager_id || undefined,
+      sectionType: row.section_type || 'SOBE',
+      parentSectionId: row.parent_section_id || undefined,
+      hasOwnManager: row.has_own_manager !== false,
+      isActive: row.is_active !== false,
+    }));
+    base.teams = teams.rows.map((row) => fromPayload(row, {
+      id: row.id,
+      departmentId: row.department_id,
+      name: row.name,
+      code: row.id,
+    }));
     // Identity, authorization, and organizational placement are normalized
     // columns. They outrank the compatibility payload so an outdated in-memory
     // login snapshot cannot restore old roles or old section membership.
@@ -560,8 +601,8 @@ export class PostgresProjectionRepository {
         await client.query(
           `INSERT INTO bank_department_sections(id,department_id,code,name,manager_id,section_type,parent_section_id,has_own_manager,is_active,source_payload)
            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
-           ON CONFLICT(id) DO UPDATE SET department_id=EXCLUDED.department_id,code=EXCLUDED.code,name=EXCLUDED.name,manager_id=EXCLUDED.manager_id,section_type=EXCLUDED.section_type,has_own_manager=EXCLUDED.has_own_manager,is_active=EXCLUDED.is_active,source_payload=EXCLUDED.source_payload,updated_at=NOW()`,
-          [section.id, section.departmentId, safeSectionCode(section.code, section.id, section.departmentId, sectionCodes), text(section.name) || section.id, section.managerId || null, section.sectionType || 'SOBE', null, section.hasOwnManager !== false, section.isActive !== false, json(section)]
+           ON CONFLICT(id) DO UPDATE SET department_id=EXCLUDED.department_id,code=EXCLUDED.code,name=EXCLUDED.name,manager_id=EXCLUDED.manager_id,section_type=EXCLUDED.section_type,parent_section_id=EXCLUDED.parent_section_id,has_own_manager=EXCLUDED.has_own_manager,is_active=EXCLUDED.is_active,source_payload=EXCLUDED.source_payload,updated_at=NOW()`,
+          [section.id, section.departmentId, safeSectionCode(section.code, section.id, section.departmentId, sectionCodes), text(section.name) || section.id, section.managerId || null, section.sectionType || 'SOBE', section.parentSectionId || null, section.hasOwnManager !== false, section.isActive !== false, json(section)]
         );
       }
 
@@ -589,12 +630,15 @@ export class PostgresProjectionRepository {
         await client.query(
           `INSERT INTO bank_users(id,username,email,first_name,last_name,full_name,title,department_id,section_id,unit_id,manager_id,unit_name,section_name,primary_username,division_id,security_clearance,is_active,last_login_at,roles,team_ids,owned_application_ids,owned_risk_ids,sam_account_name,user_principal_name,distinguished_name,ldap_domain,ldap_bind_status,distribution_groups,directory_source,identity_ciphertext,identity_ciphertext_version,email_lookup_hash,source_payload)
            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,$20::jsonb,$21::jsonb,$22::jsonb,$23,$24,$25,$26,$27,$28::jsonb,$29,$30,$31,$32,$33::jsonb)
-           ON CONFLICT(id) DO UPDATE SET username=EXCLUDED.username,email=EXCLUDED.email,first_name=EXCLUDED.first_name,last_name=EXCLUDED.last_name,full_name=EXCLUDED.full_name,title=EXCLUDED.title,department_id=EXCLUDED.department_id,section_id=EXCLUDED.section_id,unit_id=EXCLUDED.unit_id,unit_name=EXCLUDED.unit_name,section_name=EXCLUDED.section_name,primary_username=EXCLUDED.primary_username,division_id=EXCLUDED.division_id,is_active=EXCLUDED.is_active,roles=EXCLUDED.roles,team_ids=EXCLUDED.team_ids,owned_application_ids=EXCLUDED.owned_application_ids,owned_risk_ids=EXCLUDED.owned_risk_ids,user_principal_name=EXCLUDED.user_principal_name,distinguished_name=EXCLUDED.distinguished_name,distribution_groups=EXCLUDED.distribution_groups,identity_ciphertext=EXCLUDED.identity_ciphertext,identity_ciphertext_version=EXCLUDED.identity_ciphertext_version,email_lookup_hash=EXCLUDED.email_lookup_hash,source_payload=EXCLUDED.source_payload,updated_at=NOW()`,
+           ON CONFLICT(id) DO UPDATE SET username=EXCLUDED.username,sam_account_name=EXCLUDED.sam_account_name,email=EXCLUDED.email,first_name=EXCLUDED.first_name,last_name=EXCLUDED.last_name,full_name=EXCLUDED.full_name,title=EXCLUDED.title,department_id=EXCLUDED.department_id,section_id=EXCLUDED.section_id,unit_id=EXCLUDED.unit_id,unit_name=EXCLUDED.unit_name,section_name=EXCLUDED.section_name,primary_username=EXCLUDED.primary_username,division_id=EXCLUDED.division_id,is_active=EXCLUDED.is_active,roles=EXCLUDED.roles,team_ids=EXCLUDED.team_ids,owned_application_ids=EXCLUDED.owned_application_ids,owned_risk_ids=EXCLUDED.owned_risk_ids,user_principal_name=EXCLUDED.user_principal_name,distinguished_name=EXCLUDED.distinguished_name,distribution_groups=EXCLUDED.distribution_groups,identity_ciphertext=EXCLUDED.identity_ciphertext,identity_ciphertext_version=EXCLUDED.identity_ciphertext_version,email_lookup_hash=EXCLUDED.email_lookup_hash,source_payload=EXCLUDED.source_payload,updated_at=NOW()`,
           [user.id, normalizeDirectoryKey(user.username), nullable(user.email), name.first, name.last, name.full, text(user.title) || 'Bank Specialist', departmentIds.has(user.departmentId) ? user.departmentId : null, sectionIds.has(user.sectionId || '') ? user.sectionId : null, sectionIds.has(user.unitId || '') ? user.unitId : null, null, nullable(user.unitName), nullable(user.sectionName), nullable(user.primaryUsername), divisionIds.has(user.divisionId) ? user.divisionId : null, user.securityClearance || 'INTERNAL', Boolean(user.isActive), user.lastLdapLoginAt ? iso(user.lastLdapLoginAt) : null, json(user.roles || []), json(user.teamIds || []), json(user.ownedApplicationIds || []), json(user.ownedRiskIds || []), normalizeDirectoryKey(user.sAMAccountName || user.username), null, null, nullable(user.ldapDomain), nullable(user.ldapBindStatus), json([]), nullable(user.directorySource), encryptSecret(JSON.stringify(protectedIdentity(user))), 2, identityLookupHash(user.email || user.username), json(protectedUserPayload(user))]
         );
       }
 
       // Resolve user manager foreign keys only after all users exist.
+      // Reset the complete snapshot first so a manager removed from AD cannot
+      // survive in PostgreSQL merely because the incoming user has no manager.
+      await client.query('UPDATE bank_users SET manager_id = NULL, updated_at = NOW() WHERE id = ANY($1::text[])', [[...userIds]]);
       for (const user of data.users || []) {
         if (user.managerId && userIds.has(user.managerId) && user.managerId !== user.id) {
           await client.query('UPDATE bank_users SET manager_id=$2, updated_at=NOW() WHERE id=$1', [user.id, user.managerId]);

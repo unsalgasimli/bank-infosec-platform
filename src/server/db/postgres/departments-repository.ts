@@ -396,7 +396,7 @@ export class DepartmentsRepository {
           managerName: manager?.fullName || department.managerName,
           managerEmail: manager?.email || department.managerEmail,
         };
-      }).filter((department) => (department.memberCount || 0) > 0);
+      });
     });
   }
 
@@ -497,36 +497,35 @@ export class DepartmentsRepository {
     nextOffset: number | null;
   }> {
     const departmentResult = await pgClient.query(
-      `${this.departmentSelect} WHERE d.is_active = TRUE AND COALESCE(NULLIF(d.directory_source, ''), d.source_payload->>'directorySource') = 'ACTIVE_DIRECTORY' ORDER BY v.name, d.name`
+      `${this.departmentSelect} WHERE d.is_active = TRUE ORDER BY v.name, d.name`
     );
     const departments = departmentResult.rows.map(rowToDepartment);
     const departmentIds = new Set(departments.map((department) => department.id));
-    const sectionResult = await pgClient.query(
-      `SELECT id, department_id, code, name, manager_id, is_active, source_payload
+    const sectionResult = departmentIds.size > 0 ? await pgClient.query(
+      `SELECT id, department_id, code, name, manager_id, is_active, source_payload, section_type, parent_section_id
        FROM bank_department_sections
        WHERE is_active = TRUE AND department_id = ANY($1::text[])
-         AND COALESCE(source_payload->>'directorySource', 'ACTIVE_DIRECTORY') = 'ACTIVE_DIRECTORY'
        ORDER BY name`,
       [[...departmentIds]]
-    );
+    ) : { rows: [] };
     const sections: BankDepartmentSection[] = sectionResult.rows.map((row) => ({
       id: row.id,
       departmentId: row.department_id,
       code: row.code,
       name: row.name,
       managerId: row.manager_id || undefined,
+      sectionType: row.section_type || undefined,
+      parentSectionId: row.parent_section_id || undefined,
       isActive: Boolean(row.is_active),
-      directorySource: 'ACTIVE_DIRECTORY',
+      directorySource: row.source_payload?.directorySource || 'ACTIVE_DIRECTORY',
     }));
     const sectionNames = new Map(sections.map((section) => [section.id, section.name]));
     const userResult = await pgClient.query(
       `SELECT ${directoryUserColumns}
        FROM bank_users
-       WHERE is_active = TRUE AND directory_source = 'ACTIVE_DIRECTORY'
+       WHERE is_active = TRUE
          AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false'
-         AND department_id = ANY($1::text[])
-       ORDER BY full_name, username`,
-      [[...departmentIds]]
+       ORDER BY full_name, username`
     );
     const departmentId = input.departmentId?.trim() || undefined;
     const sectionId = input.sectionId?.trim() || undefined;
@@ -545,7 +544,7 @@ export class DepartmentsRepository {
       ...user,
       sectionName: sectionNames.get(user.sectionId || ''),
     }));
-    const ready = departments.length > 0 && users.length > 0;
+    const ready = departments.length > 0;
     return {
       directory: {
         source: 'ACTIVE_DIRECTORY',

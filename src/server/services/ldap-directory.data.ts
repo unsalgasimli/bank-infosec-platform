@@ -1,7 +1,14 @@
 import { BankRole, SecurityClearanceLevel } from '../../shared/types/auth.js';
+import { createHash } from 'node:crypto';
 
 export interface LDAPRawEntry {
   sAMAccountName?: string;
+  /** Stable AD object identity used to survive sAMAccountName changes. */
+  objectGUID?: string | Buffer;
+  /** HR employee number used to join the Excel baseline without decrypting PII. */
+  employeeID?: string | number;
+  employeeId?: string | number;
+  employeeNumber?: string | number;
   userPrincipalName?: string;
   mail?: string;
   displayName?: string;
@@ -63,6 +70,61 @@ export function toSafeString(val: any): string {
 }
 
 /**
+ * Converts AD's binary objectGUID representation into a stable canonical GUID.
+ * The first three GUID fields are little-endian in the LDAP byte sequence.
+ */
+export function normalizeDirectoryObjectGuid(value: any): string {
+  if (Array.isArray(value)) return normalizeDirectoryObjectGuid(value[0]);
+  if (Buffer.isBuffer(value) || value instanceof Uint8Array) {
+    const bytes = Buffer.from(value);
+    if (bytes.length === 16) {
+      const hex = (index: number) => bytes[index].toString(16).padStart(2, '0');
+      return `${hex(3)}${hex(2)}${hex(1)}${hex(0)}-${hex(5)}${hex(4)}-${hex(7)}${hex(6)}-${hex(8)}${hex(9)}-${hex(10)}${hex(11)}${hex(12)}${hex(13)}${hex(14)}${hex(15)}`;
+    }
+    return bytes.toString('hex');
+  }
+  const text = toSafeString(value).replace(/[{}]/g, '').toLowerCase();
+  if (/^[0-9a-f]{32}$/.test(text)) {
+    return `${text.slice(0, 8)}-${text.slice(8, 12)}-${text.slice(12, 16)}-${text.slice(16, 20)}-${text.slice(20)}`;
+  }
+  return text;
+}
+
+/** Canonical employee-number key used to join AD's employeeID to the HR baseline. */
+export function normalizeDirectoryEmployeeId(value: any): string {
+  const text = toSafeString(value).toLowerCase();
+  if (!text) return '';
+  return /^\d+$/.test(text) ? text.replace(/^0+(?=\d)/, '') : text;
+}
+
+/**
+ * Non-secret, order-independent name key for joining AD displayName to the HR
+ * workbook when employeeID is not populated. It tolerates Azerbaijani/English
+ * transliteration, initials, and the workbook's patronymic suffixes.
+ */
+export function makeDirectoryNameMatchKey(value: any): string {
+  const text = normalizeAzerbaijani(normalizeDirectoryText(value))
+    .toLowerCase()
+    .replace(/kh/g, 'x')
+    .replace(/gh/g, 'g')
+    .replace(/sh/g, 's')
+    .replace(/ch/g, 'c')
+    .replace(/j/g, 'c')
+    .replace(/[.,;:()[\]{}'"`]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const tokens = text.split(' ').filter(Boolean);
+  const patronymicMarker = tokens.findIndex((token) => ['qizi', 'oglu'].includes(token));
+  if (patronymicMarker >= 1) tokens.splice(patronymicMarker - 1, 2);
+  const meaningful = tokens
+    .filter((token) => token.length > 1)
+    .filter((token) => !/(?:ovi[cç]|evic|ovna|evna|vich|vn|evn)$/.test(token))
+    .map((token) => token.replace(/[aeiou]/g, '').replace(/q/g, 'g').replace(/(.)\1+/g, '$1'))
+    .filter(Boolean);
+  return meaningful.sort().join(' ');
+}
+
+/**
  * Normalizes directory text at the boundary so LDAP aliases cannot create
  * duplicate identities through Unicode variants, zero-width characters, or
  * inconsistent whitespace.
@@ -107,6 +169,27 @@ export function generateDeptCode(text: string): string {
   }
   const clean = slugifyDept(text).toUpperCase().replace(/-/g, '_');
   return clean.slice(0, 12);
+}
+
+/** Keep hierarchy IDs within PostgreSQL's 128-character key limit. */
+export function makeDepartmentNodeId(name: string): string {
+  const slug = slugifyDept(name);
+  const base = `dept-${slug}`;
+  if (base.length <= 64) return base;
+  const digest = createHash('sha256').update(`department|${normalizeDirectoryKey(name)}`).digest('hex').slice(0, 10);
+  const availableSlugLength = Math.max(1, 64 - 'dept-'.length - digest.length - 1);
+  return `dept-${slug.slice(0, availableSlugLength)}-${digest}`;
+}
+
+/** Keep hierarchy IDs within PostgreSQL's 128-character key limit. */
+export function makeHierarchyNodeId(kind: 'section' | 'unit', departmentId: string, name: string): string {
+  const prefix = `${kind}-`;
+  const slug = slugifyDept(name);
+  const base = `${prefix}${departmentId}-${slug}`;
+  if (base.length <= 128) return base;
+  const digest = createHash('sha256').update(`${kind}|${departmentId}|${normalizeDirectoryKey(name)}`).digest('hex').slice(0, 10);
+  const availableSlugLength = Math.max(1, 128 - prefix.length - departmentId.length - 1 - digest.length - 1);
+  return `${prefix}${departmentId}-${slug.slice(0, availableSlugLength)}-${digest}`;
 }
 
 export function getDepartmentColor(deptName: string): string {
@@ -156,6 +239,51 @@ export function normalizeAzerbaijani(text: string): string {
     .replace(/ş/g, 's')
     .replace(/ç/g, 'c')
     .replace(/ğ/g, 'g');
+}
+
+/**
+ * Stable branch/city key used across Azerbaijani and English AD labels.
+ * Examples: "Bərdə filialı" and "Barda Branch - SG" both become "brd".
+ * The key is only a routing aid; it is never used as a user identity.
+ */
+export function makeDirectoryBranchMatchKey(value: any): string {
+  const normalized = normalizeAzerbaijani(normalizeDirectoryText(value))
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const tokens = normalized.split(' ').filter(Boolean);
+  const markerIndex = tokens.findIndex((token) => token.startsWith('filial') || token.startsWith('branch'));
+  return (markerIndex >= 0 ? tokens.slice(0, markerIndex) : tokens)
+    .filter(Boolean)
+    .map((token) => token.replace(/[aeiou]/g, '').replace(/(.)\1+/g, '$1'))
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
+ * Extracts the human branch/city prefix from AD department, title, OU, or
+ * security-group labels. It intentionally ignores generic "Branch Users"
+ * containers and returns only labels that contain a concrete prefix.
+ */
+export function extractDirectoryBranchName(values: any[] = []): string | undefined {
+  for (const value of values) {
+    const raw = normalizeDirectoryText(value);
+    if (!raw) continue;
+    const rawTokens = raw.split(/\s+/).filter(Boolean);
+    const normalizedTokens = normalizeAzerbaijani(raw)
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(' ')
+      .filter(Boolean);
+    const markerIndex = normalizedTokens.findIndex((token) => token.startsWith('filial') || token.startsWith('branch'));
+    if (markerIndex <= 0) continue;
+    const prefix = rawTokens.slice(0, markerIndex).join(' ').replace(/[\s\-_]+$/g, '').trim();
+    if (prefix && makeDirectoryBranchMatchKey(prefix)) return prefix;
+  }
+  return undefined;
 }
 
 /**
@@ -234,6 +362,7 @@ export function parseJobTitleAndHierarchy(
   let processedTitle = cleanTitle
     .replace(/ şöbəsinin /gi, ' şöbəsi / ')
     .replace(/ bölməsinin /gi, ' bölməsi / ')
+    .replace(/ xidmətinin /gi, ' xidməti / ')
     .replace(/ departamentinin /gi, ' Departamenti / ')
     .replace(/ şöbəsinin\b/gi, ' şöbəsi')
     .replace(/ bölməsinin\b/gi, ' bölməsi');
@@ -1091,18 +1220,35 @@ export function mapDepartment(
   // 21. General Fallback
   else {
     let roles: BankRole[] = ['REQUESTER', 'ASSIGNEE'];
-    if (isManagerTitle) {
-      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'APPROVER', 'REQUESTER'];
+    if (isManagerTitle) roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'APPROVER', 'REQUESTER'];
+
+    // Unknown but explicit AD structures must become their own directory
+    // department. Falling back to Retail silently misroutes new departments
+    // and makes a later rename look like a user move to an unrelated queue.
+    const explicitName = normalizeDirectoryText(deptStr || hierarchy.departmentCandidate || '');
+    const explicitNorm = normalizeAzerbaijani(explicitName);
+    const isGenericContainer = !explicitName || /^(users|bank users|ho users|branch users|general|common)$/.test(explicitNorm);
+    if (!isGenericContainer) {
+      result = {
+        departmentId: makeDepartmentNodeId(explicitName),
+        divisionId: 'div-banking',
+        teamIds: ['team-swift-eng'],
+        departmentName: explicitName,
+        departmentCode: generateDeptCode(explicitName),
+        roles,
+        securityClearance: 'INTERNAL',
+      };
+    } else {
+      result = {
+        departmentId: 'dept-retail',
+        divisionId: 'div-banking',
+        teamIds: ['team-swift-eng'],
+        departmentName: 'Pərakəndə Bankçılıq Departamenti',
+        departmentCode: 'RETAIL',
+        roles,
+        securityClearance: 'INTERNAL',
+      };
     }
-    result = {
-      departmentId: 'dept-retail',
-      divisionId: 'div-banking',
-      teamIds: ['team-swift-eng'],
-      departmentName: 'Pərakəndə Bankçılıq Departamenti',
-      departmentCode: 'RETAIL',
-      roles,
-      securityClearance: 'INTERNAL',
-    };
   }
 
   // Dynamic Group-Based RBAC Resolution (Active Directory Security Groups)
@@ -1249,7 +1395,7 @@ function cleanSectionCandidate(
 
   if (sectionCandidate) {
     const sectionSlug = slugifyDept(sectionCandidate);
-    result.sectionId = `section-${result.departmentId}-${sectionSlug}`;
+    result.sectionId = makeHierarchyNodeId('section', result.departmentId, sectionCandidate);
     result.sectionName = sectionCandidate;
     result.sectionCode = `SEC_${sectionSlug.replace(/-/g, '_').slice(0, 60).toUpperCase()}`;
   }
@@ -1266,9 +1412,9 @@ function cleanSectionCandidate(
   if (rawUnitCandidate) {
     const unitCandidate = normalizeDirectoryText(rawUnitCandidate);
     const unitSlug = slugifyDept(unitCandidate);
-    result.unitId = `unit-${result.departmentId}-${unitSlug}`;
+    result.unitId = makeHierarchyNodeId('unit', result.departmentId, unitCandidate);
     result.unitName = unitCandidate;
-    result.unitCode = `UNIT_${unitSlug.replace(/-/g, '_').slice(0, 60).toUpperCase()}`;
+    result.unitCode = `UNIT_${unitSlug.replace(/-/g, '_').slice(0, 59).toUpperCase()}`;
   }
 
   return result;

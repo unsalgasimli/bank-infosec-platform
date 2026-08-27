@@ -2180,6 +2180,7 @@ const ProjectForm: React.FC<{
     key: '',
     description: '',
     departmentId: currentUser?.departmentId || '',
+    sectionId: currentUser?.sectionId || '',
     ownerId: currentUser?.id || '',
     managerId: currentUser?.id || '',
     startDate: '',
@@ -2213,28 +2214,58 @@ const ProjectForm: React.FC<{
     });
   };
 
+  // Department options from /api/departments (Apex Bank GRC | Admin Departments Hub)
   const departmentOptions: SelectOption[] = useMemo(() => {
-    return departments.map((d: BankDepartment) => ({
-      value: d.id,
-      label: d.name,
-      sublabel: `Code: ${d.code} · ${d.memberCount || 0} members`,
-      icon: <Building2 className="w-4 h-4 text-purple-600" />,
-    }));
+    const emptyOption: SelectOption = { value: '', label: 'Departament seçin...' };
+    const depts = departments
+      .filter((d: BankDepartment) => d.isActive !== false)
+      .map((d: BankDepartment) => ({
+        value: d.id,
+        label: d.name,
+        icon: <Building2 className="w-4 h-4 text-purple-600" />,
+      }));
+    return [emptyOption, ...depts];
   }, [departments]);
 
+  // Section options (Şöbə / Bölmə) dynamically filtered by chosen department
+  const sectionOptions: SelectOption[] = useMemo(() => {
+    const activeDepts = departments.filter((d: BankDepartment) => d.isActive !== false);
+    const targetDepts = form.departmentId
+      ? activeDepts.filter((d: BankDepartment) => d.id === form.departmentId)
+      : activeDepts;
+
+    const sectionsList: SelectOption[] = [
+      { value: '', label: form.departmentId ? 'Bütün departament üzrə (Şöbə seçilməyib)' : 'Şöbə / Bölmə seçin (istəyə bağlı)...' }
+    ];
+
+    for (const dept of targetDepts) {
+      const sections = (dept.sections || []).filter((s: any) => s.isActive !== false);
+
+      for (const sec of sections) {
+        sectionsList.push({
+          value: sec.id,
+          label: sec.name,
+          icon: <Layers className="w-4 h-4 text-indigo-600" />,
+        });
+      }
+    }
+
+    return sectionsList;
+  }, [departments, form.departmentId]);
+
+  // Employee options for Project Owner and Project Manager
   const userOptions: SelectOption[] = useMemo(() => {
-    return allUsers.map((u: BankUser) => ({
-      value: u.id,
-      label: u.fullName || u.username,
-      sublabel: `${u.title || 'Specialist'} · ${u.email}`,
-      badge: u.directorySource === 'ACTIVE_DIRECTORY' ? 'AD' : undefined,
-      badgeColor: 'bg-emerald-50 text-emerald-700',
-      icon: (
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-semantic-success-surface text-caption font-bold text-semantic-success">
-          {avatar(u.fullName || u.username)}
-        </span>
-      ),
-    }));
+    return allUsers
+      .filter((u: BankUser) => u.isActive !== false)
+      .map((u: BankUser) => ({
+        value: u.id,
+        label: u.fullName || u.username,
+        icon: (
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-semantic-success-surface text-caption font-bold text-semantic-success border border-semantic-success-border">
+            {avatar(u.fullName || u.username)}
+          </span>
+        ),
+      }));
   }, [allUsers]);
 
   return (
@@ -2330,32 +2361,70 @@ const ProjectForm: React.FC<{
 
         <FormSection title="Ownership & Department" description="Active Directory organizational routing">
           <Field label="Department" hint="Primary organizational unit">
-            <DirectoryAssignmentSelect
-              kind="department"
+            <CustomSelect
               value={form.departmentId}
-              onChange={(value) => set('departmentId', value)}
-              placeholder="Select department..."
-              searchPlaceholder="Type department name or code..."
+              onChange={(value) => {
+                setForm((current: any) => {
+                  let nextSectionId = current.sectionId;
+                  if (value && nextSectionId) {
+                    const currentDept = departments.find((d) => d.id === value);
+                    const hasSection = (currentDept?.sections || []).some((s: any) => s.id === nextSectionId);
+                    if (!hasSection) nextSectionId = '';
+                  }
+                  return { ...current, departmentId: value, sectionId: nextSectionId };
+                });
+              }}
+              options={departmentOptions}
+              placeholder="Departament seçin..."
+              searchPlaceholder="Departament adı ilə axtarın..."
+              searchable
+            />
+          </Field>
+
+          <Field label="Section / Unit" hint="Specific department section or sub-unit">
+            <CustomSelect
+              value={form.sectionId || ''}
+              onChange={(value) => {
+                setForm((current: any) => {
+                  let nextDeptId = current.departmentId;
+                  if (value) {
+                    for (const dept of departments) {
+                      const sec = (dept.sections || []).find((s: any) => s.id === value);
+                      if (sec) {
+                        nextDeptId = dept.id;
+                        break;
+                      }
+                    }
+                  }
+                  return { ...current, sectionId: value, departmentId: nextDeptId };
+                });
+              }}
+              options={sectionOptions}
+              placeholder="Şöbə / Bölmə seçin (istəyə bağlı)..."
+              searchPlaceholder="Şöbə adı ilə axtarın..."
+              searchable
             />
           </Field>
 
           <Field label="Project Owner" required hint="Accountable project owner">
-            <DirectoryAssignmentSelect
-              kind="user"
+            <CustomSelect
               value={form.ownerId}
               onChange={(value) => set('ownerId', value)}
-              placeholder="Select project owner..."
-              searchPlaceholder="Type employee name, title or account..."
+              options={userOptions}
+              placeholder="Layihə sahibini seçin..."
+              searchPlaceholder="Ad ilə axtarın..."
+              searchable
             />
           </Field>
 
           <Field label="Project Manager" hint="Operational delivery lead">
-            <DirectoryAssignmentSelect
-              kind="user"
+            <CustomSelect
               value={form.managerId}
               onChange={(value) => set('managerId', value)}
-              placeholder="Select project manager..."
-              searchPlaceholder="Type employee name, title or account..."
+              options={userOptions}
+              placeholder="Layihə menecerini seçin..."
+              searchPlaceholder="Ad ilə axtarın..."
+              searchable
             />
           </Field>
         </FormSection>
@@ -2665,13 +2734,13 @@ const TaskForm: React.FC<{
 
           <div className="md:col-span-2">
             <Field label="Assignee (Active Directory)" hint="Select from domain employees">
-              <DirectoryAssignmentSelect
-                kind="user"
+              <CustomSelect
                 value={form.assigneeId || ''}
                 onChange={(value) => set('assigneeId', value)}
-                allowEmpty
-                placeholder="Search and assign employee..."
-                searchPlaceholder="Type employee name, title or sAMAccountName..."
+                options={assigneeOptions}
+                placeholder="İcraçı təyin edin..."
+                searchPlaceholder="Ad, vəzifə və ya sAMAccountName axtarın..."
+                searchable
               />
             </Field>
           </div>
@@ -3027,24 +3096,26 @@ const MemberForm: React.FC<{
         {/* Dynamic LDAP / Directory Picker */}
         {form.subjectType === 'USER' && (
           <Field label="Select Active Directory Employee" required hint="Search employee directory">
-            <DirectoryAssignmentSelect
-              kind="user"
+            <CustomSelect
               value={form.subjectId}
               onChange={(value) => setForm({ ...form, subjectId: value })}
-              placeholder="Search and select employee..."
-              searchPlaceholder="Type employee name, title or sAMAccountName..."
+              options={userOptions}
+              placeholder="Əməkdaş seçin..."
+              searchPlaceholder="Ad, vəzifə və ya sAMAccountName axtarın..."
+              searchable
             />
           </Field>
         )}
 
         {form.subjectType === 'DEPARTMENT' && (
           <Field label="Select Bank Department" required hint="Organizational unit">
-            <DirectoryAssignmentSelect
-              kind="department"
+            <CustomSelect
               value={form.subjectId}
               onChange={(value) => setForm({ ...form, subjectId: value })}
-              placeholder="Search and select department..."
-              searchPlaceholder="Type department name or code..."
+              options={departmentOptions}
+              placeholder="Departament seçin..."
+              searchPlaceholder="Departament adı və ya kodu axtarın..."
+              searchable
             />
           </Field>
         )}
