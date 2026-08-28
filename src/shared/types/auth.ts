@@ -26,6 +26,28 @@ export type BankRole =
   | 'READ_ONLY_USER'
   | 'EXTERNAL_VENDOR';
 
+/** Domain permissions resolved from the authenticated directory-backed roles. */
+export type CmdbPermission =
+  | 'assets.read'
+  | 'assets.create'
+  | 'assets.update'
+  | 'assets.retire'
+  | 'assets.delete'
+  | 'asset_sources.read'
+  | 'asset_sources.manage'
+  | 'asset_discovery.read'
+  | 'asset_discovery.manage'
+  | 'asset_discovery.test'
+  | 'asset_discovery.enable'
+  | 'asset_discovery.health'
+  | 'asset_discovery.runs'
+  | 'asset_discovery.run'
+  | 'asset_relationships.read'
+  | 'asset_relationships.manage'
+  | 'asset_correlation.read'
+  | 'asset_correlation.resolve'
+  | 'asset_history.read';
+
 export type SecurityDomain =
   | 'GENERAL_INFOSEC'
   | 'SOC'

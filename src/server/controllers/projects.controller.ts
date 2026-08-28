@@ -6,6 +6,7 @@ import { AuditService } from '../services/audit.service.js';
 import { NotificationService } from '../services/notification.service.js';
 import { WorkflowService } from '../services/workflow.service.js';
 import { ProjectService } from '../services/project.service.js';
+import { OutboxService } from '../services/outbox.service.js';
 import { PROJECT_WORK_ITEM_TYPES, Project, ProjectCategory, ProjectMember, ProjectPriority, ProjectRole, ProjectStatus, ProjectTaskStatus, ProjectWorkItemType } from '../../shared/types/project.js';
 import { Ticket } from '../../shared/types/ticket.js';
 import { TicketComment } from '../../shared/types/comments.js';
@@ -69,8 +70,9 @@ export class ProjectsController {
         if (!String(milestone?.name || '').trim()) continue;
         db.data.projectMilestones.push({ id: `pms-${uuidv4().slice(0, 8)}`, projectId: project.id, name: String(milestone.name).trim(), description: milestone.description, ownerId: milestone.ownerId, startDate: milestone.startDate, targetDate: milestone.targetDate, status: 'PLANNED', dependencyIds: [], createdAt: now, updatedAt: now });
       }
-      ProjectService.record(project.id, user.id, 'PROJECT_CREATED', 'PROJECT', project.id, undefined, { identifier: project.identifier, name, key });
-      AuditService.log({ actor: user, action: 'PROJECT_CREATED', entityType: 'PROJECT', entityId: project.id, entityKey: project.identifier, metadata: { key, name } });
+       ProjectService.record(project.id, user.id, 'PROJECT_CREATED', 'PROJECT', project.id, undefined, { identifier: project.identifier, name, key });
+       AuditService.log({ actor: user, action: 'PROJECT_CREATED', entityType: 'PROJECT', entityId: project.id, entityKey: project.identifier, metadata: { key, name } });
+       OutboxService.enqueue({ topic: 'project.created', aggregateType: 'PROJECT', aggregateId: project.id, payload: { projectId: project.id, createdBy: user.id, priority: project.priority, businessCriticality: project.businessCriticality, category: project.category, relatedAssetIds: project.relatedAssetIds }, correlationId: req.correlationId });
     });
     res.status(201).json({ success: true, project: ProjectService.summary(project, user) });
   }
@@ -119,8 +121,10 @@ export class ProjectsController {
     project.updatedAt = new Date().toISOString();
     if (project.status === 'ARCHIVED') project.archivedAt = project.updatedAt;
     db.transaction(() => {
-      ProjectService.record(project.id, req.user!.id, project.status === 'ARCHIVED' ? 'PROJECT_ARCHIVED' : 'PROJECT_UPDATED', 'PROJECT', project.id, before, body);
-      AuditService.log({ actor: req.user!, action: project.status === 'ARCHIVED' ? 'PROJECT_ARCHIVED' : 'PROJECT_UPDATED', entityType: 'PROJECT', entityId: project.id, entityKey: project.identifier, fieldChanges: Object.entries(before).map(([field, oldValue]) => ({ field, oldValue, newValue: (project as any)[field] })) });
+       ProjectService.record(project.id, req.user!.id, project.status === 'ARCHIVED' ? 'PROJECT_ARCHIVED' : 'PROJECT_UPDATED', 'PROJECT', project.id, before, body);
+       AuditService.log({ actor: req.user!, action: project.status === 'ARCHIVED' ? 'PROJECT_ARCHIVED' : 'PROJECT_UPDATED', entityType: 'PROJECT', entityId: project.id, entityKey: project.identifier, fieldChanges: Object.entries(before).map(([field, oldValue]) => ({ field, oldValue, newValue: (project as any)[field] })) });
+       const changedFields = Object.keys(before);
+       if (changedFields.some((field) => ['scope', 'relatedAssetIds', 'businessCriticality', 'category', 'departmentId'].includes(field))) OutboxService.enqueue({ topic: 'project.material-change', aggregateType: 'PROJECT', aggregateId: project.id, payload: { projectId: project.id, changedFields, actorId: req.user!.id }, correlationId: req.correlationId });
     });
     res.json({ success: true, project: ProjectService.summary(project, req.user!) });
   }

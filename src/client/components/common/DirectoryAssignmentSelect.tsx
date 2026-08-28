@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Building2, UserRound } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 import type { BankDepartment, BankDepartmentSection } from '../../../shared/types/auth.js';
 import { CustomSelect, type SelectOption } from './CustomSelect.js';
 
@@ -69,6 +70,7 @@ export const DirectoryAssignmentSelect: React.FC<DirectoryAssignmentSelectProps>
   size = 'md',
 }) => {
   const { fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [payload, setPayload] = useState<DirectoryPayload>({});
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);

@@ -119,8 +119,8 @@ export class PostgresProjectionRepository {
       pgClient.query('SELECT id, code, name, tier, architecture_type, repository_url, technical_owner_id, business_owner_id, department_id, active_cve_count, created_at, updated_at FROM bank_applications ORDER BY id'),
       pgClient.query('SELECT source_payload FROM cmdb_ci_types ORDER BY id'),
       pgClient.query('SELECT source_payload FROM cmdb_relationship_types ORDER BY id'),
-      pgClient.query('SELECT source_payload FROM configuration_items ORDER BY created_at DESC'),
-      pgClient.query('SELECT source_payload FROM ci_relationships ORDER BY created_at DESC'),
+      pgClient.query('SELECT asset_key,asset_subtype,lifecycle_state,technical_status,first_seen_at,last_seen_at,stale_since,retired_at,reactivated_at,source_payload FROM configuration_items ORDER BY created_at DESC'),
+      pgClient.query('SELECT first_seen_at,last_seen_at,stale_since,retired_at,source_payload FROM ci_relationships ORDER BY created_at DESC'),
       pgClient.query('SELECT source_payload FROM ci_record_links ORDER BY created_at DESC'),
       pgClient.query('SELECT source_payload FROM sla_policies ORDER BY id'),
       pgClient.query('SELECT source_payload FROM workflows ORDER BY id'),
@@ -228,8 +228,23 @@ export class PostgresProjectionRepository {
     }));
     base.cmdbTypes = cmdbTypes.rows.map((row) => fromPayload(row)).filter(Boolean);
     base.cmdbRelationshipTypes = cmdbRelationshipTypes.rows.map((row) => fromPayload(row)).filter(Boolean);
-    base.configurationItems = configurationItems.rows.map((row) => fromPayload(row)).filter(Boolean);
-    base.ciRelationships = ciRelationships.rows.map((row) => fromPayload(row)).filter(Boolean);
+    base.configurationItems = configurationItems.rows.map((row) => fromPayload(row, {
+      assetKey: row.asset_key,
+      assetSubtype: row.asset_subtype || undefined,
+      lifecycleState: row.lifecycle_state,
+      technicalStatus: row.technical_status,
+      firstSeenAt: row.first_seen_at ? iso(row.first_seen_at) : undefined,
+      lastSeenAt: row.last_seen_at ? iso(row.last_seen_at) : undefined,
+      staleSince: row.stale_since ? iso(row.stale_since) : undefined,
+      retiredAt: row.retired_at ? iso(row.retired_at) : undefined,
+      reactivatedAt: row.reactivated_at ? iso(row.reactivated_at) : undefined,
+    })).filter(Boolean);
+    base.ciRelationships = ciRelationships.rows.map((row) => fromPayload(row, {
+      firstSeenAt: row.first_seen_at ? iso(row.first_seen_at) : undefined,
+      lastSeenAt: row.last_seen_at ? iso(row.last_seen_at) : undefined,
+      staleSince: row.stale_since ? iso(row.stale_since) : undefined,
+      retiredAt: row.retired_at ? iso(row.retired_at) : undefined,
+    })).filter(Boolean);
     base.ciRecordLinks = ciRecordLinks.rows.map((row) => fromPayload(row)).filter(Boolean);
     base.slaPolicies = slaPolicies.rows.map((row) => fromPayload(row)).filter(Boolean);
     base.workflows = workflows.rows.map((row) => fromPayload(row)).filter(Boolean);
@@ -691,11 +706,32 @@ export class PostgresProjectionRepository {
            ON CONFLICT(id) DO UPDATE SET ci_number=EXCLUDED.ci_number,name=EXCLUDED.name,display_name=EXCLUDED.display_name,type_id=EXCLUDED.type_id,status=EXCLUDED.status,lifecycle_status=EXCLUDED.lifecycle_status,environment=EXCLUDED.environment,criticality=EXCLUDED.criticality,business_criticality=EXCLUDED.business_criticality,description=EXCLUDED.description,owner_user_id=EXCLUDED.owner_user_id,technical_owner_user_id=EXCLUDED.technical_owner_user_id,business_owner_user_id=EXCLUDED.business_owner_user_id,support_group_id=EXCLUDED.support_group_id,department_id=EXCLUDED.department_id,location_id=EXCLUDED.location_id,vendor=EXCLUDED.vendor,manufacturer=EXCLUDED.manufacturer,model=EXCLUDED.model,serial_number=EXCLUDED.serial_number,asset_tag=EXCLUDED.asset_tag,hostname=EXCLUDED.hostname,fqdn=EXCLUDED.fqdn,ip_address=EXCLUDED.ip_address,mac_address=EXCLUDED.mac_address,operating_system=EXCLUDED.operating_system,os_version=EXCLUDED.os_version,external_reference=EXCLUDED.external_reference,source=EXCLUDED.source,source_system=EXCLUDED.source_system,source_record_id=EXCLUDED.source_record_id,discovery_status=EXCLUDED.discovery_status,last_discovered_at=EXCLUDED.last_discovered_at,last_verified_at=EXCLUDED.last_verified_at,last_seen_at=EXCLUDED.last_seen_at,last_sync_at=EXCLUDED.last_sync_at,sync_status=EXCLUDED.sync_status,details=EXCLUDED.details,version=EXCLUDED.version,updated_at=EXCLUDED.updated_at,updated_by=EXCLUDED.updated_by,archived_at=EXCLUDED.archived_at,source_payload=EXCLUDED.source_payload`,
           [ci.id, ci.ciNumber, ci.name, ci.displayName || null, ci.typeId, ci.status, ci.lifecycleStatus, ci.environment, ci.criticality, ci.businessCriticality || null, ci.description || null, userIds.has(ci.ownerUserId || '') ? ci.ownerUserId : null, userIds.has(ci.technicalOwnerUserId || '') ? ci.technicalOwnerUserId : null, userIds.has(ci.businessOwnerUserId || '') ? ci.businessOwnerUserId : null, ci.supportGroupId || null, departmentIds.has(ci.departmentId || '') ? ci.departmentId : null, ci.locationId || null, ci.vendor || null, ci.manufacturer || null, ci.model || null, ci.serialNumber || null, ci.assetTag || null, ci.hostname || null, ci.fqdn || null, ci.ipAddress || null, ci.macAddress || null, ci.operatingSystem || null, ci.osVersion || null, ci.externalReference || null, ci.source, ci.sourceSystem || null, ci.sourceRecordId || null, ci.discoveryStatus, ci.lastDiscoveredAt ? iso(ci.lastDiscoveredAt) : null, ci.lastVerifiedAt ? iso(ci.lastVerifiedAt) : null, ci.lastSeenAt ? iso(ci.lastSeenAt) : null, ci.lastSyncAt ? iso(ci.lastSyncAt) : null, ci.syncStatus || null, json(ci.details), ci.version, iso(ci.createdAt), iso(ci.updatedAt), ci.createdBy, ci.updatedBy, ci.archivedAt ? iso(ci.archivedAt) : null, json(ci)]
         );
+        const lifecycleState = ci.lifecycleState || (ci.status === 'ARCHIVED' ? 'ARCHIVED' : ci.status === 'RETIRED' ? 'RETIRED' : 'ACTIVE');
+        await client.query(
+          `UPDATE configuration_items
+           SET asset_key=COALESCE($2,asset_key),asset_subtype=$3,lifecycle_state=$4,technical_status=$5,
+               first_seen_at=COALESCE($6,first_seen_at),last_seen_at=$7,stale_since=$8,retired_at=$9,reactivated_at=$10
+           WHERE id=$1`,
+          [ci.id, ci.assetKey || null, ci.assetSubtype || null, lifecycleState, ci.technicalStatus || ci.status,
+            ci.firstSeenAt ? iso(ci.firstSeenAt) : iso(ci.createdAt), ci.lastSeenAt ? iso(ci.lastSeenAt) : null,
+            ci.staleSince ? iso(ci.staleSince) : null,
+            ci.retiredAt ? iso(ci.retiredAt) : lifecycleState === 'RETIRED' ? iso(ci.updatedAt) : null,
+            ci.reactivatedAt ? iso(ci.reactivatedAt) : null]
+        );
       }
       const ciIds = new Set((data.configurationItems || []).map((ci) => ci.id));
       for (const relationship of data.ciRelationships || []) {
         if (!ciIds.has(relationship.sourceCiId) || !ciIds.has(relationship.targetCiId)) continue;
         await client.query(`INSERT INTO ci_relationships(id,source_ci_id,target_ci_id,relationship_type_id,status,description,source,confidence,valid_from,valid_to,created_at,created_by,archived_at,source_payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb) ON CONFLICT(id) DO UPDATE SET status=EXCLUDED.status,description=EXCLUDED.description,confidence=EXCLUDED.confidence,valid_to=EXCLUDED.valid_to,archived_at=EXCLUDED.archived_at,source_payload=EXCLUDED.source_payload`, [relationship.id, relationship.sourceCiId, relationship.targetCiId, relationship.relationshipTypeId, relationship.status, relationship.description || null, relationship.source, relationship.confidence, iso(relationship.validFrom), relationship.validTo ? iso(relationship.validTo) : null, iso(relationship.createdAt), userIds.has(relationship.createdBy) ? relationship.createdBy : null, relationship.archivedAt ? iso(relationship.archivedAt) : null, json(relationship)]);
+        await client.query(
+          `UPDATE ci_relationships
+           SET first_seen_at=COALESCE($2,first_seen_at),last_seen_at=COALESCE($3,last_seen_at),stale_since=$4,retired_at=$5
+           WHERE id=$1`,
+          [relationship.id, relationship.firstSeenAt ? iso(relationship.firstSeenAt) : iso(relationship.validFrom),
+            relationship.lastSeenAt ? iso(relationship.lastSeenAt) : relationship.validTo ? iso(relationship.validTo) : iso(relationship.validFrom),
+            relationship.staleSince ? iso(relationship.staleSince) : null,
+            relationship.retiredAt ? iso(relationship.retiredAt) : relationship.archivedAt ? iso(relationship.archivedAt) : null]
+        );
       }
       for (const link of data.ciRecordLinks || []) {
         if (!ciIds.has(link.ciId)) continue;

@@ -27,6 +27,7 @@ import {
   CheckSquare,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 import { IdeaNode } from '../../../shared/types/ideate.js';
 
 interface IdeateCanvasViewProps {
@@ -36,6 +37,7 @@ interface IdeateCanvasViewProps {
 
 export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, onRefreshTickets }) => {
   const { fetchWithAuth, currentUser } = useAuth();
+  const { t } = useI18n();
 
   const [ideas, setIdeas] = useState<IdeaNode[]>([]);
   const [zoomLevel, setZoomLevel] = useState<number>(100);

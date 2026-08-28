@@ -30,6 +30,7 @@ import { NotificationsController } from './controllers/notifications.controller.
 import { DepartmentsController } from './controllers/departments.controller.js';
 import { OrchestrationController } from './controllers/orchestration.controller.js';
 import { ProjectsController } from './controllers/projects.controller.js';
+import { ThreatModelsController } from './controllers/threat-models.controller.js';
 import { DirectoryController } from './controllers/directory.controller.js';
 
 
@@ -256,7 +257,16 @@ app.get('/api/cmdb/cis/:id/impact', CMDBController.impact);
 app.post('/api/cmdb/cis/:id/records', CMDBController.linkRecord);
 app.get('/api/cmdb/cis/:id/records', CMDBController.relatedRecords);
 app.delete('/api/cmdb/relationships/:id', CMDBController.deleteRelationship);
-app.get('/api/cmdb/assets', CMDBController.assets);
+// PostgreSQL-backed, server-paginated asset inventory for production clients.
+app.get('/api/cmdb/assets', CMDBController.apiAssets);
+app.get('/api/cmdb/assets/:id', CMDBController.apiAssetDetail);
+app.get('/api/cmdb/assets/:id/subresources', CMDBController.apiAssetSubresources);
+app.get('/api/cmdb/assets/:id/identifiers', CMDBController.apiAssetIdentifiers);
+app.get('/api/cmdb/assets/:id/sources', CMDBController.apiAssetSources);
+app.get('/api/cmdb/assets/:id/relationships', CMDBController.apiAssetRelationships);
+app.get('/api/cmdb/assets/:id/network', CMDBController.apiAssetNetwork);
+app.get('/api/cmdb/assets/:id/storage', CMDBController.apiAssetStorage);
+app.get('/api/cmdb/assets/:id/history', CMDBController.apiAssetHistory);
 app.get('/api/cmdb/applications', CMDBController.applications);
 app.get('/api/cmdb/business-services', CMDBController.businessServices);
 app.get('/api/cmdb/types', CMDBController.types);
@@ -268,6 +278,20 @@ app.get('/api/cmdb/relationship-types', CMDBController.relationshipTypes);
 app.post('/api/cmdb/relationship-types', CMDBController.createRelationshipType);
 app.patch('/api/cmdb/relationship-types/:id', CMDBController.updateRelationshipType);
 app.post('/api/cmdb/sync/:sourceSystem', CMDBController.sync);
+app.get('/api/cmdb/discovery/connectors', CMDBController.discoveryConnectors);
+app.post('/api/cmdb/discovery/connectors', CMDBController.createDiscoveryConnector);
+app.get('/api/cmdb/discovery/connectors/:id', CMDBController.discoveryConnectorDetail);
+app.patch('/api/cmdb/discovery/connectors/:id', CMDBController.updateDiscoveryConnector);
+app.post('/api/cmdb/discovery/connectors/:id/enabled', CMDBController.toggleDiscoveryConnector);
+app.post('/api/cmdb/discovery/connectors/:id/enable', CMDBController.enableDiscoveryConnector);
+app.post('/api/cmdb/discovery/connectors/:id/disable', CMDBController.disableDiscoveryConnector);
+app.post('/api/cmdb/discovery/connectors/:id/test-connection', CMDBController.testDiscoveryConnector);
+app.get('/api/cmdb/discovery/connectors/:id/health', CMDBController.discoveryConnectorHealth);
+app.get('/api/cmdb/discovery/connectors/:id/runs', CMDBController.discoveryRuns);
+app.get('/api/cmdb/discovery/connectors/:id/runs/:runId', CMDBController.discoveryRunDetail);
+app.post('/api/cmdb/discovery/connectors/:id/sync', CMDBController.triggerDiscoverySync);
+app.get('/api/cmdb/discovery/correlation-cases', CMDBController.correlationCases);
+app.post('/api/cmdb/discovery/correlation-cases/:id/resolve', CMDBController.resolveCorrelation);
 // Compatibility read paths intentionally project the canonical model.
 app.get('/api/assets', CMDBController.legacyAssets);
 app.post('/api/assets', CMDBController.createLegacyAsset);
@@ -277,6 +301,36 @@ app.post('/api/applications', CMDBController.createLegacyApplication);
 // 11. Risks & Exceptions
 app.get('/api/risks', RisksController.listRisks);
 app.post('/api/risks', RisksController.createRisk);
+
+// Threat Modeling is a separate, server-authorized security-control domain.
+app.get('/api/threat-models', ThreatModelsController.list);
+app.get('/api/threat-model-policy', ThreatModelsController.policy);
+app.put('/api/threat-model-policy', ThreatModelsController.updatePolicy);
+app.get('/api/threat-models/report', ThreatModelsController.report);
+app.get('/api/threat-model-migration-backlog', ThreatModelsController.migrationBacklog);
+app.post('/api/threat-model-migration-backlog', ThreatModelsController.upsertMigrationBacklog);
+app.post('/api/threat-models', ThreatModelsController.create);
+app.get('/api/threat-models/:id', ThreatModelsController.get);
+app.get('/api/threat-models/:id/revisions/:revisionId', ThreatModelsController.revision);
+app.post('/api/threat-models/:id/applicability', ThreatModelsController.assess);
+app.post('/api/threat-models/:id/revisions', ThreatModelsController.createRevision);
+app.post('/api/threat-models/:id/components', ThreatModelsController.addComponent);
+app.post('/api/threat-models/:id/data-flows', ThreatModelsController.addDataFlow);
+app.post('/api/threat-models/:id/trust-boundaries', ThreatModelsController.addBoundary);
+app.post('/api/threat-models/:id/threats', ThreatModelsController.addThreat);
+app.post('/api/threats/:id/controls', ThreatModelsController.addControl);
+app.post('/api/controls/:id/verifications', ThreatModelsController.verifyControl);
+app.post('/api/threats/:id/residual-risk', ThreatModelsController.calculateResidual);
+app.post('/api/threats/:id/enterprise-risk', ThreatModelsController.linkEnterpriseRisk);
+app.post('/api/threats/:id/risk-acceptance', ThreatModelsController.requestRiskAcceptance);
+app.post('/api/threat-model-exceptions/:id/decision', ThreatModelsController.decideRiskAcceptance);
+app.post('/api/threat-models/:id/evidence', ThreatModelsController.linkEvidence);
+app.post('/api/threat-models/:id/submit', ThreatModelsController.submit);
+app.post('/api/threat-models/:id/request-changes', ThreatModelsController.requestChanges);
+app.post('/api/threat-models/:id/approve', ThreatModelsController.approve);
+app.get('/api/threat-models/:id/release-gate', ThreatModelsController.releaseGate);
+app.post('/api/threat-models/:id/release-authorization', ThreatModelsController.authorizeRelease);
+app.get('/api/threat-models/:id/history', ThreatModelsController.history);
 
 // 12. Knowledge Base
 app.get('/api/kb', KBController.listArticles);

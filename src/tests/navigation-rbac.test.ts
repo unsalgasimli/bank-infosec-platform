@@ -78,14 +78,18 @@ test('🛡️ Enterprise Banking ITSM/GRC Navigation & RBAC Test Suite', async (
     const actualModules = NAVIGATION_MODULES.map((m) => m.id);
     assert.deepStrictEqual(actualModules, expectedModules);
 
-    // Verify Security & GRC contains only Risk Management and Audit & Compliance
+    // Threat Modeling is a first-class Security & GRC destination, not a generic risk view.
     const secGrc = NAVIGATION_MODULES.find((m) => m.id === 'security-grc')!;
     const itemIds = secGrc.items.map((i) => i.id);
-    assert.deepStrictEqual(itemIds, ['risk-management', 'audit-compliance']);
+    assert.deepStrictEqual(itemIds, ['risk-management', 'threat-modeling', 'audit-compliance']);
 
     const riskItem = secGrc.items.find((i) => i.id === 'risk-management');
     assert.ok(riskItem, 'risk-management must exist');
     assert.strictEqual(riskItem.label, 'Risk Management');
+
+    const threatModelItem = secGrc.items.find((i) => i.id === 'threat-modeling');
+    assert.ok(threatModelItem, 'threat-modeling must exist');
+    assert.strictEqual(threatModelItem.label, 'Threat Modeling');
 
     const auditItem = secGrc.items.find((i) => i.id === 'audit-compliance');
     assert.ok(auditItem, 'audit-compliance must exist');
@@ -131,6 +135,7 @@ test('🛡️ Enterprise Banking ITSM/GRC Navigation & RBAC Test Suite', async (
   await t.test('4. RBAC: AppSec Analyst has access to Security & GRC, but not Administration settings', () => {
     assert.strictEqual(canUserAccessModule(appsecUser, 'security-grc'), true);
     assert.strictEqual(canUserAccessDestination(appsecUser, 'risk-management'), true);
+    assert.strictEqual(canUserAccessDestination(appsecUser, 'threat-modeling'), true);
     assert.strictEqual(canUserAccessDestination(appsecUser, 'audit-compliance'), true);
 
     // AppSec analyst is not platform admin
@@ -162,6 +167,7 @@ test('🛡️ Enterprise Banking ITSM/GRC Navigation & RBAC Test Suite', async (
     assert.strictEqual(buildUrl('projects-tasks', 'kanban'), '/work-management/projects-tasks?view=kanban');
     assert.strictEqual(buildUrl('service-incidents'), '/service-management/incidents');
     assert.strictEqual(buildUrl('risk-management'), '/security-grc/risk-management');
+    assert.strictEqual(buildUrl('threat-modeling'), '/security-grc/threat-modeling');
     assert.strictEqual(buildUrl('audit-compliance'), '/security-grc/audit-compliance');
     assert.strictEqual(buildUrl('admin-settings'), '/administration/settings');
   });

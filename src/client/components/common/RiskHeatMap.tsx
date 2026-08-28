@@ -1,6 +1,7 @@
 import React from 'react';
 import { RiskRegisterItem } from '../../../shared/types/risk.js';
 import { Filter, X } from 'lucide-react';
+import { useI18n } from '../../context/I18nContext.js';
 
 interface RiskHeatMapProps {
   risks: RiskRegisterItem[];
@@ -15,29 +16,43 @@ export const RiskHeatMap: React.FC<RiskHeatMapProps> = ({
   selectedCell = null,
   onSelectCell,
 }) => {
+  const { t } = useI18n();
+
   // 5x5 matrix where Y is Likelihood (5 down to 1) and X is Impact (1 to 5)
   const getCellRating = (l: number, i: number): { bg: string; text: string; rating: string } => {
     const score = l * i;
-    if (score >= 15) return { bg: 'bg-semantic-jira-blocked-surface border-semantic-jira-blocked-border hover:bg-semantic-jira-blocked-surface', text: 'text-semantic-danger-strong', rating: 'CRITICAL' };
-    if (score >= 10) return { bg: 'bg-semantic-warning-highlight border-semantic-warning-border-strong hover:bg-semantic-warning-border-strong', text: 'text-semantic-jira-primary', rating: 'HIGH' };
-    if (score >= 5) return { bg: 'bg-semantic-warning-soft border-semantic-jira-border hover:bg-semantic-warning-highlight', text: 'text-semantic-jira-primary', rating: 'MEDIUM' };
-    return { bg: 'bg-semantic-jira-brand-surface border-semantic-jira-info-border hover:bg-semantic-jira-brand-surface', text: 'text-semantic-jira-brand', rating: 'LOW' };
+    if (score >= 15) return { bg: 'bg-semantic-jira-blocked-surface border-semantic-jira-blocked-border hover:bg-semantic-jira-blocked-surface', text: 'text-semantic-danger-strong', rating: t('CRITICAL') };
+    if (score >= 10) return { bg: 'bg-semantic-warning-highlight border-semantic-warning-border-strong hover:bg-semantic-warning-border-strong', text: 'text-semantic-jira-primary', rating: t('HIGH') };
+    if (score >= 5) return { bg: 'bg-semantic-warning-soft border-semantic-jira-border hover:bg-semantic-warning-highlight', text: 'text-semantic-jira-primary', rating: t('MEDIUM') };
+    return { bg: 'bg-semantic-jira-brand-surface border-semantic-jira-info-border hover:bg-semantic-jira-brand-surface', text: 'text-semantic-jira-brand', rating: t('LOW') };
   };
 
   const getRisksInCell = (l: number, i: number) => {
     return risks.filter((r) => r.likelihood === l && r.impact === i);
   };
 
-  const likelihoodLabels = ['5 (Almost Certain)', '4 (Likely)', '3 (Possible)', '2 (Unlikely)', '1 (Rare)'];
-  const impactLabels = ['1 (Negligible)', '2 (Minor)', '3 (Moderate)', '4 (Significant)', '5 (Catastrophic)'];
+  const likelihoodLabels = [
+    `5 (${t('Almost Certain')})`,
+    `4 (${t('Likely')})`,
+    `3 (${t('Possible')})`,
+    `2 (${t('Unlikely')})`,
+    `1 (${t('Rare')})`,
+  ];
+  const impactLabels = [
+    `1 (${t('Negligible')})`,
+    `2 (${t('Minor')})`,
+    `3 (${t('Moderate')})`,
+    `4 (${t('Significant')})`,
+    `5 (${t('Catastrophic')})`,
+  ];
 
   return (
-    <div className="bg-semantic-panel border border-semantic-jira-border rounded-md p-5 shadow-sm">
+    <div className="bg-semantic-panel border border-semantic-jira-border rounded-xl p-5 shadow-sm">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-xs font-bold text-semantic-jira-primary uppercase tracking-wider">
-              5×5 Enterprise Risk Heat Matrix
+              {t('5×5 Enterprise Risk Heat Matrix')}
             </h3>
             {selectedCell && (
               <span className="px-2 py-0.5 rounded bg-semantic-jira-brand-surface border border-semantic-jira-info-border text-semantic-jira-brand text-caption font-mono flex items-center gap-1">
@@ -48,13 +63,13 @@ export const RiskHeatMap: React.FC<RiskHeatMapProps> = ({
               </span>
             )}
           </div>
-          <p className="text-xs text-semantic-jira-muted mt-0.5">Click on any cell to filter the risks by exact likelihood & impact</p>
+          <p className="text-xs text-semantic-jira-muted mt-0.5">{t('Click on any cell to filter the risks by exact likelihood & impact')}</p>
         </div>
-        <div className="flex items-center gap-3 text-xs text-semantic-jira-muted">
-          <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-semantic-danger-strong" /> Critical (15-25)</div>
-          <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-semantic-warning-bright" /> High (10-14)</div>
-          <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-semantic-warning-medium" /> Medium (5-9)</div>
-          <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-semantic-jira-brand" /> Low (1-4)</div>
+        <div className="flex items-center gap-3 text-xs text-semantic-jira-muted flex-wrap">
+          <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-semantic-danger-strong" /> {t('Critical (15-25)')}</div>
+          <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-semantic-warning-bright" /> {t('High (10-14)')}</div>
+          <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-semantic-warning-medium" /> {t('Medium (5-9)')}</div>
+          <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-semantic-jira-brand" /> {t('Low (1-4)')}</div>
         </div>
       </div>
 
@@ -84,7 +99,7 @@ export const RiskHeatMap: React.FC<RiskHeatMapProps> = ({
                           onSelectCell(isSelected ? null : { likelihood: l, impact: i });
                         }
                       }}
-                      className={`rounded border p-1 flex items-center justify-center transition-all cursor-pointer relative group ${cell.bg} ${
+                      className={`rounded-lg border p-1 flex items-center justify-center transition-all cursor-pointer relative group ${cell.bg} ${
                         isSelected ? 'ring-2 ring-semantic-jira-brand border-white scale-[1.03] z-dsContent shadow-lg' : ''
                       }`}
                       title={`Likelihood ${l}, Impact ${i} (Score ${l * i}) - ${matching.length} risks`}
@@ -96,7 +111,7 @@ export const RiskHeatMap: React.FC<RiskHeatMapProps> = ({
                           </span>
                         </div>
                       ) : (
-                        <span className="text-caption text-semantic-jira-muted-light font-mono">{l * i}</span>
+                        <span className="text-xs text-semantic-jira-muted font-medium">{l * i}</span>
                       )}
 
                       {/* Tooltip on hover */}
@@ -138,13 +153,14 @@ export const RiskHeatMap: React.FC<RiskHeatMapProps> = ({
               <div key={idx} className="truncate px-1">{lbl}</div>
             ))}
           </div>
-          <div className="text-center text-label text-semantic-jira-muted-light uppercase tracking-wider font-semibold mt-2">
-            Impact (Severity of Consequence) →
+          <div className="text-center text-[11px] font-bold uppercase tracking-wider text-semantic-jira-muted mt-2">
+            {t('Impact (Severity of Consequence)')} →
           </div>
         </div>
       </div>
     </div>
   );
 };
+
 
 

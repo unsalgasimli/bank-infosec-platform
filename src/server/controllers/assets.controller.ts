@@ -7,6 +7,8 @@ import { isGenuineEmployeeOrIntern } from '../services/ldap-directory.data.js';
 import { SLAService } from '../services/sla.service.js';
 import { SLAMetricThresholds, SLAPolicy } from '../../shared/types/sla.js';
 import { TechnicalSeverity } from '../../shared/types/ticket.js';
+import type { RiskRegisterItem } from '../../shared/types/risk.js';
+import { RiskRegisterRepository } from '../db/postgres/risk-register-repository.js';
 
 const SLA_SEVERITIES: TechnicalSeverity[] = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFORMATIONAL'];
 const SLA_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -174,29 +176,51 @@ export class AssetsController {
 }
 
 export class RisksController {
-  public static listRisks(req: AuthenticatedRequest, res: Response): void {
-    res.json({ success: true, risks: db.data.risks });
+  public static async listRisks(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      res.json({ success: true, risks: await RiskRegisterRepository.list(req.user!) });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Risk Register could not be loaded.' });
+    }
   }
 
-  public static createRisk(req: AuthenticatedRequest, res: Response): void {
+  public static async createRisk(req: AuthenticatedRequest, res: Response): Promise<void> {
     const user = req.user!;
     const body = req.body;
-    const count = db.data.risks.length + 1;
+    const permitted = user.roles.some((role) => ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'APPSEC_ANALYST', 'GRC_ANALYST', 'RISK_OWNER'].includes(role));
+    if (!permitted) {
+      res.status(403).json({ success: false, error: 'Only authorized InfoSec, AppSec, GRC, or risk-owner roles may create risk-register records.' });
+      return;
+    }
     const now = new Date().toISOString();
 
-    const likelihood = Number(body.likelihood) || 3;
-    const impact = Number(body.impact) || 3;
+    const likelihood = Number(body.inherentLikelihood ?? body.likelihood) || 3;
+    const impact = Number(body.inherentImpact ?? body.impact) || 3;
+    if (!Number.isInteger(likelihood) || !Number.isInteger(impact) || likelihood < 1 || likelihood > 5 || impact < 1 || impact > 5) {
+      res.status(400).json({ success: false, error: 'Inherent likelihood and impact must be whole numbers from 1 to 5.' });
+      return;
+    }
     const inherentScore = likelihood * impact;
-    const inherentRating = inherentScore >= 16 ? 'CRITICAL' : inherentScore >= 10 ? 'HIGH' : inherentScore >= 5 ? 'MEDIUM' : 'LOW';
+    const inherentRating: RiskRegisterItem['inherentRating'] = inherentScore >= 16 ? 'CRITICAL' : inherentScore >= 10 ? 'HIGH' : inherentScore >= 5 ? 'MEDIUM' : 'LOW';
 
-    const residualLikelihood = Number(body.residualLikelihood) || Math.max(1, likelihood - 1);
-    const residualImpact = Number(body.residualImpact) || Math.max(1, impact - 1);
+    const requestedResidualLikelihood = body.residualLikelihood === undefined ? likelihood : Number(body.residualLikelihood);
+    const requestedResidualImpact = body.residualImpact === undefined ? impact : Number(body.residualImpact);
+    if (!Number.isInteger(requestedResidualLikelihood) || !Number.isInteger(requestedResidualImpact) || requestedResidualLikelihood < 1 || requestedResidualLikelihood > 5 || requestedResidualImpact < 1 || requestedResidualImpact > 5) {
+      res.status(400).json({ success: false, error: 'Residual likelihood and impact must be whole numbers from 1 to 5.' });
+      return;
+    }
+    // Generic risks never receive an arbitrary score reduction. Threat-model
+    // controls are the authoritative path for a lower residual score.
+    if (requestedResidualLikelihood < likelihood || requestedResidualImpact < impact) {
+      res.status(400).json({ success: false, error: 'Residual risk cannot be reduced from this generic endpoint. Link the risk to verified Threat Model controls and record an AppSec rationale.' });
+      return;
+    }
+    const residualLikelihood = requestedResidualLikelihood;
+    const residualImpact = requestedResidualImpact;
     const residualScore = residualLikelihood * residualImpact;
-    const residualRating = residualScore >= 16 ? 'CRITICAL' : residualScore >= 10 ? 'HIGH' : residualScore >= 5 ? 'MEDIUM' : 'LOW';
+    const residualRating: RiskRegisterItem['residualRating'] = residualScore >= 16 ? 'CRITICAL' : residualScore >= 10 ? 'HIGH' : residualScore >= 5 ? 'MEDIUM' : 'LOW';
 
     const newRisk = {
-      id: `risk-${Date.now()}`,
-      riskCode: `RISK-2026-${String(count).padStart(4, '0')}`,
       title: body.title,
       description: body.description,
       ownerId: body.ownerId || user.id,
@@ -206,6 +230,8 @@ export class RisksController {
       affectedAssetIds: body.affectedAssetIds || [],
       likelihood,
       impact,
+      inherentLikelihood: likelihood,
+      inherentImpact: impact,
       inherentScore,
       inherentRating,
       existingControls: body.existingControls || '',
@@ -213,6 +239,9 @@ export class RisksController {
       residualImpact,
       residualScore,
       residualRating,
+      residualRiskRationale: String(body.residualRiskRationale || 'Initial residual risk equals inherent risk until verified controls are assessed.'),
+      residualRiskCalculatedAt: now,
+      residualRiskCalculatedBy: user.id,
       treatmentStrategy: body.treatmentStrategy || 'MITIGATE',
       treatmentPlan: body.treatmentPlan || '',
       treatmentDeadline: body.treatmentDeadline || new Date(Date.now() + 86400000 * 90).toISOString().split('T')[0],
@@ -222,17 +251,26 @@ export class RisksController {
       updatedAt: now,
     };
 
-    db.data.risks.unshift(newRisk as any);
+    if (!String(newRisk.title || '').trim() || !String(newRisk.description || '').trim()) {
+      res.status(400).json({ success: false, error: 'Risk title and description are required.' });
+      return;
+    }
+    let persistedRisk;
+    try {
+      persistedRisk = await RiskRegisterRepository.create(newRisk, user);
+    } catch (error) {
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Risk Register record could not be persisted.' });
+      return;
+    }
     AuditService.log({
       actor: user,
       action: 'TICKET_CREATED',
       entityType: 'TICKET',
-      entityId: newRisk.id,
-      metadata: { riskCode: newRisk.riskCode, title: newRisk.title },
+      entityId: persistedRisk.id,
+      metadata: { riskCode: persistedRisk.riskCode, title: persistedRisk.title, persistence: 'POSTGRESQL' },
     });
 
-    db.persist();
-    res.status(201).json({ success: true, risk: newRisk });
+    res.status(201).json({ success: true, risk: persistedRisk });
   }
 }
 

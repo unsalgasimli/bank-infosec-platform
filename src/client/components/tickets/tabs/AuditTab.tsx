@@ -1,12 +1,14 @@
 import React from 'react';
 import { AuditEvent } from '../../../../shared/types/audit.js';
 import { ShieldCheck, History, ArrowRight, User, Terminal, Network } from 'lucide-react';
+import { useI18n } from '../../../context/I18nContext.js';
 
 interface AuditTabProps {
   auditEvents: AuditEvent[];
 }
 
 export const AuditTab: React.FC<AuditTabProps> = ({ auditEvents }) => {
+  const { t } = useI18n();
   return (
     <div className="space-y-6">
       <div className="bg-slate-50/60 border border-slate-200 rounded-xl p-5 flex items-center justify-between shadow-xs flex-wrap gap-3">
@@ -14,22 +16,22 @@ export const AuditTab: React.FC<AuditTabProps> = ({ auditEvents }) => {
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-600" />
             <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-              Immutable Audit Log
+              {t('Immutable Audit Log')}
             </h3>
           </div>
           <p className="text-label text-slate-500 mt-1">
-            Append-only chronological log of all state transitions, approvals, field changes, and access records.
+            {t('Append-only chronological log of all state transitions, approvals, field changes, and access records.')}
           </p>
         </div>
         <span className="text-label font-mono font-bold bg-white px-3 py-1 rounded-full border border-slate-200 text-slate-700 shadow-xs">
-          {auditEvents.length} Events
+          {auditEvents.length} {t('Events')}
         </span>
       </div>
 
       <div className="space-y-3.5">
         {auditEvents.length === 0 && (
           <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-8 text-center text-xs text-slate-500">
-            No audit events are available for this ticket yet.
+            {t('No audit events are available for this ticket yet.')}
           </div>
         )}
         {auditEvents.map((evt) => (

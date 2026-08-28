@@ -28,6 +28,7 @@ import { RiskRegisterItem } from '../../../shared/types/risk.js';
 import { Ticket } from '../../../shared/types/ticket.js';
 import { BankApplication } from '../../../shared/types/asset.js';
 import { Badge } from '../common/Badge.js';
+import { useI18n } from '../../context/I18nContext.js';
 
 interface CISODashboardProps {
   metrics: any;
@@ -46,6 +47,7 @@ export const CISODashboard: React.FC<CISODashboardProps> = ({
   onSelectTicket,
   onNavigate,
 }) => {
+  const { t } = useI18n();
   const [selectedCell, setSelectedCell] = useState<{ likelihood: number; impact: number } | null>(null);
   const [timeRange, setTimeRange] = useState<'TODAY' | '7D' | '30D' | 'Q1'>('30D');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -73,23 +75,23 @@ export const CISODashboard: React.FC<CISODashboardProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-semantic-jira-border">
         <div>
           <div className="flex items-center gap-1.5 text-label text-semantic-jira-muted mb-1">
-            <span className="hover:underline cursor-pointer" onClick={() => onNavigate('ciso-dash')}>Dashboards</span>
+            <span className="hover:underline cursor-pointer" onClick={() => onNavigate('executive-analytics')}>{t('Dashboards')}</span>
             <span>/</span>
-            <span className="text-semantic-jira-primary">Apex Bank Security Operations</span>
+            <span className="text-semantic-jira-primary">{t('Apex Bank Security Operations')}</span>
           </div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-lg font-bold text-semantic-jira-primary tracking-tight">
-              CISO Cyber Risk & Operations Executive Dashboard
+              {t('CISO Cyber Risk & Operations Executive Dashboard')}
             </h1>
             <button
               onClick={() => setIsStarred(!isStarred)}
               className="text-semantic-warning-bright hover:opacity-80 p-0.5"
-              title={isStarred ? 'Unstar dashboard' : 'Star dashboard'}
+              title={isStarred ? t('Unstar dashboard') : t('Star dashboard')}
             >
               <Star className={`w-4 h-4 ${isStarred ? 'fill-current' : ''}`} />
             </button>
             <span className="px-2 py-0.5 rounded bg-semantic-panel text-semantic-jira-muted text-caption font-mono border border-semantic-jira-border">
-              DEFAULT SYSTEM DASHBOARD
+              {t('Default System Dashboard')}
             </span>
           </div>
         </div>
@@ -103,10 +105,10 @@ export const CISODashboard: React.FC<CISODashboardProps> = ({
                 key={tr}
                 onClick={() => setTimeRange(tr)}
                 className={`px-2.5 py-1 rounded text-label font-medium transition-colors ${
-                  timeRange === tr ? 'bg-semantic-jira-brand text-white font-semibold' : 'text-semantic-jira-muted hover:text-semantic-jira-primary'
+                  timeRange === tr ? 'bg-semantic-jira-brand text-white font-semibold shadow-xs' : 'text-semantic-jira-muted hover:text-semantic-jira-primary'
                 }`}
               >
-                {tr === 'TODAY' ? 'Today' : tr === '7D' ? '7 Days' : tr === '30D' ? '30 Days' : 'Q1 2026'}
+                {tr === 'TODAY' ? t('Today') : tr === '7D' ? t('7 Days') : tr === '30D' ? t('30 Days') : 'Q1 2026'}
               </button>
             ))}
           </div>
@@ -116,15 +118,15 @@ export const CISODashboard: React.FC<CISODashboardProps> = ({
             className="jira-btn-secondary py-1"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Export Briefing</span>
+            <span>{t('Export Briefing')}</span>
           </button>
 
           <button
             className="jira-btn-subtle py-1"
-            title="Edit Layout"
+            title={t('Edit layout')}
           >
             <LayoutGrid className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Edit layout</span>
+            <span className="hidden md:inline">{t('Edit layout')}</span>
           </button>
 
           <button

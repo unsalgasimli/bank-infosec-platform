@@ -4,6 +4,7 @@ import type { BankUser } from '../../shared/types/auth.js';
 import type { CIRecordLink, CIRelationship, CIType, ConfigurationItem, RelationshipType, CMDBGraph } from '../../shared/types/cmdb.js';
 import { db } from '../db/database.js';
 import { AuditService } from './audit.service.js';
+import { OutboxService } from './outbox.service.js';
 
 const enterpriseCmdbRoles = ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'IT_ADMIN', 'CORE_BANK_ADMIN'];
 const scopedCmdbRoles = ['INFOSEC_MANAGER', 'DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD'];
@@ -103,7 +104,7 @@ export class CMDBService {
     this.ensureReferenceData(); if (!this.canManage(actor)) throw new CMDBError(403, 'CMDB create permission is required.');
     const input = createSchema.parse(raw); this.assertInitialLifecycle(input.lifecycleStatus, input.source, actor); this.assertDepartmentCreateScope(actor, input.departmentId); this.assertReferences(input); this.assertNoDuplicate(input);
     const now = new Date().toISOString(); const ci: ConfigurationItem = { id: `ci-${uuidv4()}`, ciNumber: `CI-${new Date().getUTCFullYear()}-${String(db.data.configurationItems.length + 1).padStart(6, '0')}`, name: input.name, displayName: input.displayName || input.name, typeId: input.typeId, status: input.lifecycleStatus === 'RETIRED' || input.lifecycleStatus === 'DISPOSED' ? 'RETIRED' : 'ACTIVE', lifecycleStatus: input.lifecycleStatus, environment: input.environment, criticality: input.criticality, businessCriticality: input.businessCriticality, description: input.description, ownerUserId: input.ownerUserId, technicalOwnerUserId: input.technicalOwnerUserId, businessOwnerUserId: input.businessOwnerUserId, supportGroupId: input.supportGroupId, departmentId: input.departmentId || actor.departmentId, locationId: input.locationId, vendor: input.vendor, assetTag: input.assetTag, serialNumber: input.serialNumber, hostname: input.hostname, fqdn: input.fqdn, ipAddress: input.ipAddress, macAddress: input.macAddress, manufacturer: input.manufacturer, model: input.model, operatingSystem: input.operatingSystem, osVersion: input.osVersion, externalReference: input.externalReference, source: input.source, sourceSystem: input.sourceSystem, sourceRecordId: input.sourceRecordId, discoveryStatus: input.source === 'MANUAL' ? 'NOT_DISCOVERED' : 'SYNCED', lastSyncAt: input.source === 'MANUAL' ? undefined : now, syncStatus: input.source === 'MANUAL' ? undefined : 'SYNCED', details: input.details, version: 1, createdAt: now, updatedAt: now, createdBy: actor.id, updatedBy: actor.id };
-    db.data.configurationItems.unshift(ci); this.audit(actor, 'CMDB_CI_CREATED', 'CONFIGURATION_ITEM', ci.id, { name: ci.name, ciNumber: ci.ciNumber }); db.persist(); return this.withQuality(ci);
+    db.data.configurationItems.unshift(ci); this.audit(actor, 'CMDB_CI_CREATED', 'CONFIGURATION_ITEM', ci.id, { name: ci.name, ciNumber: ci.ciNumber }); OutboxService.enqueue({ topic: 'cmdb.ci.created', aggregateType: 'CONFIGURATION_ITEM', aggregateId: ci.id, payload: { ciId: ci.id, actorId: actor.id, criticality: ci.criticality, typeId: ci.typeId, departmentId: ci.departmentId, internetExposed: Boolean((ci.details as any).internetExposure), dataClassification: (ci.details as any).dataClassification } }); db.persist(); return this.withQuality(ci);
   }
 
   static update(id: string, raw: unknown, actor: BankUser): ConfigurationItem {
@@ -114,7 +115,7 @@ export class CMDBService {
     const changes = Object.entries(input).filter(([key, value]) => key !== 'version' && JSON.stringify((ci as any)[key]) !== JSON.stringify(value)).map(([field, newValue]) => ({ field, oldValue: (ci as any)[field], newValue }));
     Object.assign(ci, candidate, { version: ci.version + 1, updatedAt: new Date().toISOString(), updatedBy: actor.id });
     if (ci.lifecycleStatus === 'RETIRED' || ci.lifecycleStatus === 'DISPOSED') ci.status = 'RETIRED';
-    this.audit(actor, ci.status === 'RETIRED' ? 'CMDB_CI_RETIRED' : 'CMDB_CI_UPDATED', 'CONFIGURATION_ITEM', ci.id, { changes }, changes); db.persist(); return this.withQuality(ci);
+    this.audit(actor, ci.status === 'RETIRED' ? 'CMDB_CI_RETIRED' : 'CMDB_CI_UPDATED', 'CONFIGURATION_ITEM', ci.id, { changes }, changes); if (changes.some((change) => ['details', 'typeId', 'environment', 'criticality', 'businessCriticality', 'departmentId', 'technicalOwnerUserId', 'businessOwnerUserId'].includes(change.field))) OutboxService.enqueue({ topic: 'cmdb.ci.material-change', aggregateType: 'CONFIGURATION_ITEM', aggregateId: ci.id, payload: { ciId: ci.id, actorId: actor.id, changedFields: changes.map((change) => change.field) } }); db.persist(); return this.withQuality(ci);
   }
 
   static relationship(ciId: string, raw: unknown, actor: BankUser): CIRelationship {

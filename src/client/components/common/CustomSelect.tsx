@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Check, Search, X } from 'lucide-react';
+import { useI18n } from '../../context/I18nContext.js';
 
 const normalizeSearchText = (value: string) =>
   value
@@ -49,12 +50,12 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   value,
   onChange,
   options,
-  placeholder = 'Select option...',
+  placeholder,
   disabled = false,
   className = '',
   size = 'md',
   searchable = true,
-  searchPlaceholder = 'Search options...',
+  searchPlaceholder,
   ariaLabelledBy,
   required = false,
   placement: placementProp = 'auto',
@@ -63,6 +64,9 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   onLoadMore,
   onOpenChange,
 }) => {
+  const { t } = useI18n();
+  const effectivePlaceholder = placeholder || t('Select option...');
+  const effectiveSearchPlaceholder = searchPlaceholder || t('Search options...');
   const generatedId = useId().replaceAll(':', '');
   const triggerId = id || `custom-select-${generatedId}`;
   const listboxId = `${triggerId}-listbox`;
@@ -137,8 +141,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     }
     const selectedIndex = filteredOptions.findIndex((option) => option.value === value);
     setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
-    if (isSearchable) requestAnimationFrame(() => searchInputRef.current?.focus());
-  }, [isOpen, isSearchable, value]);
+  }, [isOpen, value, filteredOptions]);
 
   useEffect(() => {
     setActiveIndex((current) =>
@@ -188,7 +191,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       window.removeEventListener('resize', updateMenuPosition);
       window.removeEventListener('scroll', updateMenuPosition, true);
     };
-  }, [isOpen, placementProp]);
+  }, [isOpen, placementProp, isSearchable]);
 
   // Close on click outside
   useEffect(() => {
@@ -292,7 +295,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         <div className="flex items-center gap-2 truncate min-w-0 flex-1">
           {selectedOption?.icon && <span className="shrink-0">{selectedOption.icon}</span>}
           <span id={`${triggerId}-value`} className="truncate font-semibold text-semantic-primary flex-1">
-            {selectedOption ? selectedOption.label : placeholder}
+            {selectedOption ? selectedOption.label : effectivePlaceholder}
           </span>
           {selectedOption?.badge && (
             <span
@@ -339,10 +342,10 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={handleListNavigation}
-                  placeholder={searchPlaceholder}
+                  placeholder={effectiveSearchPlaceholder}
                   className="w-full pl-8.5 pr-8 py-1.5 text-sm bg-semantic-subtle border border-semantic-border rounded-lg text-semantic-primary placeholder-semantic-muted focus:outline-hidden focus:border-semantic-brand focus:ring-1 focus:ring-semantic-brand"
                   role="searchbox"
-                  aria-label={searchPlaceholder}
+                  aria-label={effectiveSearchPlaceholder}
                 />
                 {searchQuery && (
                   <button
@@ -432,7 +435,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           })}
           {filteredOptions.length === 0 && (
             <div className="px-3 py-6 text-center text-xs font-medium text-semantic-muted">
-              No matching options
+              {t('No matching options')}
             </div>
           )}
           {hasMore && !normalizedQuery && (
@@ -442,7 +445,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
               disabled={isLoadingMore || !onLoadMore}
               className="w-full rounded-lg px-3 py-2 text-xs font-bold text-semantic-success hover:bg-semantic-success-surface disabled:cursor-wait disabled:opacity-60"
             >
-              {isLoadingMore ? 'Loading more…' : 'Load more users'}
+              {isLoadingMore ? t('Loading more…') : t('Load more users')}
             </button>
           )}
           </div>

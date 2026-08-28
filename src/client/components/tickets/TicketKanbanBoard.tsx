@@ -3,6 +3,7 @@ import { Ticket } from '../../../shared/types/ticket.js';
 import { Badge } from '../common/Badge.js';
 import { SLARing } from '../common/SLARing.js';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 
 interface TicketKanbanBoardProps {
   tickets: Ticket[];
@@ -73,6 +74,7 @@ export const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
   onRefreshTickets,
 }) => {
   const { allUsers, fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [draggedTicketId, setDraggedTicketId] = React.useState<string | null>(null);
   const [dragOverColumnId, setDragOverColumnId] = React.useState<string | null>(null);
   const [movingTicketId, setMovingTicketId] = React.useState<string | null>(null);
@@ -147,20 +149,20 @@ export const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
             <div className="p-3 border-b border-semantic-jira-border flex items-center justify-between bg-semantic-jira-surface/60">
               <div className="flex items-center gap-2">
                 <span className="font-bold text-xs text-semantic-jira-primary uppercase tracking-wider">
-                  {col.name}
+                  {t(col.name)}
                 </span>
                 <span className="px-1.5 py-0.2 rounded bg-semantic-jira-hover text-semantic-jira-muted font-mono text-caption font-semibold">
                   {colTickets.length}
                 </span>
               </div>
-              {dragOverColumnId === col.id && <span className="text-caption font-semibold text-semantic-jira-brand">Drop to move</span>}
+              {dragOverColumnId === col.id && <span className="text-caption font-semibold text-semantic-jira-brand">{t('Drop to move')}</span>}
             </div>
 
             {/* Column Cards Container */}
             <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
               {colTickets.length === 0 ? (
                 <div className="text-center py-10 text-label text-semantic-jira-muted-light italic border border-dashed border-semantic-jira-border rounded">
-                  No issues in this column
+                  {t('No issues in this column')}
                 </div>
               ) : (
                 colTickets.map((ticket) => {
@@ -201,7 +203,7 @@ export const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
 
                       <div className="flex items-center justify-between gap-2 text-caption text-semantic-jira-muted">
                         <span className="truncate">{ticket.statusName}</span>
-                        {movingTicketId === ticket.id && <span className="shrink-0 text-semantic-jira-brand">Moving…</span>}
+                        {movingTicketId === ticket.id && <span className="shrink-0 text-semantic-jira-brand">{t('Moving...')}</span>}
                       </div>
 
                       {/* Finding or CVE snippet */}
@@ -238,7 +240,7 @@ export const TicketKanbanBoard: React.FC<TicketKanbanBoardProps> = ({
                             </div>
                           ) : (
                             <span className="px-1.5 py-0.5 rounded bg-semantic-info-soft text-semantic-info-strong border border-semantic-info-soft-border text-caption font-bold">
-                              {ticket.targetDepartmentId || ticket.departmentId ? 'Şöbə Növbəsi' : 'Təyin edilməyib'}
+                              {ticket.targetDepartmentId || ticket.departmentId ? t('Department Queue') : t('Unassigned')}
                             </span>
                           )}
                         </div>

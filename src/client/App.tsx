@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './context/AuthContext.js';
+import { useI18n } from './context/I18nContext.js';
 import { AppLayout } from './components/layout/AppLayout.js';
 import { WorkManagementContainer } from './components/views/WorkManagementContainer.js';
 import { ProjectOperationsWorkspace } from './components/projects/ProjectOperationsWorkspace.js';
@@ -7,6 +8,7 @@ import { MyWorkOverviewView } from './components/views/MyWorkOverviewView.js';
 import { ServiceCatalogView } from './components/views/ServiceCatalogView.js';
 import { CMDBRelationshipMapView } from './components/assets/CMDBRelationshipMapView.js';
 import { CMDBExplorerView } from './components/assets/CMDBExplorerView.js';
+import { DiscoveryAdminView } from './components/assets/DiscoveryAdminView.js';
 import { AuditComplianceView } from './components/governance/AuditComplianceView.js';
 import { IdeateCanvasView } from './components/ideate/IdeateCanvasView.js';
 import { WrikeRequestFormsView } from './components/views/WrikeRequestFormsView.js';
@@ -20,6 +22,7 @@ import { IncidentCaseView } from './components/operations/IncidentCaseView.js';
 import { VulnerabilityManagementView } from './components/operations/VulnerabilityManagementView.js';
 import { DLPView } from './components/operations/DLPView.js';
 import { RiskRegisterView } from './components/governance/RiskRegisterView.js';
+import { ThreatModelWorkspace } from './components/governance/ThreatModelWorkspace.js';
 import { SecurityExceptionsView } from './components/governance/SecurityExceptionsView.js';
 import { ApprovalsView } from './components/governance/ApprovalsView.js';
 import { KnowledgeBaseView } from './components/kb/KnowledgeBaseView.js';
@@ -53,6 +56,7 @@ const apiErrorMessage = (data: any, fallback: string): string => {
 
 export const App: React.FC = () => {
   const { currentUser, isLoading, fetchWithAuth } = useAuth();
+  const { t } = useI18n();
 
   // Initialize navigation and view mode state from the current browser URL
   const initialRoute = parseCurrentUrl();
@@ -331,10 +335,10 @@ export const App: React.FC = () => {
             </div>
           </div>
           <div className="text-sm font-semibold tracking-wide text-slate-200">
-            Verifying Secure Bank Session...
+            {t('Verifying Secure Bank Session...')}
           </div>
           <div className="text-xs text-slate-400 font-mono">
-            Active Directory LDAPS • Tier-1 PKI
+            {t('Active Directory LDAPS • Tier-1 PKI')}
           </div>
         </div>
       </div>
@@ -367,10 +371,6 @@ export const App: React.FC = () => {
       departmentsCount={departments.length}
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
-      onRunJql={(jql) => {
-        setJqlQuery(jql);
-        handleNavigate('projects-tasks');
-      }}
       onTicketCreated={(t) => {
         loadData();
         if (t && t.id) {
@@ -512,8 +512,8 @@ export const App: React.FC = () => {
           {/* ========================================================================= */}
           {activeDestination === 'service-incidents' && (
             <WorkManagementContainer
-              title="Service Incidents"
-              description="Live service outage tickets, SLA countdown timers, and resolution tracking."
+              title={t('Service Incidents')}
+              description={t('Live service outage tickets, SLA countdown timers, and resolution tracking.')}
               tickets={scopedTickets.filter((t) => t.category === 'INCIDENT' || t.ticketTypeId === 'INCIDENT')}
               applications={applications}
               assets={assets}
@@ -523,14 +523,14 @@ export const App: React.FC = () => {
               onSelectTicket={handleSelectTicket}
               onOpenCreate={() => setIsCreateModalOpen(true)}
               onRefreshTickets={loadData}
-              createButtonLabel="Report Incident"
+              createButtonLabel={t('Report Incident')}
             />
           )}
 
           {activeDestination === 'service-requests' && (
             <WorkManagementContainer
-              title="Service Requests"
-              description="General IT, SecOps, and access fulfillment tickets."
+              title={t('Service Requests')}
+              description={t('General IT, SecOps, and access fulfillment tickets.')}
               tickets={scopedTickets.filter(
                 (t) =>
                   t.category === 'GENERAL_REQUEST' ||
@@ -546,14 +546,14 @@ export const App: React.FC = () => {
               onSelectTicket={handleSelectTicket}
               onOpenCreate={() => setIsCreateModalOpen(true)}
               onRefreshTickets={loadData}
-              createButtonLabel="New Request"
+              createButtonLabel={t('New Request')}
             />
           )}
 
           {activeDestination === 'service-changes' && (
             <WorkManagementContainer
-              title="Change Management (CAB)"
-              description="Production change authorizations, release windows, and rollback plans."
+              title={t('Change Management (CAB)')}
+              description={t('Production change authorizations, release windows, and rollback plans.')}
               tickets={scopedTickets.filter(
                 (t) =>
                   Boolean(t.tags?.includes('CAB')) ||
@@ -568,14 +568,14 @@ export const App: React.FC = () => {
               onSelectTicket={handleSelectTicket}
               onOpenCreate={() => setIsCreateModalOpen(true)}
               onRefreshTickets={loadData}
-              createButtonLabel="Request Change"
+              createButtonLabel={t('Request Change')}
             />
           )}
 
           {activeDestination === 'service-problems' && (
             <WorkManagementContainer
-              title="Problem Management & RCA"
-              description="Root Cause Analysis (RCA) records and Known Error Database (KEDB)."
+              title={t('Problem Management & RCA')}
+              description={t('Root Cause Analysis (RCA) records and Known Error Database (KEDB).')}
               tickets={scopedTickets.filter(
                 (t) =>
                   Boolean(t.tags?.includes('RCA')) ||
@@ -590,7 +590,7 @@ export const App: React.FC = () => {
               onSelectTicket={handleSelectTicket}
               onOpenCreate={() => setIsCreateModalOpen(true)}
               onRefreshTickets={loadData}
-              createButtonLabel="Log Problem"
+              createButtonLabel={t('Log Problem')}
             />
           )}
 
@@ -624,6 +624,10 @@ export const App: React.FC = () => {
             <RiskRegisterView risks={risks} />
           )}
 
+          {activeDestination === 'threat-modeling' && (
+            <ThreatModelWorkspace />
+          )}
+
           {activeDestination === 'audit-compliance' && (
             <AuditComplianceView />
           )}
@@ -634,6 +638,10 @@ export const App: React.FC = () => {
           {activeDestination === 'asset-inventory' && (
             <CMDBExplorerView mode="assets" />
           )}
+
+          {activeDestination === 'discovery-sources' && <DiscoveryAdminView mode="sources" onNavigateToRuns={(connectorId) => { handleNavigate('discovery-runs'); window.setTimeout(() => window.dispatchEvent(new CustomEvent('aegis:discovery-select-connector', { detail: connectorId })), 0); }} />}
+          {activeDestination === 'discovery-runs' && <DiscoveryAdminView mode="runs" />}
+          {activeDestination === 'correlation-review' && <DiscoveryAdminView mode="correlation" />}
 
           {activeDestination === 'configuration-items' && (
             <CMDBExplorerView mode="all" initialCiId={cmdbFocusCiId} />

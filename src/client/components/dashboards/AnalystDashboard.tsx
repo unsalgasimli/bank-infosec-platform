@@ -3,6 +3,7 @@ import { Ticket } from '../../../shared/types/ticket.js';
 import { Badge } from '../common/Badge.js';
 import { SLARing } from '../common/SLARing.js';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 import {
   CheckCircle2,
   Clock,
@@ -33,6 +34,7 @@ export const AnalystDashboard: React.FC<AnalystDashboardProps> = ({
   onSelectTicket,
 }) => {
   const { currentUser } = useAuth();
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<'ASSIGNED' | 'APPROVALS' | 'WATCHED' | 'SLA_URGENT'>('ASSIGNED');
   const [search, setSearch] = useState('');
 

@@ -4,12 +4,18 @@ import { CMDBError, CMDBService } from '../services/cmdb.service.js';
 import { CMDBSyncService } from '../services/cmdb-sync.service.js';
 import { db } from '../db/database.js';
 import type { ConfigurationItem } from '../../shared/types/cmdb.js';
+import { CmdbApiService } from '../services/cmdb-api.service.js';
+import { CmdbFoundationRepository } from '../db/postgres/cmdb-foundation-repository.js';
 
 export class CMDBController {
   private static param(value: string | string[] | undefined): string { return Array.isArray(value) ? value[0] || '' : value || ''; }
   private static execute(res: Response, operation: () => unknown, created = false): void {
     try { res.status(created ? 201 : 200).json({ success: true, ...(operation() as object) }); }
     catch (error) { const known = error instanceof CMDBError ? error : error instanceof Error && error.name === 'ZodError' ? new CMDBError(400, error.message) : null; res.status(known?.statusCode || 500).json({ success: false, error: known?.message || 'CMDB operation failed.' }); }
+  }
+  private static async executeAsync(res: Response, operation: () => Promise<unknown>, created = false): Promise<void> {
+    try { res.status(created ? 201 : 200).json({ success: true, ...(await operation() as object) }); }
+    catch (error: any) { const status = Number(error?.statusCode) || (error?.name === 'ZodError' ? 400 : 500); res.status(status).json({ success: false, error: status === 500 ? 'CMDB operation failed.' : String(error?.message || error), ...(error?.code ? { code: String(error.code) } : {}) }); }
   }
   static list = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => { const result = CMDBService.list(req.user!, req.query); return { ...result, cis: result.items }; });
   static create = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ ci: CMDBService.create(req.body, req.user!) }), true);
@@ -37,6 +43,29 @@ export class CMDBController {
   static createRelationshipType = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ relationshipType: CMDBService.createRelationshipType(req.body, req.user!) }), true);
   static updateRelationshipType = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ relationshipType: CMDBService.updateRelationshipType(this.param(req.params.id), req.body, req.user!) }));
   static sync = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => CMDBSyncService.sync(this.param(req.params.sourceSystem), req.body, req.user!));
+  static apiAssets = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => { const result = await CmdbApiService.listAssets(req.user, req.query); return { ...result, assets: result.items }; }); };
+  static apiAssetDetail = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => ({ asset: await CmdbApiService.getAsset(req.user, this.param(req.params.id)) })); };
+  static apiAssetSubresources = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => await CmdbApiService.listAssetSubresources(req.user, this.param(req.params.id))); };
+  static apiAssetIdentifiers = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => ({ identifiers: (await CmdbApiService.listAssetSubresources(req.user, this.param(req.params.id))).identifiers })); };
+  static apiAssetSources = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => ({ sources: (await CmdbApiService.listAssetSubresources(req.user, this.param(req.params.id))).sources })); };
+  static apiAssetRelationships = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => ({ relationships: await CmdbApiService.listAssetRelationships(req.user, this.param(req.params.id)) })); };
+  static apiAssetHistory = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => ({ history: (await CmdbApiService.listAssetSubresources(req.user, this.param(req.params.id))).history })); };
+  static apiAssetNetwork = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => ({ network: (await CmdbApiService.listAssetSubresources(req.user, this.param(req.params.id))).network })); };
+  static apiAssetStorage = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => ({ storage: (await CmdbApiService.listAssetSubresources(req.user, this.param(req.params.id))).storage })); };
+  static discoveryConnectors = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => ({ connectors: await CmdbApiService.listConnectors(req.user, req.query.type) })); };
+  static discoveryConnectorDetail = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => ({ connector: await CmdbApiService.getConnector(req.user, this.param(req.params.id)) })); };
+  static discoveryRuns = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => ({ runs: await CmdbApiService.listConnectorRuns(req.user, this.param(req.params.id), Number(req.query.limit || 100)) })); };
+  static discoveryRunDetail = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => CmdbApiService.getSyncRun(req.user, this.param(req.params.id), this.param(req.params.runId))); };
+  static createDiscoveryConnector = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => ({ connector: await CmdbApiService.createConnector(req.user, req.body, { correlationId: req.correlationId, ip: req.ip, userAgent: req.get('user-agent') }) }), true); };
+  static updateDiscoveryConnector = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => ({ connector: await CmdbApiService.updateConnector(req.user, this.param(req.params.id), req.body, { correlationId: req.correlationId, ip: req.ip, userAgent: req.get('user-agent') }) })); };
+  static toggleDiscoveryConnector = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => ({ connector: await CmdbApiService.setConnectorEnabled(req.user, this.param(req.params.id), Boolean(req.body?.enabled), { correlationId: req.correlationId, ip: req.ip, userAgent: req.get('user-agent') }) })); };
+  static enableDiscoveryConnector = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => ({ connector: await CmdbApiService.setConnectorEnabled(req.user, this.param(req.params.id), true, { correlationId: req.correlationId, ip: req.ip, userAgent: req.get('user-agent') }) })); };
+  static disableDiscoveryConnector = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => ({ connector: await CmdbApiService.setConnectorEnabled(req.user, this.param(req.params.id), false, { correlationId: req.correlationId, ip: req.ip, userAgent: req.get('user-agent') }) })); };
+  static testDiscoveryConnector = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => await CmdbApiService.testConnector(req.user, this.param(req.params.id), { correlationId: req.correlationId, ip: req.ip, userAgent: req.get('user-agent') })); };
+  static discoveryConnectorHealth = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => await CmdbApiService.getConnectorHealth(req.user, this.param(req.params.id))); };
+  static triggerDiscoverySync = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => await CmdbApiService.triggerConnectorSync(req.user, this.param(req.params.id), { correlationId: req.correlationId, ip: req.ip, userAgent: req.get('user-agent') })); };
+  static correlationCases = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => await CmdbApiService.listCorrelationCases(req.user, Number(req.query.page || 1), Number(req.query.pageSize || 25))); };
+  static resolveCorrelation = (req: AuthenticatedRequest, res: Response): void => { void this.executeAsync(res, async () => ({ case: await CmdbApiService.resolveCorrelation(req.user, this.param(req.params.id), req.body, { correlationId: req.correlationId, ip: req.ip, userAgent: req.get('user-agent') }) })); };
   static legacyAssets = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => { const result = CMDBService.list(req.user!, { ...req.query, assetOnly: 'true' }); return { assets: result.items.map((ci) => this.assetProjection(ci)) }; });
   static legacyApplications = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => { const result = CMDBService.list(req.user!, { ...req.query, applicationOnly: 'true' }); return { applications: result.items.map((ci) => this.applicationProjection(ci)) }; });
   static createLegacyAsset = (req: AuthenticatedRequest, res: Response): void => this.execute(res, () => ({ asset: this.assetProjection(CMDBService.create({ name: req.body.name, typeId: this.legacyAssetType(req.body.assetType), hostname: req.body.hostname, ipAddress: req.body.ipAddress, environment: this.cmdbEnvironment(req.body.environment), criticality: this.legacyCriticality(req.body.criticality), technicalOwnerUserId: req.body.ownerId || req.user!.id, departmentId: req.body.departmentId || req.user!.departmentId, operatingSystem: req.body.operatingSystem, source: 'MANUAL', details: { cloudProvider: req.body.cloudProvider, cloudRegion: req.body.cloudRegion } }, req.user!)) }), true);

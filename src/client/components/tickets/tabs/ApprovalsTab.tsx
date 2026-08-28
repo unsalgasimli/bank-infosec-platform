@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TicketApprovalChain, ApprovalStep, ApprovalDecision } from '../../../../shared/types/approval.js';
 import { useAuth } from '../../../context/AuthContext.js';
+import { useI18n } from '../../../context/I18nContext.js';
 import { CheckCircle2, XCircle, Clock, Shield, AlertTriangle, User, KeyRound, Loader2 } from 'lucide-react';
 import { Badge } from '../../common/Badge.js';
 
@@ -16,6 +17,7 @@ export const ApprovalsTab: React.FC<ApprovalsTabProps> = ({
   onDecision,
 }) => {
   const { currentUser } = useAuth();
+  const { t } = useI18n();
   const [selectedStep, setSelectedStep] = useState<ApprovalStep | null>(null);
   const [decision, setDecision] = useState<ApprovalDecision>('APPROVED');
   const [comments, setComments] = useState('');
@@ -26,8 +28,8 @@ export const ApprovalsTab: React.FC<ApprovalsTabProps> = ({
     return (
       <div className="p-8 text-center bg-slate-50/70 border border-dashed border-slate-200 rounded-xl text-xs text-slate-500">
         <KeyRound className="w-6 h-6 text-slate-400 mx-auto mb-2" />
-        <h4 className="font-semibold text-slate-700">No Sign-off Gates Required</h4>
-        <p className="text-label text-slate-400 mt-0.5">No formal governance sign-off or dual-control approval gate required for this ticket type.</p>
+        <h4 className="font-semibold text-slate-700">{t('No Sign-off Gates Required')}</h4>
+        <p className="text-label text-slate-400 mt-0.5">{t('No formal governance sign-off or dual-control approval gate required for this ticket type.')}</p>
       </div>
     );
   }

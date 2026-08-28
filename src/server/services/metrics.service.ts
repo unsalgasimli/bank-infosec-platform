@@ -1,5 +1,6 @@
 import os from 'os';
 import { db } from '../db/database.js';
+import { VCenterObservabilityService } from './vcenter-observability.service.js';
 
 export class MetricsService {
   private static requestCount: number = 0;
@@ -42,6 +43,7 @@ export class MetricsService {
         totalAssets: db.data.assets.length,
         totalRisks: db.data.risks.length,
       },
+      vcenter: VCenterObservabilityService.all(),
     };
   }
 
@@ -67,6 +69,18 @@ aegissec_tickets_total ${metrics.domainStats.totalTickets}
 # HELP aegissec_uptime_seconds Application uptime in seconds
 # TYPE aegissec_uptime_seconds gauge
 aegissec_uptime_seconds ${metrics.uptimeSeconds}
+
+${Object.values(metrics.vcenter).flatMap((metric: any) => {
+  const label = `connector_id="${String(metric.connectorId).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  return [
+    `vcenter_connector_up{${label}} ${metric.up ? 1 : 0}`,
+    `vcenter_connection_attempts_total{${label}} ${metric.connectionAttemptsTotal}`,
+    `vcenter_connection_failures_total{${label}} ${metric.connectionFailuresTotal}`,
+    `vcenter_auth_failures_total{${label}} ${metric.authenticationFailuresTotal}`,
+    `vcenter_tls_failures_total{${label}} ${metric.tlsFailuresTotal}`,
+    `vcenter_last_success_timestamp{${label}} ${metric.lastSuccessTimestamp ? Date.parse(metric.lastSuccessTimestamp) / 1000 : 0}`,
+  ];
+}).join('\n')}
 `.trim();
   }
 }

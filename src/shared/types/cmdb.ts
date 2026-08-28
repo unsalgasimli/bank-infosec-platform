@@ -31,10 +31,16 @@ export interface RelationshipType {
 export interface ConfigurationItem {
   id: string;
   ciNumber: string;
+  /** Concurrency-safe canonical asset key. ciNumber remains as a compatibility display number. */
+  assetKey?: string;
   name: string;
   displayName?: string;
   typeId: string;
+  assetSubtype?: string;
   status: CIStatus;
+  /** Discovery lifecycle is separate from procurement lifecycleStatus and technical status. */
+  lifecycleState?: 'DISCOVERED' | 'ACTIVE' | 'STALE' | 'DECOMMISSION_CANDIDATE' | 'RETIRED' | 'ARCHIVED';
+  technicalStatus?: string;
   lifecycleStatus: CILifecycleStatus;
   environment: CMDBEnvironment;
   criticality: CMDBCriticality;
@@ -65,6 +71,10 @@ export interface ConfigurationItem {
   lastDiscoveredAt?: string;
   lastVerifiedAt?: string;
   lastSeenAt?: string;
+  firstSeenAt?: string;
+  staleSince?: string;
+  retiredAt?: string;
+  reactivatedAt?: string;
   lastSyncAt?: string;
   syncStatus?: 'PENDING' | 'SYNCED' | 'ERROR';
   details: Record<string, unknown>;
@@ -87,6 +97,10 @@ export interface CIRelationship {
   confidence: number;
   validFrom: string;
   validTo?: string;
+  firstSeenAt?: string;
+  lastSeenAt?: string;
+  staleSince?: string;
+  retiredAt?: string;
   createdAt: string;
   createdBy: string;
   archivedAt?: string;
@@ -95,7 +109,7 @@ export interface CIRelationship {
 export interface CIRecordLink {
   id: string;
   ciId: string;
-  recordType: 'TICKET' | 'INCIDENT' | 'SERVICE_REQUEST' | 'CHANGE' | 'PROBLEM' | 'VULNERABILITY' | 'PROJECT' | 'TASK';
+  recordType: 'TICKET' | 'INCIDENT' | 'SERVICE_REQUEST' | 'CHANGE' | 'PROBLEM' | 'VULNERABILITY' | 'PROJECT' | 'TASK' | 'RISK' | 'WORKFLOW' | 'WORKFLOW_INSTANCE' | 'THREAT_MODEL';
   recordId: string;
   relationship: 'AFFECTED_BY' | 'RELATED_TO' | 'IMPLEMENTED_BY';
   createdAt: string;

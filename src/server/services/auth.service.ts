@@ -1,4 +1,4 @@
-import { BankUser, ABACContext, ConfidentialityTier } from '../../shared/types/auth.js';
+import { BankUser, ABACContext, ConfidentialityTier, type BankRole, type CmdbPermission } from '../../shared/types/auth.js';
 import { Ticket } from '../../shared/types/ticket.js';
 import { db } from '../db/database.js';
 
@@ -10,7 +10,61 @@ export const CONFIDENTIALITY_LEVELS: Record<ConfidentialityTier, number> = {
   HIGHLY_RESTRICTED_HR_LEGAL: 5,
 };
 
+const cmdbAllPermissions: readonly CmdbPermission[] = [
+  'assets.read', 'assets.create', 'assets.update', 'assets.retire', 'assets.delete',
+  'asset_sources.read', 'asset_sources.manage', 'asset_discovery.read',
+  'asset_discovery.manage', 'asset_discovery.test', 'asset_discovery.enable',
+  'asset_discovery.health', 'asset_discovery.runs', 'asset_discovery.run', 'asset_relationships.read',
+  'asset_relationships.manage', 'asset_correlation.read',
+  'asset_correlation.resolve', 'asset_history.read',
+];
+
+const cmdbRolePermissions: Partial<Record<BankRole, readonly CmdbPermission[]>> = {
+  PLATFORM_ADMIN: cmdbAllPermissions,
+  CISO: cmdbAllPermissions,
+  INFOSEC_ADMIN: cmdbAllPermissions,
+  IT_ADMIN: cmdbAllPermissions.filter((permission) => permission !== 'assets.delete'),
+  CORE_BANK_ADMIN: cmdbAllPermissions.filter((permission) => permission !== 'assets.delete'),
+  INFOSEC_MANAGER: [
+    'assets.read', 'assets.create', 'assets.update', 'assets.retire',
+    'asset_sources.read', 'asset_discovery.read', 'asset_discovery.health', 'asset_discovery.runs', 'asset_discovery.run', 'asset_relationships.read',
+    'asset_relationships.manage', 'asset_correlation.read',
+    'asset_correlation.resolve', 'asset_history.read',
+  ],
+  DEPARTMENT_ADMIN: ['assets.read', 'assets.create', 'assets.update', 'assets.retire', 'asset_sources.read', 'asset_relationships.read', 'asset_relationships.manage', 'asset_history.read'],
+  DEPARTMENT_MANAGER: ['assets.read', 'assets.create', 'assets.update', 'asset_sources.read', 'asset_relationships.read', 'asset_relationships.manage', 'asset_history.read'],
+  TEAM_LEAD: ['assets.read', 'assets.update', 'asset_sources.read', 'asset_relationships.read', 'asset_history.read'],
+  ASSET_OWNER: ['assets.read', 'assets.update', 'asset_sources.read', 'asset_relationships.read', 'asset_history.read'],
+  APPLICATION_OWNER: ['assets.read', 'assets.update', 'asset_sources.read', 'asset_relationships.read', 'asset_history.read'],
+  AUDITOR: ['assets.read', 'asset_sources.read', 'asset_discovery.read', 'asset_discovery.health', 'asset_discovery.runs', 'asset_relationships.read', 'asset_correlation.read', 'asset_history.read'],
+  SECURITY_ANALYST: ['assets.read', 'asset_sources.read', 'asset_discovery.read', 'asset_discovery.health', 'asset_discovery.runs', 'asset_relationships.read', 'asset_correlation.read', 'asset_history.read'],
+  SOC_ANALYST: ['assets.read', 'asset_sources.read', 'asset_discovery.read', 'asset_discovery.health', 'asset_discovery.runs', 'asset_relationships.read', 'asset_correlation.read', 'asset_history.read'],
+  APPSEC_ANALYST: ['assets.read', 'asset_sources.read', 'asset_discovery.read', 'asset_discovery.health', 'asset_discovery.runs', 'asset_relationships.read', 'asset_correlation.read', 'asset_history.read'],
+  VULN_ANALYST: ['assets.read', 'asset_sources.read', 'asset_discovery.read', 'asset_discovery.health', 'asset_discovery.runs', 'asset_relationships.read', 'asset_correlation.read', 'asset_history.read'],
+  GRC_ANALYST: ['assets.read', 'asset_relationships.read', 'asset_history.read'],
+  DLP_ANALYST: ['assets.read', 'asset_relationships.read'],
+  REQUESTER: ['assets.read', 'asset_relationships.read'],
+  APPROVER: ['assets.read', 'asset_relationships.read'],
+  ASSIGNEE: ['assets.read', 'asset_relationships.read'],
+  RISK_OWNER: ['assets.read', 'asset_relationships.read', 'asset_history.read'],
+  READ_ONLY_USER: ['assets.read', 'asset_relationships.read'],
+};
+
 export class AuthService {
+  public static hasCmdbPermission(user: BankUser | undefined, permission: CmdbPermission): boolean {
+    if (!user?.isActive) return false;
+    return user.roles.some((role) => cmdbRolePermissions[role]?.includes(permission));
+  }
+
+  public static assertCmdbPermission(user: BankUser | undefined, permission: CmdbPermission): asserts user is BankUser {
+    if (!this.hasCmdbPermission(user, permission)) {
+      const error = new Error(`CMDB permission required: ${permission}`) as Error & { statusCode?: number; code?: string };
+      error.statusCode = user?.isActive ? 403 : 401;
+      error.code = 'CMDB_PERMISSION_DENIED';
+      throw error;
+    }
+  }
+
   public static getAllUsers(): BankUser[] {
     return db.data.users;
   }

@@ -24,6 +24,7 @@ export const DESTINATION_TO_PATH: Record<DestinationId | string, string> = {
   'security-incidents': '/security-grc/security-incidents',
   'policy-exceptions': '/security-grc/policy-exceptions',
   'risk-management': '/security-grc/risk-management',
+  'threat-modeling': '/security-grc/threat-modeling',
   'audit-compliance': '/security-grc/audit-compliance',
   'dlp-investigations': '/security-grc/dlp',
 
@@ -83,6 +84,7 @@ PATH_TO_DESTINATION['/catalog'] = 'service-catalog';
 PATH_TO_DESTINATION['/vulnerabilities'] = 'vulnerabilities';
 PATH_TO_DESTINATION['/risk-register'] = 'risk-management';
 PATH_TO_DESTINATION['/risk-management'] = 'risk-management';
+PATH_TO_DESTINATION['/threat-modeling'] = 'threat-modeling';
 PATH_TO_DESTINATION['/compliance'] = 'audit-compliance';
 PATH_TO_DESTINATION['/audit'] = 'audit-compliance';
 PATH_TO_DESTINATION['/assets'] = 'asset-inventory';
@@ -171,10 +173,4 @@ export function pushNavigationState(
     window.history.pushState({ destinationId, viewMode, ticketIdOrKey }, '', url);
   }
 
-  // Format clean page title
-  const formattedTitle = destinationId
-    .split('-')
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-    .join(' ');
-  document.title = `Apex Bank GRC | ${formattedTitle}`;
 }

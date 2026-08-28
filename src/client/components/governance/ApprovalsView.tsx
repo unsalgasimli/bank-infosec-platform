@@ -21,6 +21,7 @@ import {
   Workflow,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 
 type ApprovalQueueItem = {
   chain: TicketApprovalChain;
@@ -49,6 +50,7 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
   onRefresh,
 }) => {
   const { currentUser, fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [actingItem, setActingItem] = useState<ApprovalQueueItem | null>(null);
   const [modalMode, setModalMode] = useState<'VIEW' | 'DECIDE'>('DECIDE');
   const [workflowExecution, setWorkflowExecution] = useState<any>(null);
@@ -150,10 +152,10 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
           </div>
           <div>
             <h1 className="text-xl font-bold text-semantic-primary">
-              Dual-Control Approvals & Governance Gates
+              {t('Dual-Control Approvals & Governance Gates')}
             </h1>
             <p className="text-xs text-semantic-muted mt-0.5">
-              Cryptographic 4-eyes authorization gates for high-risk exceptions, production changes, and CAB releases.
+              {t('Cryptographic 4-eyes authorization gates for high-risk exceptions, production changes, and CAB releases.')}
             </p>
           </div>
         </div>
@@ -167,7 +169,7 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
             }`}
           >
             <Clock className="w-4 h-4" />
-            <span>{pendingApprovals.length} Pending Authorizations</span>
+            <span>{pendingApprovals.length} {t('Pending Authorizations')}</span>
           </span>
         </div>
       </div>
@@ -187,9 +189,9 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
             <div className="w-14 h-14 rounded-2xl bg-semantic-success-surface text-semantic-success flex items-center justify-center mx-auto">
               <CheckCircle2 className="w-7 h-7 text-semantic-brand" />
             </div>
-            <h3 className="text-base font-bold text-semantic-primary">All Approval Queues Clear</h3>
+            <h3 className="text-base font-bold text-semantic-primary">{t('All Approval Queues Clear')}</h3>
             <p className="text-xs text-semantic-muted max-w-md mx-auto">
-              You have zero outstanding governance gates or dual-control authorizations requiring your decision.
+              {t('You have zero outstanding governance gates or dual-control authorizations requiring your decision.')}
             </p>
           </div>
         ) : (

@@ -17,6 +17,7 @@ import { BankApplication, BankAsset } from '../../../shared/types/asset.js';
 import { BankDepartment } from '../../../shared/types/auth.js';
 import { Badge } from '../common/Badge.js';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 
 interface WrikeTableViewProps {
   tickets: Ticket[];
@@ -40,6 +41,7 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
   hideHeader = false,
 }) => {
   const { allUsers, fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('ALL');
   const [selectedSeverityFilter, setSelectedSeverityFilter] = useState('ALL');
@@ -201,7 +203,7 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filter this view..."
+                placeholder={t('Filter this view...')}
                 className="bg-semantic-panel border border-semantic-border focus:border-semantic-brand focus:ring-2 focus:ring-semantic-brand/15 rounded-lg pl-9 pr-3 py-1.5 text-xs text-semantic-primary outline-none w-56 transition-all"
               />
             </div>
@@ -209,10 +211,10 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
             <button
               onClick={exportToCSV}
               className="wrike-btn-secondary text-xs py-1.5 px-3"
-              title="Export spreadsheet to CSV"
+              title={t('Export spreadsheet to CSV')}
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Export</span>
+              <span>{t('Export')}</span>
             </button>
 
             <button
@@ -220,7 +222,7 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
               className="wrike-btn-primary text-xs py-1.5 px-3.5 shadow-sm"
             >
               <Plus className="w-4 h-4" />
-              <span>New Task</span>
+              <span>{t('New Task')}</span>
             </button>
           </div>
         </div>
@@ -233,7 +235,7 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
             <span className="w-6 h-6 rounded-full bg-semantic-brand text-white font-bold flex items-center justify-center text-xs">
               {selectedTicketIds.length}
             </span>
-            <span className="font-semibold text-sm">{selectedTicketIds.length} tasks selected</span>
+            <span className="font-semibold text-sm">{selectedTicketIds.length} {t('tasks selected')}</span>
           </div>
           <div className="flex items-center gap-2.5">
             <button
@@ -266,13 +268,13 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
               }}
               className="px-3.5 py-1.5 rounded-lg bg-semantic-brand hover:bg-semantic-brandHover disabled:opacity-50 text-white font-bold transition-colors flex items-center gap-1.5"
             >
-              {isResolving ? 'Resolving...' : 'Mark Resolved'}
+              {isResolving ? t('Resolving...') : t('Mark Resolved')}
             </button>
             <button
               onClick={() => setSelectedTicketIds([])}
               className="px-3 py-1.5 rounded-lg bg-semantic-brand-ink hover:bg-semantic-brand-ink-hover text-semantic-dark-muted transition-colors"
             >
-              Seçimi ləğv et
+              {t('Clear selection')}
             </button>
           </div>
         </div>
@@ -291,22 +293,22 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
                   className="rounded border-semantic-border-strong text-semantic-brand focus:ring-semantic-brand cursor-pointer w-4 h-4"
                 />
               </th>
-              <th className="w-24">Key</th>
-              <th className="w-[28%]">Task Summary</th>
-              <th className="w-24">Status</th>
-              <th className="hidden w-28 lg:table-cell">Severity</th>
-              <th className="hidden w-28 xl:table-cell">Priority</th>
-              <th className="w-28">SLA Countdown</th>
-              <th className="w-40">Assignee</th>
-              <th className="hidden w-28 2xl:table-cell">Target System</th>
-              <th className="hidden w-24 2xl:table-cell">Created</th>
+              <th className="w-24">{t('Key')}</th>
+              <th className="w-[28%]">{t('Task Summary')}</th>
+              <th className="w-24">{t('Status')}</th>
+              <th className="hidden w-28 lg:table-cell">{t('Severity')}</th>
+              <th className="hidden w-28 xl:table-cell">{t('Priority')}</th>
+              <th className="w-28">{t('SLA Countdown')}</th>
+              <th className="w-40">{t('Assignee')}</th>
+              <th className="hidden w-28 2xl:table-cell">{t('Target System')}</th>
+              <th className="hidden w-24 2xl:table-cell">{t('Created')}</th>
             </tr>
           </thead>
           <tbody>
             {filteredTickets.length === 0 ? (
               <tr>
                 <td colSpan={10} className="p-16 text-center text-semantic-jira-muted-strong text-sm">
-                  No matching tasks found.
+                  {t('No matching tasks found.')}
                 </td>
               </tr>
             ) : (
@@ -393,11 +395,11 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
                             <div className="flex items-center gap-1.5 text-xs text-semantic-info-strong">
                               <span
                                 className="px-2.5 py-0.5 rounded-full bg-semantic-info-soft border border-semantic-info-soft-border text-label font-bold tracking-tight flex items-center gap-1.5"
-                                title={dept ? `${dept.name} Növbəsi - Götürülməyi gözləyir` : 'Şöbə Növbəsi'}
+                                title={dept ? `${dept.name} ${t('Department Queue')} - ${t('Waiting for claim')}` : t('Department Queue')}
                               >
                                 <span className="w-1.5 h-1.5 rounded-full bg-semantic-info-strong animate-pulse shrink-0" />
                               <span className="truncate max-w-dsTruncateCompact">
-                                  {dept?.name || (ticket.targetDepartmentId ? 'Şöbə Növbəsi' : 'Təyin edilməyib')}
+                                  {dept?.name || (ticket.targetDepartmentId ? t('Department Queue') : t('Unassigned'))}
                                 </span>
                               </span>
                             </div>
@@ -428,12 +430,12 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
       {/* Table Footer */}
       <div className="bg-semantic-subtle border-t border-semantic-border px-6 py-2.5 flex items-center justify-between text-xs text-semantic-jira-muted-strong shrink-0 font-medium">
         <div>
-          Showing <span className="font-bold text-semantic-primary">{filteredTickets.length}</span> total tasks
+          {t('Showing')} <span className="font-bold text-semantic-primary">{filteredTickets.length}</span> {t('total tasks')}
         </div>
         <div className="flex items-center gap-5 text-xs">
-          <span>Critical: <b className="text-semantic-brand-danger">{filteredTickets.filter((t) => t.technicalSeverity === 'CRITICAL').length}</b></span>
-          <span>In Progress: <b className="text-semantic-info">{filteredTickets.filter((t) => t.statusCategory === 'IN_PROGRESS').length}</b></span>
-          <span>Resolved: <b className="text-semantic-success">{filteredTickets.filter((t) => t.statusCategory === 'DONE').length}</b></span>
+          <span>{t('Critical:')} <b className="text-semantic-brand-danger">{filteredTickets.filter((t) => t.technicalSeverity === 'CRITICAL').length}</b></span>
+          <span>{t('In Progress:')} <b className="text-semantic-info">{filteredTickets.filter((t) => t.statusCategory === 'IN_PROGRESS').length}</b></span>
+          <span>{t('Resolved:')} <b className="text-semantic-success">{filteredTickets.filter((t) => t.statusCategory === 'DONE').length}</b></span>
         </div>
       </div>
 

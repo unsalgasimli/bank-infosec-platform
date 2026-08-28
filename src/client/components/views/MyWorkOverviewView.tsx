@@ -19,6 +19,11 @@ import { useAuth } from '../../context/AuthContext.js';
 import { useI18n } from '../../context/I18nContext.js';
 import { Ticket } from '../../../shared/types/ticket.js';
 import { Badge } from '../common/Badge.js';
+import {
+  formatDepartmentName,
+  formatSecurityClearance,
+  formatRoleTitle,
+} from '../../utils/formatters.js';
 
 const ELEVATED_WORKSPACE_ROLES = [
   'PLATFORM_ADMIN',
@@ -60,7 +65,7 @@ export const MyWorkOverviewView: React.FC<MyWorkOverviewViewProps> = ({
   onOpenCreate,
 }) => {
   const { currentUser } = useAuth();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
 
   const isSimpleUser = Boolean(
     currentUser &&
@@ -91,6 +96,10 @@ export const MyWorkOverviewView: React.FC<MyWorkOverviewViewProps> = ({
     (t) => t.slaState === 'BREACHED' || t.slaState === 'AT_RISK' || t.technicalSeverity === 'CRITICAL'
   );
 
+  const clearance = formatSecurityClearance(currentUser?.securityClearance, language);
+  const formattedDept = formatDepartmentName(currentUser?.departmentId, language);
+  const formattedRole = formatRoleTitle(currentUser?.roles?.[0], language);
+
   if (isSimpleUser) {
     return (
       <SimpleUserOverview
@@ -112,45 +121,50 @@ export const MyWorkOverviewView: React.FC<MyWorkOverviewViewProps> = ({
       {/* Welcome Banner */}
       <div className="wrike-card p-6 md:p-7 bg-gradient-to-r from-semantic-panel via-semantic-subtle to-semantic-success-surface/40 border border-semantic-border rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-semantic-brand text-white flex items-center justify-center font-black text-xl shadow-md shrink-0">
-            {currentUser?.fullName.split(' ').map((n) => n[0]).join('') || '?'}
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 text-white flex items-center justify-center font-black text-xl shadow-md shrink-0 ring-2 ring-emerald-500/20">
+            {currentUser?.fullName.split(' ').map((n) => n[0]).join('') || 'UG'}
           </div>
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-xl font-bold text-semantic-primary">
-                Welcome back{currentUser?.fullName ? `, ${currentUser.fullName}` : ''}
+              <h1 className="text-xl font-bold text-semantic-primary tracking-tight">
+                {t('Welcome back')}{currentUser?.fullName ? `, ${currentUser.fullName}` : ''}
               </h1>
               <span className="px-2.5 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success border border-semantic-success-border text-xs font-bold font-mono">
-                {currentUser?.roles[0] || 'NO ROLE'}
+                {formattedRole}
               </span>
             </div>
-            <p className="text-xs text-semantic-muted mt-1">
-              {currentUser?.departmentId || 'No department assigned'} • Security Clearance: <strong className="text-semantic-success">{currentUser?.securityClearance || 'Not assigned'}</strong>
-            </p>
+            <div className="flex items-center gap-2 text-xs text-semantic-muted mt-1 flex-wrap">
+              <span>{formattedDept}</span>
+              <span>•</span>
+              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${clearance.badgeClass}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${clearance.dotClass}`} />
+                {clearance.label}
+              </span>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-3 shrink-0 flex-wrap sm:flex-nowrap">
           <button
             onClick={() => onNavigate('risk-management')}
             className="wrike-btn-secondary text-xs py-2 px-3.5 flex items-center gap-2"
           >
             <TrendingUp className="w-4 h-4 text-semantic-success" />
-            <span>Risk Management</span>
+            <span>{t('Risk Management')}</span>
           </button>
           <button
             onClick={() => onNavigate('workflows')}
             className="wrike-btn-secondary text-xs py-2 px-3.5 flex items-center gap-2"
           >
             <Workflow className="w-4 h-4 text-semantic-success" />
-            <span>Workflow kataloqu</span>
+            <span>{t('Workflow Directory')}</span>
           </button>
           <button
             onClick={onOpenCreate}
             className="wrike-btn-primary text-xs py-2 px-4 shadow-sm flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
-            <span>New Request</span>
+            <span>{t('New Request')}</span>
           </button>
         </div>
       </div>
@@ -164,7 +178,7 @@ export const MyWorkOverviewView: React.FC<MyWorkOverviewViewProps> = ({
         >
           <div>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-semantic-muted">My Active Tasks</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-semantic-muted">{t('My Active Tasks')}</span>
               <div className="p-2.5 rounded-xl bg-semantic-success-surface text-semantic-success border border-semantic-success-border group-hover:scale-105 transition-transform">
                 <CheckSquare className="w-4.5 h-4.5 text-semantic-brand" />
               </div>
@@ -175,9 +189,9 @@ export const MyWorkOverviewView: React.FC<MyWorkOverviewViewProps> = ({
           </div>
 
           <div className="text-xs text-semantic-muted mt-4 pt-3 border-t border-semantic-neutral-surface flex items-center justify-between">
-            <span>{myCompletedTickets.length} completed tasks</span>
+            <span>{myCompletedTickets.length} {t('completed tasks')}</span>
             <span className="text-semantic-brand font-bold group-hover:translate-x-0.5 transition-transform flex items-center gap-1">
-              View →
+              {t('View')} →
             </span>
           </div>
         </div>
@@ -189,7 +203,7 @@ export const MyWorkOverviewView: React.FC<MyWorkOverviewViewProps> = ({
         >
           <div>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-semantic-muted">Maker-Checker Approvals</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-semantic-muted">{t('Maker-Checker Approvals')}</span>
               <div className="p-2.5 rounded-xl bg-semantic-warning-surface text-semantic-warning border border-semantic-warning-border group-hover:scale-105 transition-transform">
                 <CheckCircle2 className="w-4.5 h-4.5 text-semantic-warning-bright" />
               </div>
@@ -200,9 +214,9 @@ export const MyWorkOverviewView: React.FC<MyWorkOverviewViewProps> = ({
           </div>
 
           <div className="text-xs text-semantic-muted mt-4 pt-3 border-t border-semantic-neutral-surface flex items-center justify-between">
-            <span>Dual-control sign-offs</span>
+            <span>{t('Dual-control sign-offs')}</span>
             <span className="text-semantic-warning font-bold group-hover:translate-x-0.5 transition-transform flex items-center gap-1">
-              Review →
+              {t('Review')} →
             </span>
           </div>
         </div>
@@ -214,7 +228,7 @@ export const MyWorkOverviewView: React.FC<MyWorkOverviewViewProps> = ({
         >
           <div>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-semantic-muted">My Requests</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-semantic-muted">{t('My Requests')}</span>
               <div className="p-2.5 rounded-xl bg-semantic-info-surface text-semantic-info border border-semantic-info-border group-hover:scale-105 transition-transform">
                 <Inbox className="w-4.5 h-4.5 text-semantic-info" />
               </div>
@@ -225,9 +239,9 @@ export const MyWorkOverviewView: React.FC<MyWorkOverviewViewProps> = ({
           </div>
 
           <div className="text-xs text-semantic-muted mt-4 pt-3 border-t border-semantic-neutral-surface flex items-center justify-between">
-            <span>Submitted by you</span>
+            <span>{t('Submitted by you')}</span>
             <span className="text-semantic-info font-bold group-hover:translate-x-0.5 transition-transform flex items-center gap-1">
-              Track →
+              {t('Track')} →
             </span>
           </div>
         </div>
@@ -239,7 +253,7 @@ export const MyWorkOverviewView: React.FC<MyWorkOverviewViewProps> = ({
         >
           <div>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-semantic-muted">Urgent / SLA At-Risk</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-semantic-muted">{t('Urgent / SLA At-Risk')}</span>
               <div className="p-2.5 rounded-xl bg-semantic-danger-surface text-semantic-danger border border-semantic-danger-border group-hover:scale-105 transition-transform">
                 <Clock className="w-4.5 h-4.5 text-semantic-danger" />
               </div>
@@ -250,9 +264,9 @@ export const MyWorkOverviewView: React.FC<MyWorkOverviewViewProps> = ({
           </div>
 
           <div className="text-xs text-semantic-muted mt-4 pt-3 border-t border-semantic-neutral-surface flex items-center justify-between">
-            <span>Immediate attention</span>
+            <span>{t('Immediate attention')}</span>
             <span className="text-semantic-danger font-bold group-hover:translate-x-0.5 transition-transform flex items-center gap-1">
-              Prioritize →
+              {t('Prioritize')} →
             </span>
           </div>
         </div>
@@ -265,13 +279,13 @@ export const MyWorkOverviewView: React.FC<MyWorkOverviewViewProps> = ({
           <div className="flex items-center justify-between border-b border-semantic-border pb-3.5">
             <div className="flex items-center gap-2.5">
               <CheckSquare className="w-5 h-5 text-semantic-brand" />
-              <h2 className="font-bold text-sm text-semantic-primary">High-Priority Work Assigned to You</h2>
+              <h2 className="font-bold text-sm text-semantic-primary">{t('High-Priority Work Assigned to You')}</h2>
             </div>
             <button
               onClick={() => onNavigate('my-tasks')}
               className="text-xs font-bold text-semantic-info hover:underline flex items-center gap-1"
             >
-              View All Tasks ({myOpenTickets.length}) →
+              {t('View All Tasks')} ({myOpenTickets.length}) →
             </button>
           </div>
 
@@ -281,8 +295,8 @@ export const MyWorkOverviewView: React.FC<MyWorkOverviewViewProps> = ({
                 <div className="w-12 h-12 rounded-2xl bg-semantic-success-surface text-semantic-success flex items-center justify-center mx-auto mb-3 text-base font-bold">
                   ✓
                 </div>
-                <div className="font-bold text-sm text-semantic-primary">No pending tasks!</div>
-                <div className="text-xs text-semantic-muted mt-1">You have zero outstanding tickets on your queue.</div>
+                <div className="font-bold text-sm text-semantic-primary">{t('No pending tasks!')}</div>
+                <div className="text-xs text-semantic-muted mt-1">{t('You have zero outstanding tickets on your queue.')}</div>
               </div>
             ) : (
               myOpenTickets.slice(0, 5).map((ticket) => (
@@ -300,9 +314,9 @@ export const MyWorkOverviewView: React.FC<MyWorkOverviewViewProps> = ({
                         {ticket.title}
                       </div>
                       <div className="text-label text-semantic-muted flex items-center gap-2 mt-1">
-                        <span>{ticket.ticketTypeName || ticket.category}</span>
+                        <span>{t(ticket.ticketTypeName || ticket.category)}</span>
                         <span>•</span>
-                        <span>{ticket.statusName}</span>
+                        <span>{t(ticket.statusName)}</span>
                       </div>
                     </div>
                   </div>
@@ -326,23 +340,23 @@ export const MyWorkOverviewView: React.FC<MyWorkOverviewViewProps> = ({
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4.5 h-4.5 text-semantic-warning" />
                 <h3 className="font-bold text-xs uppercase tracking-wider text-semantic-primary">
-                  Approvals (Maker-Checker)
+                  {t('Approvals (Maker-Checker)')}
                 </h3>
               </div>
               <span className="font-mono text-xs font-bold text-semantic-warning bg-semantic-warning-surface px-2.5 py-0.5 rounded-full border border-semantic-warning-border">
-                {pendingApprovalsCount} Pending
+                {pendingApprovalsCount} {t('Pending')}
               </span>
             </div>
 
             <p className="text-xs text-semantic-muted leading-relaxed">
-              Pending approvals returned by the authorized approval workflow.
+              {t('Pending approvals returned by the authorized approval workflow.')}
             </p>
 
             <button
               onClick={() => onNavigate('approvals')}
               className="w-full py-2.5 rounded-xl bg-semantic-warning-surface hover:bg-semantic-warning-border text-semantic-warning font-bold text-xs border border-semantic-warning-border transition-colors flex items-center justify-center gap-2 shadow-2xs"
             >
-              <span>Open Approval Center</span>
+              <span>{t('Open Approval Center')}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
@@ -350,29 +364,29 @@ export const MyWorkOverviewView: React.FC<MyWorkOverviewViewProps> = ({
           {/* Quick Shortcuts */}
           <div className="wrike-card p-6 rounded-2xl space-y-3.5 shadow-xs bg-semantic-panel">
             <h3 className="font-bold text-xs uppercase tracking-wider text-semantic-muted border-b border-semantic-border pb-2.5">
-              Quick Shortcuts
+              {t('Quick Shortcuts')}
             </h3>
             <div className="space-y-2">
               <button
                 onClick={() => onNavigate('audit-compliance')}
                 className="w-full text-left p-3 rounded-xl hover:bg-semantic-subtle border border-transparent hover:border-semantic-border transition-colors flex items-center justify-between text-xs font-semibold text-semantic-primary group"
               >
-                <span>Audit & Regulatory Compliance</span>
-                <span className="text-semantic-info font-bold group-hover:translate-x-0.5 transition-transform">Audit Posture →</span>
+                <span>{t('Audit & Regulatory Compliance')}</span>
+                <span className="text-semantic-info font-bold group-hover:translate-x-0.5 transition-transform">{t('Audit Posture')} →</span>
               </button>
               <button
                 onClick={() => onNavigate('knowledge-base')}
                 className="w-full text-left p-3 rounded-xl hover:bg-semantic-subtle border border-transparent hover:border-semantic-border transition-colors flex items-center justify-between text-xs font-semibold text-semantic-primary group"
               >
-                <span>Read SOPs & Playbooks</span>
-                <span className="text-semantic-info font-bold group-hover:translate-x-0.5 transition-transform">Search →</span>
+                <span>{t('Read SOPs & Playbooks')}</span>
+                <span className="text-semantic-info font-bold group-hover:translate-x-0.5 transition-transform">{t('Search')} →</span>
               </button>
               <button
                 onClick={() => onNavigate('risk-management')}
                 className="w-full text-left p-3 rounded-xl hover:bg-semantic-subtle border border-transparent hover:border-semantic-border transition-colors flex items-center justify-between text-xs font-semibold text-semantic-primary group"
               >
-                <span>Risk Management (5×5 Matrix)</span>
-                <span className="text-semantic-info font-bold group-hover:translate-x-0.5 transition-transform">View Matrix →</span>
+                <span>{t('Risk Management (5×5 Matrix)')}</span>
+                <span className="text-semantic-info font-bold group-hover:translate-x-0.5 transition-transform">{t('View Matrix')} →</span>
               </button>
             </div>
           </div>

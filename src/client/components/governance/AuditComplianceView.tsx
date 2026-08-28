@@ -6,10 +6,12 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 import { AuditEvent } from '../../../shared/types/audit.js';
 
 export const AuditComplianceView: React.FC = () => {
   const { fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -63,9 +65,9 @@ export const AuditComplianceView: React.FC = () => {
             <FileCheck className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-semantic-primary">Audit & Regulatory Compliance</h1>
+            <h1 className="text-xl font-bold text-semantic-primary">{t('Audit & Regulatory Compliance')}</h1>
             <p className="text-xs text-semantic-muted mt-0.5">
-              Continuous regulatory control assurance, gap remediation workflows, and append-only audit trail logs.
+              {t('Continuous regulatory control assurance, gap remediation workflows, and append-only audit trail logs.')}
             </p>
           </div>
         </div>
@@ -75,12 +77,12 @@ export const AuditComplianceView: React.FC = () => {
           className="wrike-btn-secondary text-xs py-2 px-3.5"
         >
           <Download className="w-4 h-4" />
-          <span>Export Audit Log</span>
+          <span>{t('Export Audit Log')}</span>
         </button>
       </div>
 
       <div className="wrike-card p-4 text-xs text-semantic-muted border border-semantic-border">
-        Compliance scores and certification claims are not shown until they are received from an approved control-assessment integration. The audit trail below contains only persisted system activity.
+        {t('Compliance scores and certification claims are not shown until they are received from an approved control-assessment integration. The audit trail below contains only persisted system activity.')}
       </div>
 
       {/* Verified Immutable Audit Trail Table */}
@@ -88,9 +90,9 @@ export const AuditComplianceView: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-semantic-border pb-3">
           <div>
             <h2 className="font-bold text-sm text-semantic-primary">
-              Verified Append-Only Audit Trail ({filteredEvents.length} Events)
+              {t('Verified Append-Only Audit Trail')} ({filteredEvents.length} {t('Events')})
             </h2>
-            <p className="text-xs text-semantic-muted mt-0.5">Immutable record of ticket transitions, comments, and authorizations.</p>
+            <p className="text-xs text-semantic-muted mt-0.5">{t('Immutable record of ticket transitions, comments, and authorizations.')}</p>
           </div>
 
           <div className="relative w-full sm:w-64">
@@ -99,7 +101,7 @@ export const AuditComplianceView: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search audit trail..."
+              placeholder={t('Search audit trail...')}
               className="w-full bg-semantic-panel border border-semantic-border-strong rounded-lg pl-9 pr-3 py-1.5 text-xs text-semantic-primary outline-none"
             />
           </div>
@@ -107,7 +109,7 @@ export const AuditComplianceView: React.FC = () => {
 
         <div className="divide-y divide-semantic-border text-xs font-mono">
           {filteredEvents.length === 0 ? (
-            <div className="py-8 text-center text-semantic-muted italic">No audit events found.</div>
+            <div className="py-8 text-center text-semantic-muted italic">{t('No audit events found.')}</div>
           ) : (
             filteredEvents.slice(0, 10).map((evt) => (
               <div key={evt.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-semantic-subtle px-2 rounded transition-colors">

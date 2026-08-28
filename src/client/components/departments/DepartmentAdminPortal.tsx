@@ -29,6 +29,7 @@ import {
   Send,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 import { DepartmentConnection, ConnectionTestResult } from '../../../shared/types/connections.js';
 import { BankDepartment, BankUser } from '../../../shared/types/auth.js';
 import { ProjectBlueprint } from '../../../shared/types/blueprints.js';
@@ -48,6 +49,7 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
   onRefreshData,
 }) => {
   const { currentUser, fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'MEMBERS' | 'SETTINGS' | 'TEMPLATES' | 'CONNECTIONS' | 'FLOWS'>('OVERVIEW');
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [data, setData] = useState<any>(null);
@@ -312,15 +314,18 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
   return (
     <div className="flex-1 flex flex-col h-full bg-semantic-page overflow-hidden select-none">
       {/* Header Banner */}
-      <div
-        className="bg-semantic-panel border-b border-semantic-border px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 shadow-sm"
-        style={{ borderTop: `4px solid ${dept.color || 'var(--color-jira-blue-500)'}` }}
-      >
+      <div className="bg-semantic-panel border-b border-semantic-border px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 relative overflow-hidden">
+        {/* Subtle brand accent line */}
+        <div
+          className="absolute top-0 left-0 right-0 h-1 opacity-90"
+          style={{ backgroundColor: dept.color || 'var(--color-jira-blue-500)' }}
+        />
+
         <div className="flex items-center gap-3.5">
           <button
             onClick={onBack}
-            className="p-2 rounded-lg bg-semantic-subtle hover:bg-semantic-border-subtle text-semantic-jira-muted-strong hover:text-semantic-primary transition-colors border border-semantic-border"
-            title="Back to All Departments"
+            className="p-2 rounded-xl bg-semantic-subtle hover:bg-semantic-border-subtle text-semantic-secondary hover:text-semantic-primary transition-colors border border-semantic-border"
+            title="Bütün Departamentlərə qayıt"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -333,22 +338,23 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
           </div>
 
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-caption font-extrabold uppercase px-2 py-0.5 rounded bg-semantic-neutral-surface text-semantic-secondary border border-semantic-border">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono text-micro font-bold uppercase px-1.5 py-0.5 rounded bg-semantic-subtle text-semantic-jira-muted-strong border border-semantic-border">
                 {dept.code}
               </span>
-              <h1 className="text-base font-extrabold text-semantic-primary">{dept.name}</h1>
+              <h1 className="text-base font-bold text-semantic-primary">{dept.name}</h1>
               {isDeptAdmin && (
-                <span className="px-2.5 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success text-caption font-extrabold border border-semantic-success-border">
-                  ADMIN PRIVILEGES
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 text-micro font-bold border border-emerald-500/20 flex items-center gap-1">
+                  <Shield className="w-3 h-3" />
+                  <span>Admin</span>
                 </span>
               )}
             </div>
             <p className="text-xs text-semantic-jira-muted-strong mt-0.5 max-w-2xl truncate">
-              {dept.description || 'Department administration console, RBAC, SLAs and system connectors.'}
+              {dept.description || 'Departament idarəetmə paneli, RBAC, SLA siyasətləri və sistem bağlayıcıları.'}
             </p>
-            <p className="text-label text-semantic-jira-muted-strong mt-1">
-              Department Manager / CISO: <span className="font-bold text-semantic-primary">{dept.managerName || 'Not assigned'}</span>
+            <p className="text-micro text-semantic-jira-muted-strong mt-1">
+              Departament Rəhbəri / CISO: <span className="font-semibold text-semantic-primary">{dept.managerName || 'Təyin olunmayıb'}</span>
             </p>
           </div>
         </div>
@@ -356,10 +362,10 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => onNavigate('cross-tasks')}
-            className="px-3.5 py-2 rounded-lg bg-semantic-subtle hover:bg-semantic-neutral-surface text-semantic-primary border border-semantic-border text-xs font-bold flex items-center gap-2 shadow-xs"
+            className="px-3.5 py-2 rounded-xl bg-semantic-subtle hover:bg-semantic-neutral-surface text-semantic-primary border border-semantic-border text-xs font-semibold flex items-center gap-2 shadow-xs transition-all"
           >
             <Zap className="w-4 h-4 text-semantic-brand" />
-            <span>Launch Cross-Task</span>
+            <span>Şöbələrarası tapşırıq</span>
           </button>
         </div>
       </div>

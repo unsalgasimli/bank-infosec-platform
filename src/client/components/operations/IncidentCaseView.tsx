@@ -14,6 +14,7 @@ import {
   Activity,
   Plus,
 } from 'lucide-react';
+import { useI18n } from '../../context/I18nContext.js';
 
 interface IncidentCaseViewProps {
   tickets: Ticket[];
@@ -21,6 +22,7 @@ interface IncidentCaseViewProps {
 }
 
 export const IncidentCaseView: React.FC<IncidentCaseViewProps> = ({ tickets, onSelectTicket }) => {
+  const { t } = useI18n();
   const [phaseFilter, setPhaseFilter] = useState<string>('ALL');
 
   const incidentTickets = tickets.filter((t) => t.category === 'INCIDENT' || t.projectCode === 'SOC');
@@ -43,10 +45,10 @@ export const IncidentCaseView: React.FC<IncidentCaseViewProps> = ({ tickets, onS
           </div>
           <div>
             <h1 className="text-xl font-bold text-semantic-jira-primary tracking-tight">
-              SOC Security Incident Command Center
+              {t('SOC Security Incident Command Center')}
             </h1>
             <p className="text-xs text-semantic-jira-muted mt-0.5">
-              NIST SP 800-61 / ISO 27035 incident triage, containment, MITRE ATT&CK attribution, and regulatory escalation.
+              {t('NIST SP 800-61 / ISO 27035 incident triage, containment, MITRE ATT&CK attribution, and regulatory escalation.')}
             </p>
           </div>
         </div>

@@ -17,6 +17,7 @@ import { AuditTab } from './tabs/AuditTab.js';
 import { ActivityTab } from './tabs/ActivityTab.js';
 import { LifecycleTab } from './tabs/LifecycleTab.js';
 import { TicketLifecycleBundle } from '../../../shared/types/itsm.js';
+import { useI18n } from '../../context/I18nContext.js';
 import {
   ArrowLeft,
   Share2,
@@ -84,6 +85,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
   onNavigateToTicket,
 }) => {
   const { allUsers, currentUser, fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'LIFECYCLE' | 'ACTIVITY' | 'COMMENTS' | 'EVIDENCE' | 'APPROVALS' | 'AUDIT'>('OVERVIEW');
   const [transitionComment, setTransitionComment] = useState('');
   const [selectedTransition, setSelectedTransition] = useState<WorkflowTransition | null>(null);
@@ -170,37 +172,34 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
   };
 
   const tabsConfig = [
-    { id: 'OVERVIEW', label: 'Overview & Technical Details', icon: FileText, count: null },
-    { id: 'LIFECYCLE', label: 'Lifecycle', icon: Clock, count: null },
-    { id: 'ACTIVITY', label: 'Activity Timeline', icon: History, count: null },
-    { id: 'COMMENTS', label: 'Comments', icon: MessageSquare, count: comments.length },
-    { id: 'EVIDENCE', label: 'Evidence', icon: Paperclip, count: attachments.length },
-    { id: 'APPROVALS', label: 'Approvals Gate', icon: KeyRound, count: approvalChain?.steps?.length || null },
-    { id: 'AUDIT', label: 'Audit Diff Log', icon: ShieldCheck, count: null },
+    { id: 'OVERVIEW', label: t('Overview & Technical Details'), icon: FileText, count: null },
+    { id: 'LIFECYCLE', label: t('Lifecycle'), icon: Clock, count: null },
+    { id: 'ACTIVITY', label: t('Activity Timeline'), icon: History, count: null },
+    { id: 'COMMENTS', label: t('Comments'), icon: MessageSquare, count: comments.length },
+    { id: 'EVIDENCE', label: t('Evidence'), icon: Paperclip, count: attachments.length },
+    { id: 'APPROVALS', label: t('Approvals Gate'), icon: KeyRound, count: approvalChain?.steps?.length || null },
+    { id: 'AUDIT', label: t('Audit Diff Log'), icon: ShieldCheck, count: null },
   ];
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-semantic-page overflow-hidden">
-      {/* Top Action Header Bar */}
-      <div className="bg-white border-b border-semantic-border px-6 py-3 flex items-center justify-between z-dsContent shrink-0 shadow-sm">
+    <div className="flex-1 flex flex-col h-full bg-slate-100 overflow-hidden">
+      {/* Top Header / Action Bar */}
+      <div className="px-6 py-3.5 bg-white border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 shadow-xs">
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-white hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 text-xs font-semibold transition-all shadow-xs"
-            title="Back to Tickets"
+            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+            title={t('Back to List')}
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Back</span>
+            <ArrowLeft className="w-4 h-4" />
           </button>
           
-          <div className="h-4 w-px bg-slate-200" />
-
-          <div className="flex items-center gap-2">
-            <Badge type="PROJECT" value={ticket.projectCode} size="sm" />
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge type="PROJECT" value={ticket.projectCode} />
             <button
               onClick={handleCopyKey}
               className="group flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-mono font-bold text-slate-800 transition-colors"
-              title="Click to copy ticket key"
+              title={t('Click to copy ticket key')}
             >
               <span>{ticket.key}</span>
               {copiedKey ? (
@@ -215,6 +214,12 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
 
         {/* Workflow State Transitions Action Bar */}
         <div className="flex items-center gap-2">
+          <a
+            href={`/security-grc/threat-modeling?projectId=${encodeURIComponent(ticket.projectId || '')}&assetId=${encodeURIComponent(ticket.assetId || '')}&serviceId=${encodeURIComponent(ticket.applicationId || '')}&changeId=${encodeURIComponent(ticket.category === 'CHANGE_REQUEST' ? ticket.id : '')}&releaseId=${encodeURIComponent(ticket.tags?.some((tag) => /release|deploy|production/i.test(tag)) ? ticket.id : '')}&title=${encodeURIComponent(`${ticket.key} Threat Model`)}`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold transition-all"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" /> {t('Threat Model')}
+          </a>
           {claimError && <span className="text-xs font-medium text-rose-600 mr-2">{claimError}</span>}
           {canClaim && (
             <button
@@ -224,7 +229,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-semibold shadow-xs transition-all disabled:opacity-60"
             >
               {isClaiming ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
-              <span>{isClaiming ? 'Claiming...' : 'Take this task'}</span>
+              <span>{isClaiming ? t('Claiming...') : t('Take this task')}</span>
             </button>
           )}
           {transitions.map((trans) => (
@@ -233,7 +238,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
               onClick={() => handleTransitionClick(trans)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-semantic-jira-brand hover:bg-semantic-jira-brand-hover active:bg-semantic-jira-brand-active text-white text-xs font-semibold shadow-xs transition-all"
             >
-              <span>{trans.name}</span>
+              <span>{t(trans.name)}</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           ))}
@@ -360,12 +365,12 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
           <div className="space-y-3 p-4 rounded-lg bg-slate-50/70 border border-slate-200">
             <h4 className="text-label font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-slate-400" />
-              <span>People & Ownership</span>
+              <span>{t('People & Ownership')}</span>
             </h4>
 
             {/* Assignee */}
             <div className="flex items-center justify-between gap-2">
-              <span className="text-slate-500 font-medium">Assignee:</span>
+              <span className="text-slate-500 font-medium">{t('Assignee:')}</span>
               <div className="flex items-center gap-1.5 font-semibold text-slate-800 text-right truncate">
                 {assignee ? (
                   <>
@@ -377,7 +382,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
                 ) : (
                   <span className="px-2 py-0.5 rounded-full bg-semantic-info-soft border border-semantic-info-soft-border text-semantic-info-strong font-mono text-label font-bold inline-flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-semantic-info-strong animate-pulse shrink-0" />
-                    {ticket.targetDepartmentId || ticket.departmentId ? 'Departament Növbəsi' : 'Təyin edilməyib'}
+                    {ticket.targetDepartmentId || ticket.departmentId ? t('Department Queue') : t('Unassigned')}
                   </span>
                 )}
               </div>
@@ -385,17 +390,17 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
 
             {/* Security Owner */}
             <div className="flex items-center justify-between gap-2">
-              <span className="text-slate-500 font-medium">Security Lead:</span>
+              <span className="text-slate-500 font-medium">{t('Security Lead:')}</span>
               <div className="flex items-center gap-1 font-semibold text-slate-800 text-right truncate">
                 <Shield className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                <span className="truncate">{securityOwner?.fullName || 'InfoSec Pool'}</span>
+                <span className="truncate">{securityOwner?.fullName || t('InfoSec Pool')}</span>
               </div>
             </div>
 
             {/* Reporter */}
             <div className="flex items-center justify-between gap-2">
-              <span className="text-slate-500 font-medium">Reporter:</span>
-              <span className="text-slate-700 font-medium text-right truncate">{reporter?.fullName || 'Automated Scanner'}</span>
+              <span className="text-slate-500 font-medium">{t('Reporter:')}</span>
+              <span className="text-slate-700 font-medium text-right truncate">{reporter?.fullName || t('Automated Scanner')}</span>
             </div>
           </div>
 
@@ -403,22 +408,22 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
           <div className="space-y-3 p-4 rounded-lg bg-slate-50/70 border border-slate-200">
             <h4 className="text-label font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-slate-400" />
-              <span>Request Classification</span>
+              <span>{t('Request Classification')}</span>
             </h4>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-slate-500 font-medium">Type:</span>
-              <span className="font-semibold text-slate-800 capitalize">{(ticket.type || ticket.category).replaceAll('_', ' ').toLowerCase()}</span>
+              <span className="text-slate-500 font-medium">{t('Type:')}</span>
+              <span className="font-semibold text-slate-800 capitalize">{t((ticket.type || ticket.category).replaceAll('_', ' ').toLowerCase())}</span>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-slate-500 font-medium">Request:</span>
+              <span className="text-slate-500 font-medium">{t('Request:')}</span>
               <span className="max-w-40 truncate font-semibold text-slate-800">{ticket.requestTypeName || ticket.ticketTypeName}</span>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-slate-500 font-medium">Urgency:</span>
-              <span className="font-mono font-bold text-slate-800">{ticket.urgency || 'Not set'}</span>
+              <span className="text-slate-500 font-medium">{t('Urgency:')}</span>
+              <span className="font-mono font-bold text-slate-800">{ticket.urgency || t('Not set')}</span>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-slate-500 font-medium">Channel:</span>
+              <span className="text-slate-500 font-medium">{t('Channel:')}</span>
               <span className="font-mono text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200 text-label">{ticket.intakeChannel || 'LEGACY'}</span>
             </div>
           </div>
@@ -427,21 +432,21 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
           <div className="space-y-3 p-4 rounded-lg bg-slate-50/70 border border-slate-200">
             <h4 className="text-label font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
-              <span>Risk & Severity Ratings</span>
+              <span>{t('Risk & Severity Ratings')}</span>
             </h4>
 
             <div className="flex items-center justify-between">
-              <span className="text-slate-500 font-medium">Inherent Risk:</span>
+              <span className="text-slate-500 font-medium">{t('Inherent Risk:')}</span>
               <Badge type="SEVERITY" value={ticket.inherentRisk} size="sm" />
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-slate-500 font-medium">Residual Risk:</span>
+              <span className="text-slate-500 font-medium">{t('Residual Risk:')}</span>
               <Badge type="SEVERITY" value={ticket.residualRisk} size="sm" />
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-slate-500 font-medium">Calculated Risk:</span>
+              <span className="text-slate-500 font-medium">{t('Calculated Risk:')}</span>
               <div className="flex items-center gap-2">
                 <div className="w-20 h-2 bg-slate-200 rounded-full overflow-hidden border border-slate-300">
                   <div
@@ -460,21 +465,21 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
           <div className="space-y-3 p-4 rounded-lg bg-slate-50/70 border border-slate-200">
             <h4 className="text-label font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-slate-400" />
-              <span>Dates & Deadlines</span>
+              <span>{t('Dates & Deadlines')}</span>
             </h4>
 
             <div className="flex items-center justify-between text-label">
-              <span className="text-slate-500 font-medium">Created:</span>
+              <span className="text-slate-500 font-medium">{t('Created:')}</span>
               <span className="font-mono text-slate-800">{new Date(ticket.createdAt).toLocaleDateString()}</span>
             </div>
 
             <div className="flex items-center justify-between text-label">
-              <span className="text-slate-500 font-medium">Remediation SLA:</span>
+              <span className="text-slate-500 font-medium">{t('Remediation SLA:')}</span>
               <span className="font-mono text-amber-600 font-bold">{new Date(ticket.remediationDeadline).toLocaleDateString()}</span>
             </div>
 
             <div className="flex items-center justify-between text-label">
-              <span className="text-slate-500 font-medium">Hard Due Date:</span>
+              <span className="text-slate-500 font-medium">{t('Hard Due Date:')}</span>
               <span className="font-mono text-slate-800 font-semibold">{new Date(ticket.dueDate).toLocaleDateString()}</span>
             </div>
           </div>
@@ -484,7 +489,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
             <div className="space-y-2 p-4 rounded-lg bg-slate-50/70 border border-slate-200">
               <h4 className="text-label font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
                 <Tag className="w-3.5 h-3.5 text-slate-400" />
-                <span>Tags & Compliance</span>
+                <span>{t('Tags & Compliance')}</span>
               </h4>
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {ticket.tags.map((tag) => (
@@ -507,7 +512,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-                Transition to: {selectedTransition.name}
+                {t('Transition to:')} {t(selectedTransition.name)}
               </h3>
               <button
                 onClick={() => setSelectedTransition(null)}
@@ -520,27 +525,27 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
             {selectedTransition.requireEvidence && (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center gap-2">
                 <Shield className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>Notice: Evidence attachments are required before submitting for retest.</span>
+                <span>{t('Notice: Evidence attachments are required before submitting for retest.')}</span>
               </div>
             )}
 
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-800">
-                Transition Justification Comment {selectedTransition.requireComment && <span className="text-rose-500">(Mandatory)</span>}
+                {t('Transition Justification Comment')} {selectedTransition.requireComment && <span className="text-rose-500">({t('Mandatory')})</span>}
               </label>
               <textarea
                 rows={3}
                 required={selectedTransition.requireComment}
                 value={transitionComment}
                 onChange={(e) => setTransitionComment(e.target.value)}
-                placeholder="Enter justification for workflow state change..."
+                placeholder={t('Enter justification for workflow state change...')}
                 className="jira-input font-normal"
               />
             </div>
 
             {selectedTransition.requiredFields?.includes('resolutionCode') && (
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-800">Resolution Code</label>
+                <label className="text-xs font-semibold text-slate-800">{t('Resolution Code')}</label>
                 <select value={resolutionCode} onChange={(event) => setResolutionCode(event.target.value)} className="jira-input">
                   {['FIXED', 'WORKAROUND', 'DUPLICATE', 'FALSE_POSITIVE', 'USER_ERROR', 'KNOWN_ISSUE', 'REJECTED', 'CANCELLED', 'NO_ACTION_REQUIRED', 'MITIGATED', 'RISK_ACCEPTED'].map((code) => (
                     <option key={code} value={code}>{code.replaceAll('_', ' ')}</option>
@@ -551,12 +556,12 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
 
             {selectedTransition.requiredFields?.includes('resolutionSummary') && (
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-800">Resolution Summary</label>
+                <label className="text-xs font-semibold text-slate-800">{t('Resolution Summary')}</label>
                 <textarea
                   rows={3}
                   value={resolutionSummary}
                   onChange={(event) => setResolutionSummary(event.target.value)}
-                  placeholder="Describe the outcome, evidence, and any remaining risk..."
+                  placeholder={t('Describe the outcome, evidence, and any remaining risk...')}
                   className="jira-input font-normal"
                 />
               </div>
@@ -567,7 +572,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
                 onClick={() => setSelectedTransition(null)}
                 className="jira-btn-subtle"
               >
-                Cancel
+                {t('Cancel')}
               </button>
               <button
                 onClick={handleConfirmTransition}
@@ -578,7 +583,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
                 }
                 className="jira-btn-primary"
               >
-                {isTransitioning ? 'Transitioning...' : 'Execute Transition'}
+                {isTransitioning ? t('Transitioning...') : t('Execute Transition')}
               </button>
             </div>
           </div>

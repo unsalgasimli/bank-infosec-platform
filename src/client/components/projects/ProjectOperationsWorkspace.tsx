@@ -42,6 +42,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 import { Ticket } from '../../../shared/types/ticket.js';
 import type { BankDepartment, BankUser, LDAPGroupInfo } from '../../../shared/types/auth.js';
 import { PROJECT_WORK_ITEM_TYPES, type Project, type ProjectHealth, type ProjectMember, type ProjectMilestone, type ProjectRole, type ProjectSummary } from '../../../shared/types/project.js';
@@ -79,6 +80,7 @@ const avatar = (nameOrId?: string) => (nameOrId || 'U').replace(/^usr-/, '').sli
 
 export const ProjectOperationsWorkspace: React.FC = () => {
   const { currentUser, allUsers, fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [selected, setSelected] = useState<ProjectPayload | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>('overview');
@@ -209,32 +211,32 @@ export const ProjectOperationsWorkspace: React.FC = () => {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-semantic-muted">
-              <FolderKanban className="w-4 h-4 text-semantic-brand" /> Work management
+              <FolderKanban className="w-4 h-4 text-semantic-brand" /> {t('Work Management')}
             </div>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight text-semantic-primary">Projects &amp; Tasks</h1>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-semantic-primary">{t('Projects & Tasks')}</h1>
             <p className="mt-1 text-sm text-semantic-jira-muted-strong">
-              Project operations workspace with Active Directory access boundaries, delivery tracking, and milestone governance.
+              {t('Project operations workspace with Active Directory access boundaries, delivery tracking, and milestone governance.')}
             </p>
           </div>
           <button onClick={() => setShowProjectForm(true)} className="wrike-btn-primary px-4 py-2.5 text-sm flex items-center gap-2">
-            <Plus className="w-4 h-4" /> New Project
+            <Plus className="w-4 h-4" /> {t('New Project')}
           </button>
         </div>
 
         <div className="flex flex-col gap-3 rounded-xl border border-semantic-border bg-white p-3 shadow-sm md:flex-row md:items-center md:justify-between">
           <div className="flex overflow-x-auto gap-1">
             {[
-              ['ACTIVE', 'Active'],
-              ['MY', 'My Projects'],
-              ['AT_RISK', 'At Risk'],
-              ['COMPLETED', 'Completed'],
-              ['ARCHIVED', 'Archived'],
+              ['ACTIVE', t('Active')],
+              ['MY', t('My Projects')],
+              ['AT_RISK', t('At Risk')],
+              ['COMPLETED', t('Completed')],
+              ['ARCHIVED', t('Archived')],
             ].map(([val, label]) => (
               <button
                 key={val}
                 onClick={() => setStatus(val)}
-                className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold ${
-                  status === val ? 'bg-semantic-primary text-white' : 'text-semantic-jira-muted-stronger hover:bg-slate-100'
+                className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  status === val ? 'bg-semantic-primary text-white shadow-xs' : 'text-semantic-jira-muted-stronger hover:bg-slate-100'
                 }`}
               >
                 {label}
@@ -242,13 +244,13 @@ export const ProjectOperationsWorkspace: React.FC = () => {
             ))}
           </div>
           <div className="flex gap-2">
-            <div className="relative">
-              <Filter className="absolute left-3 top-2.5 w-3.5 h-3.5 text-semantic-jira-icon" />
+            <div className="relative flex items-center">
+              <Search className="pointer-events-none absolute left-3 w-3.5 h-3.5 text-semantic-jira-icon" />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                className="wrike-input w-full min-w-[240px] py-2 pl-8 text-xs"
-                placeholder="Search project or key…"
+                className="wrike-input w-full min-w-[240px] py-2 !pl-9 text-xs"
+                placeholder={t('Search project or key...')}
               />
             </div>
           </div>
@@ -259,7 +261,7 @@ export const ProjectOperationsWorkspace: React.FC = () => {
         {loading ? (
           <div className="rounded-xl border border-semantic-border bg-white p-12 text-center text-sm text-semantic-muted">
             <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-semantic-success" />
-            Loading authorized projects…
+            {t('Loading authorized projects...')}
           </div>
         ) : projects.length === 0 ? (
           <EmptyProjectList onCreate={() => setShowProjectForm(true)} hasFilters={Boolean(query || status !== 'ACTIVE')} />
@@ -468,6 +470,12 @@ const ProjectDetail: React.FC<any> = ({
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <a
+                className="jira-btn-primary text-xs"
+                href={`/security-grc/threat-modeling?projectId=${encodeURIComponent(project.id)}&title=${encodeURIComponent(`${project.name} Threat Model`)}`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" /> Threat Model
+              </a>
               <div className="text-right">
                 <div className="text-lg font-bold text-semantic-primary">{progressPercent}%</div>
                 <div className="text-caption font-semibold uppercase tracking-wide text-semantic-muted">Project progress</div>

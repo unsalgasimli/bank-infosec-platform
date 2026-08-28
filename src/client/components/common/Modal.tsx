@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
+import { useI18n } from '../../context/I18nContext.js';
 
 interface ModalProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ export const Modal: React.FC<ModalProps> = ({
   maxWidth = '2xl',
   className = '',
 }) => {
+  const { t } = useI18n();
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -91,7 +93,7 @@ export const Modal: React.FC<ModalProps> = ({
             type="button"
             onClick={onClose}
             className="p-2 text-semantic-muted hover:text-semantic-primary rounded-lg hover:bg-semantic-border-subtle transition-colors shrink-0 ml-3 focus:outline-none focus:ring-2 focus:ring-semantic-brand/20"
-            aria-label="Close modal"
+            aria-label={t('Close modal')}
           >
             <X className="w-4.5 h-4.5" />
           </button>

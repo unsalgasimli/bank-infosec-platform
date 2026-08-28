@@ -15,6 +15,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 import { AutomationRule } from '../../../shared/types/automation.js';
 import { ProjectBlueprint } from '../../../shared/types/blueprints.js';
 
@@ -26,6 +27,7 @@ export const WrikeAutomationsView: React.FC<WrikeAutomationsViewProps> = ({
   onRefreshTickets,
 }) => {
   const { fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<'RULES' | 'BLUEPRINTS'>('RULES');
   const [launchedMessage, setLaunchedMessage] = useState<string | null>(null);
 
@@ -96,14 +98,14 @@ export const WrikeAutomationsView: React.FC<WrikeAutomationsViewProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-semantic-primary">
-                Wrike Automation Engine & Project Blueprints
+                {t('Wrike Automation Engine & Project Blueprints')}
               </h2>
               <span className="px-2 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success text-caption font-bold border border-semantic-success-border">
-                Real-Time Backend Synced
+                {t('Real-Time Backend Synced')}
               </span>
             </div>
             <p className="text-label text-semantic-jira-muted-alt">
-              Build custom trigger-condition-action workflow rules and launch turnkey enterprise project blueprints.
+              {t('Build custom trigger-condition-action workflow rules and launch turnkey enterprise project blueprints.')}
             </p>
           </div>
         </div>
@@ -116,7 +118,7 @@ export const WrikeAutomationsView: React.FC<WrikeAutomationsViewProps> = ({
               activeTab === 'RULES' ? 'bg-semantic-brand text-white font-semibold shadow-sm' : 'text-semantic-jira-muted-alt hover:text-semantic-primary'
             }`}
           >
-            Automation Rules ({automationRules.length})
+            {t('Automation Rules')} ({automationRules.length})
           </button>
           <button
             onClick={() => setActiveTab('BLUEPRINTS')}
@@ -124,7 +126,7 @@ export const WrikeAutomationsView: React.FC<WrikeAutomationsViewProps> = ({
               activeTab === 'BLUEPRINTS' ? 'bg-semantic-brand text-white font-semibold shadow-sm' : 'text-semantic-jira-muted-alt hover:text-semantic-primary'
             }`}
           >
-            Project Blueprints ({blueprints.length})
+            {t('Project Blueprints')} ({blueprints.length})
           </button>
         </div>
       </div>
@@ -145,14 +147,14 @@ export const WrikeAutomationsView: React.FC<WrikeAutomationsViewProps> = ({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold uppercase tracking-wider text-semantic-jira-muted-alt">
-                  Active SecOps Workflow Automation Rules ({automationRules.length})
+                  {t('Active SecOps Workflow Automation Rules')} ({automationRules.length})
                 </span>
                 <button
                   onClick={() => alert('Add Custom Rule builder opened.')}
                   className="wrike-btn-primary text-xs py-1 px-3"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Create Automation Rule</span>
+                  <span>{t('Create Automation Rule')}</span>
                 </button>
               </div>
 
@@ -171,10 +173,10 @@ export const WrikeAutomationsView: React.FC<WrikeAutomationsViewProps> = ({
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-caption font-mono text-semantic-jira-muted-alt bg-semantic-subtle px-2 py-0.5 rounded border border-semantic-surface-alt">
-                          {rule.executionCount || 0} Executions
+                          {rule.executionCount || 0} {t('Executions')}
                         </span>
                         <span className={`wrike-pill ${rule.isActive ? 'wrike-pill-green' : 'wrike-pill-gray'} text-caption`}>
-                          {rule.isActive ? 'ACTIVE' : 'DISABLED'}
+                          {rule.isActive ? t('ACTIVE') : t('DISABLED')}
                         </span>
                       </div>
                     </div>
@@ -182,19 +184,19 @@ export const WrikeAutomationsView: React.FC<WrikeAutomationsViewProps> = ({
                     {/* Trigger -> Condition -> Action Pipeline */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs">
                       <div className="p-2.5 bg-semantic-subtle rounded-lg border border-semantic-surface-alt">
-                        <span className="text-caption font-bold text-semantic-success uppercase block">When (Trigger)</span>
+                        <span className="text-caption font-bold text-semantic-success uppercase block">{t('When (Trigger)')}</span>
                         <span className="font-medium text-semantic-brand-ink mt-0.5 block">{rule.trigger}</span>
                       </div>
                       <div className="p-2.5 bg-semantic-subtle rounded-lg border border-semantic-surface-alt">
-                        <span className="text-caption font-bold text-semantic-warning uppercase block">If (Condition)</span>
+                        <span className="text-caption font-bold text-semantic-warning uppercase block">{t('If (Condition)')}</span>
                         <span className="font-medium text-semantic-brand-ink mt-0.5 block">
-                          {rule.conditions?.map((c) => `${c.field} ${c.operator} ${c.value}`).join(' AND ') || 'Default Condition'}
+                          {rule.conditions?.map((c) => `${c.field} ${c.operator} ${c.value}`).join(' AND ') || t('Default Condition')}
                         </span>
                       </div>
                       <div className="p-2.5 bg-semantic-subtle rounded-lg border border-semantic-surface-alt">
-                        <span className="text-caption font-bold text-semantic-info uppercase block">Then (Action)</span>
+                        <span className="text-caption font-bold text-semantic-info uppercase block">{t('Then (Action)')}</span>
                         <span className="font-medium text-semantic-brand-ink mt-0.5 block">
-                          {rule.actions?.map((a) => `${a.type}`).join(', ') || 'Execute Action'}
+                          {rule.actions?.map((a) => `${a.type}`).join(', ') || t('Execute Action')}
                         </span>
                       </div>
                     </div>
@@ -206,7 +208,7 @@ export const WrikeAutomationsView: React.FC<WrikeAutomationsViewProps> = ({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold uppercase tracking-wider text-semantic-jira-muted-alt">
-                  Turnkey Project Blueprints (1-Click Launch)
+                  {t('Turnkey Project Blueprints (1-Click Launch)')}
                 </span>
               </div>
 
@@ -229,15 +231,15 @@ export const WrikeAutomationsView: React.FC<WrikeAutomationsViewProps> = ({
 
                       <div className="pt-3 border-t border-semantic-table space-y-2">
                         <div className="flex items-center justify-between text-label text-semantic-jira-muted-alt font-mono">
-                          <span>{bp.defaultTasks?.length || bp.taskCount} Tasks</span>
-                          <span>Est: {bp.estimatedDays} Days</span>
+                          <span>{bp.defaultTasks?.length || bp.taskCount} {t('Tasks')}</span>
+                          <span>{t('Est:')} {bp.estimatedDays} {t('Days')}</span>
                         </div>
                         <button
                           onClick={() => handleLaunch(bp)}
                           className="w-full wrike-btn-primary py-1.5 text-xs justify-center"
                         >
                           <Play className="w-3.5 h-3.5" />
-                          <span>Launch Blueprint Project</span>
+                          <span>{t('Launch Blueprint Project')}</span>
                         </button>
                       </div>
                     </div>

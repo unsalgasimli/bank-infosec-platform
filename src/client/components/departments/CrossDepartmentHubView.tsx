@@ -20,6 +20,7 @@ import {
   Activity,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 import { Ticket } from '../../../shared/types/ticket.js';
 import { ProjectBlueprint } from '../../../shared/types/blueprints.js';
 
@@ -35,6 +36,7 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
   onRefreshTickets,
 }) => {
   const { currentUser, fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [parentWorkflows, setParentWorkflows] = useState<Ticket[]>([]);
   const [crossTickets, setCrossTickets] = useState<Ticket[]>([]);
   const [blueprints, setBlueprints] = useState<ProjectBlueprint[]>([]);
@@ -126,14 +128,14 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
           <div>
             <div className="flex items-center gap-2.5">
               <h1 className="text-lg font-extrabold text-semantic-primary tracking-tight">
-                Cross-Department Task Orchestration Hub
+                {t('Cross-Department Task Orchestration Hub')}
               </h1>
               <span className="px-2.5 py-0.5 rounded-full bg-semantic-purple-surface text-semantic-purple text-caption font-extrabold border border-semantic-purple-border">
-                Multi-Dept Pipeline Engine
+                {t('Multi-Dept Pipeline Engine')}
               </span>
             </div>
             <p className="text-xs text-semantic-jira-muted-strong mt-0.5">
-              Orchestrate end-to-end tasks spanning HR, IT Operations, Infosec, Core Banking, and GRC with dependency tracking.
+              {t('Orchestrate end-to-end tasks spanning HR, IT Operations, Infosec, Core Banking, and GRC with dependency tracking.')}
             </p>
           </div>
         </div>
@@ -144,7 +146,7 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
             className="wrike-btn-primary px-3.5 py-2 text-xs font-bold flex items-center gap-2 shadow-sm"
           >
             <Plus className="w-4 h-4" />
-            <span>Launch Cross-Task Pipeline</span>
+            <span>{t('Launch Cross-Task Pipeline')}</span>
           </button>
         </div>
       </div>
@@ -173,10 +175,10 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
             <div className="flex items-center justify-between border-b border-semantic-border pb-3">
               <div>
                 <h3 className="font-extrabold text-sm text-semantic-primary">
-                  Turnkey Cross-Department Pipelines (1-Click Orchestration)
+                  {t('Turnkey Cross-Department Pipelines (1-Click Orchestration)')}
                 </h3>
                 <p className="text-xs text-semantic-jira-muted-strong">
-                  Automated dependency chains connecting multiple bank departments.
+                  {t('Automated dependency chains connecting multiple bank departments.')}
                 </p>
               </div>
             </div>
@@ -245,10 +247,10 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
             <div className="flex items-center justify-between border-b border-semantic-border pb-3">
               <div>
                 <h3 className="font-extrabold text-sm text-semantic-primary">
-                  Active Multi-Department Pipelines & Handoffs ({parentWorkflows.length})
+                  {t('Active Multi-Department Pipelines & Handoffs')} ({parentWorkflows.length})
                 </h3>
                 <p className="text-xs text-semantic-jira-muted-strong">
-                  Live status across participating banking squads.
+                  {t('Live status across participating banking squads.')}
                 </p>
               </div>
             </div>
@@ -256,8 +258,8 @@ export const CrossDepartmentHubView: React.FC<CrossDepartmentHubViewProps> = ({
             {parentWorkflows.length === 0 ? (
               <div className="py-12 text-center text-semantic-jira-muted-strong space-y-2">
                 <Layers className="w-8 h-8 mx-auto text-semantic-border-strong" />
-                <div className="font-bold text-xs text-semantic-primary">No active cross-department pipelines yet</div>
-                <p className="text-label">Click "Launch Cross-Task Pipeline" to orchestrate your first multi-dept workflow.</p>
+                <div className="font-bold text-xs text-semantic-primary">{t('No active cross-department pipelines yet')}</div>
+                <p className="text-label">{t('Click "Launch Cross-Task Pipeline" to orchestrate your first multi-dept workflow.')}</p>
               </div>
             ) : (
               <div className="space-y-4">

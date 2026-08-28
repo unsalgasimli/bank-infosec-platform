@@ -9,6 +9,7 @@ import {
   Filter,
 } from 'lucide-react';
 import { ViewMode } from '../../../shared/types/navigation.js';
+import { useI18n } from '../../context/I18nContext.js';
 
 interface DestinationViewHeaderProps {
   title: string;
@@ -41,14 +42,16 @@ export const DestinationViewHeader: React.FC<DestinationViewHeaderProps> = ({
   onStatusFilterChange,
   onExportCSV,
   onOpenCreate,
-  createButtonLabel = 'New Task',
+  createButtonLabel,
   supportsViewSwitcher = true,
   allowedViewModes = ['spreadsheet', 'kanban'],
 }) => {
+  const { t } = useI18n();
+
   const allViewModes: { id: ViewMode; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { id: 'spreadsheet', label: 'Spreadsheet', icon: TableIcon },
-    { id: 'kanban', label: 'Kanban', icon: Layers },
-    { id: 'capacity', label: 'Capacity', icon: Users },
+    { id: 'spreadsheet', label: t('Spreadsheet'), icon: TableIcon },
+    { id: 'kanban', label: t('Kanban'), icon: Layers },
+    { id: 'capacity', label: t('Capacity'), icon: Users },
   ];
 
   const viewModes = allViewModes.filter((vm) => allowedViewModes.includes(vm.id));
@@ -65,12 +68,12 @@ export const DestinationViewHeader: React.FC<DestinationViewHeaderProps> = ({
           )}
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-base font-bold text-semantic-primary tracking-tight">{title}</h1>
+              <h1 className="text-base font-bold text-semantic-primary tracking-tight">{t(title)}</h1>
               <span className="px-2.5 py-0.5 rounded-full bg-semantic-neutral-surface text-semantic-secondary font-mono text-xs font-bold border border-semantic-border">
                 {itemCount}
               </span>
             </div>
-            {description && <p className="text-xs text-semantic-muted mt-0.5 line-clamp-1">{description}</p>}
+            {description && <p className="text-xs text-semantic-muted mt-0.5 line-clamp-1">{t(description)}</p>}
           </div>
         </div>
 
@@ -89,7 +92,7 @@ export const DestinationViewHeader: React.FC<DestinationViewHeaderProps> = ({
                       ? 'bg-semantic-panel text-semantic-success shadow-sm border border-semantic-border'
                       : 'text-semantic-muted hover:text-semantic-strongest hover:bg-semantic-panel/50'
                   }`}
-                  title={`Switch to ${vm.label} view`}
+                  title={`${t('Switch to')} ${vm.label}`}
                 >
                   <IconComp className={`w-3.5 h-3.5 ${isActive ? 'text-semantic-brand' : 'text-semantic-muted'}`} />
                   <span>{vm.label}</span>
@@ -106,9 +109,9 @@ export const DestinationViewHeader: React.FC<DestinationViewHeaderProps> = ({
         <div className="flex items-center gap-2">
           <div className="flex items-center bg-semantic-subtle border border-semantic-border rounded-lg p-0.5 text-xs">
             {[
-              { id: 'ALL', label: 'All Items' },
-              { id: 'OPEN', label: 'Active' },
-              { id: 'RESOLVED', label: 'Completed' },
+              { id: 'ALL', label: t('All Items') },
+              { id: 'OPEN', label: t('Active') },
+              { id: 'RESOLVED', label: t('Completed') },
             ].map((st) => (
               <button
                 key={st.id}
@@ -133,7 +136,7 @@ export const DestinationViewHeader: React.FC<DestinationViewHeaderProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Filter tasks in this view..."
+              placeholder={t('Filter tasks in this view...')}
               className="bg-semantic-panel border border-semantic-border-strong focus:border-semantic-brand focus:ring-2 focus:ring-semantic-brand/15 rounded-lg pl-9 pr-3 py-1.5 text-xs text-semantic-primary outline-none w-52 transition-all placeholder:text-semantic-placeholder"
             />
           </div>

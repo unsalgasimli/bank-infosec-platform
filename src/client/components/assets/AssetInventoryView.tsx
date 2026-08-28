@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BankAsset } from '../../../shared/types/asset.js';
 import { Database, Plus, Search, Filter, Play, CheckCircle2, X, ShieldAlert, Radio } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 
 interface AssetInventoryViewProps {
   assets: BankAsset[];
@@ -9,6 +10,7 @@ interface AssetInventoryViewProps {
 
 export const AssetInventoryView: React.FC<AssetInventoryViewProps> = ({ assets }) => {
   const { fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [envFilter, setEnvFilter] = useState<string>('ALL');
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);

@@ -4,6 +4,7 @@ import { Badge } from '../common/Badge.js';
 import { SLARing } from '../common/SLARing.js';
 import { CheckCircle2, Plus, Search, Filter, X, ShieldAlert, Clock, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 
 interface SecurityExceptionsViewProps {
   tickets: Ticket[];
@@ -15,6 +16,7 @@ export const SecurityExceptionsView: React.FC<SecurityExceptionsViewProps> = ({
   onSelectTicket,
 }) => {
   const { fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'PENDING' | 'CLOSED'>('ALL');
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);

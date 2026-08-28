@@ -1,0 +1,234 @@
+{
+  "timestamp": "2026-08-28T08:33:28.372Z",
+  "results": [
+    {
+      "destination": "my-work-overview",
+      "path": "/my-work/overview",
+      "status": "OK",
+      "screenshot": "page_my-work-overview.png"
+    },
+    {
+      "destination": "my-tasks",
+      "path": "/my-work/tasks",
+      "status": "OK",
+      "screenshot": "page_my-tasks.png"
+    },
+    {
+      "destination": "my-requests",
+      "path": "/my-work/requests",
+      "status": "OK",
+      "screenshot": "page_my-requests.png"
+    },
+    {
+      "destination": "approvals",
+      "path": "/my-work/approvals",
+      "status": "OK",
+      "screenshot": "page_approvals.png"
+    },
+    {
+      "destination": "projects-tasks",
+      "path": "/work-management/projects-tasks",
+      "status": "OK",
+      "screenshot": "page_projects-tasks.png"
+    },
+    {
+      "destination": "workflows",
+      "path": "/work-management/workflows",
+      "status": "OK",
+      "screenshot": "page_workflows.png"
+    },
+    {
+      "destination": "ideate",
+      "path": "/work-management/ideate",
+      "status": "OK",
+      "screenshot": "page_ideate.png"
+    },
+    {
+      "destination": "service-incidents",
+      "path": "/service-management/incidents",
+      "status": "OK",
+      "screenshot": "page_service-incidents.png"
+    },
+    {
+      "destination": "service-requests",
+      "path": "/service-management/requests",
+      "status": "OK",
+      "screenshot": "page_service-requests.png"
+    },
+    {
+      "destination": "service-changes",
+      "path": "/service-management/changes",
+      "status": "OK",
+      "screenshot": "page_service-changes.png"
+    },
+    {
+      "destination": "service-problems",
+      "path": "/service-management/problems",
+      "status": "OK",
+      "screenshot": "page_service-problems.png"
+    },
+    {
+      "destination": "service-catalog",
+      "path": "/service-management/catalog",
+      "status": "OK",
+      "screenshot": "page_service-catalog.png"
+    },
+    {
+      "destination": "vulnerabilities",
+      "path": "/security-grc/vulnerabilities",
+      "status": "OK",
+      "screenshot": "page_vulnerabilities.png"
+    },
+    {
+      "destination": "security-incidents",
+      "path": "/security-grc/security-incidents",
+      "status": "OK",
+      "screenshot": "page_security-incidents.png"
+    },
+    {
+      "destination": "policy-exceptions",
+      "path": "/security-grc/policy-exceptions",
+      "status": "OK",
+      "screenshot": "page_policy-exceptions.png"
+    },
+    {
+      "destination": "risk-management",
+      "path": "/security-grc/risk-management",
+      "status": "OK",
+      "screenshot": "page_risk-management.png"
+    },
+    {
+      "destination": "threat-modeling",
+      "path": "/security-grc/threat-modeling",
+      "status": "OK",
+      "screenshot": "page_threat-modeling.png"
+    },
+    {
+      "destination": "audit-compliance",
+      "path": "/security-grc/audit-compliance",
+      "status": "OK",
+      "screenshot": "page_audit-compliance.png"
+    },
+    {
+      "destination": "dlp-investigations",
+      "path": "/security-grc/dlp",
+      "status": "OK",
+      "screenshot": "page_dlp-investigations.png"
+    },
+    {
+      "destination": "asset-inventory",
+      "path": "/assets-cmdb/inventory",
+      "status": "OK",
+      "screenshot": "page_asset-inventory.png"
+    },
+    {
+      "destination": "configuration-items",
+      "path": "/assets-cmdb/configuration-items",
+      "status": "OK",
+      "screenshot": "page_configuration-items.png"
+    },
+    {
+      "destination": "business-services",
+      "path": "/assets-cmdb/business-services",
+      "status": "OK",
+      "screenshot": "page_business-services.png"
+    },
+    {
+      "destination": "applications",
+      "path": "/assets-cmdb/applications",
+      "status": "OK",
+      "screenshot": "page_applications.png"
+    },
+    {
+      "destination": "relationship-map",
+      "path": "/assets-cmdb/relationship-map",
+      "status": "OK",
+      "screenshot": "page_relationship-map.png"
+    },
+    {
+      "destination": "knowledge-base",
+      "path": "/knowledge",
+      "status": "OK",
+      "screenshot": "page_knowledge-base.png"
+    },
+    {
+      "destination": "operational-analytics",
+      "path": "/analytics/operational",
+      "status": "OK",
+      "screenshot": "page_operational-analytics.png"
+    },
+    {
+      "destination": "executive-analytics",
+      "path": "/analytics/executive",
+      "status": "OK",
+      "screenshot": "page_executive-analytics.png"
+    },
+    {
+      "destination": "admin-request-forms",
+      "path": "/administration/request-forms",
+      "status": "OK",
+      "screenshot": "page_admin-request-forms.png"
+    },
+    {
+      "destination": "admin-workflow-templates",
+      "path": "/administration/workflow-templates",
+      "status": "OK",
+      "screenshot": "page_admin-workflow-templates.png"
+    },
+    {
+      "destination": "admin-automations",
+      "path": "/administration/automations",
+      "status": "OK",
+      "screenshot": "page_admin-automations.png"
+    },
+    {
+      "destination": "admin-sla-policies",
+      "path": "/administration/sla-policies",
+      "status": "OK",
+      "screenshot": "page_admin-sla-policies.png"
+    },
+    {
+      "destination": "admin-departments",
+      "path": "/administration/departments",
+      "status": "OK",
+      "screenshot": "page_admin-departments.png"
+    },
+    {
+      "destination": "admin-taxonomy",
+      "path": "/administration/taxonomy",
+      "status": "OK",
+      "screenshot": "page_admin-taxonomy.png"
+    },
+    {
+      "destination": "admin-integrations",
+      "path": "/administration/integrations",
+      "status": "OK",
+      "screenshot": "page_admin-integrations.png"
+    },
+    {
+      "destination": "admin-settings",
+      "path": "/administration/settings",
+      "status": "OK",
+      "screenshot": "page_admin-settings.png"
+    },
+    {
+      "destination": "dept-admin",
+      "path": "/administration/departments/manage",
+      "status": "OK",
+      "screenshot": "page_dept-admin.png"
+    }
+  ],
+  "consoleLogs": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "location": "http://127.0.0.1:5173/api/auth/me:0"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "location": "http://127.0.0.1:5173/api/auth/me:0"
+    }
+  ],
+  "pageErrors": []
+}

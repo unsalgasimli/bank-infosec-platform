@@ -25,6 +25,7 @@ import {
 import { Ticket, TicketCategory, TechnicalSeverity } from '../../../../shared/types/ticket.js';
 import { TicketLifecycleBundle, TicketRelationshipType, TicketTaskStatus, TicketUrgency } from '../../../../shared/types/itsm.js';
 import { useAuth } from '../../../context/AuthContext.js';
+import { useI18n } from '../../../context/I18nContext.js';
 import { Badge } from '../../common/Badge.js';
 import { SelectField } from '../TicketCreateModal.js';
 
@@ -64,6 +65,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
   onNavigateToTicket,
 }) => {
   const { fetchWithAuth, currentUser, allUsers } = useAuth();
+  const { t } = useI18n();
 
   // Task state
   const [taskTitle, setTaskTitle] = useState('');

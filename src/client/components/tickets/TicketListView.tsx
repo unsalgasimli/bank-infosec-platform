@@ -6,6 +6,7 @@ import { SLARing } from '../common/SLARing.js';
 import { BulkActionBar } from './BulkActionBar.js';
 import { TicketKanbanBoard } from './TicketKanbanBoard.js';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 import {
   Search,
   Filter,
@@ -43,6 +44,7 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
   onJqlChange,
 }) => {
   const { currentUser, allUsers, fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [viewMode, setViewMode] = useState<'LIST' | 'KANBAN'>('LIST');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [severityFilter, setSeverityFilter] = useState<string>('ALL');
@@ -183,7 +185,7 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
               type="text"
               value={jqlQuery}
               onChange={(e) => onJqlChange(e.target.value)}
-              placeholder="Search by JQL (e.g. project = APPSEC AND severity = CRITICAL AND status != CLOSED)"
+              placeholder={t('Search by JQL (e.g. project = APPSEC AND severity = CRITICAL AND status != CLOSED)')}
               className="jira-input font-mono"
             />
             {jqlQuery && (
@@ -191,7 +193,7 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
                 onClick={() => onJqlChange('')}
                 className="jira-btn-secondary py-1 text-xs"
               >
-                Clear
+                {t('Clear')}
               </button>
             )}
           </div>
@@ -206,10 +208,10 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
                     ? 'bg-semantic-jira-brand text-white font-semibold shadow-sm'
                     : 'text-semantic-jira-muted hover:text-semantic-jira-primary'
                 }`}
-                title="Jira Table / List View"
+                title={t('Jira Table / List View')}
               >
                 <List className="w-3.5 h-3.5" />
-                <span>List</span>
+                <span>{t('List')}</span>
               </button>
               <button
                 onClick={() => setViewMode('KANBAN')}
@@ -218,20 +220,20 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
                     ? 'bg-semantic-jira-brand text-white font-semibold shadow-sm'
                     : 'text-semantic-jira-muted hover:text-semantic-jira-primary'
                 }`}
-                title="Jira Kanban Board View"
+                title={t('Jira Kanban Board View')}
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
-                <span>Board</span>
+                <span>{t('Board')}</span>
               </button>
             </div>
 
             <button
               onClick={handleExportSelected}
               className="jira-btn-secondary py-1 text-xs"
-              title="Export Issues to CSV"
+              title={t('Export Issues to CSV')}
             >
               <Download className="w-3.5 h-3.5 text-semantic-jira-muted" />
-              <span className="hidden sm:inline">Export</span>
+              <span className="hidden sm:inline">{t('Export')}</span>
             </button>
           </div>
         </div>
@@ -239,14 +241,14 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
         {/* Preset Filter Chips & Severity Filters */}
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-caption font-bold uppercase tracking-wider text-semantic-jira-muted-light mr-1">Quick:</span>
+            <span className="text-caption font-bold uppercase tracking-wider text-semantic-jira-muted-light mr-1">{t('Quick:')}</span>
             {[
-              { id: 'ALL', label: 'All Issues' },
-              { id: 'MY_OPEN', label: 'My Open' },
-              { id: 'CRITICAL_HIGH', label: 'Critical & High' },
-              { id: 'SLA_BREACHED', label: 'SLA Breached' },
-              { id: 'INCIDENTS', label: 'SOC Incidents' },
-              { id: 'VULNS', label: 'Vulnerabilities' },
+              { id: 'ALL', label: t('All Issues') },
+              { id: 'MY_OPEN', label: t('My Open') },
+              { id: 'CRITICAL_HIGH', label: t('Critical & High') },
+              { id: 'SLA_BREACHED', label: t('SLA Breached') },
+              { id: 'INCIDENTS', label: t('SOC Incidents') },
+              { id: 'VULNS', label: t('Vulnerabilities') },
             ].map((p) => (
               <button
                 key={p.id}
@@ -259,7 +261,7 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
             <div className="h-4 w-px bg-slate-800 mx-1 hidden sm:block" />
 
             <div className="flex items-center gap-1 bg-semantic-panel p-0.5 rounded border border-semantic-jira-border">
-              <span className="text-caption text-semantic-jira-muted px-1.5 font-bold uppercase">Sev:</span>
+              <span className="text-caption text-semantic-jira-muted px-1.5 font-bold uppercase">{t('Sev:')}</span>
               {['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map((sev) => (
                 <button
                   key={sev}
@@ -277,7 +279,7 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
           </div>
 
           <div className="text-label text-slate-400 font-mono">
-            Showing <strong className="text-semantic-jira-primary">{filteredTickets.length}</strong> of {tickets.length} issues
+            {t('Showing')} <strong className="text-semantic-jira-primary">{filteredTickets.length}</strong> {t('of')} {tickets.length} {t('issues')}
           </div>
         </div>
       </div>
@@ -307,10 +309,10 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
                   }}
                 >
                   <div className="flex items-center gap-1">
-                    <span>Key</span> <ArrowUpDown className="w-3 h-3 text-semantic-jira-muted" />
+                    <span>{t('Key')}</span> <ArrowUpDown className="w-3 h-3 text-semantic-jira-muted" />
                   </div>
                 </th>
-                <th className="px-3 py-2.5">Summary & Details</th>
+                <th className="px-3 py-2.5">{t('Summary & Details')}</th>
                 <th
                   className="px-3 py-2.5 cursor-pointer hover:text-semantic-jira-primary transition-colors"
                   onClick={() => {
@@ -319,10 +321,10 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
                   }}
                 >
                   <div className="flex items-center gap-1">
-                    <span>Severity</span> <ArrowUpDown className="w-3 h-3 text-semantic-jira-muted" />
+                    <span>{t('Severity')}</span> <ArrowUpDown className="w-3 h-3 text-semantic-jira-muted" />
                   </div>
                 </th>
-                <th className="px-3 py-2.5">Status</th>
+                <th className="px-3 py-2.5">{t('Status')}</th>
                 <th
                   className="px-3 py-2.5 cursor-pointer hover:text-semantic-jira-primary transition-colors"
                   onClick={() => {
@@ -331,10 +333,10 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
                   }}
                 >
                   <div className="flex items-center gap-1">
-                    <span>SLA Countdown</span> <ArrowUpDown className="w-3 h-3 text-semantic-jira-muted" />
+                    <span>{t('SLA Countdown')}</span> <ArrowUpDown className="w-3 h-3 text-semantic-jira-muted" />
                   </div>
                 </th>
-                <th className="px-3 py-2.5">Assignee</th>
+                <th className="px-3 py-2.5">{t('Assignee')}</th>
                 <th
                   className="px-3 py-2.5 cursor-pointer hover:text-semantic-jira-primary text-right transition-colors"
                   onClick={() => {
@@ -343,7 +345,7 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
                   }}
                 >
                   <div className="flex items-center justify-end gap-1">
-                    <span>Updated</span> <ArrowUpDown className="w-3 h-3 text-semantic-jira-muted" />
+                    <span>{t('Updated')}</span> <ArrowUpDown className="w-3 h-3 text-semantic-jira-muted" />
                   </div>
                 </th>
                 <th className="w-8 px-2 py-2.5"></th>
@@ -442,7 +444,7 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
                           ) : (
                             <span className="px-2 py-0.5 rounded-full bg-semantic-info-soft border border-semantic-info-soft-border text-semantic-info-strong font-mono text-label font-bold inline-flex items-center gap-1">
                               <span className="w-1.5 h-1.5 rounded-full bg-semantic-info-strong animate-pulse shrink-0" />
-                              {ticket.targetDepartmentId || ticket.departmentId ? 'Şöbə Növbəsi' : 'Təyin edilməyib'}
+                              {ticket.targetDepartmentId || ticket.departmentId ? t('Department Queue') : t('Unassigned')}
                             </span>
                           )}
                         </div>

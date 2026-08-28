@@ -3,6 +3,7 @@ import { BankApplication } from '../../../shared/types/asset.js';
 import { Server, Bug, Plus, Search, Filter, Globe, Database, GitBranch, X, ShieldAlert } from 'lucide-react';
 import { Badge } from '../common/Badge.js';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 
 interface ApplicationCMDBViewProps {
   applications: BankApplication[];
@@ -10,6 +11,7 @@ interface ApplicationCMDBViewProps {
 
 export const ApplicationCMDBView: React.FC<ApplicationCMDBViewProps> = ({ applications }) => {
   const { fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [criticalityFilter, setCriticalityFilter] = useState<string>('ALL');
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);

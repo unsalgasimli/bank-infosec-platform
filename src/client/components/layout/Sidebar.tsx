@@ -43,6 +43,7 @@ import {
   Sliders,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 import { Ticket } from '../../../shared/types/ticket.js';
 import {
   NAVIGATION_MODULES,
@@ -124,6 +125,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
 }) => {
   const { currentUser } = useAuth();
+  const { t } = useI18n();
 
   // Collapsible state per module, defaulting to expanded
   const [collapsedModules, setCollapsedModules] = useState<Record<NavigationModuleId, boolean>>(() => {
@@ -173,7 +175,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       case 'risks':
         return risksCount;
       case 'assets':
-        return applicationsCount + assetsCount;
+        return (applicationsCount || 0) + (assetsCount || 0);
       case 'kb':
         return kbCount;
       case 'departments':
@@ -190,7 +192,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <aside className={`app-sidebar fixed left-0 top-14 bottom-0 z-dsModal w-68 bg-semantic-panel border-r border-semantic-border flex flex-col justify-between shrink-0 select-none shadow-xs transition-transform duration-200 lg:static lg:translate-x-0 ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
       {/* Scrollable Navigation Modules Container */}
       <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-4">
-        {NAVIGATION_MODULES.map((module) => {
+        {NAVIGATION_MODULES.filter((module) => module.id !== 'analytics').map((module) => {
           // Check module-level RBAC
           if (!canUserAccessModule(currentUser, module.id)) {
             return null;
@@ -217,7 +219,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               >
                 <div className="flex items-center gap-2">
                   <ModuleIcon className="w-3.5 h-3.5 text-semantic-placeholder group-hover:text-semantic-muted transition-colors" />
-                  <span>{module.label}</span>
+                  <span>{t(module.label)}</span>
                 </div>
                 {isCollapsed ? (
                   <ChevronRight className="w-3.5 h-3.5 text-semantic-placeholder" />
@@ -251,7 +253,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             ? 'bg-semantic-success-surface text-semantic-success font-bold border border-semantic-success-border'
                             : 'text-semantic-strong hover:bg-semantic-subtle hover:text-semantic-strongest'
                         }`}
-                        title={item.description}
+                        title={t(item.description || '')}
                       >
                         <div className="flex items-center gap-2.5 truncate">
                           <ItemIcon
@@ -259,7 +261,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               isActive ? 'text-semantic-brand' : 'text-semantic-muted group-hover:text-semantic-strong'
                             }`}
                           />
-                          <span className="truncate">{item.label}</span>
+                          <span className="truncate">{t(item.label)}</span>
                         </div>
 
                         {/* Optional Numeric Badge */}
@@ -297,12 +299,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className="flex items-center gap-2 text-semantic-secondary hover:text-semantic-strongest font-bold text-xs transition-colors"
           >
             <Settings className="w-4 h-4 text-semantic-brand" />
-            <span>Space Settings</span>
+            <span>{t('Space Settings')}</span>
           </button>
         ) : (
           <div className="flex items-center gap-1.5 text-xs text-semantic-muted font-medium">
             <span className="w-2 h-2 rounded-full bg-semantic-brand" />
-            <span>Apex Bank GRC</span>
+            <span>{t('Apex Bank GRC')}</span>
           </div>
         )}
         <span className="text-xs font-mono font-bold text-semantic-success">v2026.4</span>

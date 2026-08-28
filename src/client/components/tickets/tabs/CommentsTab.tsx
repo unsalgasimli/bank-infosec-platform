@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TicketComment, CommentVisibility } from '../../../../shared/types/comments.js';
 import { useAuth } from '../../../context/AuthContext.js';
+import { useI18n } from '../../../context/I18nContext.js';
 import { Send, Lock, Globe, Shield, MessageSquare, User, Loader2 } from 'lucide-react';
 
 interface CommentsTabProps {
@@ -15,6 +16,7 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({
   onAddComment,
 }) => {
   const { currentUser } = useAuth();
+  const { t } = useI18n();
   const [content, setContent] = useState('');
   const [visibility, setVisibility] = useState<CommentVisibility>('INTERNAL');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -51,8 +53,8 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({
             <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-2 text-slate-400">
               <MessageSquare className="w-5 h-5" />
             </div>
-            <h4 className="text-xs font-semibold text-slate-700">No notes or comments yet</h4>
-            <p className="text-label text-slate-500 mt-0.5">Start the conversation by adding an internal or team-only note below.</p>
+            <h4 className="text-xs font-semibold text-slate-700">{t('No notes or comments yet')}</h4>
+            <p className="text-label text-slate-500 mt-0.5">{t('Start the conversation by adding an internal or team-only note below.')}</p>
           </div>
         ) : (
           comments.map((comment) => {
@@ -121,19 +123,19 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 uppercase tracking-wider">
             <MessageSquare className="w-4 h-4 text-semantic-jira-brand" />
-            <span>Add Note / Comment</span>
+            <span>{t('Add Note / Comment')}</span>
           </div>
 
           <div className="flex items-center gap-2 text-xs">
-            <span className="text-slate-500 text-label font-medium">Visibility:</span>
+            <span className="text-slate-500 text-label font-medium">{t('Visibility:')}</span>
             <select
               value={visibility}
               onChange={(e) => setVisibility(e.target.value as CommentVisibility)}
               className="jira-input py-1 text-xs max-w-44 bg-white"
             >
-              <option value="INTERNAL">Internal Bank</option>
-              <option value="SECURITY_TEAM_ONLY">Security Team Only</option>
-              <option value="PUBLIC">Public</option>
+              <option value="INTERNAL">{t('Internal Bank')}</option>
+              <option value="SECURITY_TEAM_ONLY">{t('Security Team Only')}</option>
+              <option value="PUBLIC">{t('Public')}</option>
             </select>
           </div>
         </div>
@@ -143,13 +145,13 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({
           required
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          placeholder="Add findings analysis, remediation updates, or test notes..."
+          placeholder={t('Add findings analysis, remediation updates, or test notes...')}
           className="jira-input font-normal bg-white"
         />
 
         <div className="flex items-center justify-between pt-1">
           <span className="text-label text-slate-500">
-            Posting as: <strong className="text-slate-800 font-semibold">{currentUser?.fullName}</strong>
+            {t('Posting as:')} <strong className="text-slate-800 font-semibold">{currentUser?.fullName}</strong>
           </span>
           <button
             type="submit"
@@ -157,7 +159,7 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({
             className="jira-btn-primary"
           >
             {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-            <span>{isSubmitting ? 'Posting...' : 'Post Comment'}</span>
+            <span>{isSubmitting ? t('Posting...') : t('Post Comment')}</span>
           </button>
         </div>
       </form>

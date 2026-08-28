@@ -11,6 +11,7 @@ import { OutboxService } from '../services/outbox.service.js';
 import { SearchService } from '../services/search.service.js';
 import type { Ticket, TicketCategoryOption, TicketIntakeCategoryOption } from '../../shared/types/ticket.js';
 import { TicketLifecycleService } from '../services/ticket-lifecycle.service.js';
+import { ThreatModelService } from '../services/threat-model.service.js';
 import { TicketRelationshipType, TicketTaskStatus } from '../../shared/types/itsm.js';
 import { config } from '../config/index.js';
 import { pgClient } from '../db/postgres/client.js';
@@ -722,7 +723,7 @@ export class TicketsController {
     res.json({ success: true, ticket });
   }
 
-  public static transition(req: AuthenticatedRequest, res: Response): void {
+  public static async transition(req: AuthenticatedRequest, res: Response): Promise<void> {
     const user = req.user!;
     const ticketId = req.params.id as string;
     const { transitionId, comment, requiredFieldUpdates } = req.body;
@@ -743,6 +744,7 @@ export class TicketsController {
 
     if (result.ticket) {
       AutomationService.triggerEvent('STATUS_CHANGED', result.ticket, user);
+      await ThreatModelService.synchronizeControlTicket(result.ticket.id, result.ticket.statusCategory, user);
     }
 
     res.json(result);
@@ -948,7 +950,7 @@ export class TicketsController {
     }
   }
 
-  public static bulkUpdate(req: AuthenticatedRequest, res: Response): void {
+  public static async bulkUpdate(req: AuthenticatedRequest, res: Response): Promise<void> {
     const user = req.user!;
     const { ticketIds, action, value } = req.body;
 
@@ -1007,6 +1009,9 @@ export class TicketsController {
 
       ticket.updatedAt = now;
       ticket.version += 1;
+      if (action === 'RESOLVE' || action === 'MARK_RESOLVED') {
+        await ThreatModelService.synchronizeControlTicket(ticket.id, ticket.statusCategory, user);
+      }
       updatedCount += 1;
     }
 

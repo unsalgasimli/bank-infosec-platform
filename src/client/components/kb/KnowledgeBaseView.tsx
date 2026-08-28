@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { KBArticle } from '../../../shared/types/kb.js';
 import { BookOpen, Search, ShieldCheck, Plus, Copy, Check, Printer, X, Tag } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 
 interface KnowledgeBaseViewProps {
   articles: KBArticle[];
@@ -9,6 +10,7 @@ interface KnowledgeBaseViewProps {
 
 export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }) => {
   const { currentUser, fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [selectedArticle, setSelectedArticle] = useState<KBArticle | null>(articles[0] || null);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
@@ -86,13 +88,13 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
             <div className="flex items-center gap-2">
               <BookOpen className="w-4 h-4 text-semantic-jira-brand" />
               <h2 className="text-xs font-bold text-semantic-jira-primary uppercase tracking-wider">
-                Knowledge & Playbooks
+                {t('Knowledge & Playbooks')}
               </h2>
             </div>
             <button
               onClick={() => setIsModalOpen(true)}
               className="p-1 rounded bg-semantic-jira-brand hover:bg-semantic-jira-brand-hover text-white text-xs"
-              title="Create Playbook"
+              title={t('Create Playbook')}
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
@@ -104,17 +106,17 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search playbooks, SOPs..."
+              placeholder={t('Search playbooks, SOPs...')}
               className="jira-input pl-7"
             />
           </div>
 
           <div className="flex items-center gap-1 overflow-x-auto pb-1 text-caption">
             {[
-              { id: 'ALL', label: 'All' },
-              { id: 'INCIDENT_PLAYBOOK', label: 'IR Playbooks' },
-              { id: 'APPSEC_GUIDELINES', label: 'AppSec' },
-              { id: 'COMPLIANCE_STANDARD', label: 'GRC SOPs' },
+              { id: 'ALL', label: t('All') },
+              { id: 'INCIDENT_PLAYBOOK', label: t('IR Playbooks') },
+              { id: 'APPSEC_GUIDELINES', label: t('AppSec') },
+              { id: 'COMPLIANCE_STANDARD', label: t('GRC SOPs') },
             ].map((cat) => (
               <button
                 key={cat.id}
@@ -168,7 +170,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
                   </span>
                   {selectedArticle.approvedByCiso && (
                     <span className="flex items-center gap-1 text-semantic-success text-xs font-mono">
-                      <ShieldCheck className="w-3.5 h-3.5" /> Approved Standard
+                      <ShieldCheck className="w-3.5 h-3.5" /> {t('Approved Standard')}
                     </span>
                   )}
                 </div>
@@ -176,7 +178,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
                   {selectedArticle.title}
                 </h1>
                 <div className="text-label text-semantic-jira-muted">
-                  Author: <strong className="text-semantic-jira-primary">{selectedArticle.authorName}</strong> ({selectedArticle.authorRole}) • Version {selectedArticle.version} • Reviewed: {selectedArticle.lastReviewedAt}
+                  {t('Author')}: <strong className="text-semantic-jira-primary">{selectedArticle.authorName}</strong> ({selectedArticle.authorRole}) • {t('Version')} {selectedArticle.version} • {t('Reviewed')}: {selectedArticle.lastReviewedAt}
                 </div>
               </div>
 
@@ -186,12 +188,12 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
                   className="jira-btn-secondary"
                 >
                   {copied ? <Check className="w-3.5 h-3.5 text-semantic-success" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copied ? 'Copied' : 'Copy Content'}</span>
+                  <span>{copied ? t('Copied') : t('Copy Content')}</span>
                 </button>
                 <button
                   onClick={() => window.print()}
                   className="p-1.5 rounded bg-semantic-panel hover:bg-semantic-jira-hover text-semantic-jira-primary border border-semantic-jira-border"
-                  title="Print Playbook"
+                  title={t('Print Playbook')}
                 >
                   <Printer className="w-3.5 h-3.5" />
                 </button>
@@ -205,11 +207,11 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
             {selectedArticle.tags && (
               <div className="flex items-center gap-2 pt-1 flex-wrap">
                 <span className="text-xs font-semibold text-semantic-jira-muted flex items-center gap-1">
-                  <Tag className="w-3.5 h-3.5" /> Tags:
+                  <Tag className="w-3.5 h-3.5" /> {t('Tags:')}
                 </span>
-                {selectedArticle.tags.map((t) => (
-                  <span key={t} className="px-2 py-0.5 rounded bg-semantic-panel border border-semantic-jira-border text-semantic-jira-brand font-mono text-label">
-                    #{t}
+                {selectedArticle.tags.map((tTag) => (
+                  <span key={tTag} className="px-2 py-0.5 rounded bg-semantic-panel border border-semantic-jira-border text-semantic-jira-brand font-mono text-label">
+                    #{tTag}
                   </span>
                 ))}
               </div>
@@ -217,7 +219,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
           </div>
         ) : (
           <div className="text-center py-20 text-semantic-jira-muted text-xs">
-            Select a playbook from the left sidebar to view procedures.
+            {t('Select a playbook from the left sidebar to view procedures.')}
           </div>
         )}
       </div>
@@ -229,7 +231,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
             <div className="flex items-center justify-between border-b border-semantic-jira-border pb-3">
               <div className="flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-semantic-jira-brand" />
-                <h3 className="text-sm font-bold text-semantic-jira-primary">Create Security Playbook / SOP</h3>
+                <h3 className="text-sm font-bold text-semantic-jira-primary">{t('Create Security Playbook / SOP')}</h3>
               </div>
               <button onClick={() => setIsModalOpen(false)} className="text-semantic-jira-muted hover:text-semantic-jira-primary">
                 <X className="w-4 h-4" />

@@ -15,6 +15,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 import { RequestFormDefinition } from '../../../shared/types/request-forms.js';
 
 interface WrikeRequestFormsViewProps {
@@ -23,6 +24,7 @@ interface WrikeRequestFormsViewProps {
 
 export const WrikeRequestFormsView: React.FC<WrikeRequestFormsViewProps> = ({ onFormSubmitted }) => {
   const { fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [forms, setForms] = useState<RequestFormDefinition[]>([]);
   const [selectedFormId, setSelectedFormId] = useState<string>('form-incident');
   const [submittedMessage, setSubmittedMessage] = useState<string | null>(null);
@@ -120,14 +122,14 @@ export const WrikeRequestFormsView: React.FC<WrikeRequestFormsViewProps> = ({ on
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-semantic-primary">
-                Wrike Dynamic Request Forms & Work Intake
+                {t('Wrike Dynamic Request Forms & Work Intake')}
               </h2>
               <span className="px-2 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success text-caption font-bold border border-semantic-success-border">
-                Real-Time Backend Synced
+                {t('Real-Time Backend Synced')}
               </span>
             </div>
             <p className="text-label text-semantic-jira-muted-alt">
-              Capture incoming business requests with conditional branching, validation, and automated routing.
+              {t('Capture incoming business requests with conditional branching, validation, and automated routing.')}
             </p>
           </div>
         </div>
@@ -138,7 +140,7 @@ export const WrikeRequestFormsView: React.FC<WrikeRequestFormsViewProps> = ({ on
         {/* Left Form Catalog */}
         <div className="w-80 flex flex-col space-y-3 shrink-0 overflow-y-auto custom-scrollbar">
           <div className="text-xs font-bold uppercase tracking-wider text-semantic-jira-muted-alt px-1">
-            Available Security Request Forms ({forms.length})
+            {t('Available Security Request Forms')} ({forms.length})
           </div>
           {forms.map((form) => {
             const Icon = getFormIcon(form.iconName);
@@ -169,7 +171,7 @@ export const WrikeRequestFormsView: React.FC<WrikeRequestFormsViewProps> = ({ on
                   {form.description}
                 </p>
                 <div className="text-caption font-mono text-semantic-info flex items-center gap-1">
-                  <span>Routing: {form.destinationFolder}</span>
+                  <span>{t('Routing:')} {form.destinationFolder}</span>
                 </div>
               </div>
             );
@@ -188,7 +190,7 @@ export const WrikeRequestFormsView: React.FC<WrikeRequestFormsViewProps> = ({ on
                 <h2 className="text-base font-bold text-semantic-primary mt-0.5">{selectedForm?.title}</h2>
               </div>
               <div className="text-right">
-                <span className="text-caption text-semantic-jira-muted-alt block">Auto-Destination Folder</span>
+                <span className="text-caption text-semantic-jira-muted-alt block">{t('Auto-Destination Folder')}</span>
                 <span className="text-xs font-mono font-semibold text-semantic-info">
                   {selectedForm?.destinationFolder}
                 </span>
@@ -205,7 +207,7 @@ export const WrikeRequestFormsView: React.FC<WrikeRequestFormsViewProps> = ({ on
             {/* Dynamic Form Questions */}
             <form onSubmit={handleSubmit} className="space-y-4 text-xs">
               <div>
-                <label className="font-bold text-semantic-brand-ink mb-1 block">Request Summary / Headline *</label>
+                <label className="font-bold text-semantic-brand-ink mb-1 block">{t('Request Summary / Headline *')}</label>
                 <input
                   type="text"
                   required
@@ -218,7 +220,7 @@ export const WrikeRequestFormsView: React.FC<WrikeRequestFormsViewProps> = ({ on
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="font-bold text-semantic-brand-ink mb-1 block">Urgency / Severity Tier</label>
+                  <label className="font-bold text-semantic-brand-ink mb-1 block">{t('Urgency / Severity Tier')}</label>
                   <select
                     value={formData.urgency}
                     onChange={(e) => setFormData({ ...formData, urgency: e.target.value })}
@@ -232,7 +234,7 @@ export const WrikeRequestFormsView: React.FC<WrikeRequestFormsViewProps> = ({ on
                 </div>
 
                 <div>
-                  <label className="font-bold text-semantic-brand-ink mb-1 block">Target Banking System</label>
+                  <label className="font-bold text-semantic-brand-ink mb-1 block">{t('Target Banking System')}</label>
                   <select
                     value={formData.targetSystem}
                     onChange={(e) => setFormData({ ...formData, targetSystem: e.target.value })}
@@ -251,11 +253,11 @@ export const WrikeRequestFormsView: React.FC<WrikeRequestFormsViewProps> = ({ on
                 <div className="p-3.5 bg-semantic-warning-card border border-semantic-warning-border rounded-lg space-y-3">
                   <div className="font-bold text-xs text-semantic-warning flex items-center gap-1.5">
                     <Lock className="w-3.5 h-3.5" />
-                    <span>Dual-Control Exception Parameters (ISO 27001)</span>
+                    <span>{t('Dual-Control Exception Parameters (ISO 27001)')}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="font-semibold text-semantic-brand-ink block mb-1">Exception Validity Period</label>
+                      <label className="font-semibold text-semantic-brand-ink block mb-1">{t('Exception Validity Period')}</label>
                       <select
                         value={formData.durationDays}
                         onChange={(e) => setFormData({ ...formData, durationDays: e.target.value })}
@@ -267,7 +269,7 @@ export const WrikeRequestFormsView: React.FC<WrikeRequestFormsViewProps> = ({ on
                       </select>
                     </div>
                     <div>
-                      <label className="font-semibold text-semantic-brand-ink block mb-1">Compensating Controls</label>
+                      <label className="font-semibold text-semantic-brand-ink block mb-1">{t('Compensating Controls')}</label>
                       <input
                         type="text"
                         placeholder="e.g. IPS sensor monitoring enabled"
@@ -279,11 +281,11 @@ export const WrikeRequestFormsView: React.FC<WrikeRequestFormsViewProps> = ({ on
               )}
 
               <div>
-                <label className="font-bold text-semantic-brand-ink mb-1 block">Business Justification & Context</label>
+                <label className="font-bold text-semantic-brand-ink mb-1 block">{t('Business Justification & Context')}</label>
                 <textarea
                   value={formData.justification}
                   onChange={(e) => setFormData({ ...formData, justification: e.target.value })}
-                  placeholder="Provide technical rationale, regulatory obligations, or incident evidence..."
+                  placeholder={t('Provide technical rationale, regulatory obligations, or incident evidence...')}
                   className="wrike-input h-24 resize-none"
                 />
               </div>
@@ -292,7 +294,7 @@ export const WrikeRequestFormsView: React.FC<WrikeRequestFormsViewProps> = ({ on
               <div className="pt-3 border-t border-semantic-surface-alt flex items-center justify-between">
                 <div className="text-label text-semantic-jira-muted-alt flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-semantic-brand" />
-                  <span>Wrike Work Intake routes this request directly to active pipelines.</span>
+                  <span>{t('Wrike Work Intake routes this request directly to active pipelines.')}</span>
                 </div>
 
                 <button
@@ -301,7 +303,7 @@ export const WrikeRequestFormsView: React.FC<WrikeRequestFormsViewProps> = ({ on
                   className="wrike-btn-primary py-2 px-5 text-xs shadow-sm disabled:opacity-50"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>{isSubmitting ? 'Submitting...' : 'Submit Request Form'}</span>
+                  <span>{isSubmitting ? t('Submitting...') : t('Submit Request Form')}</span>
                 </button>
               </div>
             </form>

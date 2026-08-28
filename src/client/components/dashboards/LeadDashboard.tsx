@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Users, BarChart3, Clock, AlertTriangle, ArrowRight, Layers, UserCheck, RefreshCw, X, CheckCircle2 } from 'lucide-react';
 import { TeamQueue } from '../../../shared/types/queues.js';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 import { DirectoryAssignmentSelect } from '../common/DirectoryAssignmentSelect.js';
 
 interface LeadDashboardProps {
@@ -16,6 +17,7 @@ export const LeadDashboard: React.FC<LeadDashboardProps> = ({
   onSelectQueue,
 }) => {
   const { allUsers, fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [isRebalanceOpen, setIsRebalanceOpen] = useState(false);
   const [fromUser, setFromUser] = useState('');
   const [toUser, setToUser] = useState('');

@@ -13,6 +13,7 @@ import {
   Share2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 import { ProofingDocument, ProofingAnnotation } from '../../../shared/types/proofing.js';
 
 interface DocumentProofingModalProps {
@@ -27,6 +28,7 @@ export const DocumentProofingModal: React.FC<DocumentProofingModalProps> = ({
   documentTitle = 'SWIFT Alliance Gateway Perimeter DC1 Topology Diagram.pdf',
 }) => {
   const { fetchWithAuth, currentUser } = useAuth();
+  const { t } = useI18n();
   const [documentData, setDocumentData] = useState<ProofingDocument | null>(null);
   const [newComment, setNewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);

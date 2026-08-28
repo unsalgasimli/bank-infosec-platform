@@ -2,7 +2,6 @@ import React, { useEffect } from 'react';
 import { TopBar } from './TopBar.js';
 import { Sidebar } from './Sidebar.js';
 import { CommandPalette } from './CommandPalette.js';
-import { RovoAssistantDrawer } from './RovoAssistantDrawer.js';
 import { Ticket } from '../../../shared/types/ticket.js';
 import { BankApplication, BankAsset } from '../../../shared/types/asset.js';
 import { TicketCreateModal } from '../tickets/TicketCreateModal.js';
@@ -23,7 +22,6 @@ interface AppLayoutProps {
   onSelectDepartment?: (deptId: string | null) => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
-  onRunJql: (jql: string) => void;
   onTicketCreated: (ticket: Ticket) => void;
   onNavigate: (view: string, id?: string) => void;
   isCreateOpen: boolean;
@@ -46,7 +44,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   onSelectDepartment,
   searchQuery,
   onSearchChange,
-  onRunJql,
   onTicketCreated,
   onNavigate,
   isCreateOpen,
@@ -55,7 +52,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   children,
 }) => {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = React.useState(false);
-  const [isRovoOpen, setIsRovoOpen] = React.useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false);
 
   // Global Keyboard Shortcuts Listener
@@ -92,7 +88,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       <TopBar
         onOpenCreate={onOpenCreate}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
-        onOpenRovo={() => setIsRovoOpen(true)}
         onNavigate={onNavigate}
         searchQuery={searchQuery}
         onSearchChange={onSearchChange}
@@ -152,13 +147,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         tickets={tickets}
       />
 
-      {/* Wrike AI Copilot Drawer */}
-      <RovoAssistantDrawer
-        isOpen={isRovoOpen}
-        onClose={() => setIsRovoOpen(false)}
-        onRunJql={onRunJql}
-        onNavigate={onNavigate}
-      />
     </div>
   );
 };

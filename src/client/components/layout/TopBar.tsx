@@ -7,8 +7,6 @@ import {
   Lock,
   LogOut,
   Settings,
-  Sparkles,
-  Shield,
   Layers,
   Users,
   CheckCircle2,
@@ -24,7 +22,6 @@ import { useI18n } from '../../context/I18nContext.js';
 interface TopBarProps {
   onOpenCreate: () => void;
   onOpenCommandPalette: () => void;
-  onOpenRovo: () => void;
   onNavigate: (view: string, id?: string) => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
@@ -36,7 +33,6 @@ interface TopBarProps {
 export const TopBar: React.FC<TopBarProps> = ({
   onOpenCreate,
   onOpenCommandPalette,
-  onOpenRovo,
   onNavigate,
   searchQuery,
   onSearchChange,
@@ -90,20 +86,12 @@ export const TopBar: React.FC<TopBarProps> = ({
         <div className="flex items-center gap-3 shrink-0">
           <button
             type="button"
-            aria-label="Open navigation"
+            aria-label={t('Open navigation')}
             onClick={onToggleSidebar}
             className="lg:hidden p-2 rounded-lg text-semantic-secondary hover:bg-semantic-subtle transition-colors"
           >
             <Menu className="w-5 h-5" />
           </button>
-          <div
-            className="flex items-center gap-2.5 cursor-pointer hover:opacity-90 transition-opacity"
-            onClick={() => onNavigate('my-work-overview')}
-          >
-            <div className="w-8 h-8 rounded-lg bg-semantic-brand flex items-center justify-center text-white font-black text-sm shadow-sm">
-              W
-            </div>
-          </div>
         </div>
 
         {/* Center: Single Global Search Bar */}
@@ -114,7 +102,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           >
             <Search className="w-4.5 h-4.5 text-semantic-muted group-hover:text-semantic-primary mr-2.5 shrink-0" />
             <span className="text-sm text-semantic-muted group-hover:text-semantic-strong flex-1 truncate font-medium">
-              Search tasks, systems, assets, CVEs, SOPs...
+              {t('Search tasks, systems, assets, CVEs, SOPs...')}
             </span>
             <kbd className="hidden lg:inline-flex items-center gap-0.5 px-2 py-0.5 text-xs font-mono font-bold text-semantic-muted bg-semantic-panel border border-semantic-border-strong rounded shadow-xs">
               ⌘K
@@ -138,15 +126,6 @@ export const TopBar: React.FC<TopBarProps> = ({
               className={`rounded-md px-2 py-1 text-label font-extrabold transition-colors ${language === 'en' ? 'bg-semantic-info text-white shadow-sm' : 'text-semantic-secondary hover:text-semantic-primary'}`}
             >EN</button>
           </div>
-          {/* AI Intelligence Assistant */}
-          <button
-            onClick={onOpenRovo}
-            className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-semantic-success-surface text-semantic-success hover:bg-semantic-success-border font-bold text-sm border border-semantic-success-border transition-colors shadow-2xs"
-          >
-            <Sparkles className="w-4 h-4 text-semantic-brand" />
-            <span className="hidden sm:inline">AI Copilot</span>
-          </button>
-
           {/* Notifications */}
           <div className="relative">
             <button

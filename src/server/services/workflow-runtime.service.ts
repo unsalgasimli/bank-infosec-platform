@@ -23,6 +23,7 @@ import { WorkflowGovernanceService } from './workflow-governance.service.js';
 import { TicketLifecycleService } from './ticket-lifecycle.service.js';
 import { SLAService } from './sla.service.js';
 import { AuditService } from './audit.service.js';
+import { verifyReleaseAuthorization } from './security-release-gate.service.js';
 
 const terminalNodeStatuses: NodeInstanceStatus[] = ['COMPLETED', 'SKIPPED', 'CANCELLED', 'FAILED', 'COMPENSATED'];
 const terminalInstanceStatuses: WorkflowInstance['status'][] = ['COMPLETED', 'REJECTED', 'CANCELLED', 'FAILED'];
@@ -599,6 +600,16 @@ export class WorkflowRuntimeService {
     const configuredFailures = (instance.context.__testFailures || instance.context.simulatedActionOutcomes) as Record<string, unknown> | undefined;
     const configured = configuredFailures?.[actionKey];
     if (configured === 'FAIL' || configured === false || (typeof configured === 'number' && current.attemptCount <= configured)) throw new Error(`Configured ${actionKey} failure for durable retry validation.`);
+    if (actionKey === 'DEPLOY') {
+      const threatModelId = typeof instance.context.threatModelId === 'string' ? instance.context.threatModelId : '';
+      const releaseId = typeof instance.context.releaseId === 'string' ? instance.context.releaseId : (typeof instance.context.changeId === 'string' ? instance.context.changeId : instance.id);
+      const productionDeployment = String(instance.context.environment || '').toUpperCase() === 'PRODUCTION';
+      if (productionDeployment || instance.context.threatModelRequired === true || threatModelId) {
+        if (!threatModelId) throw new OrchestrationError('Production deployment is blocked: the deployment context does not identify an approved Threat Model.', 409);
+        const authorization = verifyReleaseAuthorization(instance.context.securityReleaseAuthorization, { modelId: threatModelId, releaseId });
+        return { actionKey, connectorId: node.action?.connectorId, logicalExecution: 'SUCCEEDED', securityReleaseGate: 'ALLOWED', threatModelId, revisionId: authorization.revisionId, releaseId, externalMutationId: `external-${crypto.createHash('sha256').update(`${instance.id}:${node.id}`).digest('hex').slice(0, 16)}` };
+      }
+    }
     if (actionKey === 'CALCULATE_CHANGE_RISK') {
       const environment = String(instance.context.environment || 'NON_PRODUCTION');
       const blastRadius = String(instance.context.blastRadius || 'LOW');

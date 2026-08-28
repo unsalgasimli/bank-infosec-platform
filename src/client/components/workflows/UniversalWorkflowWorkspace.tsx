@@ -64,6 +64,7 @@ import type {
 } from "../../../shared/types/orchestration.js";
 import { validateWorkflowPreflight } from "../../../shared/utils/workflow-preflight.js";
 import { useAuth } from "../../context/AuthContext.js";
+import { useI18n } from "../../context/I18nContext.js";
 import { AccessibleDatePicker } from "../common/AccessibleDatePicker.js";
 import { CustomSelect, type SelectOption } from "../common/CustomSelect.js";
 
@@ -283,6 +284,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
   onRefreshTickets?: () => void;
 }> = ({ onRefreshTickets }) => {
   const { currentUser, fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [tab, setTab] = useState<WorkspaceTab>(() => {
     const stored = sessionStorage.getItem(
       "orchestration-workspace-tab",
@@ -1593,13 +1595,13 @@ export const UniversalWorkflowWorkspace: React.FC<{
             </div>
             <div className="min-w-0">
               <div className="mb-0.5 text-caption font-extrabold uppercase tracking-[0.12em] text-semantic-success">
-                Work management
+                {t('Work Management')}
               </div>
               <h1 className="truncate text-base font-bold tracking-tight text-semantic-primary">
-                Universal Work Orchestration
+                {t('Universal Work Orchestration')}
               </h1>
               <p className="mt-0.5 max-w-2xl truncate text-xs text-slate-500">
-                Govern requests, approvals, automation and enterprise processes from one place.
+                {t('Govern requests, approvals, automation and enterprise processes from one place.')}
               </p>
             </div>
           </div>
@@ -1616,10 +1618,10 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   setTab("BUILDER");
                 }}
                 className="wrike-btn-primary h-9 gap-2 whitespace-nowrap px-3.5 text-sm"
-                title="Create a workflow draft"
+                title={t('Create a workflow draft')}
               >
                 <Sparkles className="h-4 w-4" />
-                <span>New workflow</span>
+                <span>{t('New workflow')}</span>
               </button>
             )}
           </div>
@@ -1638,18 +1640,28 @@ export const UniversalWorkflowWorkspace: React.FC<{
           ).map(([value, label, Icon]) => (
             <button
               key={value}
-              onClick={() => setTab(value)}
+              onClick={() => {
+                if (value === "BUILDER" && !builderVersion) {
+                  const workflow = blankWorkflow(currentUser?.id || "");
+                  setBuilderDefinition(blankDefinition(currentUser?.id || ""));
+                  setBuilderVersion(workflow);
+                  setSelectedStageId("stage-main");
+                  setSelectedNodeId("node-start");
+                  setSelectedNodeIds(["node-start"]);
+                }
+                setTab(value);
+              }}
               className={`flex h-full items-center gap-2 whitespace-nowrap border-b-2 px-3.5 text-sm font-semibold transition-colors ${tab === value ? "border-semantic-brand text-semantic-success" : "border-transparent text-slate-500 hover:text-slate-900"}`}
             >
               <Icon className="h-4 w-4" />
-              {label}
+              {t(label)}
             </button>
           ))}
         </div>
         <button
           onClick={() => void load()}
           className="ml-auto shrink-0 rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
-          title="Refresh"
+          title={t('Refresh')}
         >
           <RefreshCw className="h-4 w-4" />
         </button>
@@ -1667,7 +1679,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
       {loading ? (
         <div className="flex flex-1 items-center justify-center text-sm text-slate-500">
           <Loader2 className="mr-2 h-5 w-5 animate-spin text-semantic-brand" />
-          Loading orchestration platform…
+          {t('Loading orchestration platform...')}
         </div>
       ) : tab === "CATALOG" ? (
         <CatalogView
@@ -1692,11 +1704,11 @@ export const UniversalWorkflowWorkspace: React.FC<{
         >
           <div className="flex h-12 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-4 text-xs">
             <span className="font-semibold text-slate-500">
-              Workflow Catalog
+              {t('Workflow Catalog')}
             </span>
             <ArrowRight className="h-3 w-3 text-slate-300" />
             <input
-              value={builderDefinition?.name || ""}
+              value={builderDefinition?.name ? t(builderDefinition.name) : ""}
               onChange={(event) =>
                 setBuilderDefinition((current: any) => ({
                   ...(current || {}),
@@ -1704,7 +1716,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                 }))
               }
               className="w-52 rounded border border-transparent px-2 py-1 font-semibold outline-none hover:border-slate-200 focus:border-blue-300"
-              placeholder="Workflow name"
+              placeholder={t("Workflow name")}
             />
             <select
               value={builderDefinition?.scope || "PERSONAL"}
@@ -1715,17 +1727,17 @@ export const UniversalWorkflowWorkspace: React.FC<{
                 }))
               }
               className="rounded border border-slate-200 bg-white px-2 py-1.5 text-label font-semibold text-slate-700 outline-none focus:border-emerald-500"
-              aria-label="Template scope"
-              title="Template visibility and creation scope"
+              aria-label={t("Template scope")}
+              title={t("Template visibility and creation scope")}
             >
-              <option value="PERSONAL">Personal template</option>
-              <option value="DEPARTMENT" disabled={!canCreateDepartmentTemplate}>Department template</option>
-              <option value="COMPANY" disabled={!canCreateCompanyTemplate}>Company template</option>
+              <option value="PERSONAL">{t("Personal template")}</option>
+              <option value="DEPARTMENT" disabled={!canCreateDepartmentTemplate}>{t("Department template")}</option>
+              <option value="COMPANY" disabled={!canCreateCompanyTemplate}>{t("Company template")}</option>
             </select>
             <div className="ml-auto flex items-center gap-2">
               {isFocusMode && (
                 <span className="hidden rounded-md bg-emerald-50 px-2 py-1 text-caption font-bold text-emerald-700 sm:inline">
-                  Focus mode · Esc to exit
+                  {t("Focus mode · Esc to exit")}
                 </span>
               )}
               <button
@@ -1751,7 +1763,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                 className="wrike-btn-primary flex items-center gap-1.5 px-3 py-1.5"
               >
                 <Rocket className="h-3.5 w-3.5" />
-                Publish
+                {t("Publish")}
               </button>
             </div>
           </div>
@@ -1762,13 +1774,13 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   onClick={() => setBuilderSidebarTab("NODES")}
                   className={`rounded px-2 py-1.5 ${builderSidebarTab === "NODES" ? "bg-white shadow-xs text-slate-900" : "text-slate-500"}`}
                 >
-                  Nodes
+                  {t("Nodes")}
                 </button>
                 <button
                   onClick={() => setBuilderSidebarTab("VARIABLES")}
                   className={`rounded px-2 py-1.5 ${builderSidebarTab === "VARIABLES" ? "bg-white shadow-xs text-slate-900" : "text-slate-500"}`}
                 >
-                  Variables
+                  {t("Variables")}
                 </button>
               </div>
               {builderSidebarTab === "NODES" && [...new Set(nodePalette.map((item) => item.group))].map(
@@ -1908,7 +1920,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   onClick={() => setIsGridVisible((visible) => !visible)}
                   aria-pressed={isGridVisible}
                   className={`rounded p-1.5 transition-colors ${isGridVisible ? "bg-emerald-50 text-emerald-700" : "text-slate-500 hover:bg-slate-100"}`}
-                  title={isGridVisible ? "Grid and snap are on" : "Show grid and enable snap"}
+                  title={isGridVisible ? t("Grid and snap are on") : t("Show grid and enable snap")}
                 >
                   <Grid3X3 className="h-4 w-4" />
                 </button>
@@ -1916,7 +1928,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   type="button"
                   onClick={() => setZoom((value) => Math.min(1.4, value + 0.1))}
                   className="rounded p-1.5 hover:bg-slate-100"
-                  title="Zoom in"
+                  title={t("Zoom in")}
                 >
                   <ZoomIn className="h-4 w-4" />
                 </button>
@@ -1926,7 +1938,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                     setZoom((value) => Math.max(0.45, value - 0.1))
                   }
                   className="rounded p-1.5 hover:bg-slate-100"
-                  title="Zoom out"
+                  title={t("Zoom out")}
                 >
                   <ZoomOut className="h-4 w-4" />
                 </button>
@@ -1935,7 +1947,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   onClick={toggleFocusMode}
                   className="rounded p-1.5 hover:bg-slate-100"
                   aria-pressed={isFocusMode}
-                  title={isFocusMode ? "Exit focus mode (Esc)" : "Open workflow builder in focus mode"}
+                  title={isFocusMode ? t("Exit focus mode (Esc)") : t("Open workflow builder in focus mode")}
                 >
                   <Maximize2 className="h-4 w-4" />
                 </button>
@@ -1946,7 +1958,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   onClick={copySelection}
                   disabled={!selectedNodeIds.length && !selectedNodeId}
                   className="rounded p-1.5 hover:bg-slate-100 disabled:opacity-30"
-                  title="Copy selection (Ctrl+C)"
+                  title={t("Copy selection (Ctrl+C)")}
                 >
                   <Copy className="h-4 w-4" />
                 </button>
@@ -1955,9 +1967,9 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   onClick={pasteSelection}
                   disabled={!clipboardNodes.length}
                   className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100 disabled:opacity-30"
-                  title="Paste (Ctrl+V)"
+                  title={t("Paste (Ctrl+V)")}
                 >
-                  Paste
+                  {t("Paste")}
                 </button>
                 <button
                   type="button"
@@ -1965,7 +1977,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   disabled={selectedNodeIds.length < 2}
                   className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100 disabled:opacity-30"
                 >
-                  Align H
+                  {t("Align H")}
                 </button>
                 <button
                   type="button"
@@ -1973,22 +1985,22 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   disabled={selectedNodeIds.length < 2}
                   className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100 disabled:opacity-30"
                 >
-                  Align V
+                  {t("Align V")}
                 </button>
                 <button
                   type="button"
                   onClick={fitToScreen}
                   className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100"
                 >
-                  Fit
+                  {t("Fit")}
                 </button>
                 <button
                   type="button"
                   onClick={autoLayout}
                   className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100"
-                  title="Arrange nodes on the current grid"
+                  title={t("Arrange nodes on the current grid")}
                 >
-                  Arrange
+                  {t("Arrange")}
                 </button>
               </div>
               {builderVersion && (
@@ -2187,21 +2199,21 @@ export const UniversalWorkflowWorkspace: React.FC<{
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="truncate text-xs font-bold">
-                              {workflowNode.title}
+                              {t(workflowNode.title)}
                             </div>
                             <div className="mt-0.5 truncate text-caption capitalize text-slate-500">
-                              {route ||
+                              {t(route ||
                                 workflowNode.type
                                   .replaceAll("_", " ")
-                                  .toLowerCase()}
+                                  .toLowerCase())}
                             </div>
                             {workflowNode.timeoutMinutes && (
                               <div className="mt-1 text-caption font-semibold text-amber-600">
-                                Due: {workflowNode.timeoutMinutes}m
+                                {t('Due')}: {workflowNode.timeoutMinutes}m
                               </div>
                             )}
                             {fixedEndpoint && (
-                              <div className="mt-1 text-caption font-semibold text-slate-400">Required workflow endpoint</div>
+                              <div className="mt-1 text-caption font-semibold text-slate-400">{t('Required workflow endpoint')}</div>
                             )}
                           </div>
                         </div>
@@ -2249,9 +2261,9 @@ export const UniversalWorkflowWorkspace: React.FC<{
                 </div>
               )}
               <div className="absolute bottom-3 left-3 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-caption font-semibold text-slate-500 shadow-sm">
-                {builderVersion?.nodes.length || 0} nodes ·{" "}
-                {builderVersion?.edges.length || 0} edges ·{" "}
-                {Math.round(zoom * 100)}% · {isGridVisible ? "Grid + snap" : "Freeform"}
+                {builderVersion?.nodes.length || 0} {t('nodes')} ·{" "}
+                {builderVersion?.edges.length || 0} {t('edges')} ·{" "}
+                {Math.round(zoom * 100)}% · {isGridVisible ? t("Grid + snap") : t("Freeform")}
               </div>
                   {connectionDraft && (
                     <div className="absolute bottom-12 left-3 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-caption font-semibold text-emerald-800 shadow-sm">
@@ -2338,7 +2350,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
               <div className="mt-6 border-t border-slate-200 pt-4">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600">
-                    Pre-flight
+                    {t('Pre-flight')}
                   </h3>
                   <span
                     className={`rounded-full px-2 py-0.5 text-caption font-bold ${
@@ -2351,15 +2363,15 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   >
                     {activePreflight
                       ? activePreflight.summary.errors === 0
-                        ? "0 Errors"
-                        : `${activePreflight.summary.errors} Error${activePreflight.summary.errors > 1 ? "s" : ""}`
-                      : "Save to validate"}
+                        ? t("0 Errors")
+                        : `${activePreflight.summary.errors} ${activePreflight.summary.errors > 1 ? t("Errors") : t("Error")}`
+                      : t("Save to validate")}
                   </span>
                 </div>
                 {activePreflight && activePreflight.summary?.errors === 0 && (
                   <div className="mb-2 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/70 p-2 text-label text-emerald-800">
                     <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                    <span>All graph connections and preflight rules passed.</span>
+                    <span>{t("All graph connections and preflight rules passed.")}</span>
                   </div>
                 )}
                 {activePreflight?.issues?.slice(0, 8).map((issue: any, index: number) => (
@@ -2387,7 +2399,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                             : "bg-blue-500"
                       }`}
                     />
-                    <span className="flex-1">{issue.message}</span>
+                    <span className="flex-1">{t(issue.message)}</span>
                   </button>
                 ))}
               </div>
@@ -2590,163 +2602,169 @@ const CatalogView = ({
   onEdit,
   onClone,
   onDelete,
-}: any) => (
-  <div className="flex-1 overflow-y-auto p-6">
-    <div className="mx-auto max-w-[1500px]">
-      <div className="mb-8 flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-slate-500">
-          Start a governed request from an approved workflow template.
-        </p>
-        <label className="flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-xs transition focus-within:border-emerald-400 focus-within:ring-4 focus-within:ring-emerald-50 sm:w-[420px]">
-          <Search className="h-4 w-4 shrink-0 text-slate-400" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search workflows, domains, owners, nodes…"
-            aria-label="Search workflow templates"
-            className="w-full border-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
-          />
-        </label>
-      </div>
-      {catalog.sections.map((section: any) => (
-        <section key={section.name} className="mb-10">
-          <div className="mb-4 flex items-end justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-slate-900">{section.name}</h3>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-caption font-bold text-slate-600">
-                  {workflowCatalogTemplatesForDisplay(section.templates).length}
-                </span>
+}: any) => {
+  const { t } = useI18n();
+  return (
+    <div className="flex-1 overflow-y-auto p-6">
+      <div className="mx-auto max-w-[1500px]">
+        <div className="mb-8 flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-slate-500">
+            {t('Start a governed request from an approved workflow template.')}
+          </p>
+          <label className="flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-xs transition focus-within:border-emerald-400 focus-within:ring-4 focus-within:ring-emerald-50 sm:w-[420px]">
+            <Search className="h-4 w-4 shrink-0 text-slate-400" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t('Search workflows, domains, owners, nodes...')}
+              aria-label={t('Search workflow templates')}
+              className="w-full border-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+            />
+          </label>
+        </div>
+        {catalog.sections.map((section: any) => (
+          <section key={section.name} className="mb-10">
+            <div className="mb-4 flex items-end justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-slate-900">{t(section.name)}</h3>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-caption font-bold text-slate-600">
+                    {workflowCatalogTemplatesForDisplay(section.templates).length}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  {section.name === "Company Templates"
+                    ? t("Centrally governed workflows available across the organization.")
+                    : section.name === "Department / Branch Templates"
+                      ? t("Templates managed for your department or branch.")
+                      : t("Personal templates you can reuse and refine.")}
+                </p>
               </div>
-              <p className="mt-1 text-xs text-slate-500">
-                {section.name === "Company Templates"
-                  ? "Centrally governed workflows available across the organization."
-                  : section.name === "Department / Branch Templates"
-                    ? "Templates managed for your department or branch."
-                    : "Personal templates you can reuse and refine."}
-              </p>
             </div>
-          </div>
-          <div className="grid gap-5 lg:grid-cols-2">
-            {[...workflowCatalogTemplatesForDisplay(section.templates)]
-              .sort((left: WorkflowCatalogTemplate, right: WorkflowCatalogTemplate) => `${left.kind === "WORKFLOW" ? "1" : "2"}-${left.catalogGroup || ""}-${left.title}`.localeCompare(`${right.kind === "WORKFLOW" ? "1" : "2"}-${right.catalogGroup || ""}-${right.title}`))
-              .map((template: WorkflowCatalogTemplate) => (
-              <article
-                key={template.id}
-                className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-xs transition duration-200 hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-semantic-success-surface text-semantic-success ring-1 ring-emerald-100">
-                    <Workflow className="h-4 w-4" />
+            <div className="grid gap-5 lg:grid-cols-2">
+              {[...workflowCatalogTemplatesForDisplay(section.templates)]
+                .sort((left: WorkflowCatalogTemplate, right: WorkflowCatalogTemplate) => `${left.kind === "WORKFLOW" ? "1" : "2"}-${left.catalogGroup || ""}-${left.title}`.localeCompare(`${right.kind === "WORKFLOW" ? "1" : "2"}-${right.catalogGroup || ""}-${right.title}`))
+                .map((template: WorkflowCatalogTemplate) => (
+                <article
+                  key={template.id}
+                  className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-xs transition duration-200 hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-semantic-success-surface text-semantic-success ring-1 ring-emerald-100">
+                      <Workflow className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="truncate text-sm font-bold text-slate-900">
+                        {t(template.title)}
+                      </h4>
+                      <p title={t(template.purpose)} className="mt-0.5 line-clamp-1 text-xs leading-5 text-slate-500">
+                        {t(template.purpose)}
+                      </p>
+                    </div>
+                    <span className="ml-auto shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-caption font-bold text-slate-600">
+                      v{template.publishedWorkflowVersion}
+                    </span>
                   </div>
-                  <div className="min-w-0">
-                    <h4 className="truncate text-sm font-bold text-slate-900">
-                      {template.title}
-                    </h4>
-                    <p title={template.purpose} className="mt-0.5 line-clamp-1 text-xs leading-5 text-slate-500">
-                      {template.purpose}
+                  <div className="my-3.5 grid grid-cols-4 divide-x divide-slate-200 rounded-xl border border-slate-100 bg-slate-50/80 py-2.5 text-center">
+                    <Metric
+                      value={formatDuration(template.estimatedDurationMinutes)}
+                      label="Duration"
+                    />
+                    <Metric value={template.departmentCount} label="Teams" />
+                    <Metric value={template.approvalCount} label="Approvals" />
+                    <Metric value={template.automationCount} label="Auto" />
+                  </div>
+                  <div className="mb-2.5 flex items-center justify-between gap-3 text-caption font-semibold text-slate-500">
+                    <span className="min-w-0 truncate rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">
+                      {template.scope === "COMPANY" ? t("Company") : template.scope === "DEPARTMENT" ? t("Department / Branch") : t("User")} · {t(template.domain.replaceAll("_", " "))}
+                    </span>
+                    <span>
+                      {template.runCount.toLocaleString()} {t('runs')} ·{" "}
+                      {template.successRate}% {t('success')}
+                    </span>
+                  </div>
+                  <div className="mb-2.5 flex flex-wrap gap-1.5 text-micro font-bold uppercase tracking-wide">
+                    <span className={`rounded-full px-2 py-0.5 ${template.kind === "WORKFLOW" ? "bg-violet-50 text-violet-700" : "bg-emerald-50 text-emerald-700"}`}>
+                      {template.kind === "WORKFLOW" ? t("Approval workflow") : t("Help Desk task")}
+                    </span>
+                    {template.catalogGroup && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">{t(template.catalogGroup)}</span>}
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => onPreview(template)}
+                      className="wrike-btn-secondary h-9 flex-1 px-2 text-xs"
+                    >
+                      {t('Preview')}
+                    </button>
+                    <button
+                      onClick={() => onLaunch(template)}
+                      className="wrike-btn-primary h-9 flex-1 px-2 text-xs"
+                    >
+                      {t('Launch')}
+                    </button>
+                    <button
+                      onClick={() => onClone(template)}
+                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
+                      title={t('Clone as an editable draft')}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </button>
+                    {template.canEdit && (
+                      <button
+                        onClick={() => onEdit(template)}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
+                        title={t('Open published definition')}
+                      >
+                        <Code2 className="h-4 w-4" />
+                      </button>
+                    )}
+                    {template.canDelete && (
+                      <button
+                        onClick={() => onDelete(template)}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50"
+                        title={t('Remove template from catalog')}
+                        aria-label={`${t('Remove')} ${t(template.title)}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </article>
+                  ))}
+              {!workflowCatalogTemplatesForDisplay(section.templates).length && (
+                <div className="flex min-h-28 items-center gap-4 rounded-2xl border border-dashed border-slate-300 bg-white/70 px-5 py-5 text-left">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+                    <Layers3 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700">
+                      {t('No published templates yet')}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {t('Create a governed draft for')} {t(section.name).toLowerCase()} {t('and publish an immutable version when it is ready.')}
                     </p>
                   </div>
-                  <span className="ml-auto shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-caption font-bold text-slate-600">
-                    v{template.publishedWorkflowVersion}
-                  </span>
                 </div>
-                <div className="my-3.5 grid grid-cols-4 divide-x divide-slate-200 rounded-xl border border-slate-100 bg-slate-50/80 py-2.5 text-center">
-                  <Metric
-                    value={formatDuration(template.estimatedDurationMinutes)}
-                    label="Duration"
-                  />
-                  <Metric value={template.departmentCount} label="Teams" />
-                  <Metric value={template.approvalCount} label="Approvals" />
-                  <Metric value={template.automationCount} label="Auto" />
-                </div>
-                <div className="mb-2.5 flex items-center justify-between gap-3 text-caption font-semibold text-slate-500">
-                  <span className="min-w-0 truncate rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">
-                    {template.scope === "COMPANY" ? "Company" : template.scope === "DEPARTMENT" ? "Department / Branch" : "User"} · {template.domain.replaceAll("_", " ")}
-                  </span>
-                  <span>
-                    {template.runCount.toLocaleString()} runs ·{" "}
-                    {template.successRate}% success
-                  </span>
-                </div>
-                <div className="mb-2.5 flex flex-wrap gap-1.5 text-micro font-bold uppercase tracking-wide">
-                  <span className={`rounded-full px-2 py-0.5 ${template.kind === "WORKFLOW" ? "bg-violet-50 text-violet-700" : "bg-emerald-50 text-emerald-700"}`}>
-                    {template.kind === "WORKFLOW" ? "Approval workflow" : "Help Desk task"}
-                  </span>
-                  {template.catalogGroup && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">{template.catalogGroup}</span>}
-                </div>
-                <div className="flex gap-1.5">
-                  <button
-                    onClick={() => onPreview(template)}
-                    className="wrike-btn-secondary h-9 flex-1 px-2 text-xs"
-                  >
-                    Preview
-                  </button>
-                  <button
-                    onClick={() => onLaunch(template)}
-                    className="wrike-btn-primary h-9 flex-1 px-2 text-xs"
-                  >
-                    Launch
-                  </button>
-                  <button
-                    onClick={() => onClone(template)}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
-                    title="Clone as an editable draft"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </button>
-                  {template.canEdit && (
-                    <button
-                      onClick={() => onEdit(template)}
-                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
-                      title="Open published definition"
-                    >
-                      <Code2 className="h-4 w-4" />
-                    </button>
-                  )}
-                  {template.canDelete && (
-                    <button
-                      onClick={() => onDelete(template)}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50"
-                      title="Remove template from catalog"
-                      aria-label={`Remove ${template.title} from catalog`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              </article>
-                ))}
-            {!workflowCatalogTemplatesForDisplay(section.templates).length && (
-              <div className="flex min-h-28 items-center gap-4 rounded-2xl border border-dashed border-slate-300 bg-white/70 px-5 py-5 text-left">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
-                  <Layers3 className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-700">
-                    No published templates yet
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Create a governed draft for {section.name.toLowerCase()} and publish an immutable version when it is ready.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-      ))}
+              )}
+            </div>
+          </section>
+        ))}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
-const Metric = ({ value, label }: any) => (
-  <div>
-    <div className="text-xs font-bold text-slate-800">{value}</div>
-    <div className="text-micro uppercase tracking-wide text-slate-400">
-      {label}
+const Metric = ({ value, label }: any) => {
+  const { t } = useI18n();
+  return (
+    <div>
+      <div className="text-xs font-bold text-slate-800">{value}</div>
+      <div className="text-micro uppercase tracking-wide text-slate-400">
+        {t(label)}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const TemplatePreview = ({
   detail,
@@ -2754,64 +2772,67 @@ const TemplatePreview = ({
   onLaunch,
   onEdit,
   onClone,
-}: any) => (
-  <div className="fixed inset-0 z-dsDialog flex justify-end bg-slate-950/30 backdrop-blur-[1px]">
-    <div className="flex h-full w-[620px] flex-col bg-white shadow-2xl">
-      <header className="flex items-start justify-between border-b border-slate-200 p-6">
-        <div>
-          <div className="mb-2 text-xs font-bold uppercase tracking-wider text-semantic-success">
-            {detail.template.category} · v{detail.version.version}
+}: any) => {
+  const { t } = useI18n();
+  return (
+    <div className="fixed inset-0 z-dsDialog flex justify-end bg-slate-950/30 backdrop-blur-[1px]">
+      <div className="flex h-full w-[620px] flex-col bg-white shadow-2xl">
+        <header className="flex items-start justify-between border-b border-slate-200 p-6">
+          <div>
+            <div className="mb-2 text-xs font-bold uppercase tracking-wider text-semantic-success">
+              {t(detail.template.category)} · v{detail.version.version}
+            </div>
+            <h2 className="text-xl font-bold">{t(detail.template.title)}</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              {t(detail.template.purpose)}
+            </p>
           </div>
-          <h2 className="text-xl font-bold">{detail.template.title}</h2>
-          <p className="mt-2 text-sm text-slate-500">
-            {detail.template.purpose}
-          </p>
-        </div>
-        <button onClick={onClose} className="rounded-lg p-2 hover:bg-slate-100">
-          <X className="h-5 w-5" />
-        </button>
-      </header>
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="mb-6 grid grid-cols-4 gap-2 rounded-xl bg-slate-50 p-3">
-          <Metric
-            value={formatDuration(detail.template.estimatedDurationMinutes)}
-            label="Duration"
-          />
-          <Metric value={detail.template.departmentCount} label="Teams" />
-          <Metric value={detail.template.approvalCount} label="Approvals" />
-          <Metric value={detail.template.automationCount} label="Automations" />
-        </div>
-        <div
-          className={`rounded-xl border p-3 text-sm ${detail.preflight.valid ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"}`}
-        >
-          <div className="flex items-center gap-2 font-bold">
-            {detail.preflight.valid ? (
-              <CheckCircle2 className="h-4 w-4" />
-            ) : (
-              <AlertCircle className="h-4 w-4" />
-            )}
-            Pre-flight: {detail.preflight.summary.errors} errors ·{" "}
-            {detail.preflight.summary.warnings} warnings ·{" "}
-            {detail.preflight.summary.recommendations} recommendations
-          </div>
-        </div>
-      </div>
-      <footer className="flex gap-2 border-t border-slate-200 p-4">
-        {detail.template.canEdit && (
-          <button onClick={onEdit} className="wrike-btn-secondary flex-1 py-2">
-            Open in Builder
+          <button onClick={onClose} className="rounded-lg p-2 hover:bg-slate-100" aria-label={t('Close')}>
+            <X className="h-5 w-5" />
           </button>
-        )}
-        <button onClick={onClone} className="wrike-btn-secondary flex-1 py-2">
-          Clone Draft
-        </button>
-        <button onClick={onLaunch} className="wrike-btn-primary flex-1 py-2">
-          Launch Workflow
-        </button>
-      </footer>
+        </header>
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="mb-6 grid grid-cols-4 gap-2 rounded-xl bg-slate-50 p-3">
+            <Metric
+              value={formatDuration(detail.template.estimatedDurationMinutes)}
+              label="Duration"
+            />
+            <Metric value={detail.template.departmentCount} label="Teams" />
+            <Metric value={detail.template.approvalCount} label="Approvals" />
+            <Metric value={detail.template.automationCount} label="Automations" />
+          </div>
+          <div
+            className={`rounded-xl border p-3 text-sm ${detail.preflight.valid ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"}`}
+          >
+            <div className="flex items-center gap-2 font-bold">
+              {detail.preflight.valid ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <AlertCircle className="h-4 w-4" />
+              )}
+              {t('Pre-flight')}: {detail.preflight.summary.errors} {t('errors')} ·{" "}
+              {detail.preflight.summary.warnings} {t('warnings')} ·{" "}
+              {detail.preflight.summary.recommendations} {t('recommendations')}
+            </div>
+          </div>
+        </div>
+        <footer className="flex gap-2 border-t border-slate-200 p-4">
+          {detail.template.canEdit && (
+            <button onClick={onEdit} className="wrike-btn-secondary flex-1 py-2">
+              {t('Open in Builder')}
+            </button>
+          )}
+          <button onClick={onClone} className="wrike-btn-secondary flex-1 py-2">
+            {t('Clone Draft')}
+          </button>
+          <button onClick={onLaunch} className="wrike-btn-primary flex-1 py-2">
+            {t('Launch Workflow')}
+          </button>
+        </footer>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const DynamicIntakeModal = ({
   requestType,
@@ -3855,16 +3876,17 @@ const conditionOperatorsFor = (kind: ConditionValueKind) => {
 };
 
 const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRemove, currentUser }: any) => {
+  const { t } = useI18n();
   if (isFixedEndpoint(node)) {
     return (
       <div>
         <div className="mb-3 flex items-center gap-2 text-semantic-success">
           <LockKeyhole className="h-4 w-4" />
-          <span className="text-caption font-bold uppercase tracking-wider">Fixed endpoint</span>
+          <span className="text-caption font-bold uppercase tracking-wider">{t('Fixed endpoint')}</span>
         </div>
-        <h3 className="text-sm font-bold">{node.type === "START" ? "Start" : "Complete"}</h3>
+        <h3 className="text-sm font-bold">{node.type === "START" ? t("Start") : t("Complete")}</h3>
         <p className="mt-2 text-xs leading-5 text-slate-500">
-          This default node marks where the workflow begins or completes. It is protected from deletion and duplication, but you can move it and connect it on the canvas.
+          {t('This default node marks where the workflow begins or completes. It is protected from deletion and duplication, but you can move it and connect it on the canvas.')}
         </p>
       </div>
     );

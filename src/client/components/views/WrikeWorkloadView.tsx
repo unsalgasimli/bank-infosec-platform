@@ -12,6 +12,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 import { Ticket } from '../../../shared/types/ticket.js';
 import { TeamWorkloadMember } from '../../../shared/types/workload.js';
 
@@ -29,6 +30,7 @@ export const WrikeWorkloadView: React.FC<WrikeWorkloadViewProps> = ({
   dataScope = 'authorized',
 }) => {
   const { fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [members, setMembers] = useState<TeamWorkloadMember[]>([]);
   const [selectedWeek, setSelectedWeek] = useState('Current Sprint Week (Aug 18 - Aug 24)');
   const [totalCapacity, setTotalCapacity] = useState(160);
@@ -103,14 +105,14 @@ export const WrikeWorkloadView: React.FC<WrikeWorkloadViewProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-semantic-primary">
-                Wrike Workload & Resource Capacity
+                {t('Wrike Workload & Resource Capacity')}
               </h2>
               <span className="px-2 py-0.5 rounded-full bg-semantic-purple-surface text-semantic-purple text-caption font-bold border border-semantic-purple-border">
-                Real-Time Backend Synced ({utilizationPct}%)
+                {t('Real-Time Backend Synced')} ({utilizationPct}%)
               </span>
             </div>
             <p className="text-label text-semantic-jira-muted-alt">
-              Monitor team capacity, prevent analyst burnout, and balance emergency security workload.
+              {t('Monitor team capacity, prevent analyst burnout, and balance emergency security workload.')}
             </p>
           </div>
         </div>
@@ -122,7 +124,7 @@ export const WrikeWorkloadView: React.FC<WrikeWorkloadViewProps> = ({
             className="wrike-btn-primary text-xs py-1.5"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Auto-Balance Capacity</span>
+            <span>{t('Auto-Balance Capacity')}</span>
           </button>
         </div>
       </div>
@@ -168,11 +170,11 @@ export const WrikeWorkloadView: React.FC<WrikeWorkloadViewProps> = ({
                       </span>
                       {member.isOverAllocated ? (
                         <span className="px-2 py-0.5 rounded-full bg-semantic-danger-surface text-semantic-danger border border-semantic-danger-border text-caption font-bold flex items-center gap-1">
-                          <AlertTriangle className="w-2.5 h-2.5" /> Over Capacity
+                          <AlertTriangle className="w-2.5 h-2.5" /> {t('Over Capacity')}
                         </span>
                       ) : (
                         <span className="px-2 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success border border-semantic-success-border text-caption font-bold">
-                          Optimal
+                          {t('Optimal')}
                         </span>
                       )}
                     </div>
@@ -194,11 +196,11 @@ export const WrikeWorkloadView: React.FC<WrikeWorkloadViewProps> = ({
                 {/* Assigned Tasks Strip */}
                 <div className="pt-2 border-t border-semantic-table">
                   <div className="text-caption font-bold uppercase tracking-wider text-semantic-jira-muted-alt mb-1.5">
-                    Active Assigned Work ({memberTickets.length} items)
+                    {t('Active Assigned Work')} ({memberTickets.length} {t('items')})
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {memberTickets.length === 0 ? (
-                      <span className="text-xs text-semantic-muted-alt italic">No active high-priority tasks assigned.</span>
+                      <span className="text-xs text-semantic-muted-alt italic">{t('No active high-priority tasks assigned.')}</span>
                     ) : (
                       memberTickets.map((t) => (
                         <div

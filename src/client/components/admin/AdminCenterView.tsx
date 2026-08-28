@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 import {
   Settings,
   Users,
@@ -52,6 +53,7 @@ const createSlaDraft = () => ({
 
 export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = 'SETTINGS', onNavigate }) => {
   const { allUsers, refreshUsers, fetchWithAuth } = useAuth();
+  const { t } = useI18n();
 
   const getMappedTab = (tabStr: string): 'SETTINGS' | 'USERS' | 'DIRECTORY' | 'WORKFLOWS' | 'SLA' | 'AUTOMATION' | 'TAXONOMY' | 'INTEGRATIONS' => {
     switch (tabStr) {
@@ -361,10 +363,10 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
           </div>
           <div>
             <h1 className="text-lg font-bold text-semantic-primary tracking-tight">
-              Enterprise Administration & Configuration Engine
+              {t('Enterprise Administration & Configuration Engine')}
             </h1>
             <p className="text-xs text-semantic-muted mt-0.5">
-              RBAC directory, state machines, SLA policies, automation rules, taxonomies, integrations, and immutable audit logs.
+              {t('RBAC directory, state machines, SLA policies, automation rules, taxonomies, integrations, and immutable audit logs.')}
             </p>
           </div>
         </div>
@@ -373,13 +375,13 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
           {activeTab === 'SETTINGS' && (
             <button onClick={handleExportAuditCSV} className="wrike-btn-primary text-xs py-1.5 px-3">
               <Download className="w-3.5 h-3.5" />
-              <span>Export Audit CSV</span>
+              <span>{t('Export Audit CSV')}</span>
             </button>
           )}
           {activeTab === 'AUTOMATION' && (
             <button onClick={handleRunAutomation} className="wrike-btn-primary text-xs py-1.5 px-3">
               <Play className="w-3.5 h-3.5" />
-              <span>Trigger Rule Engine</span>
+              <span>{t('Trigger Rule Engine')}</span>
             </button>
           )}
         </div>
@@ -388,14 +390,14 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
       {/* Navigation Sub-Tabs */}
       <div className="border-b border-semantic-border flex items-center gap-2 overflow-x-auto pb-0 custom-scrollbar text-xs font-bold">
         {[
-          { id: 'SETTINGS', label: 'Settings & Audit Log', icon: Sliders },
-          { id: 'SLA', label: 'SLA Policies', icon: Clock },
-          { id: 'WORKFLOWS', label: 'Workflow Templates', icon: Workflow },
-          { id: 'AUTOMATION', label: 'Automations', icon: Zap },
-          { id: 'TAXONOMY', label: 'Taxonomy', icon: Tag },
-          { id: 'INTEGRATIONS', label: 'Integrations', icon: Share2 },
-          { id: 'USERS', label: 'User Directory', icon: Users },
-          { id: 'DIRECTORY', label: 'Directory Governance', icon: ShieldCheck },
+          { id: 'SETTINGS', label: t('Settings & Audit Log'), icon: Sliders },
+          { id: 'SLA', label: t('SLA Policies'), icon: Clock },
+          { id: 'WORKFLOWS', label: t('Workflow Templates'), icon: Workflow },
+          { id: 'AUTOMATION', label: t('Automations'), icon: Zap },
+          { id: 'TAXONOMY', label: t('Taxonomy'), icon: Tag },
+          { id: 'INTEGRATIONS', label: t('Integrations'), icon: Share2 },
+          { id: 'USERS', label: t('User Directory'), icon: Users },
+          { id: 'DIRECTORY', label: t('Directory Governance'), icon: ShieldCheck },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -500,36 +502,36 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
         <div className="space-y-4">
           <div className="wrike-card p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
             <div>
-              <h2 className="text-sm font-bold text-semantic-primary">SLA Policy Configuration</h2>
-              <p className="text-xs text-semantic-muted mt-0.5">Persisted PostgreSQL configuration with server-side validation and audit history.</p>
+              <h2 className="text-sm font-bold text-semantic-primary">{t('SLA Policy Configuration')}</h2>
+              <p className="text-xs text-semantic-muted mt-0.5">{t('Persisted PostgreSQL configuration with server-side validation and audit history.')}</p>
             </div>
             <button onClick={() => openSlaEditor()} className="wrike-btn-primary text-xs py-2 px-3 flex items-center gap-2 self-start md:self-auto">
-              <Plus className="w-3.5 h-3.5" /> New SLA Policy
+              <Plus className="w-3.5 h-3.5" /> {t('New SLA Policy')}
             </button>
           </div>
 
           {slaError && <div className="rounded-lg border border-semantic-danger-border bg-semantic-danger-surface px-3 py-2 text-xs text-semantic-danger">{slaError}</div>}
           {slaLoading ? (
-            <div className="wrike-card p-10 flex items-center justify-center gap-2 text-xs text-semantic-muted"><Loader2 className="w-4 h-4 animate-spin" /> Loading persisted SLA policies...</div>
+            <div className="wrike-card p-10 flex items-center justify-center gap-2 text-xs text-semantic-muted"><Loader2 className="w-4 h-4 animate-spin" /> {t('Loading persisted SLA policies...')}</div>
           ) : slaPolicies.length === 0 ? (
-            <div className="wrike-card p-10 text-center text-xs text-semantic-muted">No SLA policies are configured in the database.</div>
+            <div className="wrike-card p-10 text-center text-xs text-semantic-muted">{t('No SLA policies are configured in the database.')}</div>
           ) : slaPolicies.map((sla: any) => (
             <div key={sla.id} className={`wrike-card p-5 space-y-4 shadow-xs ${sla.isActive === false ? 'opacity-70' : ''}`}>
               <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 border-b border-semantic-border pb-3">
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-bold text-semantic-primary text-sm">{sla.name}</h3>
-                    {sla.isDefault && <span className="px-2 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success border border-semantic-success-border font-mono text-caption font-bold">DEFAULT</span>}
+                    {sla.isDefault && <span className="px-2 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success border border-semantic-success-border font-mono text-caption font-bold">{t('DEFAULT')}</span>}
                     <span className={`px-2 py-0.5 rounded-full border font-mono text-caption font-bold ${sla.isActive === false ? 'bg-semantic-danger-surface text-semantic-danger border-semantic-danger-border' : 'bg-semantic-neutral-surface text-semantic-secondary border-semantic-border'}`}>
-                      {sla.isActive === false ? 'ARCHIVED' : 'ACTIVE'}
+                      {sla.isActive === false ? t('ARCHIVED') : t('ACTIVE')}
                     </span>
                   </div>
-                  <p className="text-xs text-semantic-muted mt-1">{sla.description || 'No description provided.'}</p>
-                  <p className="text-caption text-semantic-placeholder mt-2 font-mono">{sla.businessHoursOnly ? `${sla.businessStartTime}–${sla.businessEndTime}` : '24/7'} · {sla.timezone} · {sla.excludeWeekends ? 'Weekends excluded' : 'Weekends included'}</p>
+                  <p className="text-xs text-semantic-muted mt-1">{sla.description || t('No description provided.')}</p>
+                  <p className="text-caption text-semantic-placeholder mt-2 font-mono">{sla.businessHoursOnly ? `${sla.businessStartTime}–${sla.businessEndTime}` : '24/7'} · {sla.timezone} · {sla.excludeWeekends ? t('Weekends excluded') : t('Weekends included')}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => openSlaEditor(sla)} className="px-2.5 py-1.5 rounded-lg border border-semantic-border text-semantic-secondary hover:bg-semantic-subtle text-xs flex items-center gap-1.5"><Pencil className="w-3.5 h-3.5" /> Edit</button>
-                  {sla.isActive !== false && <button onClick={() => archiveSlaPolicy(sla)} className="px-2.5 py-1.5 rounded-lg border border-semantic-danger-border text-semantic-danger hover:bg-semantic-danger-surface text-xs flex items-center gap-1.5"><Trash2 className="w-3.5 h-3.5" /> Archive</button>}
+                  <button onClick={() => openSlaEditor(sla)} className="px-2.5 py-1.5 rounded-lg border border-semantic-border text-semantic-secondary hover:bg-semantic-subtle text-xs flex items-center gap-1.5"><Pencil className="w-3.5 h-3.5" /> {t('Edit')}</button>
+                  {sla.isActive !== false && <button onClick={() => archiveSlaPolicy(sla)} className="px-2.5 py-1.5 rounded-lg border border-semantic-danger-border text-semantic-danger hover:bg-semantic-danger-surface text-xs flex items-center gap-1.5"><Trash2 className="w-3.5 h-3.5" /> {t('Archive')}</button>}
                 </div>
               </div>
 
@@ -608,7 +610,7 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
               {/* State Machine */}
               <div className="p-4 bg-semantic-subtle rounded-lg border border-semantic-border space-y-3">
                 <div className="text-label uppercase font-bold text-semantic-muted tracking-wider">
-                  State Machine Lifecycle & Validated Transitions
+                  {t('State Machine Lifecycle & Validated Transitions')}
                 </div>
                 <div className="flex items-center gap-3 overflow-x-auto py-2">
                   {wf.states.map((s: any, idx: number) => (
@@ -666,43 +668,43 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
         <div className="wrike-card p-5 space-y-4 shadow-xs">
           <div className="border-b border-semantic-border pb-3">
             <h3 className="text-xs font-bold text-semantic-primary uppercase tracking-wider">
-              Banking Ticket Taxonomy & Classification Scheme
+              {t('Banking Ticket Taxonomy & Classification Scheme')}
             </h3>
             <p className="text-xs text-semantic-muted mt-0.5">
-              Standardized categories, severity metrics, and confidentiality clearance tiers.
+              {t('Standardized categories, severity metrics, and confidentiality clearance tiers.')}
             </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-xs">
             <div className="p-4 bg-semantic-subtle rounded-lg border border-semantic-border space-y-2">
-              <div className="font-bold text-semantic-primary">Confidentiality Tiers</div>
+              <div className="font-bold text-semantic-primary">{t('Confidentiality Tiers')}</div>
               <ul className="space-y-1 text-semantic-muted font-mono">
-                <li>• PUBLIC (Tier 1)</li>
-                <li>• INTERNAL (Tier 2)</li>
-                <li>• RESTRICTED (Tier 3)</li>
-                <li>• CONFIDENTIAL_SECURITY_ONLY (Tier 4)</li>
-                <li>• HIGHLY_RESTRICTED_HR_LEGAL (Tier 5)</li>
+                <li>• {t('PUBLIC')} ({t('Tier 1')})</li>
+                <li>• {t('INTERNAL')} ({t('Tier 2')})</li>
+                <li>• {t('RESTRICTED')} ({t('Tier 3')})</li>
+                <li>• {t('CONFIDENTIAL_SECURITY_ONLY')} ({t('Tier 4')})</li>
+                <li>• {t('HIGHLY_RESTRICTED_HR_LEGAL')} ({t('Tier 5')})</li>
               </ul>
             </div>
 
             <div className="p-4 bg-semantic-subtle rounded-lg border border-semantic-border space-y-2">
-              <div className="font-bold text-semantic-primary">Technical Severity Levels</div>
+              <div className="font-bold text-semantic-primary">{t('Technical Severity Levels')}</div>
               <ul className="space-y-1 text-semantic-muted font-mono">
-                <li className="text-semantic-danger font-bold">• CRITICAL (15m MTTA / 2h MTTR)</li>
-                <li className="text-semantic-warning">• HIGH (30m MTTA / 24h MTTR)</li>
-                <li className="text-semantic-info">• MEDIUM (1h MTTA / 72h MTTR)</li>
-                <li className="text-semantic-muted">• LOW (2h MTTA / 7d MTTR)</li>
+                <li className="text-semantic-danger font-bold">• {t('CRITICAL')} (15m MTTA / 2h MTTR)</li>
+                <li className="text-semantic-warning">• {t('HIGH')} (30m MTTA / 24h MTTR)</li>
+                <li className="text-semantic-info">• {t('MEDIUM')} (1h MTTA / 72h MTTR)</li>
+                <li className="text-semantic-muted">• {t('LOW')} (2h MTTA / 7d MTTR)</li>
               </ul>
             </div>
 
             <div className="p-4 bg-semantic-subtle rounded-lg border border-semantic-border space-y-2">
-              <div className="font-bold text-semantic-primary">Core Categories</div>
+              <div className="font-bold text-semantic-primary">{t('Core Categories')}</div>
               <ul className="space-y-1 text-semantic-muted font-mono">
-                <li>• INCIDENT (SOC & Security)</li>
-                <li>• VULNERABILITY (AppSec & VM)</li>
-                <li>• SECURITY_EXCEPTION (GRC Waiver)</li>
-                <li>• SERVICE_REQUEST (ITSM)</li>
-                <li>• CHANGE_REQUEST (CAB)</li>
+                <li>• {t('INCIDENT')} ({t('SOC & Security')})</li>
+                <li>• {t('VULNERABILITY')} ({t('AppSec & VM')})</li>
+                <li>• {t('SECURITY_EXCEPTION')} ({t('GRC Waiver')})</li>
+                <li>• {t('SERVICE_REQUEST')} (ITSM)</li>
+                <li>• {t('CHANGE_REQUEST')} (CAB)</li>
               </ul>
             </div>
           </div>
@@ -722,14 +724,14 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-bold text-semantic-primary">
-                      Active Directory / LDAP Daily User Synchronization
+                      {t('Active Directory / LDAP Daily User Synchronization')}
                     </h3>
                     <span className="px-2 py-0.5 rounded bg-semantic-success-surface text-semantic-success font-mono text-caption font-bold">
-                      DAILY 13:30 GMT+4
+                      {t('DAILY 13:30 GMT+4')}
                     </span>
                   </div>
                   <p className="text-xs text-semantic-muted mt-0.5">
-                    Automatically pulls all domain users, categorizes by Department/Şöbə, synchronizes added/disabled status, and cleans duplicate records.
+                    {t('Automatically pulls all domain users, categorizes by Department/Şöbə, synchronizes added/disabled status, and cleans duplicate records.')}
                   </p>
                 </div>
               </div>
@@ -740,7 +742,7 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
                 className="wrike-btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5 shrink-0"
               >
                 <Play className={`w-3.5 h-3.5 ${isLdapSyncing ? 'animate-spin' : ''}`} />
-                <span>{isLdapSyncing ? 'Syncing Directory...' : 'Trigger Daily Check Now'}</span>
+                <span>{isLdapSyncing ? t('Syncing Directory...') : t('Trigger Daily Check Now')}</span>
               </button>
             </div>
 
@@ -753,45 +755,45 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
               <div className="p-3 bg-semantic-subtle rounded-lg border border-semantic-border">
-                <div className="text-label text-semantic-muted font-semibold">Scheduled Daily Run</div>
-                <div className="font-bold text-semantic-primary text-sm mt-0.5">13:30 GMT+4 (Asia/Baku)</div>
-                <div className="text-caption text-semantic-placeholder font-mono">UTC+4 Precision Scheduler</div>
+                <div className="text-label text-semantic-muted font-semibold">{t('Scheduled Daily Run')}</div>
+                <div className="font-bold text-semantic-primary text-sm mt-0.5">13:30 GMT+4 ({t('Asia/Baku')})</div>
+                <div className="text-caption text-semantic-placeholder font-mono">{t('UTC+4 Precision Scheduler')}</div>
               </div>
 
               <div className="p-3 bg-semantic-subtle rounded-lg border border-semantic-border">
-                <div className="text-label text-semantic-muted font-semibold">Next Scheduled Check</div>
+                <div className="text-label text-semantic-muted font-semibold">{t('Next Scheduled Check')}</div>
                 <div className="font-bold text-semantic-success text-sm mt-0.5">
-                  {ldapStatus?.nextRunFormattedGMT4 || 'Today at 13:30 GMT+4'}
+                  {ldapStatus?.nextRunFormattedGMT4 || t('Today at 13:30 GMT+4')}
                 </div>
                 <div className="text-caption text-semantic-muted">
-                  {ldapStatus?.nextRunInSeconds ? `in ~${Math.round(ldapStatus.nextRunInSeconds / 60)} minutes` : 'Armed & active'}
+                  {ldapStatus?.nextRunInSeconds ? `${t('in ~')}${Math.round(ldapStatus.nextRunInSeconds / 60)} ${t('minutes')}` : t('Armed & active')}
                 </div>
               </div>
 
               <div className="p-3 bg-semantic-subtle rounded-lg border border-semantic-border">
-                <div className="text-label text-semantic-muted font-semibold">Last Synchronization</div>
+                <div className="text-label text-semantic-muted font-semibold">{t('Last Synchronization')}</div>
                 <div className="font-bold text-semantic-primary text-sm mt-0.5">
-                  {ldapStatus?.lastRunFormattedGMT4 || 'Synchronized on boot'}
+                  {ldapStatus?.lastRunFormattedGMT4 || t('Synchronized on boot')}
                 </div>
                 <div className="text-caption text-semantic-muted">
                   {ldapStatus?.lastSyncReport?.totalLdapUsers
-                    ? `${ldapStatus.lastSyncReport.totalLdapUsers} users processed`
-                    : `${allUsers.length} total users`}
+                    ? `${ldapStatus.lastSyncReport.totalLdapUsers} ${t('users processed')}`
+                    : `${allUsers.length} ${t('total users')}`}
                 </div>
               </div>
 
               <div className="p-3 bg-semantic-subtle rounded-lg border border-semantic-border">
-                <div className="text-label text-semantic-muted font-semibold">Account State Stats</div>
+                <div className="text-label text-semantic-muted font-semibold">{t('Account State Stats')}</div>
                 <div className="font-bold text-semantic-primary text-sm mt-0.5">
-                  {allUsers.filter((u) => u.isActive).length} Active / {allUsers.filter((u) => !u.isActive).length} Disabled
+                  {allUsers.filter((u) => u.isActive).length} {t('Active')} / {allUsers.filter((u) => !u.isActive).length} {t('Disabled')}
                 </div>
-                <div className="text-caption text-semantic-success font-bold">0 Duplicates (Cleaned)</div>
+                <div className="text-caption text-semantic-success font-bold">{t('0 Duplicates (Cleaned)')}</div>
               </div>
             </div>
 
             {/* Department / Şöbə Overview Pills */}
             <div className="space-y-2 pt-2 border-t border-semantic-border">
-              <div className="text-xs font-bold text-semantic-primary">Synchronized Departments (Şöbələr):</div>
+              <div className="text-xs font-bold text-semantic-primary">{t('Synchronized Departments (Şöbələr):')}</div>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
                 {(ldapStatus?.departmentOverview || [
                   { id: 'dept-secops', code: 'INFOSEC', name: 'İnformasiya Təhlükəsizliyi', activeMembers: 4, disabledMembers: 0 },
@@ -804,7 +806,7 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
                     <div className="font-bold text-semantic-primary truncate">{dept.name}</div>
                     <div className="flex items-center justify-between text-caption text-semantic-muted mt-1">
                       <span className="font-mono">{dept.code}</span>
-                      <span className="font-bold text-semantic-success">{dept.activeMembers} active</span>
+                      <span className="font-bold text-semantic-success">{dept.activeMembers} {t('active')}</span>
                     </div>
                   </div>
                 ))}
@@ -816,28 +818,28 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
           <div className="wrike-card p-5 space-y-4 shadow-xs">
             <div className="border-b border-semantic-border pb-3">
               <h3 className="text-xs font-bold text-semantic-primary uppercase tracking-wider">
-                Security Operations & Ingestion Listeners
+                {t('Security Operations & Ingestion Listeners')}
               </h3>
               <p className="text-xs text-semantic-muted mt-0.5">
-                SIEM ingestion listeners, vulnerability scanners, and automated deduplication.
+                {t('SIEM ingestion listeners, vulnerability scanners, and automated deduplication.')}
               </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
               <div className="p-4 bg-semantic-subtle rounded-lg border border-semantic-border space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-semantic-primary">Splunk / QRadar SIEM Ingestion</span>
-                  <span className="px-2 py-0.5 rounded bg-semantic-success-surface text-semantic-success font-mono font-bold">LISTENING</span>
+                  <span className="font-bold text-semantic-primary">{t('Splunk / QRadar SIEM Ingestion')}</span>
+                  <span className="px-2 py-0.5 rounded bg-semantic-success-surface text-semantic-success font-mono font-bold">{t('LISTENING')}</span>
                 </div>
-                <p className="text-semantic-muted">Endpoint: /api/findings/ingest • Fingerprint Deduplication Active</p>
+                <p className="text-semantic-muted">{t('Endpoint: /api/findings/ingest • Fingerprint Deduplication Active')}</p>
               </div>
 
               <div className="p-4 bg-semantic-subtle rounded-lg border border-semantic-border space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-semantic-primary">Vulnerability Scanner Connector</span>
-                  <span className="px-2 py-0.5 rounded bg-semantic-success-surface text-semantic-success font-mono font-bold">ACTIVE</span>
+                  <span className="font-bold text-semantic-primary">{t('Vulnerability Scanner Connector')}</span>
+                  <span className="px-2 py-0.5 rounded bg-semantic-success-surface text-semantic-success font-mono font-bold">{t('ACTIVE')}</span>
                 </div>
-                <p className="text-semantic-muted">Tenable Nessus / Qualys VM • Auto-Triage Severity & Ticket Creation</p>
+                <p className="text-semantic-muted">{t('Tenable Nessus / Qualys VM • Auto-Triage Severity & Ticket Creation')}</p>
               </div>
             </div>
           </div>

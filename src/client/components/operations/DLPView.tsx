@@ -4,6 +4,7 @@ import { Badge } from '../common/Badge.js';
 import { SLARing } from '../common/SLARing.js';
 import { Lock, ShieldAlert, FileText, UserX, Search, Filter, HardDrive, Cloud, Mail, Bot, Plus, X, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 
 interface DLPViewProps {
   tickets: Ticket[];
@@ -12,6 +13,7 @@ interface DLPViewProps {
 
 export const DLPView: React.FC<DLPViewProps> = ({ tickets, onSelectTicket }) => {
   const { currentUser, fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [vectorFilter, setVectorFilter] = useState<string>('ALL');
   const [search, setSearch] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);

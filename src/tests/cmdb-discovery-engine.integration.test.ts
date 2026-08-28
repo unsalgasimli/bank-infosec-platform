@@ -1,0 +1,225 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { z } from 'zod';
+import { config } from '../server/config/index.js';
+import { pgClient } from '../server/db/postgres/client.js';
+import { DiscoveryIngestionService, type DiscoveryPayloadMapper } from '../server/services/discovery-ingestion.service.js';
+import { normalizedDiscoveryDtoSchema, type NormalizedDiscoveryDto } from '../shared/utils/cmdb-discovery-contract.js';
+
+const enabled = process.env.RUN_CMDB_DISCOVERY_INTEGRATION === '1'
+  && process.env.CMDB_DISCOVERY_DISPOSABLE_DATABASE === '1'
+  && /(?:test|e2e|integration)/i.test(config.DB_NAME);
+
+const rawFixtureSchema = z.object({ record: normalizedDiscoveryDtoSchema }).strict();
+const fixtureMapper: DiscoveryPayloadMapper<z.infer<typeof rawFixtureSchema>> = {
+  name: 'deterministic-cmdb-test-fixture',
+  normalizedSchemaVersion: 1,
+  validateRaw: (payload) => rawFixtureSchema.parse(payload),
+  normalize: (payload) => payload.record,
+};
+
+const gib = 1024 ** 3;
+const fixtureMac = (value: string) => `02:00:00:00:00:${(value.split('').reduce((sum, character) => sum + character.charCodeAt(0), 0) % 256).toString(16).padStart(2, '0')}`;
+const baseDto = (input: {
+  connectorId?: string;
+  objectId: string;
+  name: string;
+  hostname?: string;
+  biosUuid?: string;
+  memoryBytes?: number;
+  ip?: string;
+  relationshipTarget?: string;
+}): NormalizedDiscoveryDto => normalizedDiscoveryDtoSchema.parse({
+  schemaVersion: 1,
+  source: { connectorId: input.connectorId || 'dconn-test-primary', objectType: 'COMPUTE_INSTANCE', objectId: input.objectId, nativeUuid: input.biosUuid },
+  identity: {
+    name: input.name,
+    hostname: input.hostname,
+    identifiers: input.biosUuid ? [{ type: 'BIOS_UUID', namespace: 'GLOBAL', value: input.biosUuid, confidence: 100, primary: true }] : [],
+  },
+  classification: { type: 'virtual_machine', subtype: 'TEST_FIXTURE', environment: 'TEST' },
+  compute: { cpuCount: 4, memoryBytes: input.memoryBytes ?? 16 * gib },
+  operatingSystem: { configured: 'Windows Server', reported: 'Windows Server 2022', version: '2022' },
+  network: {
+    interfaces: [{
+      key: 'nic-0', name: 'eth0', technicalState: 'UP', virtual: true,
+      macAddresses: [fixtureMac(input.objectId)],
+      ipAddresses: input.ip ? [{ address: input.ip, role: 'PRIMARY', primary: true, dynamic: false }] : [],
+    }],
+  },
+  storage: { disks: [{ key: 'disk-0', name: 'System disk', type: 'VIRTUAL_DISK', technicalState: 'ONLINE', capacityBytes: 100 * gib }] },
+  placement: {
+    relationships: input.relationshipTarget ? [{
+      type: 'RUNS_ON',
+      target: { objectType: 'HYPERVISOR', objectId: input.relationshipTarget, identifiers: [] },
+      confidence: 100,
+    }] : [],
+  },
+  tags: [{ key: 'fixture', value: 'cmdb-engine' }],
+  technicalState: 'POWERED_ON',
+  sourceSpecificMetadata: { fixture: true, sourceOnlyField: 'never-canonical' },
+});
+
+const hostDto = (objectId: string, uuid: string): NormalizedDiscoveryDto => normalizedDiscoveryDtoSchema.parse({
+  schemaVersion: 1,
+  source: { connectorId: 'dconn-test-primary', objectType: 'HYPERVISOR', objectId, nativeUuid: uuid },
+  identity: { name: objectId, hostname: objectId, identifiers: [{ type: 'BIOS_UUID', namespace: 'GLOBAL', value: uuid, confidence: 100, primary: true }] },
+  classification: { type: 'hypervisor', environment: 'TEST' },
+  compute: { cpuCount: 32, memoryBytes: 256 * gib },
+  network: { interfaces: [] }, storage: { disks: [] }, placement: { relationships: [] }, tags: [],
+  operatingSystem: {}, technicalState: 'CONNECTED', sourceSpecificMetadata: { fixture: true },
+});
+
+test('generic CMDB discovery engine is deterministic, concurrent-safe and lifecycle-safe', { skip: !enabled }, async () => {
+  const observed = (minute: number) => `2026-08-28T08:${String(minute).padStart(2, '0')}:00.000Z`;
+  let runCounter = 0;
+  const createRun = async (connectorId = 'dconn-test-primary', runType: 'FULL' | 'INCREMENTAL' | 'RECONCILIATION' | 'MANUAL' = 'MANUAL') => {
+    runCounter += 1;
+    const id = `run-test-${connectorId}-${runCounter}`;
+    await pgClient.query(`INSERT INTO cmdb_discovery_sync_runs(id,connector_id,run_type,state,queued_at) VALUES($1,$2,$3,'QUEUED',NOW())`, [id, connectorId, runType]);
+    return id;
+  };
+  const ingest = (runId: string, dto: NormalizedDiscoveryDto, minute: number) => DiscoveryIngestionService.ingestObservation({
+    connectorId: dto.source.connectorId,
+    syncRunId: runId,
+    sourceObjectType: dto.source.objectType,
+    sourceObjectId: dto.source.objectId,
+    observedAt: observed(minute),
+    schemaVersion: 1,
+    rawPayload: { record: dto },
+  }, fixtureMapper);
+
+  try {
+    await pgClient.query("INSERT INTO bank_divisions(id,code,name) VALUES('div-cmdb-test','CMDBTEST','CMDB Test')");
+    await pgClient.query("INSERT INTO bank_departments(id,division_id,code,name) VALUES('dept-cmdb-test','div-cmdb-test','CMDBTEST','CMDB Test')");
+    await pgClient.query("INSERT INTO bank_users(id,username,email,first_name,last_name,title,department_id,division_id) VALUES('user-cmdb-test','cmdb.test','cmdb.test@example.invalid','CMDB','Test','CMDB Tester','dept-cmdb-test','div-cmdb-test')");
+    for (const connector of [
+      { connection: 'conn-test-primary', discovery: 'dconn-test-primary', name: 'Primary fixture source', type: 'GENERIC' },
+      { connection: 'conn-test-secondary', discovery: 'dconn-test-secondary', name: 'Secondary fixture source', type: 'GENERIC' },
+      { connection: 'conn-test-vcenter', discovery: 'dconn-test-vcenter', name: 'vCenter fixture source', type: 'VCENTER' },
+    ]) {
+      await pgClient.query(`INSERT INTO department_connections(id,department_id,name,type,provider,endpoint_url,auth_type,status,sync_frequency_minutes,description,config_summary)
+        VALUES($1,'dept-cmdb-test',$2,'CLOUD_INFRA','Test Fixture','https://invalid.example','API_KEY','DISCONNECTED',0,'integration fixture','{}')`, [connector.connection, connector.name]);
+      await pgClient.query(`INSERT INTO cmdb_discovery_connectors(id,connection_id,connector_type_id,environment,enabled,health_status,non_secret_configuration,secret_reference)
+        VALUES($1,$2,$3,'TEST',TRUE,'HEALTHY','{}','secret-manager://cmdb-test')`, [connector.discovery, connector.connection, connector.type]);
+      if (connector.type === 'VCENTER') {
+        await pgClient.query(`INSERT INTO cmdb_vcenter_connector_profiles(connector_id,endpoint_fqdn,port)
+          VALUES($1,'vcenter.fixture.invalid',443)`, [connector.discovery]);
+      }
+    }
+
+    const run1 = await createRun();
+    const vm16 = baseDto({ objectId: 'vm-a', name: 'VM A', hostname: 'shared-host', biosUuid: '11111111-1111-1111-1111-111111111111', memoryBytes: 16 * gib, ip: '10.20.30.40', relationshipTarget: 'host-1' });
+
+    // A/B/I: new asset, unchanged retry and exact concurrent redelivery.
+    const [first, duplicate] = await Promise.all([ingest(run1, vm16, 1), ingest(run1, vm16, 1)]);
+    assert.ok(first.assetId || duplicate.assetId);
+    const vmAssetId = first.assetId || duplicate.assetId!;
+    assert.equal(first.assetId, duplicate.assetId);
+    assert.equal(Number((await pgClient.query("SELECT count(*) AS count FROM configuration_items WHERE id=$1", [vmAssetId])).rows[0].count), 1);
+    assert.equal(Number((await pgClient.query("SELECT count(*) AS count FROM cmdb_source_records WHERE connector_id='dconn-test-primary' AND external_object_type='COMPUTE_INSTANCE' AND external_object_id='vm-a'")).rows[0].count), 1);
+    assert.equal(Number((await pgClient.query("SELECT count(*) AS count FROM cmdb_asset_changes WHERE asset_id=$1", [vmAssetId])).rows[0].count), 0);
+    assert.equal(Number((await pgClient.query("SELECT count(*) AS count FROM cmdb_pending_relationships WHERE source_asset_id=$1 AND status='PENDING'", [vmAssetId])).rows[0].count), 1);
+
+    // Out-of-order target arrival resolves the pending VM -> host relation.
+    const host1 = await ingest(run1, hostDto('host-1', '21111111-1111-1111-1111-111111111111'), 2);
+    const host2 = await ingest(run1, hostDto('host-2', '31111111-1111-1111-1111-111111111111'), 3);
+    assert.ok(host1.assetId && host2.assetId);
+    assert.equal(Number((await pgClient.query("SELECT count(*) AS count FROM ci_relationships WHERE source_ci_id=$1 AND target_ci_id=$2 AND relationship_type_id='runs_on' AND status='ACTIVE'", [vmAssetId, host1.assetId])).rows[0].count), 1);
+
+    // C: one RAM transition produces exactly one material field change.
+    const vm32 = baseDto({ objectId: 'vm-a', name: 'VM A', hostname: 'shared-host', biosUuid: '11111111-1111-1111-1111-111111111111', memoryBytes: 32 * gib, ip: '10.20.30.40', relationshipTarget: 'host-1' });
+    const ramChange = await ingest(run1, vm32, 4);
+    assert.deepEqual(ramChange.changedFields.filter((field) => field === 'compute.memoryBytes'), ['compute.memoryBytes']);
+    assert.equal(Number((await pgClient.query("SELECT count(*) AS count FROM cmdb_asset_changes WHERE asset_id=$1 AND field_path='compute.memoryBytes'", [vmAssetId])).rows[0].count), 1);
+    await ingest(run1, vm32, 5);
+    assert.equal(Number((await pgClient.query("SELECT count(*) AS count FROM cmdb_asset_changes WHERE asset_id=$1 AND field_path='compute.memoryBytes'", [vmAssetId])).rows[0].count), 1);
+
+    // D: IP change is normalized and produces one aggregate network change.
+    const vmIpChanged = baseDto({ objectId: 'vm-a', name: 'VM A', hostname: 'shared-host', biosUuid: '11111111-1111-1111-1111-111111111111', memoryBytes: 32 * gib, ip: '10.20.30.41', relationshipTarget: 'host-1' });
+    await ingest(run1, vmIpChanged, 6);
+    assert.equal(Number((await pgClient.query("SELECT count(*) AS count FROM cmdb_asset_changes WHERE asset_id=$1 AND field_path='network'", [vmAssetId])).rows[0].count), 1);
+    assert.equal(Number((await pgClient.query("SELECT count(*) AS count FROM cmdb_ip_addresses WHERE asset_id=$1 AND host(ip_address)='10.20.30.41' AND retired_at IS NULL", [vmAssetId])).rows[0].count), 1);
+
+    // E: relationship movement retires old evidence and activates one new edge.
+    const vmMoved = baseDto({ objectId: 'vm-a', name: 'VM A', hostname: 'shared-host', biosUuid: '11111111-1111-1111-1111-111111111111', memoryBytes: 32 * gib, ip: '10.20.30.41', relationshipTarget: 'host-2' });
+    await ingest(run1, vmMoved, 7);
+    assert.equal(Number((await pgClient.query("SELECT count(*) AS count FROM ci_relationships WHERE source_ci_id=$1 AND target_ci_id=$2 AND relationship_type_id='runs_on' AND status='ACTIVE'", [vmAssetId, host2.assetId])).rows[0].count), 1);
+    assert.equal(Number((await pgClient.query("SELECT count(*) AS count FROM ci_relationships WHERE source_ci_id=$1 AND target_ci_id=$2 AND relationship_type_id='runs_on' AND status='RETIRED'", [vmAssetId, host1.assetId])).rows[0].count), 1);
+
+    // Discovery never owns business governance fields.
+    await pgClient.query("UPDATE configuration_items SET owner_user_id='user-cmdb-test',criticality='CRITICAL' WHERE id=$1", [vmAssetId]);
+    await ingest(run1, vmMoved, 8);
+    const governed = (await pgClient.query('SELECT owner_user_id,criticality FROM configuration_items WHERE id=$1', [vmAssetId])).rows[0];
+    assert.equal(governed.owner_user_id, 'user-cmdb-test');
+    assert.equal(governed.criticality, 'CRITICAL');
+
+    await DiscoveryIngestionService.reconcileAndCompleteRun(run1);
+
+    // F: one missed full scan marks stale under test policy, never deletes.
+    await pgClient.query("UPDATE cmdb_discovery_lifecycle_policies SET stale_after_missed_runs=1,decommission_after_missed_runs=2 WHERE scope_key='GLOBAL'");
+    const missingRun = await createRun('dconn-test-primary', 'FULL');
+    await DiscoveryIngestionService.reconcileAndCompleteRun(missingRun);
+    assert.equal((await pgClient.query('SELECT lifecycle_state FROM configuration_items WHERE id=$1', [vmAssetId])).rows[0].lifecycle_state, 'STALE');
+    assert.equal(Number((await pgClient.query('SELECT count(*) AS count FROM configuration_items WHERE id=$1', [vmAssetId])).rows[0].count), 1);
+
+    // G: reappearance reuses and reactivates the same canonical asset.
+    const reappearanceRun = await createRun('dconn-test-primary', 'FULL');
+    const reappeared = await ingest(reappearanceRun, vmMoved, 10);
+    assert.equal(reappeared.assetId, vmAssetId);
+    assert.equal(reappeared.reactivated, true);
+    assert.equal((await pgClient.query('SELECT lifecycle_state FROM configuration_items WHERE id=$1', [vmAssetId])).rows[0].lifecycle_state, 'ACTIVE');
+    await DiscoveryIngestionService.reconcileAndCompleteRun(reappearanceRun);
+
+    const run2 = await createRun();
+    // H: same hostname with a different strong UUID creates a different asset.
+    const differentStrong = await ingest(run2, baseDto({ objectId: 'vm-b', name: 'VM B', hostname: 'shared-host', biosUuid: '99999999-9999-9999-9999-999999999999', ip: '10.20.30.50' }), 11);
+    assert.ok(differentStrong.assetId);
+    assert.notEqual(differentStrong.assetId, vmAssetId);
+
+    // Same hostname without strong evidence and same-IP-only both require review, never auto-merge.
+    const ambiguous = await ingest(run2, baseDto({ objectId: 'vm-ambiguous', name: 'Ambiguous', hostname: 'shared-host', ip: '10.20.30.60' }), 12);
+    assert.equal(ambiguous.outcome, 'POSSIBLE_MATCH');
+    assert.equal(ambiguous.assetId, undefined);
+    assert.ok(ambiguous.correlationCaseId);
+    const ipOnly = await ingest(run2, baseDto({ objectId: 'vm-ip-only', name: 'IP only', hostname: 'unique-ip-only', ip: '10.20.30.41' }), 13);
+    assert.equal(ipOnly.outcome, 'POSSIBLE_MATCH');
+    assert.equal(ipOnly.assetId, undefined);
+
+    // Concurrent identical delivery still creates one source record and one asset.
+    const concurrentDto = baseDto({ objectId: 'vm-concurrent', name: 'Concurrent VM', hostname: 'concurrent-vm', biosUuid: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', ip: '10.20.30.70' });
+    const [concurrentA, concurrentB] = await Promise.all([ingest(run2, concurrentDto, 14), ingest(run2, concurrentDto, 14)]);
+    assert.equal(concurrentA.assetId, concurrentB.assetId);
+    assert.equal(Number((await pgClient.query("SELECT count(*) AS count FROM cmdb_source_records WHERE external_object_id='vm-concurrent'")).rows[0].count), 1);
+    assert.equal(Number((await pgClient.query('SELECT count(*) AS count FROM configuration_items WHERE id=$1', [concurrentA.assetId])).rows[0].count), 1);
+    await DiscoveryIngestionService.reconcileAndCompleteRun(run2);
+
+    // Same strong UUID from another connector resolves to the same canonical asset.
+    const secondaryRun = await createRun('dconn-test-secondary');
+    const secondary = await ingest(secondaryRun, baseDto({ connectorId: 'dconn-test-secondary', objectId: 'foreign-vm-a', name: 'VM A from second source', hostname: 'another-hostname', biosUuid: '11111111-1111-1111-1111-111111111111', ip: '172.16.10.10' }), 15);
+    assert.equal(secondary.assetId, vmAssetId);
+    await DiscoveryIngestionService.reconcileAndCompleteRun(secondaryRun);
+
+    // VCENTER observations remain source evidence and cannot create or mutate canonical assets.
+    const assetsBeforeVCenter = Number((await pgClient.query('SELECT count(*) AS count FROM configuration_items')).rows[0].count);
+    const vcenterRun = await createRun('dconn-test-vcenter');
+    const vcenter = await ingest(vcenterRun, baseDto({ connectorId: 'dconn-test-vcenter', objectId: 'vm-vcenter-only', name: 'vCenter-only VM', hostname: 'vcenter-only-host', biosUuid: 'cccccccc-cccc-cccc-cccc-cccccccccccc', ip: '10.20.30.80' }), 16);
+    assert.equal(vcenter.assetCreated, false);
+    assert.equal(vcenter.assetId, undefined);
+    assert.equal(Number((await pgClient.query('SELECT count(*) AS count FROM configuration_items')).rows[0].count), assetsBeforeVCenter);
+    assert.equal(Number((await pgClient.query("SELECT count(*) AS count FROM cmdb_source_records WHERE connector_id='dconn-test-vcenter' AND external_object_id='vm-vcenter-only' AND asset_id IS NULL")).rows[0].count), 1);
+    assert.equal((await pgClient.query('SELECT processing_status FROM cmdb_raw_observations WHERE id=$1', [vcenter.observationId])).rows[0].processing_status, 'PROCESSED');
+
+    const counts = (await pgClient.query(`SELECT
+      (SELECT count(*) FROM configuration_items) AS assets,
+      (SELECT count(*) FROM cmdb_source_records) AS source_records,
+      (SELECT count(*) FROM cmdb_correlation_cases WHERE status='OPEN') AS open_cases,
+      (SELECT count(*) FROM outbox_events WHERE topic='asset.correlation.required') AS correlation_events`)).rows[0];
+    assert.ok(Number(counts.assets) >= 5);
+    assert.ok(Number(counts.source_records) >= 8);
+    assert.ok(Number(counts.open_cases) >= 2);
+    assert.ok(Number(counts.correlation_events) >= 2);
+  } finally {
+    await pgClient.close();
+  }
+});

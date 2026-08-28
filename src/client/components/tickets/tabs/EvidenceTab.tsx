@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { TicketAttachment, EvidenceType } from '../../../../shared/types/attachment.js';
 import { FileText, Download, Lock, Upload, CheckCircle2, AlertTriangle, Loader2, Copy, Check, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext.js';
+import { useI18n } from '../../../context/I18nContext.js';
 
 interface EvidenceTabProps {
   attachments: TicketAttachment[];
@@ -19,6 +20,7 @@ const readable = (value: string) => value.replaceAll('_', ' ');
 
 export const EvidenceTab: React.FC<EvidenceTabProps> = ({ attachments, ticketId, onRefresh }) => {
   const { fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [evidenceType, setEvidenceType] = useState<EvidenceType>('AUDIT_WORKPAPER');
   const [isImmutableEvidence, setIsImmutableEvidence] = useState(false);

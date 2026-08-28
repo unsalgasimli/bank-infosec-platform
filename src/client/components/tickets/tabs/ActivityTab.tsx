@@ -2,6 +2,7 @@ import React from 'react';
 import { TicketComment } from '../../../../shared/types/comments.js';
 import { AuditEvent } from '../../../../shared/types/audit.js';
 import { History, MessageSquare, ShieldCheck, CheckCircle2, ArrowRight } from 'lucide-react';
+import { useI18n } from '../../../context/I18nContext.js';
 
 interface ActivityTabProps {
   comments: TicketComment[];
@@ -9,6 +10,7 @@ interface ActivityTabProps {
 }
 
 export const ActivityTab: React.FC<ActivityTabProps> = ({ comments, auditEvents }) => {
+  const { t } = useI18n();
   // Merge comments and audit events chronologically
   const timeline = [
     ...comments.map((c) => ({
@@ -37,17 +39,17 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ comments, auditEvents 
       <div className="flex items-center justify-between">
         <div className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
           <History className="w-3.5 h-3.5 text-slate-400" />
-          <span>Unified Ticket Activity Stream</span>
+          <span>{t('Unified Ticket Activity Stream')}</span>
         </div>
         <span className="font-mono text-label font-bold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
-          {timeline.length} Events
+          {timeline.length} {t('Events')}
         </span>
       </div>
 
       <div className="relative border-l-2 border-slate-200 ml-4 space-y-4 py-2">
         {timeline.length === 0 && (
           <div className="ml-6 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-8 text-center text-xs text-slate-500">
-            No activity has been recorded for this ticket yet.
+            {t('No activity has been recorded for this ticket yet.')}
           </div>
         )}
         {timeline.map((item) => (

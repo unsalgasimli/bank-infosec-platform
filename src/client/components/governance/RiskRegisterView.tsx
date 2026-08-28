@@ -4,6 +4,7 @@ import { RiskHeatMap } from '../common/RiskHeatMap.js';
 import { Badge } from '../common/Badge.js';
 import { Shield, Plus, Search, Filter, X, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { useI18n } from '../../context/I18nContext.js';
 
 interface RiskRegisterViewProps {
   risks: RiskRegisterItem[];
@@ -12,6 +13,7 @@ interface RiskRegisterViewProps {
 
 export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSelectRisk }) => {
   const { fetchWithAuth } = useAuth();
+  const { t } = useI18n();
   const [selectedCell, setSelectedCell] = useState<{ likelihood: number; impact: number } | null>(null);
   const [strategyFilter, setStrategyFilter] = useState<string>('ALL');
   const [search, setSearch] = useState('');
@@ -81,31 +83,31 @@ export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSel
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-semantic-jira-surface custom-scrollbar">
       {/* Header */}
-      <div className="bg-semantic-panel border border-semantic-jira-border rounded-md p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+      <div className="bg-semantic-panel border border-semantic-jira-border rounded-xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded bg-semantic-jira-brand-surface text-semantic-jira-brand border border-semantic-jira-info-border">
+          <div className="p-2.5 rounded-lg bg-semantic-jira-brand-surface text-semantic-jira-brand border border-semantic-jira-info-border">
             <Shield className="w-5 h-5" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-semantic-jira-primary tracking-tight">
-              Enterprise Risk Register & Heat Matrix
+              {t('Enterprise Risk Register & Heat Matrix')}
             </h1>
             <p className="text-xs text-semantic-jira-muted mt-0.5">
-              ISO 31000 / NIST RMF 5×5 Risk matrix assessment, inherent vs residual risk calculation, and treatment tracking.
+              {t('ISO 31000 / NIST RMF 5×5 Risk matrix assessment, inherent vs residual risk calculation, and treatment tracking.')}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2.5">
           <span className="px-3 py-1 bg-semantic-jira-brand-surface text-semantic-jira-brand border border-semantic-jira-info-border rounded font-mono text-xs font-bold">
-            {risks.length} Portfolio Risks
+            {risks.length} {t('Portfolio Risks')}
           </span>
           <button
             onClick={() => setIsModalOpen(true)}
             className="jira-btn-primary"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>New Risk Assessment</span>
+            <span>{t('New Risk Assessment')}</span>
           </button>
         </div>
       </div>
@@ -121,18 +123,18 @@ export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSel
       {/* Filters and Search */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-semantic-jira-border pb-2 text-xs">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-caption font-bold uppercase tracking-wider text-semantic-jira-muted-light mr-1">Treatment:</span>
+          <span className="text-caption font-bold uppercase tracking-wider text-semantic-jira-muted-light mr-1">{t('Treatment:')}</span>
           {[
-            { id: 'ALL', label: 'All Strategies' },
-            { id: 'MITIGATE', label: 'Mitigate (Control)' },
-            { id: 'ACCEPT', label: 'Accept (Governance)' },
-            { id: 'TRANSFER', label: 'Transfer (Insurance/Vendor)' },
-            { id: 'AVOID', label: 'Avoid (Decommission)' },
+            { id: 'ALL', label: t('All Strategies') },
+            { id: 'MITIGATE', label: t('Mitigate (Control)') },
+            { id: 'ACCEPT', label: t('Accept (Governance)') },
+            { id: 'TRANSFER', label: t('Transfer (Insurance/Vendor)') },
+            { id: 'AVOID', label: t('Avoid (Decommission)') },
           ].map((strat) => (
             <button
               key={strat.id}
               onClick={() => setStrategyFilter(strat.id)}
-              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
                 strategyFilter === strat.id
                   ? 'bg-semantic-jira-brand text-white font-semibold shadow-sm'
                   : 'bg-semantic-panel text-semantic-jira-muted hover:text-semantic-jira-primary border border-semantic-jira-border'
@@ -144,13 +146,13 @@ export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSel
         </div>
 
         <div className="relative w-full sm:w-64">
-          <Search className="w-3.5 h-3.5 text-semantic-jira-muted absolute left-2.5 top-2" />
+          <Search className="w-3.5 h-3.5 text-semantic-jira-muted absolute left-2.5 top-2.5 pointer-events-none" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search risk code, title, owner..."
-            className="jira-input pl-8"
+            placeholder={t('Search risk code, title, owner...')}
+            className="jira-input !pl-8 text-xs"
           />
         </div>
       </div>
@@ -159,18 +161,18 @@ export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSel
       <div className="bg-semantic-panel border border-semantic-jira-border rounded-md p-5 space-y-3 shadow-sm">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-bold text-semantic-jira-primary uppercase tracking-wider">
-            Active Risk Portfolio ({filteredRisks.length})
+            {t('Active Risk Portfolio')} ({filteredRisks.length})
           </h3>
           {selectedCell && (
             <span className="text-label text-semantic-jira-brand font-mono">
-              Filtered: Likelihood {selectedCell.likelihood} × Impact {selectedCell.impact}
+              {t('Filtered')}: {t('Likelihood')} {selectedCell.likelihood} × {t('Impact')} {selectedCell.impact}
             </span>
           )}
         </div>
 
         {filteredRisks.length === 0 ? (
           <div className="py-16 text-center text-semantic-jira-muted text-xs italic bg-semantic-panel rounded border border-semantic-jira-border">
-            No enterprise risks matched the active matrix cell or search filters.
+            {t('No enterprise risks matched the active matrix cell or search filters.')}
           </div>
         ) : (
           <div className="divide-y divide-semantic-jira-border text-xs">
@@ -205,6 +207,13 @@ export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSel
                     Inherent: <span className="text-semantic-danger-strong font-bold">{risk.inherentScore}</span> / 25
                   </div>
                   <div className="text-label text-semantic-jira-muted mt-0.5">Owner: <strong className="text-semantic-jira-primary">{risk.ownerName}</strong></div>
+                  <a
+                    href={`/security-grc/threat-modeling?title=${encodeURIComponent(`${risk.riskCode} Threat Model`)}`}
+                    onClick={(event) => event.stopPropagation()}
+                    className="inline-flex mt-2 text-caption font-semibold text-semantic-jira-brand hover:underline"
+                  >
+                    Open Threat Model context <ArrowRight className="ml-1 w-3 h-3" />
+                  </a>
                 </div>
               </div>
             ))}

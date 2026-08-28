@@ -32,9 +32,13 @@ export type DestinationId =
   | 'security-incidents'
   | 'policy-exceptions'
   | 'risk-management'
+  | 'threat-modeling'
   | 'audit-compliance'
   // Assets & CMDB
   | 'asset-inventory'
+  | 'discovery-sources'
+  | 'discovery-runs'
+  | 'correlation-review'
   | 'configuration-items'
   | 'business-services'
   | 'applications'
@@ -189,6 +193,13 @@ export const NAVIGATION_MODULES: NavigationModule[] = [
         description: 'Enterprise 5×5 risk matrix, inherent vs. residual scoring, treatment plans, and risk registers.',
       },
       {
+        id: 'threat-modeling',
+        label: 'Threat Modeling',
+        moduleId: 'security-grc',
+        iconName: 'ShieldCheck',
+        description: 'Versioned architecture threat models with verified controls, approvals, and release security gates.',
+      },
+      {
         id: 'audit-compliance',
         label: 'Audit & Compliance',
         moduleId: 'security-grc',
@@ -218,41 +229,48 @@ export const NAVIGATION_MODULES: NavigationModule[] = [
     ],
     items: [
       {
+        id: 'configuration-items',
+        label: 'CMDB Registry',
+        moduleId: 'assets-cmdb',
+        iconName: 'Server',
+        badgeKey: 'assets',
+        description: 'One canonical CMDB registry with infrastructure, applications, business services, ownership, lifecycle and quality views.',
+      },
+      {
         id: 'asset-inventory',
         label: 'Asset Inventory',
         moduleId: 'assets-cmdb',
-        iconName: 'HardDrive',
+        iconName: 'Boxes',
         badgeKey: 'assets',
-        description: 'Hardware, virtual servers, firewalls, and cloud infrastructure inventory with criticality tiers.',
+        description: 'Server-paginated canonical asset inventory with discovery, ownership and lifecycle controls.',
       },
       {
-        id: 'configuration-items',
-        label: 'Configuration Items',
+        id: 'discovery-sources',
+        label: 'Discovery Sources',
         moduleId: 'assets-cmdb',
-        iconName: 'Cpu',
-        description: 'CMDB Configuration Items (CIs), version baselines, and configuration drift monitors.',
+        iconName: 'PlugZap',
+        description: 'Manage configured discovery source profiles and their secure references.',
       },
       {
-        id: 'business-services',
-        label: 'Business Services',
+        id: 'discovery-runs',
+        label: 'Discovery Runs',
         moduleId: 'assets-cmdb',
-        iconName: 'Activity',
-        description: 'Core banking business services (Payment Clearing, Core API, SWIFT, ATM) and service health.',
+        iconName: 'RefreshCw',
+        description: 'Review persisted discovery run metrics and bounded error summaries.',
       },
       {
-        id: 'applications',
-        label: 'Applications',
+        id: 'correlation-review',
+        label: 'Correlation Review',
         moduleId: 'assets-cmdb',
-        iconName: 'Box',
-        badgeKey: 'assets',
-        description: 'Banking software applications, code repositories, database connections, and technical ownership.',
+        iconName: 'GitMerge',
+        description: 'Resolve ambiguous source records with evidence-backed correlation decisions.',
       },
       {
         id: 'relationship-map',
-        label: 'Relationship Map',
+        label: 'Dependency Map',
         moduleId: 'assets-cmdb',
         iconName: 'Network',
-        description: 'Interactive topological dependency graph linking Business Services, Applications, CIs, and Incidents.',
+        description: 'Interactive dependency graph linking business services, applications, infrastructure and operational records.',
       },
     ],
   },

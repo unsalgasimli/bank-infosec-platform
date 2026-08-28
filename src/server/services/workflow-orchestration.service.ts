@@ -24,6 +24,7 @@ import { UsbAccessTemplateService } from './usb-access-template.service.js';
 import { WebsiteAccessTemplateService } from './website-access-template.service.js';
 import { StandardTaskTemplateService } from './standard-task-template.service.js';
 import { ItServiceDeskTemplateService } from './it-service-desk-template.service.js';
+import { ThreatModelWorkflowTemplateService } from './threat-model-workflow-template.service.js';
 import { SLAService } from './sla.service.js';
 
 export class OrchestrationError extends Error {
@@ -128,6 +129,7 @@ export class WorkflowOrchestrationService {
     UsbAccessTemplateService.ensureInstalled();
     WebsiteAccessTemplateService.ensureInstalled();
     ItServiceDeskTemplateService.ensureInstalled();
+    ThreatModelWorkflowTemplateService.ensureInstalled();
   }
 
   public static listCatalog(actor: BankUser, query = '', category = ''): WorkflowCatalogTemplate[] {
@@ -154,6 +156,7 @@ export class WorkflowOrchestrationService {
       !db.data.workflowCatalogTemplates.some((template) => template.id === 'template-it-mail-not-received') ||
       !db.data.workflowCatalogTemplates.some((template) => template.id === 'template-it-network-software-installation') ||
       !db.data.workflowCatalogTemplates.some((template) => template.id === 'template-standard-task') ||
+      !db.data.workflowCatalogTemplates.some((template) => template.id === 'template-threat-model-governance') ||
       !db.data.requestTypesV2.some((requestType) => requestType.id === 'request-standard-task' && requestType.isActive) ||
       !db.data.slaPolicies?.length;
     if (needsBootstrap) {
@@ -163,7 +166,7 @@ export class WorkflowOrchestrationService {
     } else {
       // Keep product-owned starter templates current even when the rest of
       // the orchestration baseline is already present in the database.
-      if (UsbAccessTemplateService.ensureInstalled()) db.persist();
+      if (UsbAccessTemplateService.ensureInstalled() || ThreatModelWorkflowTemplateService.ensureInstalled()) db.persist();
     }
     const templates = this.listCatalog(actor, query).map((template) => {
       const definition = this.getDefinition(template.workflowDefinitionId);
