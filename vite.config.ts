@@ -18,10 +18,10 @@ export default defineConfig({
       strictPort: true,
       proxy: {
         '/api': {
-          // Use the explicit loopback address. On Windows, localhost may resolve
-          // to an IPv6 Docker/WSL relay that also owns port 4000 and returns the
-          // SPA HTML instead of the Node API response.
-          target: 'http://127.0.0.1:4000',
+          // Keep the dev API separate from Docker's IPv4 loopback listener.
+          // The local API binds to IPv6 loopback, so Vite cannot accidentally
+          // proxy /api requests to an unrelated Docker service on 127.0.0.1.
+          target: 'http://[::1]:4000',
           changeOrigin: false,
           secure: false,
           xfwd: true,

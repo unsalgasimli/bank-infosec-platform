@@ -284,6 +284,7 @@ app.post('/api/cmdb/discovery/connectors', CMDBController.createDiscoveryConnect
 app.post('/api/cmdb/discovery/connectors/bootstrap-active-directory', CMDBController.bootstrapActiveDirectoryConnector);
 app.get('/api/cmdb/discovery/connectors/:id', CMDBController.discoveryConnectorDetail);
 app.patch('/api/cmdb/discovery/connectors/:id', CMDBController.updateDiscoveryConnector);
+app.delete('/api/cmdb/discovery/connectors/:id', CMDBController.deleteDiscoveryConnector);
 app.post('/api/cmdb/discovery/connectors/:id/enabled', CMDBController.toggleDiscoveryConnector);
 app.post('/api/cmdb/discovery/connectors/:id/enable', CMDBController.enableDiscoveryConnector);
 app.post('/api/cmdb/discovery/connectors/:id/disable', CMDBController.disableDiscoveryConnector);
@@ -292,6 +293,7 @@ app.get('/api/cmdb/discovery/connectors/:id/health', CMDBController.discoveryCon
 app.get('/api/cmdb/discovery/connectors/:id/runs', CMDBController.discoveryRuns);
 app.get('/api/cmdb/discovery/connectors/:id/runs/:runId', CMDBController.discoveryRunDetail);
 app.post('/api/cmdb/discovery/connectors/:id/sync', CMDBController.triggerDiscoverySync);
+app.get('/api/cmdb/discovery/coverage', CMDBController.discoveryCoverage);
 app.get('/api/cmdb/discovery/evidence', CMDBController.discoveryEvidence);
 app.get('/api/cmdb/discovery/correlation-cases', CMDBController.correlationCases);
 app.post('/api/cmdb/discovery/correlation-cases/:id/resolve', CMDBController.resolveCorrelation);

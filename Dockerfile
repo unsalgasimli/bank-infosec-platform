@@ -6,11 +6,13 @@ WORKDIR /app
 # Install build dependencies
 RUN apk add --no-cache libc6-compat python3 make g++
 
-# Copy package manifests
-COPY package.json package-lock.json ./
+# Copy package manifests. This repository is pnpm-based; do not silently
+# regenerate a dependency graph from an unrelated npm lockfile.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
-# Clean installation of dependencies
-RUN npm ci
+# Reproducible dependency installation
+RUN corepack enable && corepack prepare pnpm@11.20.0 --activate && \
+    pnpm install --frozen-lockfile
 
 # Copy full application source
 COPY . .
@@ -19,7 +21,7 @@ COPY . .
 RUN npm run build:client && npm run build:server
 
 # Prune development dependencies for minimal production image
-RUN npm prune --production
+RUN pnpm prune --prod
 
 # ------------------------------------------------------------------------------
 # Stage 2: Hardened Production Runner

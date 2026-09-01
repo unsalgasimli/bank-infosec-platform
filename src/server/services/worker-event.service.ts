@@ -20,10 +20,31 @@ import type { BankUser } from '../../shared/types/auth.js';
 import { ThreatModelService } from './threat-model.service.js';
 import { VCenterInventorySyncService } from './vcenter-inventory-sync.service.js';
 import { ActiveDirectoryInventorySyncService } from './active-directory-inventory-sync.service.js';
+import { CortexInventorySyncService } from './cortex-inventory-sync.service.js';
 
 const CONSUMER_NAME = 'aegissec-general-worker-v1';
 
 export class WorkerEventService {
+  /** Recover durable runs whose broker event was delayed or whose worker stopped mid-run. */
+  public static async recoverQueuedDiscoveryRuns(limit = 100): Promise<void> {
+    const runs = await pgClient.query<{ id: string; connector_type_id: string; correlation_id: string | null }>(`
+      SELECT r.id,c.connector_type_id,r.correlation_id
+      FROM cmdb_discovery_sync_runs r
+      JOIN cmdb_discovery_connectors c ON c.id=r.connector_id
+      WHERE r.state IN ('QUEUED','RUNNING') AND c.deleted_at IS NULL
+      ORDER BY r.queued_at
+      LIMIT $1`, [limit]);
+    for (const run of runs.rows) {
+      try {
+        if (run.connector_type_id === 'ACTIVE_DIRECTORY') await ActiveDirectoryInventorySyncService.runQueued(run.id);
+        else if (run.connector_type_id === 'CORTEX') await CortexInventorySyncService.runQueued(run.id, { correlationId: run.correlation_id || undefined });
+        else if (run.connector_type_id === 'VCENTER') await VCenterInventorySyncService.runQueued(run.id, { correlationId: run.correlation_id || undefined });
+      } catch (error) {
+        logger.error({ error, runId: run.id, connectorType: run.connector_type_id }, 'Queued discovery run recovery failed');
+      }
+    }
+  }
+
   public static async process(event: OutboxEvent): Promise<void> {
     return withTelemetrySpan('outbox.process', {
       'messaging.system': 'rabbitmq',
@@ -83,6 +104,7 @@ export class WorkerEventService {
       try {
         const runId = String(event.payload.runId || event.aggregateId);
         if (event.payload.connectorType === 'ACTIVE_DIRECTORY') await ActiveDirectoryInventorySyncService.runQueued(runId);
+        else if (event.payload.connectorType === 'CORTEX') await CortexInventorySyncService.runQueued(runId, { correlationId: event.correlationId });
         else await VCenterInventorySyncService.runQueued(runId, { correlationId: event.correlationId });
       } catch (error: any) {
         if (error?.retryable === true) throw new RetryableWorkerError(String(error?.message || 'vCenter discovery source is temporarily unavailable.'));
@@ -91,6 +113,11 @@ export class WorkerEventService {
     } else if (event.topic === 'discovery.run.completed') {
       // Discovery ingestion already committed the authoritative PostgreSQL
       // state. This notification only needs a consumer receipt.
+    } else if (event.topic.startsWith('asset.')) {
+      // Asset discovery already committed the authoritative CMDB projection.
+      // These events are intentionally receipt-only for the general worker;
+      // asset-specific consumers can be added without treating valid AD or
+      // vCenter ingestion events as unsupported failures.
     } else if (event.topic === 'ai.analysis.requested') {
       await this.analyzeTicket(event);
     } else {

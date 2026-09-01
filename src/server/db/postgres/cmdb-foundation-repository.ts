@@ -297,14 +297,25 @@ export class CmdbFoundationRepository {
              c.last_incremental_at, c.last_reconciliation_at,
              c.configuration_status, c.connection_status, c.discovery_status,
              c.last_connection_attempt_at, c.last_auth_success_at, c.retry_attempt,
-             c.next_retry_at, v.endpoint_fqdn, v.port, v.soap_endpoint_path,
+             c.next_retry_at, c.version, v.endpoint_fqdn, v.port, v.soap_endpoint_path,
              v.automation_api_base_path, v.response_size_limit_bytes, v.access_mode,
              v.certificate_metadata,
+             latest_run.id AS latest_run_id, latest_run.state AS latest_run_state,
+             latest_run.discovered_count AS latest_run_discovered_count, latest_run.failed_count AS latest_run_failed_count,
+             latest_run.queued_at AS latest_run_queued_at, latest_run.started_at AS latest_run_started_at,
+             latest_run.completed_at AS latest_run_completed_at,
              duplicate.id AS duplicate_connector_id,
              duplicate.name AS duplicate_connector_name
       FROM cmdb_discovery_connectors c
        LEFT JOIN department_connections dc ON dc.id=c.connection_id
       LEFT JOIN cmdb_vcenter_connector_profiles v ON v.connector_id=c.id
+      LEFT JOIN LATERAL (
+        SELECT id, state, discovered_count, failed_count, queued_at, started_at, completed_at
+        FROM cmdb_discovery_sync_runs
+        WHERE connector_id=c.id
+        ORDER BY queued_at DESC, id DESC
+        LIMIT 1
+      ) latest_run ON TRUE
       LEFT JOIN LATERAL (
         SELECT other.id, otherDc.name
         FROM cmdb_discovery_connectors other
@@ -342,6 +353,21 @@ export class CmdbFoundationRepository {
       lastFailureMessage: optionalText(row.last_failure_message),
       consecutiveFailures: number(row.consecutive_failures),
       checkpoint: optionalText(row.checkpoint),
+      // The client must receive the persisted optimistic-lock revision.  Without
+      // it, Number(undefined) serializes as null and every PATCH is rejected
+      // by the update schema before the concurrency check can run.
+      version: number(row.version),
+      ...(row.latest_run_id ? {
+        latestRun: {
+          id: row.latest_run_id,
+          state: row.latest_run_state,
+          discoveredCount: number(row.latest_run_discovered_count),
+          failedCount: number(row.latest_run_failed_count),
+          queuedAt: iso(row.latest_run_queued_at),
+          startedAt: row.latest_run_started_at ? iso(row.latest_run_started_at) : undefined,
+          completedAt: row.latest_run_completed_at ? iso(row.latest_run_completed_at) : undefined,
+        },
+      } : {}),
       createdAt: iso(row.created_at),
       updatedAt: iso(row.updated_at),
       deletedAt: row.deleted_at ? iso(row.deleted_at) : undefined,
@@ -389,15 +415,16 @@ export class CmdbFoundationRepository {
 
   public static async listSourceRecords(assetId: string): Promise<DiscoverySourceRecord[]> {
     const result = await pgClient.query(`
-      SELECT id, asset_id, connector_id, external_object_type, external_object_id,
+      SELECT s.id, s.asset_id, s.connector_id, c.connector_type_id, s.external_object_type, s.external_object_id,
              native_uuid, source_name, source_path, first_seen_at, last_seen_at,
              last_sync_run_id, current_observation_hash, normalized_payload_hash,
              revision, status, missing_since, retired_at, created_at, updated_at
-      FROM cmdb_source_records WHERE asset_id=$1 ORDER BY last_seen_at DESC, id`, [assetId]);
+      FROM cmdb_source_records s JOIN cmdb_discovery_connectors c ON c.id=s.connector_id WHERE s.asset_id=$1 ORDER BY s.last_seen_at DESC, s.id`, [assetId]);
     return result.rows.map((row) => ({
       id: row.id,
       assetId: optionalText(row.asset_id),
       connectorId: row.connector_id,
+      connectorType: row.connector_type_id,
       externalObjectType: row.external_object_type,
       externalObjectId: row.external_object_id,
       nativeUuid: optionalText(row.native_uuid),

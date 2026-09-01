@@ -94,14 +94,14 @@ test('generic CMDB discovery engine is deterministic, concurrent-safe and lifecy
     await pgClient.query("INSERT INTO bank_departments(id,division_id,code,name) VALUES('dept-cmdb-test','div-cmdb-test','CMDBTEST','CMDB Test')");
     await pgClient.query("INSERT INTO bank_users(id,username,email,first_name,last_name,title,department_id,division_id) VALUES('user-cmdb-test','cmdb.test','cmdb.test@example.invalid','CMDB','Test','CMDB Tester','dept-cmdb-test','div-cmdb-test')");
     for (const connector of [
-      { connection: 'conn-test-primary', discovery: 'dconn-test-primary', name: 'Primary fixture source', type: 'GENERIC' },
-      { connection: 'conn-test-secondary', discovery: 'dconn-test-secondary', name: 'Secondary fixture source', type: 'GENERIC' },
+      { connection: 'conn-test-primary', discovery: 'dconn-test-primary', name: 'Cortex fixture source', type: 'CORTEX' },
+      { connection: 'conn-test-secondary', discovery: 'dconn-test-secondary', name: 'Active Directory fixture source', type: 'ACTIVE_DIRECTORY' },
       { connection: 'conn-test-vcenter', discovery: 'dconn-test-vcenter', name: 'vCenter fixture source', type: 'VCENTER' },
     ]) {
       await pgClient.query(`INSERT INTO department_connections(id,department_id,name,type,provider,endpoint_url,auth_type,status,sync_frequency_minutes,description,config_summary)
         VALUES($1,'dept-cmdb-test',$2,'CLOUD_INFRA','Test Fixture','https://invalid.example','API_KEY','DISCONNECTED',0,'integration fixture','{}')`, [connector.connection, connector.name]);
-      await pgClient.query(`INSERT INTO cmdb_discovery_connectors(id,connection_id,connector_type_id,environment,enabled,health_status,non_secret_configuration,secret_reference)
-        VALUES($1,$2,$3,'TEST',TRUE,'HEALTHY','{}','secret-manager://cmdb-test')`, [connector.discovery, connector.connection, connector.type]);
+      await pgClient.query(`INSERT INTO cmdb_discovery_connectors(id,connection_id,name,description,connector_type_id,environment,enabled,health_status,non_secret_configuration,secret_reference)
+        VALUES($1,$2,$3,'CMDB integration fixture',$4,'TEST',TRUE,'HEALTHY','{}','secret-manager://cmdb-test')`, [connector.discovery, connector.connection, connector.name, connector.type]);
       if (connector.type === 'VCENTER') {
         await pgClient.query(`INSERT INTO cmdb_vcenter_connector_profiles(connector_id,endpoint_fqdn,port)
           VALUES($1,'vcenter.fixture.invalid',443)`, [connector.discovery]);
@@ -179,11 +179,11 @@ test('generic CMDB discovery engine is deterministic, concurrent-safe and lifecy
 
     // Same hostname without strong evidence and same-IP-only both require review, never auto-merge.
     const ambiguous = await ingest(run2, baseDto({ objectId: 'vm-ambiguous', name: 'Ambiguous', hostname: 'shared-host', ip: '10.20.30.60' }), 12);
-    assert.equal(ambiguous.outcome, 'POSSIBLE_MATCH');
+    assert.equal(ambiguous.outcome, 'REVIEW_REQUIRED');
     assert.equal(ambiguous.assetId, undefined);
     assert.ok(ambiguous.correlationCaseId);
     const ipOnly = await ingest(run2, baseDto({ objectId: 'vm-ip-only', name: 'IP only', hostname: 'unique-ip-only', ip: '10.20.30.41' }), 13);
-    assert.equal(ipOnly.outcome, 'POSSIBLE_MATCH');
+    assert.equal(ipOnly.outcome, 'REVIEW_REQUIRED');
     assert.equal(ipOnly.assetId, undefined);
 
     // Concurrent identical delivery still creates one source record and one asset.
@@ -194,11 +194,25 @@ test('generic CMDB discovery engine is deterministic, concurrent-safe and lifecy
     assert.equal(Number((await pgClient.query('SELECT count(*) AS count FROM configuration_items WHERE id=$1', [concurrentA.assetId])).rows[0].count), 1);
     await DiscoveryIngestionService.reconcileAndCompleteRun(run2);
 
-    // Same strong UUID from another connector resolves to the same canonical asset.
+    // Cortex + Active Directory + vCenter observations for one endpoint keep
+    // one canonical asset: AD links to the Cortex-created CI, while vCenter
+    // remains source evidence until governed correlation.
     const secondaryRun = await createRun('dconn-test-secondary');
     const secondary = await ingest(secondaryRun, baseDto({ connectorId: 'dconn-test-secondary', objectId: 'foreign-vm-a', name: 'VM A from second source', hostname: 'another-hostname', biosUuid: '11111111-1111-1111-1111-111111111111', ip: '172.16.10.10' }), 15);
     assert.equal(secondary.assetId, vmAssetId);
+    assert.equal(Number((await pgClient.query("SELECT count(*) AS count FROM cmdb_source_records WHERE asset_id=$1", [vmAssetId])).rows[0].count), 2);
     await DiscoveryIngestionService.reconcileAndCompleteRun(secondaryRun);
+
+    // Two strong identifiers that already belong to different canonical
+    // assets are a conflict, never a merge. The source identity stays
+    // unmatched and receives a reconciliation case.
+    const strongConflict = baseDto({ objectId: 'vm-strong-conflict', name: 'Conflicting VM', hostname: 'conflicting-vm', biosUuid: '11111111-1111-1111-1111-111111111111' });
+    strongConflict.identity.identifiers.push({ type: 'BIOS_UUID', namespace: 'GLOBAL', value: '99999999-9999-9999-9999-999999999999', confidence: 100, primary: false });
+    const conflictRun = await createRun();
+    const conflicted = await ingest(conflictRun, strongConflict, 15);
+    assert.equal(conflicted.outcome, 'IDENTITY_CONFLICT');
+    assert.equal(conflicted.assetId, undefined);
+    assert.ok(conflicted.correlationCaseId);
 
     // VCENTER observations remain source evidence and cannot create or mutate canonical assets.
     const assetsBeforeVCenter = Number((await pgClient.query('SELECT count(*) AS count FROM configuration_items')).rows[0].count);
@@ -209,6 +223,14 @@ test('generic CMDB discovery engine is deterministic, concurrent-safe and lifecy
     assert.equal(Number((await pgClient.query('SELECT count(*) AS count FROM configuration_items')).rows[0].count), assetsBeforeVCenter);
     assert.equal(Number((await pgClient.query("SELECT count(*) AS count FROM cmdb_source_records WHERE connector_id='dconn-test-vcenter' AND external_object_id='vm-vcenter-only' AND asset_id IS NULL")).rows[0].count), 1);
     assert.equal((await pgClient.query('SELECT processing_status FROM cmdb_raw_observations WHERE id=$1', [vcenter.observationId])).rows[0].processing_status, 'PROCESSED');
+
+    // The database claim guard is the final integrity boundary: an adapter
+    // cannot attach an active strong identifier to a second canonical asset.
+    await assert.rejects(
+      pgClient.query(`INSERT INTO cmdb_asset_identifiers(id,asset_id,identifier_type_id,namespace,value,normalized_value,source,confidence,is_primary,first_seen_at,last_seen_at)
+        VALUES('identifier-conflict-test',$1,'BIOS_UUID','GLOBAL','11111111-1111-1111-1111-111111111111','11111111-1111-1111-1111-111111111111','TEST',100,FALSE,NOW(),NOW())`, [differentStrong.assetId]),
+      /already claimed|duplicate key/i,
+    );
 
     const counts = (await pgClient.query(`SELECT
       (SELECT count(*) FROM configuration_items) AS assets,

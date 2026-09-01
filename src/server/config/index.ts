@@ -119,7 +119,10 @@ const configSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   ENABLE_METRICS: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(true),
   OTEL_TRACES_ENABLED: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(false),
-  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+  // Compose may intentionally pass an empty optional endpoint when the local
+  // stack has no collector. Treat empty as unset instead of rejecting the
+  // entire API/worker/scheduler process during startup.
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.preprocess((val) => val === '' ? undefined : val, z.string().url().optional()),
   OTEL_SERVICE_NAME: z.string().min(1).max(128).default('aegissec-platform'),
 });
 

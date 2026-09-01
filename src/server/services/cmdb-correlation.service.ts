@@ -4,10 +4,15 @@ import type { NormalizedDiscoveryDto, NormalizedDiscoveryIdentifier } from '../.
 import type { AssetIdentifierType } from '../../shared/types/cmdb-discovery.js';
 import { isStrongAssetIdentifier, normalizeAssetIdentifier } from '../db/postgres/cmdb-foundation-repository.js';
 
-export const CORRELATION_RULE_VERSION = 'cmdb-identity-v1';
+export const CORRELATION_RULE_VERSION = 'cmdb-identity-v2';
 
-export type CorrelationOutcome = 'MATCHED' | 'NO_MATCH' | 'POSSIBLE_MATCH' | 'CONFLICT';
-export type IdentifierSignalStrength = 'STRONG' | 'MEDIUM' | 'WEAK';
+/**
+ * Stable, source-neutral decisions persisted with every observation. These
+ * names are deliberately action-oriented: adapters must not infer a merge
+ * from a hostname or treat a review case as a canonical asset.
+ */
+export type CorrelationOutcome = 'AUTO_LINK' | 'REVIEW_REQUIRED' | 'CREATE_NEW' | 'IDENTITY_CONFLICT';
+export type IdentifierSignalStrength = 'STRONG' | 'COMPOSITE' | 'WEAK';
 
 export interface ExtractedIdentifier {
   type: AssetIdentifierType;
@@ -47,7 +52,7 @@ export interface CorrelationResolution {
 
 function strength(type: AssetIdentifierType): IdentifierSignalStrength {
   if (isStrongAssetIdentifier(type)) return 'STRONG';
-  if (type === 'FQDN' || type === 'MAC_ADDRESS') return 'MEDIUM';
+  if (type === 'FQDN' || type === 'MAC_ADDRESS') return 'COMPOSITE';
   return 'WEAK';
 }
 
@@ -95,7 +100,7 @@ function candidateMap(evidence: CorrelationEvidence[]): CorrelationCandidate[] {
     };
     candidate.score += item.score;
     if (item.strength === 'STRONG') candidate.strongSignalCount += 1;
-    if (item.strength === 'MEDIUM') candidate.mediumSignalCount += 1;
+    if (item.strength === 'COMPOSITE') candidate.mediumSignalCount += 1;
     if (item.strength === 'WEAK') candidate.weakSignalCount += 1;
     candidate.evidence.push(item);
     candidates.set(item.assetId, candidate);
@@ -126,7 +131,7 @@ export class CmdbCorrelationService {
         SELECT asset_id FROM cmdb_asset_identifiers
         WHERE identifier_type_id=$1 AND namespace=$2 AND normalized_value=$3 AND retired_at IS NULL
         ORDER BY asset_id`, [identifier.type, identifier.namespace, identifier.normalizedValue]);
-      const signalScore = identifier.strength === 'STRONG' ? 100 : identifier.strength === 'MEDIUM' ? 30 : 10;
+      const signalScore = identifier.strength === 'STRONG' ? 100 : identifier.strength === 'COMPOSITE' ? 30 : 10;
       for (const match of matches.rows) {
         evidence.push({
           signal: identifier.type,
@@ -158,7 +163,7 @@ export class CmdbCorrelationService {
       WHERE source_record_id=$1 AND active=TRUE AND asset_id IS NOT NULL`, [sourceRecord.id]);
     if (manualOverride.rows[0]) {
       return {
-        outcome: 'MATCHED',
+        outcome: 'AUTO_LINK',
         assetId: manualOverride.rows[0].asset_id,
         confidence: 100,
         candidates,
@@ -178,28 +183,28 @@ export class CmdbCorrelationService {
         && current.normalized_value !== incoming.normalizedValue));
       const pointsElsewhere = [...strongCandidateIds].some((assetId) => assetId !== sourceRecord.assetId);
       if (contradictory || pointsElsewhere) {
-        return { outcome: 'CONFLICT', confidence: 0, candidates, evidence, summary: 'The stable source record conflicts with existing strong canonical identity evidence.' };
+        return { outcome: 'IDENTITY_CONFLICT', confidence: 0, candidates, evidence, summary: 'The stable source record conflicts with existing strong canonical identity evidence.' };
       }
-      return { outcome: 'MATCHED', assetId: sourceRecord.assetId, confidence: 100, candidates, evidence, summary: 'The stable connector/object identity is already linked to a canonical asset.' };
+      return { outcome: 'AUTO_LINK', assetId: sourceRecord.assetId, confidence: 100, candidates, evidence, summary: 'The stable connector/object identity is already linked to a canonical asset.' };
     }
 
     if (strongCandidateIds.size === 1) {
       const assetId = [...strongCandidateIds][0];
-      return { outcome: 'MATCHED', assetId, confidence: 100, candidates, evidence, summary: 'Exactly one canonical asset matched strong identity evidence.' };
+      return { outcome: 'AUTO_LINK', assetId, confidence: 100, candidates, evidence, summary: 'Exactly one canonical asset matched strong identity evidence.' };
     }
     if (strongCandidateIds.size > 1) {
-      return { outcome: 'CONFLICT', confidence: 0, candidates, evidence, summary: 'Strong identifiers resolve to more than one canonical asset.' };
+      return { outcome: 'IDENTITY_CONFLICT', confidence: 0, candidates, evidence, summary: 'Strong identifiers resolve to more than one canonical asset.' };
     }
     if (inputStrong.length > 0) {
-      return { outcome: 'NO_MATCH', confidence: 100, candidates, evidence, summary: 'Strong identity evidence is new; weak similarities are not allowed to auto-merge it.' };
+      return { outcome: 'CREATE_NEW', confidence: 100, candidates, evidence, summary: 'Strong identity evidence is new; weak similarities are not allowed to auto-merge it.' };
     }
     if (candidates.length === 0) {
-      return { outcome: 'NO_MATCH', confidence: 100, candidates, evidence, summary: 'No canonical identity evidence matched.' };
+      return { outcome: 'CREATE_NEW', confidence: 100, candidates, evidence, summary: 'No canonical identity evidence matched.' };
     }
     if (candidates.length === 1 && candidates[0].mediumSignalCount >= 2) {
-      return { outcome: 'MATCHED', assetId: candidates[0].assetId, confidence: 80, candidates, evidence, summary: 'Two independent medium-strength identifiers agree on one canonical asset.' };
+      return { outcome: 'AUTO_LINK', assetId: candidates[0].assetId, confidence: 80, candidates, evidence, summary: 'Two independent composite identifiers agree on one canonical asset.' };
     }
-    return { outcome: 'POSSIBLE_MATCH', confidence: Math.min(79, candidates[0]?.score || 0), candidates, evidence, summary: 'Only weak or ambiguous evidence matched; human correlation review is required.' };
+    return { outcome: 'REVIEW_REQUIRED', confidence: Math.min(79, candidates[0]?.score || 0), candidates, evidence, summary: 'Only weak or ambiguous evidence matched; human correlation review is required.' };
   }
 
   public static async persistDecision(
@@ -220,7 +225,7 @@ export class CmdbCorrelationService {
       JSON.stringify(input.resolution.evidence),
       input.observedAt,
     ]);
-    if (!['POSSIBLE_MATCH', 'CONFLICT'].includes(input.resolution.outcome)) return undefined;
+    if (!['REVIEW_REQUIRED', 'IDENTITY_CONFLICT'].includes(input.resolution.outcome)) return undefined;
 
     const existing = await client.query<{ id: string }>(
       "SELECT id FROM cmdb_correlation_cases WHERE source_record_id=$1 AND status='OPEN' FOR UPDATE",

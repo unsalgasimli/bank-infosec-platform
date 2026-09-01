@@ -6,7 +6,8 @@ import type { OutboxEvent } from './outbox.service.js';
 // A single generic worker is intentional for the first rollout. The routing
 // contract permits individual queues (workflow, notifications, integrations)
 // to be split out later without changing API producers or outbox rows.
-export const WORKER_QUEUES = ['aegissec.worker'] as const;
+export const DISCOVERY_QUEUE = 'aegissec.discovery.v2';
+export const WORKER_QUEUES = ['aegissec.worker', DISCOVERY_QUEUE] as const;
 const MAX_RETRY_ATTEMPTS = 5;
 
 export class RetryableWorkerError extends Error {
@@ -34,7 +35,7 @@ export class QueueService {
         durable: true,
         arguments: { 'x-dead-letter-exchange': `${config.RABBITMQ_EXCHANGE}.dlx` },
       });
-      await channel.bindQueue(queue, config.RABBITMQ_EXCHANGE, '#');
+      await channel.bindQueue(queue, config.RABBITMQ_EXCHANGE, queue === DISCOVERY_QUEUE ? 'cmdb.discovery.#' : '#');
       await channel.assertQueue(`${queue}.dead`, { durable: true });
       await channel.bindQueue(`${queue}.dead`, `${config.RABBITMQ_EXCHANGE}.dlx`, '#');
       await channel.assertQueue(`${queue}.retry`, {
@@ -83,16 +84,19 @@ export class QueueService {
         this.channel.ack(message);
       } catch (error) {
         const retries = Number(message.properties.headers?.['x-aegissec-retry-count'] || 0);
+        const errorDetails = error instanceof Error
+          ? { errorMessage: error.message, errorStack: error.stack }
+          : { errorMessage: String(error) };
         if (error instanceof RetryableWorkerError && retries < MAX_RETRY_ATTEMPTS) {
           this.channel.sendToQueue(`${queue}.retry`, message.content, {
             ...message.properties,
             headers: { ...message.properties.headers, 'x-aegissec-retry-count': retries + 1 },
           });
           this.channel.ack(message);
-          logger.warn({ error, queue, messageId: message.properties.messageId, retryAttempt: retries + 1 }, 'Worker event deferred for retry');
+          logger.warn({ ...errorDetails, queue, messageId: message.properties.messageId, retryAttempt: retries + 1 }, 'Worker event deferred for retry');
           return;
         }
-        logger.error({ error, queue, messageId: message.properties.messageId, retryAttempt: retries }, 'Worker event failed; sending to dead-letter queue');
+        logger.error({ ...errorDetails, queue, messageId: message.properties.messageId, retryAttempt: retries }, 'Worker event failed; sending to dead-letter queue');
         this.channel.nack(message, false, false);
       }
     }, { noAck: false });

@@ -281,6 +281,30 @@ const decorateDepartmentCounts = (
 };
 
 export class DepartmentsRepository {
+  // The list view must remain a bounded set of reads.  Do not reuse
+  // `departmentSelect` here: its nested per-department/per-section aggregates
+  // are appropriate for a single department detail view, but become an N+1
+  // scan across the directory projection when the connector editor requests
+  // its routing options.
+  private static readonly departmentListSelect = `
+    SELECT d.id, d.division_id, d.code, d.name,
+           COALESCE(NULLIF(d.description, ''), d.source_payload->>'description', '') AS description,
+           COALESCE(d.manager_id, d.source_payload->>'managerId') AS manager_id,
+           CASE WHEN jsonb_array_length(d.admin_user_ids) > 0 THEN d.admin_user_ids ELSE COALESCE(d.source_payload->'adminUserIds', '[]'::jsonb) END AS admin_user_ids,
+           COALESCE(NULLIF(d.color, ''), d.source_payload->>'color') AS color,
+           COALESCE(NULLIF(d.icon, ''), d.source_payload->>'icon', 'Building2') AS icon,
+           d.is_active,
+           CASE WHEN d.settings = '{}'::jsonb THEN COALESCE(d.source_payload->'settings', '{}'::jsonb) ELSE d.settings END AS settings,
+           COALESCE(NULLIF(d.directory_source, ''), d.source_payload->>'directorySource') AS directory_source,
+           d.created_at, d.updated_at, d.source_payload,
+           v.name AS division_name, v.code AS division_code,
+           manager.full_name AS manager_name, manager.email AS manager_email,
+           '[]'::jsonb AS sections
+      FROM bank_departments d
+      JOIN bank_divisions v ON v.id = d.division_id
+      LEFT JOIN bank_users manager ON manager.id = COALESCE(d.manager_id, d.source_payload->>'managerId')
+        AND manager.is_active = TRUE AND manager.directory_source = 'ACTIVE_DIRECTORY'`;
+
   private static readonly departmentSelect = `
     SELECT d.id, d.division_id, d.code, d.name,
            COALESCE(NULLIF(d.description, ''), d.source_payload->>'description', '') AS description,
@@ -356,9 +380,22 @@ export class DepartmentsRepository {
   public static async list(): Promise<Array<BankDepartment & JsonRecord>> {
     return pgClient.transaction(async (client) => {
       const result = await client.query(`
-        ${this.departmentSelect}
+        ${this.departmentListSelect}
         WHERE d.is_active = TRUE
         ORDER BY v.name, d.name
+      `);
+      const sectionsResult = await client.query(`
+        SELECT s.id, s.department_id, s.name, s.code, s.manager_id,
+               manager.full_name AS manager_name,
+               COALESCE(s.section_type, s.source_payload->>'sectionType', 'SOBE') AS section_type,
+               COALESCE(s.parent_section_id, s.source_payload->>'parentSectionId') AS parent_section_id,
+               COALESCE(s.has_own_manager, (s.source_payload->>'hasOwnManager')::boolean, TRUE) AS has_own_manager,
+               s.is_active,
+               COALESCE(s.source_payload->>'directorySource', 'ACTIVE_DIRECTORY') AS directory_source
+          FROM bank_department_sections s
+          LEFT JOIN bank_users manager ON manager.id = s.manager_id
+         WHERE s.is_active = TRUE
+         ORDER BY s.department_id, s.name
       `);
       const memberResult = await client.query(`
         SELECT ${directoryUserColumns}
@@ -383,13 +420,36 @@ export class DepartmentsRepository {
         : { rows: [] as JsonRecord[] };
       const managersById = new Map(
         managersResult.rows
-          .map(rowToUser)
+          .map((row) => rowToUser(row, { decryptProtectedIdentity: false }))
           .filter((user) => isGenuineEmployeeOrIntern(user, user.distributionGroups || [], user.sAMAccountName || user.username))
           .map((user) => [user.id, user])
       );
 
+      const sectionsByDepartment = new Map<string, BankDepartmentSection[]>();
+      for (const section of sectionsResult.rows) {
+        const departmentSections = sectionsByDepartment.get(section.department_id) || [];
+        departmentSections.push({
+          id: section.id,
+          departmentId: section.department_id,
+          name: section.name,
+          code: section.code,
+          managerId: section.manager_id || undefined,
+          managerName: section.manager_name || undefined,
+          sectionType: section.section_type,
+          parentSectionId: section.parent_section_id || undefined,
+          hasOwnManager: Boolean(section.has_own_manager),
+          memberCount: 0,
+          isActive: Boolean(section.is_active),
+          directorySource: section.directory_source,
+        });
+        sectionsByDepartment.set(section.department_id, departmentSections);
+      }
+
       return result.rows.map((row) => {
-        const department = decorateDepartmentCounts(rowToDepartment(row), directoryMembers);
+        const department = decorateDepartmentCounts({
+          ...rowToDepartment(row),
+          sections: sectionsByDepartment.get(row.id) || [],
+        }, directoryMembers);
         const manager = department.managerId ? managersById.get(department.managerId) : undefined;
         return {
           ...department,

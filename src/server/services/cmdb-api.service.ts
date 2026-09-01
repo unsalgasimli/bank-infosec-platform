@@ -13,6 +13,8 @@ import { defaultVCenterRuntimeService } from './vcenter-runtime.service.js';
 import { VCenterCredentialCryptoService } from './vcenter-credential-crypto.service.js';
 import { VCenterInventorySyncService } from './vcenter-inventory-sync.service.js';
 import { ActiveDirectoryInventorySyncService } from './active-directory-inventory-sync.service.js';
+import { CortexInventorySyncService } from './cortex-inventory-sync.service.js';
+import { validateCortexTransport } from '../integrations/cortex/cortex-endpoint-policy.js';
 import { config } from '../config/index.js';
 
 const pageSchema = z.object({
@@ -262,10 +264,34 @@ export class CmdbApiService {
     const [items, count] = await Promise.all([
       pgClient.query(`SELECT s.id,s.connector_id,s.external_object_type,s.external_object_id,s.source_name,s.status,s.last_seen_at,s.last_sync_run_id,s.last_correlation_outcome,COALESCE(c.name,dc.name) connector_name,c.connector_type_id
         FROM cmdb_source_records s JOIN cmdb_discovery_connectors c ON c.id=s.connector_id LEFT JOIN department_connections dc ON dc.id=c.connection_id
-        WHERE c.connector_type_id IN ('VCENTER','ACTIVE_DIRECTORY') AND c.deleted_at IS NULL ORDER BY s.last_seen_at DESC,s.id LIMIT $1 OFFSET $2`, [safeSize, (safePage - 1) * safeSize]),
-      pgClient.query(`SELECT count(*)::int count FROM cmdb_source_records s JOIN cmdb_discovery_connectors c ON c.id=s.connector_id WHERE c.connector_type_id IN ('VCENTER','ACTIVE_DIRECTORY') AND c.deleted_at IS NULL`),
+        WHERE c.connector_type_id IN ('VCENTER','ACTIVE_DIRECTORY','CORTEX') AND c.deleted_at IS NULL ORDER BY s.last_seen_at DESC,s.id LIMIT $1 OFFSET $2`, [safeSize, (safePage - 1) * safeSize]),
+      pgClient.query(`SELECT count(*)::int count FROM cmdb_source_records s JOIN cmdb_discovery_connectors c ON c.id=s.connector_id WHERE c.connector_type_id IN ('VCENTER','ACTIVE_DIRECTORY','CORTEX') AND c.deleted_at IS NULL`),
     ]);
     return { items: items.rows.map((row) => ({ id: row.id, connectorId: row.connector_id, connectorName: row.connector_name, connectorType: row.connector_type_id, objectType: row.external_object_type, objectId: row.external_object_id, name: row.source_name, status: row.status, lastSeenAt: row.last_seen_at, lastSyncRunId: row.last_sync_run_id, correlationOutcome: row.last_correlation_outcome })), total: Number(count.rows[0]?.count || 0), page: safePage, pageSize: safeSize };
+  }
+
+  /** Server-computed multi-source posture; never derived from a browser page. */
+  public static async discoveryCoverage(actor: BankUser | undefined): Promise<any> {
+    requirePermission(actor, 'asset_discovery.read');
+    const result = await pgClient.query(`WITH assets AS (SELECT id FROM configuration_items WHERE archived_at IS NULL), source_flags AS (
+      SELECT sr.asset_id, bool_or(c.connector_type_id='CORTEX' AND sr.status='ACTIVE') cortex,
+             bool_or(c.connector_type_id='CORTEX' AND sr.status IN ('MISSING','STALE')) cortex_stale,
+             bool_or(c.connector_type_id='ACTIVE_DIRECTORY' AND sr.status='ACTIVE') ad,
+             bool_or(c.connector_type_id='VCENTER' AND sr.status='ACTIVE' AND sr.external_object_type='VirtualMachine') vcenter_vm
+      FROM cmdb_source_records sr JOIN cmdb_discovery_connectors c ON c.id=sr.connector_id
+      GROUP BY sr.asset_id
+    ), counts AS (SELECT count(*) total, count(*) FILTER (WHERE f.cortex) cortex_managed,
+      count(*) FILTER (WHERE NOT COALESCE(f.cortex,false)) cortex_missing,
+      count(*) FILTER (WHERE f.cortex_stale) cortex_stale,
+      count(*) FILTER (WHERE f.cortex AND f.ad AND f.vcenter_vm) fully_correlated,
+      count(*) FILTER (WHERE f.ad AND NOT COALESCE(f.cortex,false)) ad_without_cortex,
+      count(*) FILTER (WHERE f.cortex AND NOT COALESCE(f.ad,false)) cortex_without_ad,
+      count(*) FILTER (WHERE f.vcenter_vm AND NOT COALESCE(f.cortex,false)) vcenter_vms_without_cortex
+      FROM assets a LEFT JOIN source_flags f ON f.asset_id=a.id)
+      SELECT counts.*, (SELECT count(*) FROM cmdb_correlation_cases WHERE status='OPEN' AND outcome='IDENTITY_CONFLICT') identity_conflicts,
+      (SELECT count(*) FROM cmdb_correlation_cases WHERE status='OPEN' AND outcome='REVIEW_REQUIRED') reconciliation_required FROM counts`);
+    const row = result.rows[0] || {}; const total = Number(row.total || 0); const number = (key: string) => Number(row[key] || 0);
+    return { totalCanonicalAssets: total, cortexManaged: number('cortex_managed'), cortexMissing: number('cortex_missing'), cortexStale: number('cortex_stale'), fullyCorrelatedVcenterAdCortex: number('fully_correlated'), adWithoutCortex: number('ad_without_cortex'), cortexWithoutAd: number('cortex_without_ad'), vcenterVmsWithoutCortex: number('vcenter_vms_without_cortex'), identityConflicts: number('identity_conflicts'), reconciliationRequired: number('reconciliation_required'), cortexCoveragePercent: total ? Math.round(number('cortex_managed') / total * 100) : 0, generatedAt: new Date().toISOString() };
   }
 
   public static async testConnector(actor: BankUser | undefined, id: string, request: { correlationId?: string; ip?: string; userAgent?: string } = {}): Promise<any> {
@@ -280,6 +306,11 @@ export class CmdbApiService {
       const ready = String(source.url || config.LDAP_URL || '').startsWith('ldaps://') && Boolean(source.baseDn || config.LDAP_BASE_DN) && Boolean(source.bindUser || config.LDAP_BIND_USER) && /^env:\/\/[A-Z][A-Z0-9_]*$/.test(String(secret.rows[0]?.secret_reference || ''));
       if (!ready) throw Object.assign(new Error('Active Directory connector is missing LDAPS, base DN, read-only bind user, or a server-side secret.'), { statusCode: 422, code: 'AD_CONNECTOR_CONFIG_INVALID' });
       return { connectorId: id, snapshot: { testResult: { status: 'READY_FOR_READ_ONLY_SYNC', transport: 'LDAPS', credentials: 'SERVER_SIDE_SECRET_REFERENCE', writeOperations: 'BLOCKED' } } };
+    }
+    if (connector.connectorType === 'CORTEX') {
+      await pgClient.transaction(async (client) => AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_TESTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { connectorType: 'CORTEX', status: 'STARTED' } }));
+      try { const result = await CortexInventorySyncService.testConnection(id, request.correlationId); await pgClient.transaction(async (client) => AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_TESTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { connectorType: 'CORTEX', status: 'SUCCEEDED' } })); return result; }
+      catch (error: any) { await pgClient.transaction(async (client) => AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_TESTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { connectorType: 'CORTEX', status: 'FAILED', errorCode: String(error?.code || 'CORTEX_INTERNAL_ERROR') } })).catch(() => undefined); throw error; }
     }
     await pgClient.transaction(async (client) => AuditService.logPostgres(client, {
       actor, action: 'VCENTER_CONNECTION_TEST_STARTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id,
@@ -314,6 +345,8 @@ export class CmdbApiService {
     const connector = await this.getConnector(actor, id);
     const result = connector.connectorType === 'ACTIVE_DIRECTORY'
       ? await ActiveDirectoryInventorySyncService.enqueue(id, actor!, runType, { correlationId: request.correlationId })
+      : connector.connectorType === 'CORTEX'
+        ? await CortexInventorySyncService.enqueue(id, actor!, runType, { correlationId: request.correlationId })
       : await VCenterInventorySyncService.enqueue(id, actor!, runType, { correlationId: request.correlationId });
     await pgClient.transaction(async (client) => AuditService.logPostgres(client, { actor: actor!, action: 'CMDB_SYNC_TRIGGERED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { status: result.state, runId: result.runId, runType } }));
     return result;
@@ -349,6 +382,12 @@ export class CmdbApiService {
       const bindUser = input.bindUser || String(input.nonSecretConfiguration.bindUser || '');
       if (!ldapUrl.startsWith('ldaps://') || !baseDn || !bindUser || !input.secretReference) throw Object.assign(new Error('Active Directory requires LDAPS URL, base DN, dedicated read-only bind identity, and a vault/secret reference.'), { statusCode: 400 });
     }
+    const effectiveSecretReference = input.connectorType === 'CORTEX' && !input.secretReference && process.env.CORTEX_API_KEY ? 'env://CORTEX_API_KEY' : input.secretReference;
+    if (input.connectorType === 'CORTEX') {
+      const endpointUrl = String(input.nonSecretConfiguration.endpointUrl || ''); const apiKeyId = String(input.nonSecretConfiguration.apiKeyId || '');
+      if (!endpointUrl || !apiKeyId || !effectiveSecretReference) throw Object.assign(new Error('Cortex requires endpointUrl and API key ID. Configure CORTEX_API_KEY on the server.'), { statusCode: 400 });
+      validateCortexTransport({ endpointUrl, endpointAllowPrivateNetwork: input.endpointAllowPrivateNetwork, tlsVerifyCertificates: input.tlsVerifyCertificates, requestTimeoutMs: input.requestTimeoutMs, responseSizeLimitBytes: input.responseSizeLimitBytes });
+    }
     validateEndpoint(input.nonSecretConfiguration, input.endpointAllowPrivateNetwork);
     if (input.connectorType === 'VCENTER') rejectVCenterEndpointOverrides(input.nonSecretConfiguration);
     if (input.connectorType === 'VCENTER' && !input.endpointFqdn) throw Object.assign(new Error('endpointFqdn is required for a vCenter connector.'), { statusCode: 400 });
@@ -369,8 +408,8 @@ export class CmdbApiService {
           LIMIT 1`, [vcenterEndpoint, input.port || 443]);
         if (duplicate.rows[0]) throw Object.assign(new Error(`A vCenter connector already targets ${vcenterEndpoint}:${input.port || 443} (${duplicate.rows[0].name}).`), { statusCode: 409, code: 'VCENTER_DUPLICATE_TARGET' });
       }
-       const adConfiguration = input.connectorType === 'ACTIVE_DIRECTORY' ? { ...input.nonSecretConfiguration, url: input.ldapUrl || input.nonSecretConfiguration.url, baseDn: input.baseDn || input.nonSecretConfiguration.baseDn, bindUser: input.bindUser || input.nonSecretConfiguration.bindUser, accessMode: 'READ_ONLY', incrementalStrategy: 'usnChanged-or-whenChanged' } : input.nonSecretConfiguration;
-       const inserted = await client.query(`INSERT INTO cmdb_discovery_connectors(id,connection_id,name,description,connector_type_id,environment,enabled,health_status,operational_state,configuration_status,connection_status,discovery_status,non_secret_configuration,secret_reference,tls_ca_reference,tls_verify_certificates,endpoint_allow_private_network,request_timeout_ms,schedule_minutes,created_by_user_id,updated_by_user_id) VALUES($1,$2,$3,$4,$5::varchar,$6,$7,CASE WHEN $7 THEN 'UNKNOWN' ELSE 'DISABLED' END,CASE WHEN $7 THEN 'IDLE' ELSE 'DISABLED' END,CASE WHEN $5::varchar IN ('VCENTER','ACTIVE_DIRECTORY') THEN 'VALID' ELSE 'UNKNOWN' END,'UNKNOWN','UNKNOWN',$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$15) RETURNING *`, [id, input.connectionId || null, input.name || `CMDB connector ${id}`, input.description, input.connectorType, input.environment, input.enabled, JSON.stringify(adConfiguration), input.connectorType === 'ACTIVE_DIRECTORY' ? input.secretReference : null, input.tlsCaReference || null, input.tlsVerifyCertificates, input.endpointAllowPrivateNetwork, input.requestTimeoutMs, input.scheduleMinutes, actor.id]);
+       const adConfiguration = input.connectorType === 'ACTIVE_DIRECTORY' ? { ...input.nonSecretConfiguration, url: input.ldapUrl || input.nonSecretConfiguration.url, baseDn: input.baseDn || input.nonSecretConfiguration.baseDn, bindUser: input.bindUser || input.nonSecretConfiguration.bindUser, accessMode: 'READ_ONLY', incrementalStrategy: 'usnChanged-or-whenChanged' } : input.connectorType === 'CORTEX' ? { ...input.nonSecretConfiguration, responseSizeLimitBytes: input.responseSizeLimitBytes } : input.nonSecretConfiguration;
+       const inserted = await client.query(`INSERT INTO cmdb_discovery_connectors(id,connection_id,name,description,connector_type_id,environment,enabled,health_status,operational_state,configuration_status,connection_status,discovery_status,non_secret_configuration,secret_reference,tls_ca_reference,tls_verify_certificates,endpoint_allow_private_network,request_timeout_ms,schedule_minutes,created_by_user_id,updated_by_user_id) VALUES($1,$2,$3,$4,$5::varchar,$6,$7,CASE WHEN $7 THEN 'UNKNOWN' ELSE 'DISABLED' END,CASE WHEN $7 THEN 'IDLE' ELSE 'DISABLED' END,CASE WHEN $5::varchar IN ('VCENTER','ACTIVE_DIRECTORY','CORTEX') THEN 'VALID' ELSE 'UNKNOWN' END,'UNKNOWN','UNKNOWN',$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$15) RETURNING *`, [id, input.connectionId || null, input.name || `CMDB connector ${id}`, input.description, input.connectorType, input.environment, input.enabled, JSON.stringify(adConfiguration), ['ACTIVE_DIRECTORY','CORTEX'].includes(input.connectorType) ? effectiveSecretReference : null, input.tlsCaReference || null, input.tlsVerifyCertificates, input.endpointAllowPrivateNetwork, input.requestTimeoutMs, input.scheduleMinutes, actor.id]);
       if (vcenterEndpoint) {
         await VCenterConnectorRepository.createProfile(client, {
           connectorId: id,
@@ -398,12 +437,21 @@ export class CmdbApiService {
     const existing = await pgClient.query<{ id: string }>("SELECT id FROM cmdb_discovery_connectors WHERE connector_type_id='ACTIVE_DIRECTORY' AND deleted_at IS NULL ORDER BY created_at LIMIT 1");
     if (existing.rows[0]) return { connector: await this.getConnector(actor, existing.rows[0].id), created: false };
 
-    if (!config.LDAP_ENABLED || !config.LDAP_URL.startsWith('ldaps://') || !config.LDAP_BASE_DN || !config.LDAP_BIND_USER || !config.LDAP_BIND_PASSWORD) {
-      throw Object.assign(new Error('Server Active Directory configuration is incomplete. Configure LDAPS URL, base DN, dedicated read-only bind user and LDAP_BIND_PASSWORD first.'), { statusCode: 422, code: 'AD_SERVER_CONFIGURATION_INCOMPLETE' });
+    // Reuse the exact server-side source used by USER SYNC. LDAP_ENABLED is a
+    // scheduler switch, not a second CMDB connection, and some deployments
+    // expose the existing bind secret as AD_PASS (the sync scripts support
+    // that name as well). Never copy the secret into the connector payload.
+    const bindSecretReference = process.env.LDAP_BIND_PASSWORD
+      ? 'env://LDAP_BIND_PASSWORD'
+      : process.env.AD_PASS
+        ? 'env://AD_PASS'
+        : undefined;
+    if (!config.LDAP_URL.startsWith('ldaps://') || !config.LDAP_BASE_DN || !config.LDAP_BIND_USER || !bindSecretReference) {
+      throw Object.assign(new Error('The existing USER SYNC Active Directory source is not available to CMDB. Verify its server-side LDAPS URL, base DN, read-only bind user and secret.'), { statusCode: 422, code: 'AD_SERVER_CONFIGURATION_INCOMPLETE' });
     }
     const connector = await this.createConnector(actor, {
       name: config.LDAP_DOMAIN ? `Active Directory (${config.LDAP_DOMAIN})` : 'Active Directory', connectorType: 'ACTIVE_DIRECTORY', environment: 'PRODUCTION', enabled: true,
-      ldapUrl: config.LDAP_URL, baseDn: config.LDAP_BASE_DN, bindUser: config.LDAP_BIND_USER, secretReference: 'env://LDAP_BIND_PASSWORD', tlsVerifyCertificates: config.LDAP_TLS_REJECT_UNAUTHORIZED !== false, endpointAllowPrivateNetwork: true, requestTimeoutMs: 30000, scheduleMinutes: 0,
+      ldapUrl: config.LDAP_URL, baseDn: config.LDAP_BASE_DN, bindUser: config.LDAP_BIND_USER, secretReference: bindSecretReference, tlsVerifyCertificates: config.LDAP_TLS_REJECT_UNAUTHORIZED !== false, endpointAllowPrivateNetwork: true, requestTimeoutMs: 30000, scheduleMinutes: 0,
     }, request);
     return { connector, created: true };
   }
@@ -429,9 +477,15 @@ export class CmdbApiService {
         if (input.automationApiBasePath && input.automationApiBasePath !== '/api') throw Object.assign(new Error('vCenter Automation API path is fixed to /api.'), { statusCode: 400 });
         if (input.endpointFqdn && input.port) validateVCenterEndpoint(input.endpointFqdn, input.port, input.tlsVerifyCertificates ?? Boolean(current.rows[0].tls_verify_certificates), input.soapEndpointPath || '/sdk', input.automationApiBasePath || '/api');
       }
+      if (nextType === 'CORTEX') {
+        if (input.tlsVerifyCertificates === false) throw Object.assign(new Error('TLS certificate verification must remain enabled for Cortex connectors.'), { statusCode: 400 });
+        const nextConfiguration = input.nonSecretConfiguration || current.rows[0].non_secret_configuration || {};
+        validateCortexTransport({ endpointUrl: String(nextConfiguration.endpointUrl || ''), endpointAllowPrivateNetwork: input.endpointAllowPrivateNetwork ?? Boolean(current.rows[0].endpoint_allow_private_network), tlsVerifyCertificates: input.tlsVerifyCertificates ?? Boolean(current.rows[0].tls_verify_certificates), requestTimeoutMs: input.requestTimeoutMs ?? Number(current.rows[0].request_timeout_ms), responseSizeLimitBytes: Number(nextConfiguration.responseSizeLimitBytes || input.responseSizeLimitBytes || 4194304) });
+        if ('secretReference' in input && !/^env:\/\/[A-Z][A-Z0-9_]*$/.test(String(input.secretReference))) throw Object.assign(new Error('Cortex API secret must be a server-side env:// reference.'), { statusCode: 400 });
+      }
       const fields: string[] = []; const values: unknown[] = [];
       const set = (column: string, value: unknown) => { values.push(value); fields.push(`${column}=$${values.length}`); };
-      for (const [key, column] of Object.entries({ connectorType: 'connector_type_id', environment: 'environment', enabled: 'enabled', tlsCaReference: 'tls_ca_reference', tlsVerifyCertificates: 'tls_verify_certificates', endpointAllowPrivateNetwork: 'endpoint_allow_private_network', requestTimeoutMs: 'request_timeout_ms', scheduleMinutes: 'schedule_minutes' })) if (key in input) set(column, (input as any)[key]);
+      for (const [key, column] of Object.entries({ connectorType: 'connector_type_id', environment: 'environment', enabled: 'enabled', tlsCaReference: 'tls_ca_reference', tlsVerifyCertificates: 'tls_verify_certificates', endpointAllowPrivateNetwork: 'endpoint_allow_private_network', requestTimeoutMs: 'request_timeout_ms', scheduleMinutes: 'schedule_minutes', secretReference: 'secret_reference' })) if (key in input) set(column, (input as any)[key]);
        if ('name' in input) set('name', input.name);
        if ('description' in input) set('description', input.description);
       if (input.nonSecretConfiguration) set('non_secret_configuration', JSON.stringify(input.nonSecretConfiguration));
@@ -478,6 +532,25 @@ export class CmdbApiService {
       if ('tlsVerifyCertificates' in input && Boolean(before.tls_verify_certificates) !== Boolean(after.tls_verify_certificates)) auditChanges.push({ action: 'CMDB_CONNECTOR_TLS_POLICY_CHANGED', field: 'tlsVerifyCertificates', oldValue: Boolean(before.tls_verify_certificates), newValue: Boolean(after.tls_verify_certificates) });
       for (const change of auditChanges) await AuditService.logPostgres(client, { actor, action: change.action, entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, fieldChanges: [{ field: change.field, oldValue: change.oldValue, newValue: change.newValue }] });
       return withoutConnectorSecrets(updated.rows[0]);
+    });
+  }
+
+  /** Soft-delete preserves discovery evidence and the audit trail. A connector
+   * with queued or running work must be stopped through its run lifecycle first. */
+  public static async deleteConnector(actor: BankUser | undefined, id: string, raw: unknown, request: { correlationId?: string; ip?: string; userAgent?: string } = {}): Promise<{ id: string; deleted: true }> {
+    requirePermission(actor, 'asset_discovery.manage');
+    z.string().trim().min(1).max(64).parse(id);
+    const { version } = z.object({ version: z.number().int().positive() }).strict().parse(raw);
+    return pgClient.transaction(async (client) => {
+      const current = await client.query('SELECT * FROM cmdb_discovery_connectors WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [id]);
+      if (!current.rows[0]) throw Object.assign(new Error('Discovery connector not found.'), { statusCode: 404 });
+      if (Number(current.rows[0].version) !== version) throw Object.assign(new Error('Connector was changed by another user.'), { statusCode: 409 });
+      const activeRuns = await client.query("SELECT id FROM cmdb_discovery_sync_runs WHERE connector_id=$1 AND state IN ('QUEUED','RUNNING') LIMIT 1 FOR UPDATE", [id]);
+      if (activeRuns.rows[0]) throw Object.assign(new Error('Stop or complete the active discovery run before deleting this connector.'), { statusCode: 409, code: 'CONNECTOR_RUN_ACTIVE' });
+      const deleted = await client.query("UPDATE cmdb_discovery_connectors SET enabled=FALSE,health_status='DISABLED',operational_state='DISABLED',deleted_at=NOW(),updated_at=NOW(),updated_by_user_id=$2,version=version+1 WHERE id=$1 AND version=$3 RETURNING *", [id, actor.id, version]);
+      if (!deleted.rows[0]) throw Object.assign(new Error('Connector delete lost a concurrent write.'), { statusCode: 409 });
+      await AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_DELETED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, before: { ...current.rows[0], secret_reference: undefined, tls_ca_reference: undefined }, after: { deleted: true } });
+      return { id, deleted: true as const };
     });
   }
 

@@ -112,7 +112,10 @@ export class ActiveDirectoryInventorySyncService {
       client = new StrictReadOnlyLdapClient({ url, timeout: 30000, connectTimeout: 10000, tlsRejectUnauthorized: run.tls_verify_certificates !== false, caCertPath: config.LDAP_CA_CERT_PATH });
       await client.bind(bindUser, password);
       const attributes = ['objectGUID','objectClass','distinguishedName','name','cn','sAMAccountName','userPrincipalName','displayName','mail','department','title','manager','company','enabled','userAccountControl','accountExpires','pwdLastSet','lastLogon','lastLogonTimestamp','whenCreated','whenChanged','operatingSystem','operatingSystemVersion','dNSHostName','member','memberOf','groupType','servicePrincipalName','description'];
-      const response = await client.search(baseDn, { scope: 'sub', filter: '(|(objectClass=user)(objectClass=computer)(objectClass=group)(objectClass=organizationalUnit))', paged: { pageSize: 500 }, attributes });
+      // This connector is the CMDB asset source, not the USER SYNC source.
+      // Do not ingest people, groups, or OUs as inventory assets; identities
+      // remain owned by the canonical LDAP user-sync pipeline.
+      const response = await client.search(baseDn, { scope: 'sub', filter: '(&(objectCategory=computer)(objectClass=computer))', paged: { pageSize: 500 }, attributes });
       const entries = (response.searchEntries as Entry[]).map((entry) => ({ entry, objectType: objectTypeFor(entry), objectId: guid(entry), distinguishedName: dn(entry) })).filter((item) => Boolean(item.objectType && item.objectId)) as Array<{ entry: Entry; objectType: AdObjectType; objectId: string; distinguishedName: string | undefined }>;
       const idByDn = new Map(entries.filter((item) => item.distinguishedName).map((item) => [item.distinguishedName!.toLowerCase(), { objectType: item.objectType, objectId: item.objectId }]));
       const configuredPrivileged = new Set(values(source.privilegedGroupDns).map((value) => value.toLowerCase()));
@@ -131,9 +134,6 @@ export class ActiveDirectoryInventorySyncService {
         const privileged = item.objectType === 'Group' ? isPrivilegedGroup(item.entry) : values(item.entry.memberOf).some((groupDn) => configuredPrivileged.has(groupDn.toLowerCase()) || /^CN=Domain Admins(?:,|$)/i.test(groupDn));
         return { objectType: item.objectType, objectId: item.objectId, entry: { ...item.entry, __cmdbPrivilegedGroup: item.objectType === 'Group' && privileged, __cmdbPrivilegedIdentity: item.objectType === 'User' && privileged }, relationships };
       });
-      for (const department of new Set(entries.map((item) => text(item.entry, 'department')).filter((value): value is string => Boolean(value)))) {
-        raw.push({ objectType: 'Department', objectId: `department:${department.trim().toLowerCase()}`, entry: { name: department, displayName: department }, relationships: [] });
-      }
       const observedAt = new Date().toISOString(); const batch = await DiscoveryIngestionService.ingestBatch(raw.map((rawPayload) => ({ connectorId: run.connector_id, syncRunId: runId, sourceObjectType: rawPayload.objectType, sourceObjectId: rawPayload.objectId, observedAt, rawPayload })), activeDirectoryInventoryPayloadMapper);
       await DiscoveryIngestionService.reconcileAndCompleteRun(runId);
       return { runId, discovered: batch.succeeded.length, failed: batch.failed.length, state: batch.failed.length ? 'PARTIAL' : 'SUCCEEDED' };

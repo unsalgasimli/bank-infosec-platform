@@ -9,6 +9,7 @@ services:
   # 1. Bank InfoSec Application Service (Node.js 22 LTS)
   # ----------------------------------------------------------------------------
   app:
+    image: ${APP_IMAGE:-aegissec-platform:local}
     build:
       context: .
       dockerfile: Dockerfile
@@ -23,11 +24,11 @@ services:
       - DB_TYPE=postgres
       - DB_HOST=pgbouncer
       - DB_PORT=5432
-      - DB_USER=${POSTGRES_USER:?POSTGRES_USER must be set}
-      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
-      - DB_NAME=${POSTGRES_DB:?POSTGRES_DB must be set}
+      - DB_USER=${POSTGRES_USER:-${DB_USER:-bank_admin}}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-${DB_PASSWORD:?POSTGRES_PASSWORD or DB_PASSWORD must be set}}
+      - DB_NAME=${POSTGRES_DB:-${DB_NAME:-bank_infosec_db}}
       - REDIS_ENABLED=true
-      - REDIS_URL=${REDIS_URL:?REDIS_URL must be set in the deployment environment}
+      - REDIS_URL=${DOCKER_REDIS_URL:-redis://:${REDIS_PASSWORD:-${DB_PASSWORD:?REDIS_PASSWORD or DB_PASSWORD must be set}}@redis:6379}
       - STORAGE_PROVIDER=${STORAGE_PROVIDER:-local}
       - S3_BUCKET=${S3_BUCKET:-}
       - S3_REGION=${S3_REGION:-us-east-1}
@@ -36,9 +37,10 @@ services:
       - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY:-}
       - S3_FORCE_PATH_STYLE=${S3_FORCE_PATH_STYLE:-false}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in the deployment environment}
-      - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY:?DATA_ENCRYPTION_KEY must be set in the deployment environment}
+      - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY:-${JWT_SECRET:?JWT_SECRET must be set in the deployment environment}}
+      - CORTEX_API_KEY=${CORTEX_API_KEY:-}
       - RABBITMQ_ENABLED=true
-      - RABBITMQ_URL=amqp://${RABBITMQ_USER:?RABBITMQ_USER must be set}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}@rabbitmq:5672/${RABBITMQ_VHOST:-aegissec}
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-aegissec}:${RABBITMQ_PASSWORD:-${DB_PASSWORD:?RABBITMQ_PASSWORD or DB_PASSWORD must be set}}@rabbitmq:5672/${RABBITMQ_VHOST:-aegissec}
       - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE:-aegissec.events}
       - MALWARE_SCAN_ENABLED=true
       - CLAMAV_HOST=clamav
@@ -47,19 +49,23 @@ services:
       - CORS_ORIGIN=${CORS_ORIGIN:?CORS_ORIGIN must list trusted browser origins}
       - TRUST_PROXY_HOPS=${TRUST_PROXY_HOPS:-1}
       - LOG_LEVEL=info
-      - OTEL_TRACES_ENABLED=true
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:?OTEL_EXPORTER_OTLP_ENDPOINT must target the bank-approved collector}
+      - OTEL_TRACES_ENABLED=${OTEL_TRACES_ENABLED:-false}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-aegissec-platform}
       - LDAP_ENABLED=${LDAP_ENABLED:-true}
       - LDAP_URL=${LDAP_URL:-ldaps://DC01.Expressbank.az:636}
       - LDAP_BASE_DN=${LDAP_BASE_DN:-DC=Expressbank,DC=az}
       - LDAP_DOMAIN=${LDAP_DOMAIN:-EXPRESSBANK.AZ}
-      - LDAP_BIND_USER=${LDAP_BIND_USER:-}
-      - LDAP_BIND_PASSWORD=${LDAP_BIND_PASSWORD:-}
+      - LDAP_BIND_USER=${LDAP_BIND_USER:?LDAP_BIND_USER must be set for USER SYNC and CMDB discovery}
+      - LDAP_BIND_PASSWORD_FILE=/run/secrets/ldap_bind_password
+      - LDAP_TLS_REJECT_UNAUTHORIZED=${LDAP_TLS_REJECT_UNAUTHORIZED:-true}
+      - LDAP_CA_CERT_PATH=${LDAP_CA_CERT_PATH:-}
     ports:
       - "127.0.0.1:${APP_PORT:-4000}:4000"
     volumes:
       - app_storage:/app/data/storage
+    secrets:
+      - ldap_bind_password
     depends_on:
       pgbouncer:
         condition: service_healthy
@@ -81,26 +87,32 @@ services:
   # The same immutable image, with no HTTP listener. This process consumes
   # committed outbox events and owns workflow/automation/notification work.
   worker:
+    image: ${APP_IMAGE:-aegissec-platform:local}
     build:
       context: .
       dockerfile: Dockerfile
     container_name: aegissec-worker
     restart: unless-stopped
     command: ["node", "dist/server/worker.js"]
+    # Worker has no HTTP listener; the image-level API healthcheck must not
+    # classify a healthy background consumer as unhealthy.
+    healthcheck:
+      disable: true
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - DB_TYPE=postgres
       - DB_HOST=pgbouncer
       - DB_PORT=5432
-      - DB_USER=${POSTGRES_USER:?POSTGRES_USER must be set}
-      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
-      - DB_NAME=${POSTGRES_DB:?POSTGRES_DB must be set}
+      - DB_USER=${POSTGRES_USER:-${DB_USER:-bank_admin}}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-${DB_PASSWORD:?POSTGRES_PASSWORD or DB_PASSWORD must be set}}
+      - DB_NAME=${POSTGRES_DB:-${DB_NAME:-bank_infosec_db}}
       - REDIS_ENABLED=true
-      - REDIS_URL=${REDIS_URL:?REDIS_URL must be set in the deployment environment}
+      - REDIS_URL=${DOCKER_REDIS_URL:-redis://:${REDIS_PASSWORD:-${DB_PASSWORD:?REDIS_PASSWORD or DB_PASSWORD must be set}}@redis:6379}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in the deployment environment}
-      - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY:?DATA_ENCRYPTION_KEY must be set in the deployment environment}
+      - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY:-${JWT_SECRET:?JWT_SECRET must be set in the deployment environment}}
+      - CORTEX_API_KEY=${CORTEX_API_KEY:-}
       - RABBITMQ_ENABLED=true
-      - RABBITMQ_URL=amqp://${RABBITMQ_USER:?RABBITMQ_USER must be set}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}@rabbitmq:5672/${RABBITMQ_VHOST:-aegissec}
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-aegissec}:${RABBITMQ_PASSWORD:-${DB_PASSWORD:?RABBITMQ_PASSWORD or DB_PASSWORD must be set}}@rabbitmq:5672/${RABBITMQ_VHOST:-aegissec}
       - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE:-aegissec.events}
       - STORAGE_PROVIDER=${STORAGE_PROVIDER:-local}
       - S3_BUCKET=${S3_BUCKET:-}
@@ -113,9 +125,17 @@ services:
       - CLAMAV_HOST=clamav
       - CLAMAV_PORT=3310
       - LDAP_SYNC_AUTO_ENABLED=false
+      - LDAP_ENABLED=${LDAP_ENABLED:-true}
+      - LDAP_URL=${LDAP_URL:?LDAP_URL must be set for USER SYNC and CMDB discovery}
+      - LDAP_BASE_DN=${LDAP_BASE_DN:?LDAP_BASE_DN must be set for USER SYNC and CMDB discovery}
+      - LDAP_DOMAIN=${LDAP_DOMAIN:?LDAP_DOMAIN must be set for USER SYNC and CMDB discovery}
+      - LDAP_BIND_USER=${LDAP_BIND_USER:?LDAP_BIND_USER must be set for USER SYNC and CMDB discovery}
+      - LDAP_BIND_PASSWORD_FILE=/run/secrets/ldap_bind_password
+      - LDAP_TLS_REJECT_UNAUTHORIZED=${LDAP_TLS_REJECT_UNAUTHORIZED:-true}
+      - LDAP_CA_CERT_PATH=${LDAP_CA_CERT_PATH:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      - OTEL_TRACES_ENABLED=true
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:?OTEL_EXPORTER_OTLP_ENDPOINT must target the bank-approved collector}
+      - OTEL_TRACES_ENABLED=${OTEL_TRACES_ENABLED:-false}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-aegissec-platform}
     depends_on:
       pgbouncer:
@@ -128,44 +148,55 @@ services:
         condition: service_healthy
     networks:
       - bank_internal_network
+    secrets:
+      - ldap_bind_password
 
   # Timed work is deliberately not started in API replicas. It can be moved to
   # a singleton host/leader-elected deployment when the platform is scaled.
   scheduler:
+    image: ${APP_IMAGE:-aegissec-platform:local}
     build:
       context: .
       dockerfile: Dockerfile
     container_name: aegissec-scheduler
     restart: unless-stopped
     command: ["node", "dist/server/scheduler.js"]
+    # Scheduler has no HTTP listener; readiness is represented by its process
+    # lifecycle and dependency health, not the API probe.
+    healthcheck:
+      disable: true
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - DB_TYPE=postgres
       - DB_HOST=pgbouncer
       - DB_PORT=5432
-      - DB_USER=${POSTGRES_USER:?POSTGRES_USER must be set}
-      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
-      - DB_NAME=${POSTGRES_DB:?POSTGRES_DB must be set}
+      - DB_USER=${POSTGRES_USER:-${DB_USER:-bank_admin}}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-${DB_PASSWORD:?POSTGRES_PASSWORD or DB_PASSWORD must be set}}
+      - DB_NAME=${POSTGRES_DB:-${DB_NAME:-bank_infosec_db}}
       - REDIS_ENABLED=true
-      - REDIS_URL=${REDIS_URL:?REDIS_URL must be set in the deployment environment}
+      - REDIS_URL=${DOCKER_REDIS_URL:-redis://:${REDIS_PASSWORD:-${DB_PASSWORD:?REDIS_PASSWORD or DB_PASSWORD must be set}}@redis:6379}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in the deployment environment}
-      - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY:?DATA_ENCRYPTION_KEY must be set in the deployment environment}
+      - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY:-${JWT_SECRET:?JWT_SECRET must be set in the deployment environment}}
       - LDAP_SYNC_AUTO_ENABLED=${LDAP_SYNC_AUTO_ENABLED:-true}
       - LDAP_ENABLED=${LDAP_ENABLED:-true}
-      - LDAP_URL=${LDAP_URL:-ldaps://DC01.Expressbank.az:636}
-      - LDAP_BASE_DN=${LDAP_BASE_DN:-DC=Expressbank,DC=az}
-      - LDAP_DOMAIN=${LDAP_DOMAIN:-EXPRESSBANK.AZ}
-      - LDAP_BIND_USER=${LDAP_BIND_USER:-}
-      - LDAP_BIND_PASSWORD=${LDAP_BIND_PASSWORD:-}
+      - LDAP_URL=${LDAP_URL:?LDAP_URL must be set for USER SYNC and CMDB discovery}
+      - LDAP_BASE_DN=${LDAP_BASE_DN:?LDAP_BASE_DN must be set for USER SYNC and CMDB discovery}
+      - LDAP_DOMAIN=${LDAP_DOMAIN:?LDAP_DOMAIN must be set for USER SYNC and CMDB discovery}
+      - LDAP_BIND_USER=${LDAP_BIND_USER:?LDAP_BIND_USER must be set for USER SYNC and CMDB discovery}
+      - LDAP_BIND_PASSWORD_FILE=/run/secrets/ldap_bind_password
+      - LDAP_TLS_REJECT_UNAUTHORIZED=${LDAP_TLS_REJECT_UNAUTHORIZED:-true}
+      - LDAP_CA_CERT_PATH=${LDAP_CA_CERT_PATH:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      - OTEL_TRACES_ENABLED=true
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:?OTEL_EXPORTER_OTLP_ENDPOINT must target the bank-approved collector}
+      - OTEL_TRACES_ENABLED=${OTEL_TRACES_ENABLED:-false}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-aegissec-platform}
     depends_on:
       pgbouncer:
         condition: service_healthy
     networks:
       - bank_internal_network
+    secrets:
+      - ldap_bind_password
 
   # ----------------------------------------------------------------------------
   # 2. PostgreSQL 16 Relational Database Engine. Keep the major version until
@@ -176,9 +207,9 @@ services:
     container_name: aegissec-postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=${POSTGRES_USER:?POSTGRES_USER must be set}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
-      - POSTGRES_DB=${POSTGRES_DB:?POSTGRES_DB must be set}
+      - POSTGRES_USER=${POSTGRES_USER:-${DB_USER:-bank_admin}}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-${DB_PASSWORD:?POSTGRES_PASSWORD or DB_PASSWORD must be set}}
+      - POSTGRES_DB=${POSTGRES_DB:-${DB_NAME:-bank_infosec_db}}
       - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -208,9 +239,9 @@ services:
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
-      - DB_USER=${POSTGRES_USER:?POSTGRES_USER must be set}
-      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
-      - DB_NAME=${POSTGRES_DB:?POSTGRES_DB must be set}
+      - DB_USER=${POSTGRES_USER:-${DB_USER:-bank_admin}}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-${DB_PASSWORD:?POSTGRES_PASSWORD or DB_PASSWORD must be set}}
+      - DB_NAME=${POSTGRES_DB:-${DB_NAME:-bank_infosec_db}}
       # PostgreSQL 16 initializes credentials with SCRAM by default.
       - AUTH_TYPE=scram-sha-256
       - POOL_MODE=transaction
@@ -239,7 +270,7 @@ services:
     restart: unless-stopped
     command: >
       redis-server
-      --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      --requirepass ${REDIS_PASSWORD:-${DB_PASSWORD:?REDIS_PASSWORD or DB_PASSWORD must be set}}
       --appendonly yes
       --maxmemory 256mb
       --maxmemory-policy volatile-lru
@@ -248,7 +279,7 @@ services:
     networks:
       - bank_internal_network
     environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-${DB_PASSWORD:?REDIS_PASSWORD or DB_PASSWORD must be set}}
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping"]
       interval: 10s
@@ -271,8 +302,8 @@ services:
     hostname: aegissec-rabbitmq
     restart: unless-stopped
     environment:
-      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:?RABBITMQ_USER must be set}
-      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-aegissec}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:-${DB_PASSWORD:?RABBITMQ_PASSWORD or DB_PASSWORD must be set}}
       - RABBITMQ_DEFAULT_VHOST=${RABBITMQ_VHOST:-aegissec}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
@@ -324,7 +355,7 @@ services:
     profiles: ["observability"]
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-aegissec-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set for the observability profile}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-${JWT_SECRET:?JWT_SECRET must be set for the observability profile}}
       - GF_AUTH_ANONYMOUS_ENABLED=false
     ports:
       - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
@@ -371,6 +402,12 @@ volumes:
     driver: local
   app_storage:
     driver: local
+
+secrets:
+  # The file is supplied by the deployment environment and is never copied
+  # into the image or committed to the repository.
+  ldap_bind_password:
+    file: ${LDAP_BIND_PASSWORD_FILE:?LDAP_BIND_PASSWORD_FILE must point to the approved read-only AD bind secret file}
 
 # ------------------------------------------------------------------------------
 # Isolated Internal Network

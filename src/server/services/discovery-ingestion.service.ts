@@ -223,7 +223,7 @@ export class DiscoveryIngestionService {
       const run = await client.query<{ connector_id: string }>(`
         UPDATE cmdb_discovery_sync_runs
         SET state='FAILED',started_at=COALESCE(started_at,NOW()),completed_at=NOW(),updated_at=NOW(),
-            error_summary=error_summary || jsonb_build_array(jsonb_build_object('message',$2,'at',NOW()))
+            error_summary=error_summary || jsonb_build_array(jsonb_build_object('message',$2::text,'at',NOW()))
         WHERE id=$1 AND state NOT IN ('SUCCEEDED','PARTIAL','FAILED','CANCELLED')
         RETURNING connector_id`, [runId, message.slice(0, 4000)]);
       if (!run.rows[0]) return;
@@ -239,6 +239,25 @@ export class DiscoveryIngestionService {
         runId, connectorId: run.rows[0].connector_id, error: message.slice(0, 1000),
       }, `discovery.run.failed:${runId}`);
     });
+  }
+
+  /** Complete an incomplete source read without evaluating source absence. */
+  public static async completePartialRun(runId: string, checkpoint: Record<string, unknown> = {}, error?: unknown): Promise<void> {
+    const connectorResult = await pgClient.query<{ connector_id: string }>('SELECT connector_id FROM cmdb_discovery_sync_runs WHERE id=$1', [runId]);
+    if (!connectorResult.rows[0]) throw new DiscoveryIngestionError('Discovery run not found.', 'RUN_NOT_FOUND');
+    const locked = await ConnectorScopedLockService.withLock(connectorResult.rows[0].connector_id, 'sync', () => pgClient.transaction(async (client) => {
+      const message = error ? (error instanceof Error ? error.message : String(error)).slice(0, 4000) : undefined;
+      const run = await client.query<{ connector_id: string }>(`UPDATE cmdb_discovery_sync_runs
+        SET state='PARTIAL',started_at=COALESCE(started_at,NOW()),completed_at=NOW(),checkpoint=$2,
+            error_summary=CASE WHEN $3::text IS NULL THEN error_summary ELSE error_summary || jsonb_build_array(jsonb_build_object('message',$3,'at',NOW(),'partial',true)) END,
+            updated_at=NOW()
+        WHERE id=$1 AND state NOT IN ('SUCCEEDED','PARTIAL','FAILED','CANCELLED') RETURNING connector_id`, [runId, JSON.stringify(checkpoint), message || null]);
+      if (!run.rows[0]) return;
+      await client.query(`UPDATE cmdb_discovery_connectors SET last_sync_at=NOW(),health_status=CASE WHEN enabled THEN 'DEGRADED' ELSE 'DISABLED' END,
+        operational_state=CASE WHEN enabled THEN 'DEGRADED' ELSE 'DISABLED' END,consecutive_failures=consecutive_failures+1,checkpoint=$2,updated_at=NOW() WHERE id=$1`, [run.rows[0].connector_id, JSON.stringify(checkpoint)]);
+      await this.insertOutbox(client, 'discovery.run.completed', 'DISCOVERY_RUN', runId, { runId, connectorId: run.rows[0].connector_id, partial: true, absenceReconciliation: false }, `discovery.run.completed:${runId}`);
+    }));
+    if (!locked.acquired) throw new DiscoveryIngestionError('Another sync operation is already running for this connector.', 'CONNECTOR_SYNC_LOCKED');
   }
 
   private static async persistRawObservation(
@@ -258,14 +277,14 @@ export class DiscoveryIngestionService {
         throw new DiscoveryIngestionError(`Discovery run is not ingestible in state ${run.rows[0].state}.`, 'RUN_NOT_ACTIVE');
       }
       await client.query("UPDATE cmdb_discovery_sync_runs SET state='RUNNING',started_at=COALESCE(started_at,NOW()),updated_at=NOW() WHERE id=$1", [envelope.syncRunId]);
-      const inserted = await client.query<RawObservationRow>(`
+       const inserted = await client.query<RawObservationRow>(`
         INSERT INTO cmdb_raw_observations(
           connector_id,sync_run_id,source_object_type,source_object_id,observed_at,
           schema_version,raw_payload,deterministic_hash,processing_status
         ) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,'RECEIVED')
-        ON CONFLICT(sync_run_id,source_object_type,source_object_id,deterministic_hash)
-        DO UPDATE SET deterministic_hash=EXCLUDED.deterministic_hash
-        RETURNING id::text,processing_status,(xmax=0) AS inserted`, [
+         ON CONFLICT(sync_run_id,source_object_type,source_object_id,deterministic_hash)
+         DO NOTHING
+         RETURNING id::text,processing_status,(xmax=0) AS inserted`, [
         envelope.connectorId,
         envelope.syncRunId,
         envelope.sourceObjectType,
@@ -275,7 +294,13 @@ export class DiscoveryIngestionService {
         JSON.stringify(envelope.rawPayload),
         rawHash,
       ]);
-      return inserted.rows[0];
+       if (inserted.rows[0]) return inserted.rows[0];
+       const existing = await client.query<RawObservationRow>(`SELECT id::text,processing_status,FALSE AS inserted
+         FROM cmdb_raw_observations WHERE sync_run_id=$1 AND source_object_type=$2 AND source_object_id=$3 AND deterministic_hash=$4`, [
+         envelope.syncRunId, envelope.sourceObjectType, envelope.sourceObjectId, rawHash,
+       ]);
+       if (!existing.rows[0]) throw new DiscoveryIngestionError('Concurrent raw observation was not available after deduplication.', 'OBSERVATION_DEDUPLICATION_RACE', true);
+       return existing.rows[0];
     });
   }
 
@@ -321,7 +346,7 @@ export class DiscoveryIngestionService {
       // decision explicitly promotes them. This prevents an adapter from
       // directly creating or mutating canonical configuration_items.
       if (isVCenter) {
-        const matchedAssetId = resolution.outcome === 'MATCHED' ? resolution.assetId : undefined;
+        const matchedAssetId = resolution.outcome === 'AUTO_LINK' ? resolution.assetId : undefined;
         await client.query(`UPDATE cmdb_source_records
           SET asset_id=$2,status=$3,last_correlation_outcome=$4,correlation_rule_version=$5,updated_at=NOW()
           WHERE id=$1`, [
@@ -352,14 +377,14 @@ export class DiscoveryIngestionService {
 
       let assetId = resolution.assetId;
       let assetCreated = false;
-      if (resolution.outcome === 'NO_MATCH') {
+      if (resolution.outcome === 'CREATE_NEW') {
         assetId = await this.createCanonicalAsset(client, dto, sourceRecord.id, envelope.observedAt);
         assetCreated = true;
       }
 
       await this.stagePendingRelationships(client, sourceRecord.id, assetId, envelope, dto);
 
-      if (!assetId || ['POSSIBLE_MATCH', 'CONFLICT'].includes(resolution.outcome)) {
+      if (!assetId || ['REVIEW_REQUIRED', 'IDENTITY_CONFLICT'].includes(resolution.outcome)) {
         await client.query(`UPDATE cmdb_source_records
           SET asset_id=NULL,status='UNMATCHED',last_correlation_outcome=$2,correlation_rule_version=$3,updated_at=NOW()
           WHERE id=$1`, [sourceRecord.id, resolution.outcome, CORRELATION_RULE_VERSION]);
@@ -1015,17 +1040,24 @@ export class DiscoveryIngestionService {
     if (!accounted.rowCount) return;
     await client.query(`UPDATE cmdb_discovery_sync_runs SET
       discovered_count=discovered_count+1,
+      processed_count=processed_count+1,
       created_count=created_count+$2,
       updated_count=updated_count+$3,
       unchanged_count=unchanged_count+$4,
-      unmatched_count=unmatched_count+$5,
+      linked_count=linked_count+$5,
+      ambiguous_count=ambiguous_count+$6,
+      conflict_count=conflict_count+$7,
+      unmatched_count=unmatched_count+$8,
       updated_at=NOW()
       WHERE id=$1`, [
       runId,
       created ? 1 : 0,
       !created && changed ? 1 : 0,
-      !created && !changed && outcome === 'MATCHED' ? 1 : 0,
-      ['POSSIBLE_MATCH', 'CONFLICT'].includes(outcome) ? 1 : 0,
+      !created && !changed && outcome === 'AUTO_LINK' ? 1 : 0,
+      outcome === 'AUTO_LINK' && !created ? 1 : 0,
+      outcome === 'REVIEW_REQUIRED' ? 1 : 0,
+      outcome === 'IDENTITY_CONFLICT' ? 1 : 0,
+      ['REVIEW_REQUIRED', 'IDENTITY_CONFLICT'].includes(outcome) ? 1 : 0,
     ]);
   }
 

@@ -4,7 +4,7 @@ import { pgClient } from './db/postgres/client.js';
 import { runMigrations } from './db/postgres/migrate.js';
 import { logger } from './services/logger.service.js';
 import { OutboxRelayService } from './services/outbox-relay.service.js';
-import { QueueService } from './services/queue.service.js';
+import { DISCOVERY_QUEUE, QueueService } from './services/queue.service.js';
 import { WorkerEventService } from './services/worker-event.service.js';
 import { shutdownTelemetry, startTelemetry } from './services/telemetry.service.js';
 
@@ -15,7 +15,12 @@ async function startWorker(): Promise<void> {
   await runMigrations();
   await db.initialize();
   await QueueService.connect();
-  await QueueService.consume('aegissec.worker', WorkerEventService.process);
+  // Keep the service context intact: process() delegates to another static
+  // method through `this`, so passing it as an unbound callback breaks every
+  // RabbitMQ delivery with "processCommittedEvent" undefined.
+  await QueueService.consume(DISCOVERY_QUEUE, (event) => WorkerEventService.process(event));
+  await QueueService.consume('aegissec.worker', (event) => WorkerEventService.process(event));
+  await WorkerEventService.recoverQueuedDiscoveryRuns();
   OutboxRelayService.start();
   logger.info('AegisSec asynchronous worker is ready');
 }

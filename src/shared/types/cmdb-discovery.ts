@@ -135,6 +135,17 @@ export interface DiscoveryConnectorRecord {
   lastFailureMessage?: string;
   consecutiveFailures: number;
   checkpoint?: string;
+  /** Optimistic-lock revision required for update and deletion. */
+  version: number;
+  latestRun?: {
+    id: string;
+    state: DiscoverySyncRunState;
+    discoveredCount: number;
+    failedCount: number;
+    queuedAt: string;
+    startedAt?: string;
+    completedAt?: string;
+  };
   createdAt: string;
   updatedAt: string;
   deletedAt?: string;
@@ -178,6 +189,7 @@ export interface DiscoveryConnectorRecord {
 export interface DiscoverySyncRunRecord {
   id: string;
   connectorId: string;
+  connectorType?: string;
   runType: DiscoverySyncRunType;
   state: DiscoverySyncRunState;
   requestedByUserId?: string;
