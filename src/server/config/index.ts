@@ -12,7 +12,7 @@ dotenv.config();
 const fileBackedSecrets = [
   'DATABASE_URL', 'DB_PASSWORD', 'REDIS_URL', 'REDIS_PASSWORD',
   'RABBITMQ_URL', 'JWT_SECRET', 'DATA_ENCRYPTION_KEY',
-  'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY', 'LDAP_BIND_PASSWORD',
+  'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY', 'LDAP_BIND_PASSWORD', 'VCENTER_CREDENTIAL_KEK',
 ] as const;
 
 for (const key of fileBackedSecrets) {
@@ -86,6 +86,9 @@ const configSchema = z.object({
   // 32-byte-or-longer secret in every deployed environment; JWT_SECRET is a
   // backwards-compatible local-development fallback only.
   DATA_ENCRYPTION_KEY: z.string().min(32).optional(),
+  // Per-vCenter service credentials are encrypted with this distinct KEK.
+  // Inject it through the environment or a mounted *_FILE secret; never put it in the database.
+  VCENTER_CREDENTIAL_KEK: z.string().min(32).optional(),
   JWT_EXPIRES_IN: z.string().default('8h'),
   SESSION_TIMEOUT_MINUTES: z.coerce.number().default(30),
   SESSION_ABSOLUTE_TIMEOUT_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(168),
@@ -145,6 +148,9 @@ function loadConfig(): Config {
   }
   if (parsed.data.NODE_ENV === 'production' && !parsed.data.DATA_ENCRYPTION_KEY) {
     throw new Error('DATA_ENCRYPTION_KEY must be supplied separately in production; JWT_SECRET must not double as an encryption key.');
+  }
+  if (parsed.data.NODE_ENV === 'production' && !parsed.data.VCENTER_CREDENTIAL_KEK) {
+    throw new Error('VCENTER_CREDENTIAL_KEK must be supplied in production before vCenter credentials can be stored.');
   }
   if (parsed.data.OTEL_TRACES_ENABLED && !parsed.data.OTEL_EXPORTER_OTLP_ENDPOINT) {
     throw new Error('OTEL_EXPORTER_OTLP_ENDPOINT is required when OTEL_TRACES_ENABLED=true.');

@@ -283,7 +283,7 @@ export class CmdbFoundationRepository {
 
   public static async listDiscoveryConnectors(connectorType?: string): Promise<DiscoveryConnectorRecord[]> {
     const result = await pgClient.query(`
-      SELECT c.id, c.connection_id, dc.name, dc.description, c.connector_type_id, c.environment,
+       SELECT c.id, c.connection_id, COALESCE(c.name, dc.name) AS name, COALESCE(c.description, dc.description, '') AS description, c.connector_type_id, c.environment,
              c.enabled, c.health_status, c.non_secret_configuration,
              c.secret_reference, c.tls_ca_reference, c.schedule_minutes,
              c.endpoint_allow_private_network,
@@ -303,14 +303,15 @@ export class CmdbFoundationRepository {
              duplicate.id AS duplicate_connector_id,
              duplicate.name AS duplicate_connector_name
       FROM cmdb_discovery_connectors c
-      JOIN department_connections dc ON dc.id=c.connection_id
+       LEFT JOIN department_connections dc ON dc.id=c.connection_id
       LEFT JOIN cmdb_vcenter_connector_profiles v ON v.connector_id=c.id
       LEFT JOIN LATERAL (
         SELECT other.id, otherDc.name
         FROM cmdb_discovery_connectors other
-        JOIN department_connections otherDc ON otherDc.id=other.connection_id
+         LEFT JOIN department_connections otherDc ON otherDc.id=other.connection_id
         WHERE other.connector_type_id='VCENTER'
-          AND other.deleted_at IS NULL AND otherDc.deleted_at IS NULL
+           AND other.deleted_at IS NULL AND (otherDc.deleted_at IS NULL OR other.connection_id IS NULL)
+          AND other.enabled = TRUE
           AND other.id <> c.id
           AND c.connector_type_id='VCENTER'
           AND c.detected_instance_uuid IS NOT NULL
@@ -318,9 +319,9 @@ export class CmdbFoundationRepository {
         ORDER BY other.id
         LIMIT 1
       ) duplicate ON TRUE
-      WHERE c.deleted_at IS NULL AND dc.deleted_at IS NULL
+       WHERE c.deleted_at IS NULL AND (dc.deleted_at IS NULL OR c.connection_id IS NULL)
         AND ($1::text IS NULL OR c.connector_type_id=$1)
-      ORDER BY dc.name, c.id`, [connectorType || null]);
+       ORDER BY COALESCE(c.name, dc.name), c.id`, [connectorType || null]);
     return result.rows.map((row) => ({
       id: row.id,
       connectionId: row.connection_id,
@@ -378,6 +379,7 @@ export class CmdbFoundationRepository {
               connectorId: row.duplicate_connector_id,
               connectorName: row.duplicate_connector_name,
               reason: 'INSTANCE_UUID_MATCH' as const,
+              warning: 'POSSIBLE_DUPLICATE_VCENTER' as const,
             },
           } : {}),
         },

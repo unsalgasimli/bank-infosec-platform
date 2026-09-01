@@ -5,7 +5,7 @@ import { db } from '../db/database.js';
 import { OutboxService } from './outbox.service.js';
 import type pg from 'pg';
 
-const sensitiveAuditKeys = /^(password|passwd|pwd|token|access[_-]?token|refresh[_-]?token|api[_-]?key|secret|client[_-]?secret|private[_-]?key|credential|credentials|authorization|secretReference|tlsCaReference)$/i;
+const sensitiveAuditKeys = /^(password|passwd|pwd|token|apiToken|access[_-]?token|refresh[_-]?token|api[_-]?key|secret|client[_-]?secret|private[_-]?key|credential|credentials|authorization|secretReference|tlsCaReference)$/i;
 
 function sanitizeAuditValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sanitizeAuditValue);
@@ -129,6 +129,12 @@ export class AuditService {
   }
 
   public static getAllEvents(limit: number = 200): AuditEvent[] {
-    return db.data.auditEvents.slice(0, limit);
+    return (db.data.auditEvents || [])
+      .filter((event) =>
+        typeof event?.action === 'string' && event.action.trim().length > 0 &&
+        typeof event?.actorName === 'string' && event.actorName.trim().length > 0 &&
+        typeof event?.timestamp === 'string' && event.timestamp.trim().length > 0
+      )
+      .slice(0, Math.max(1, Math.min(limit, 500)));
   }
 }

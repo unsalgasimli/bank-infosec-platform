@@ -10,6 +10,7 @@ import { config } from '../config/index.js';
 import { SessionService } from '../services/session.service.js';
 import { isGenuineEmployeeOrIntern } from '../services/ldap-directory.data.js';
 import { DepartmentsRepository } from '../db/postgres/departments-repository.js';
+import { CmdbApiService } from '../services/cmdb-api.service.js';
 
 const ldapLoginSchema = z.object({
   usernameOrEmail: z.string().trim().min(1).max(256),
@@ -100,7 +101,9 @@ export class AuthController {
         action: 'USER_LOGOUT',
         entityType: 'USER',
         entityId: user.id,
-        ipAddress: req.ip || '10.20.4.15',
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent'),
+        correlationId: req.correlationId,
         fieldChanges: [
           {
             field: 'ldapAuthStatus',
@@ -119,11 +122,30 @@ export class AuthController {
     try {
       const user = req.user;
       const job = await LDAPSchedulerService.enqueueSync('MANUAL_TRIGGER', user);
+      let inventory: { queued: boolean; runId?: string; error?: string } = { queued: false };
+      if (config.DB_TYPE === 'postgres' && user) {
+        try {
+          const run = await CmdbApiService.triggerActiveDirectoryInventorySync(user, {
+            correlationId: req.correlationId,
+            ip: req.ip,
+            userAgent: req.get('user-agent'),
+          });
+          inventory = { queued: true, runId: run.runId };
+        } catch (error: any) {
+          // Keep the user-directory job authoritative: inventory configuration
+          // must not make the existing AD user sync fail, but report the exact
+          // reason so the operator can correct it from the inventory screen.
+          inventory = { queued: false, error: error?.message || 'Inventory sync could not be queued.' };
+        }
+      }
       res.status(202).json({
         success: true,
         queued: true,
         jobId: job.id,
-        message: 'Active Directory / LDAP synchronization was queued for the dedicated worker.',
+        inventory,
+        message: inventory.queued
+          ? 'Active Directory user and inventory synchronization were queued for the dedicated worker.'
+          : 'Active Directory / LDAP synchronization was queued for the dedicated worker. Inventory sync was not queued.',
       });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message || 'Failed to queue LDAP sync' });

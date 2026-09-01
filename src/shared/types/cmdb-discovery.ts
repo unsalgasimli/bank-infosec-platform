@@ -118,7 +118,7 @@ export interface AssetIdentifierRecord {
 
 export interface DiscoveryConnectorRecord {
   id: string;
-  connectionId: string;
+  connectionId?: string;
   name: string;
   connectorType: string;
   environment: string;
@@ -170,6 +170,7 @@ export interface DiscoveryConnectorRecord {
       connectorId: string;
       connectorName: string;
       reason: 'INSTANCE_UUID_MATCH';
+      warning: 'POSSIBLE_DUPLICATE_VCENTER';
     };
   };
 }

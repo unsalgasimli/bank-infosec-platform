@@ -285,16 +285,10 @@ select option { background-color: var(--surface-panel); color: var(--text-primar
 
 @media (max-width: 900px) {
   .auth-shell { grid-template-columns: 1fr; }
-  .auth-brief { min-height: auto; border-right: 0; border-bottom: 1px solid #203653; }
-  .auth-brief__inner { min-height: auto; padding: 1.25rem 1.25rem 1.5rem; }
-  .auth-brief__content { margin: 0; padding: 3.2rem 0 1.75rem; }
-  .auth-brief h1 { max-width: 32rem; font-size: clamp(2rem, 8vw, 3rem); }
-  .auth-brief__description { margin-bottom: 1.5rem; }
-  .auth-readiness-list, .auth-brief__footer { display: none; }
+  .auth-brief, .auth-form-surface__topbar, .auth-form-surface__footer { display: none; }
   .auth-form-surface { min-height: auto; }
-  .auth-form-surface__topbar { padding: 1.25rem; }
-  .auth-form-content { margin: 0 auto; padding-top: 2.2rem; padding-bottom: 2.2rem; }
-  .auth-form-surface__footer { padding: 1.25rem; }
+  .auth-form-content { width: min(100%, 29rem); margin: 0 auto; padding: 1.75rem clamp(1.5rem, 10vw, 3.5rem) 2.2rem; }
+  .auth-form-heading { margin-bottom: 1.8rem; }
 }
 
 @media (max-width: 480px) {

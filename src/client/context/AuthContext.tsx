@@ -20,6 +20,16 @@ const clearLegacyClientAuth = () => {
   localStorage.removeItem('aegis_ldap_session');
 };
 
+const readJsonResponse = async <T,>(response: Response): Promise<T | null> => {
+  const raw = await response.text();
+  if (!raw.trim()) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [allUsers, setAllUsers] = useState<BankUser[]>([]);
   const [currentUser, setCurrentUser] = useState<BankUser | null>(null);
@@ -35,8 +45,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    const data = await res.json();
-    setAllUsers(data.success && Array.isArray(data.users) ? data.users : []);
+    const data = await readJsonResponse<{ success?: boolean; users?: BankUser[] }>(res);
+    setAllUsers(data?.success && Array.isArray(data.users) ? data.users : []);
   }, []);
 
   useEffect(() => {
@@ -47,8 +57,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const res = await fetch('/api/auth/me', { credentials: 'include' });
         if (!res.ok) return;
 
-        const data = await res.json();
-        if (data.success && data.user) {
+        const data = await readJsonResponse<{ success?: boolean; user?: BankUser }>(res);
+        if (data?.success && data.user) {
           setCurrentUser(data.user);
           await refreshUsers();
         }
@@ -76,10 +86,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           password: payload.password,
         }),
       });
-      const data: AuthSessionResponse = await res.json();
+      const data = await readJsonResponse<AuthSessionResponse>(res);
 
-      if (!res.ok || !data.success || !data.user) {
-        return { success: false, message: data.message || 'Authentication failed' };
+      if (!res.ok || !data?.success || !data.user) {
+        return {
+          success: false,
+          message: data?.message || `Authentication service returned an invalid response (${res.status}).`,
+        };
       }
 
       setCurrentUser(data.user);

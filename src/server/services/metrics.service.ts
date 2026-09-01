@@ -76,8 +76,10 @@ ${Object.values(metrics.vcenter).flatMap((metric: any) => {
     `vcenter_connector_up{${label}} ${metric.up ? 1 : 0}`,
     `vcenter_connection_attempts_total{${label}} ${metric.connectionAttemptsTotal}`,
     `vcenter_connection_failures_total{${label}} ${metric.connectionFailuresTotal}`,
+    `vcenter_connection_tests_total{${label}} ${metric.connectionTestsTotal}`,
     `vcenter_auth_failures_total{${label}} ${metric.authenticationFailuresTotal}`,
     `vcenter_tls_failures_total{${label}} ${metric.tlsFailuresTotal}`,
+    `vcenter_connection_duration_seconds_total{${label}} ${metric.connectionDurationSecondsTotal}`,
     `vcenter_last_success_timestamp{${label}} ${metric.lastSuccessTimestamp ? Date.parse(metric.lastSuccessTimestamp) / 1000 : 0}`,
   ];
 }).join('\n')}

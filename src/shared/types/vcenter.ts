@@ -48,6 +48,8 @@ export type VCenterErrorCode =
   | 'VCENTER_CONNECT_TIMEOUT'
   | 'VCENTER_TLS_UNTRUSTED'
   | 'VCENTER_TLS_HOSTNAME_MISMATCH'
+  | 'VCENTER_TLS_EXPIRED'
+  | 'VCENTER_TLS_HANDSHAKE_FAILED'
   | 'VCENTER_AUTH_FAILED'
   | 'VCENTER_SESSION_EXPIRED'
   | 'VCENTER_PERMISSION_DENIED'
@@ -93,11 +95,25 @@ export interface VCenterCapabilities {
   version: string;
   build: string;
   apiVersion?: string;
-  supportsSoapVim: boolean;
-  supportsPropertyCollector: boolean;
-  supportsAutomationApi: boolean;
+  supportsRestApi: boolean;
+  supportsVmInventory: boolean;
+  supportsHostInventory: boolean;
+  supportsClusterInventory: boolean;
+  supportsDatacenterInventory: boolean;
+  supportsDatastoreInventory: boolean;
+  supportsNetworkInventory: boolean;
+  supportsResourcePoolInventory: boolean;
   supportsTagging: boolean;
-  supportsViJson: boolean;
+}
+
+export type VCenterTestStage = 'OK' | 'FAILED' | 'SKIPPED';
+export interface VCenterConnectionTestResult {
+  status: 'READY' | 'READY_WITH_LIMITED_CAPABILITIES' | 'FAILED';
+  connection: { validateConfig: VCenterTestStage; resolveSecret: VCenterTestStage; dns: VCenterTestStage; tcp: VCenterTestStage; tls: VCenterTestStage; authentication: VCenterTestStage; session: VCenterTestStage; inventory: VCenterTestStage; serverInfo: VCenterTestStage; permissions: VCenterTestStage };
+  errorCode?: VCenterErrorCode;
+  server?: VCenterServerInfo;
+  capabilities?: VCenterCapabilities;
+  session?: { username: string; createdAt?: string; lastAccessedAt?: string };
 }
 
 export interface VCenterConnectionSnapshot {
@@ -105,6 +121,7 @@ export interface VCenterConnectionSnapshot {
   capabilities: VCenterCapabilities;
   certificate?: VCenterCertificateMetadata;
   connectionTestedAt: string;
+  testResult?: VCenterConnectionTestResult;
 }
 
 export interface VCenterRuntimeState {
@@ -154,6 +171,7 @@ export interface PersistedVCenterConnector extends VCenterConnectorConfiguration
     connectorId: string;
     connectorName: string;
     reason: 'INSTANCE_UUID_MATCH';
+    warning: 'POSSIBLE_DUPLICATE_VCENTER';
   };
 }
 

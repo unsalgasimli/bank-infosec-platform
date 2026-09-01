@@ -115,10 +115,13 @@ export class AssetsController {
     db.data.assets.unshift(newAsset as any);
     AuditService.log({
       actor: user,
-      action: 'TICKET_CREATED',
-      entityType: 'TICKET',
+      action: 'ASSET_CREATED',
+      entityType: 'ASSET',
       entityId: newAsset.id,
-      metadata: { cmdbId: newAsset.cmdbId, name: newAsset.name },
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      correlationId: req.correlationId,
+      metadata: { cmdbId: newAsset.cmdbId, name: newAsset.name, assetType: newAsset.assetType },
     });
 
     db.persist();
@@ -164,9 +167,12 @@ export class AssetsController {
     db.data.applications.unshift(newApp as any);
     AuditService.log({
       actor: user,
-      action: 'TICKET_CREATED',
-      entityType: 'TICKET',
+      action: 'APPLICATION_CREATED',
+      entityType: 'APPLICATION',
       entityId: newApp.id,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      correlationId: req.correlationId,
       metadata: { code: newApp.code, name: newApp.name },
     });
 
@@ -264,9 +270,12 @@ export class RisksController {
     }
     AuditService.log({
       actor: user,
-      action: 'TICKET_CREATED',
-      entityType: 'TICKET',
+      action: 'RISK_CREATED',
+      entityType: 'RISK',
       entityId: persistedRisk.id,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      correlationId: req.correlationId,
       metadata: { riskCode: persistedRisk.riskCode, title: persistedRisk.title, persistence: 'POSTGRESQL' },
     });
 
@@ -330,9 +339,12 @@ export class KBController {
     db.data.kbArticles.unshift(newArticle as any);
     AuditService.log({
       actor: user,
-      action: 'TICKET_CREATED',
-      entityType: 'TICKET',
+      action: 'KB_ARTICLE_CREATED',
+      entityType: 'KB_ARTICLE',
       entityId: newArticle.id,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      correlationId: req.correlationId,
       metadata: { title: newArticle.title },
     });
 

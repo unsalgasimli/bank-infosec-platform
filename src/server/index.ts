@@ -16,6 +16,7 @@ import { requestTracingMiddleware } from './middleware/logging.middleware.js';
 import { errorHandlerMiddleware } from './middleware/error.middleware.js';
 import { runMigrations } from './db/postgres/migrate.js';
 import { shutdownTelemetry, startTelemetry } from './services/telemetry.service.js';
+import { LocalOutboxWorkerService } from './services/local-outbox-worker.service.js';
 
 import { TicketsController } from './controllers/tickets.controller.js';
 import { ApprovalsController, FindingsController } from './controllers/approvals.controller.js';
@@ -280,6 +281,7 @@ app.patch('/api/cmdb/relationship-types/:id', CMDBController.updateRelationshipT
 app.post('/api/cmdb/sync/:sourceSystem', CMDBController.sync);
 app.get('/api/cmdb/discovery/connectors', CMDBController.discoveryConnectors);
 app.post('/api/cmdb/discovery/connectors', CMDBController.createDiscoveryConnector);
+app.post('/api/cmdb/discovery/connectors/bootstrap-active-directory', CMDBController.bootstrapActiveDirectoryConnector);
 app.get('/api/cmdb/discovery/connectors/:id', CMDBController.discoveryConnectorDetail);
 app.patch('/api/cmdb/discovery/connectors/:id', CMDBController.updateDiscoveryConnector);
 app.post('/api/cmdb/discovery/connectors/:id/enabled', CMDBController.toggleDiscoveryConnector);
@@ -290,6 +292,7 @@ app.get('/api/cmdb/discovery/connectors/:id/health', CMDBController.discoveryCon
 app.get('/api/cmdb/discovery/connectors/:id/runs', CMDBController.discoveryRuns);
 app.get('/api/cmdb/discovery/connectors/:id/runs/:runId', CMDBController.discoveryRunDetail);
 app.post('/api/cmdb/discovery/connectors/:id/sync', CMDBController.triggerDiscoverySync);
+app.get('/api/cmdb/discovery/evidence', CMDBController.discoveryEvidence);
 app.get('/api/cmdb/discovery/correlation-cases', CMDBController.correlationCases);
 app.post('/api/cmdb/discovery/correlation-cases/:id/resolve', CMDBController.resolveCorrelation);
 // Compatibility read paths intentionally project the canonical model.
@@ -389,6 +392,7 @@ async function startServer(): Promise<void> {
     await runMigrations();
     await db.initialize();
     logger.info('PostgreSQL projection hydrated and selected as the runtime source of truth.');
+    LocalOutboxWorkerService.start();
   }
 
   server = app.listen(config.PORT, config.HOST, () => {
@@ -419,6 +423,7 @@ async function handleGracefulShutdown(signal: string) {
   logger.info({ signal }, 'Received shutdown signal, terminating server gracefully...');
 
   // Stop background scheduler timers
+  LocalOutboxWorkerService.stop();
 
   if (!server) {
     await pgClient.close();

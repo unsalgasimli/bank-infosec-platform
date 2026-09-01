@@ -117,8 +117,8 @@ export class PostgresProjectionRepository {
       pgClient.query(`SELECT ${directoryUserColumns} FROM bank_users ORDER BY username`),
       pgClient.query('SELECT id, tag, name, type, ip_address, fqdn, environment, critical_asset, pci_dss_scope, owner_id, custodian_id, department_id, os, created_at, updated_at FROM bank_assets ORDER BY id'),
       pgClient.query('SELECT id, code, name, tier, architecture_type, repository_url, technical_owner_id, business_owner_id, department_id, active_cve_count, created_at, updated_at FROM bank_applications ORDER BY id'),
-      pgClient.query('SELECT source_payload FROM cmdb_ci_types ORDER BY id'),
-      pgClient.query('SELECT source_payload FROM cmdb_relationship_types ORDER BY id'),
+      pgClient.query('SELECT id, name, parent_type_id, icon, is_active, required_attributes, optional_attributes, validation_rules, allowed_relationship_type_ids, created_at, updated_at, source_payload FROM cmdb_ci_types ORDER BY id'),
+      pgClient.query('SELECT id, name, inverse_name, is_dependency, prevents_cycles, is_active, created_at, updated_at, source_payload FROM cmdb_relationship_types ORDER BY id'),
       pgClient.query('SELECT asset_key,asset_subtype,lifecycle_state,technical_status,first_seen_at,last_seen_at,stale_since,retired_at,reactivated_at,source_payload FROM configuration_items ORDER BY created_at DESC'),
       pgClient.query('SELECT first_seen_at,last_seen_at,stale_since,retired_at,source_payload FROM ci_relationships ORDER BY created_at DESC'),
       pgClient.query('SELECT source_payload FROM ci_record_links ORDER BY created_at DESC'),
@@ -226,8 +226,29 @@ export class PostgresProjectionRepository {
       activeRiskCount: 0,
       openVulnerabilitiesCount: Number(row.active_cve_count) || 0,
     }));
-    base.cmdbTypes = cmdbTypes.rows.map((row) => fromPayload(row)).filter(Boolean);
-    base.cmdbRelationshipTypes = cmdbRelationshipTypes.rows.map((row) => fromPayload(row)).filter(Boolean);
+    base.cmdbTypes = cmdbTypes.rows.map((row) => fromPayload(row, {
+      id: row.id,
+      name: row.name,
+      parentTypeId: row.parent_type_id || undefined,
+      icon: row.icon || 'Box',
+      isActive: row.is_active !== false,
+      requiredAttributes: jsonArray(row.required_attributes),
+      optionalAttributes: jsonArray(row.optional_attributes),
+      validationRules: row.validation_rules && typeof row.validation_rules === 'object' ? row.validation_rules : {},
+      allowedRelationshipTypeIds: jsonArray(row.allowed_relationship_type_ids),
+      createdAt: iso(row.created_at),
+      updatedAt: iso(row.updated_at),
+    })).filter(Boolean);
+    base.cmdbRelationshipTypes = cmdbRelationshipTypes.rows.map((row) => fromPayload(row, {
+      id: row.id,
+      name: row.name,
+      inverseName: row.inverse_name,
+      isDependency: row.is_dependency === true,
+      preventsCycles: row.prevents_cycles === true,
+      isActive: row.is_active !== false,
+      createdAt: iso(row.created_at),
+      updatedAt: iso(row.updated_at),
+    })).filter(Boolean);
     base.configurationItems = configurationItems.rows.map((row) => fromPayload(row, {
       assetKey: row.asset_key,
       assetSubtype: row.asset_subtype || undefined,
@@ -297,19 +318,28 @@ export class PostgresProjectionRepository {
       downloadCount: 0,
       storageKey: row.storage_key,
     })).filter(Boolean);
-    base.auditEvents = auditEvents.rows.map((row) => fromPayload(row) || ({
-      id: row.id,
-      timestamp: iso(row.timestamp),
-      actorId: row.actor_id,
-      actorName: row.actor_name,
-      actorRole: row.actor_role || 'BANK_USER',
-      ipAddress: row.ip_address || '',
-      userAgent: row.user_agent || '',
-      correlationId: row.correlation_id || row.id,
-      action: row.action,
-      entityType: row.entity_type,
-      entityId: row.entity_id,
-    })).filter(Boolean);
+    base.auditEvents = auditEvents.rows.map((row) => {
+      // source_payload is a compatibility copy and may be partial or from an
+      // older schema. The normalized audit columns are authoritative for the
+      // identity, action, request metadata, and ordering of an event.
+      const event = fromPayload(row, {
+        id: row.id,
+        timestamp: iso(row.timestamp),
+        actorId: row.actor_id,
+        actorName: row.actor_name,
+        actorRole: row.actor_role || 'BANK_USER',
+        ipAddress: row.ip_address || 'not-captured',
+        userAgent: row.user_agent || 'not-captured',
+        correlationId: row.correlation_id || row.id,
+        action: row.action,
+        entityType: row.entity_type,
+        entityId: row.entity_id,
+      });
+      return typeof event.action === 'string' && event.action.trim() &&
+        typeof event.actorName === 'string' && event.actorName.trim()
+        ? event
+        : null;
+    }).filter((event): event is AuditEvent => event !== null);
     base.ticketRelationships = relationships.rows.map((row) => fromPayload(row) || ({
       id: row.id,
       sourceTicketId: row.source_ticket_id,

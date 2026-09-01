@@ -1,6 +1,7 @@
 import type pg from 'pg';
 import type { VCenterCategorySourceRecord, VCenterConnectionSnapshot, VCenterConnectorConfiguration, VCenterSyncState, VCenterTagSourceRecord } from '../../../shared/types/vcenter.js';
 import { pgClient } from './client.js';
+import type { EncryptedVCenterCredential } from '../../services/vcenter-credential-crypto.service.js';
 
 type VCenterConnectorRow = {
   connector_id: string;
@@ -39,7 +40,7 @@ const optional = (value: unknown): string | undefined => value === null || value
 
 function selectSql(): string {
   return `
-    SELECT c.id AS connector_id, dc.name, c.environment, c.enabled, c.health_status,
+    SELECT c.id AS connector_id, COALESCE(c.name, dc.name) AS name, c.environment, c.enabled, c.health_status,
            c.operational_state, v.endpoint_fqdn, v.port, v.soap_endpoint_path,
            v.automation_api_base_path, v.response_size_limit_bytes, v.access_mode, v.certificate_metadata,
            c.tls_verify_certificates, c.tls_ca_reference, c.endpoint_allow_private_network,
@@ -49,13 +50,23 @@ function selectSql(): string {
            c.last_successful_connection_at, c.last_full_sync_at, c.last_incremental_at,
            c.last_reconciliation_at
     FROM cmdb_discovery_connectors c
-    JOIN department_connections dc ON dc.id = c.connection_id
+    LEFT JOIN department_connections dc ON dc.id = c.connection_id
     JOIN cmdb_vcenter_connector_profiles v ON v.connector_id = c.id
     WHERE c.id = $1 AND c.connector_type_id = 'VCENTER'
-      AND c.deleted_at IS NULL AND dc.deleted_at IS NULL`;
+      AND c.deleted_at IS NULL AND (dc.deleted_at IS NULL OR c.connection_id IS NULL)`;
 }
 
 export class VCenterConnectorRepository {
+  public static async findCredential(connectorId: string): Promise<EncryptedVCenterCredential | undefined> {
+    const result = await pgClient.query('SELECT credential_ciphertext,credential_iv,credential_auth_tag,credential_key_version FROM cmdb_vcenter_credentials WHERE connector_id=$1', [connectorId]);
+    const row = result.rows[0];
+    return row ? { credentialCiphertext: row.credential_ciphertext, credentialIv: row.credential_iv, credentialAuthTag: row.credential_auth_tag, credentialKeyVersion: row.credential_key_version } : undefined;
+  }
+
+  public static async upsertCredential(client: pg.PoolClient, connectorId: string, credential: EncryptedVCenterCredential): Promise<void> {
+    await client.query(`INSERT INTO cmdb_vcenter_credentials(connector_id,credential_ciphertext,credential_iv,credential_auth_tag,credential_key_version)
+      VALUES($1,$2,$3,$4,$5) ON CONFLICT(connector_id) DO UPDATE SET credential_ciphertext=EXCLUDED.credential_ciphertext,credential_iv=EXCLUDED.credential_iv,credential_auth_tag=EXCLUDED.credential_auth_tag,credential_key_version=EXCLUDED.credential_key_version,updated_at=NOW()`, [connectorId, credential.credentialCiphertext, credential.credentialIv, credential.credentialAuthTag, credential.credentialKeyVersion]);
+  }
   public static async find(connectorId: string): Promise<VCenterConnectorConfiguration | undefined> {
     const result = await pgClient.query<VCenterConnectorRow>(selectSql(), [connectorId]);
     const row = result.rows[0];
@@ -104,7 +115,11 @@ export class VCenterConnectorRepository {
   }
 
   public static async recordConnectionSuccess(connectorId: string, snapshot: VCenterConnectionSnapshot): Promise<void> {
-    await pgClient.transaction(async (client) => {
+    await pgClient.transaction(async (client) => this.recordConnectionSuccessInTransaction(client, connectorId, snapshot));
+  }
+
+  /** Persist a successful connection that was already verified before the connector is committed. */
+  public static async recordConnectionSuccessInTransaction(client: pg.PoolClient, connectorId: string, snapshot: VCenterConnectionSnapshot): Promise<void> {
       await client.query(`
       UPDATE cmdb_discovery_connectors SET
         health_status='HEALTHY', operational_state=CASE WHEN enabled THEN 'READY' ELSE 'DISABLED' END,
@@ -122,10 +137,9 @@ export class VCenterConnectorRepository {
       snapshot.server.version, snapshot.server.build, snapshot.server.apiVersion || null,
       snapshot.server.instanceUuid || null, JSON.stringify(snapshot.capabilities),
     ]);
-      if (snapshot.certificate) {
-        await client.query(`UPDATE cmdb_vcenter_connector_profiles SET certificate_metadata=$2::jsonb,updated_at=NOW() WHERE connector_id=$1`, [connectorId, JSON.stringify(snapshot.certificate)]);
-      }
-    });
+    if (snapshot.certificate) {
+      await client.query(`UPDATE cmdb_vcenter_connector_profiles SET certificate_metadata=$2::jsonb,updated_at=NOW() WHERE connector_id=$1`, [connectorId, JSON.stringify(snapshot.certificate)]);
+    }
   }
 
   public static async markConnectionAttempt(connectorId: string): Promise<void> {
@@ -140,12 +154,12 @@ export class VCenterConnectorRepository {
   public static async recordConnectionFailure(connectorId: string, code: string, message: string, nextRetryAt?: string): Promise<void> {
     await pgClient.query(`
       UPDATE cmdb_discovery_connectors SET
-        health_status=CASE WHEN NOT enabled THEN 'DISABLED' WHEN $2 IN ('VCENTER_AUTH_FAILED','VCENTER_TLS_UNTRUSTED','VCENTER_TLS_HOSTNAME_MISMATCH','VCENTER_PERMISSION_DENIED','VCENTER_API_UNSUPPORTED','VCENTER_CONFIG_INVALID') THEN 'UNHEALTHY' ELSE 'DEGRADED' END,
+        health_status=CASE WHEN NOT enabled THEN 'DISABLED' WHEN $2 IN ('VCENTER_AUTH_FAILED','VCENTER_TLS_UNTRUSTED','VCENTER_TLS_HOSTNAME_MISMATCH','VCENTER_TLS_EXPIRED','VCENTER_TLS_HANDSHAKE_FAILED','VCENTER_PERMISSION_DENIED','VCENTER_API_UNSUPPORTED','VCENTER_CONFIG_INVALID') THEN 'UNHEALTHY' ELSE 'DEGRADED' END,
         operational_state=CASE WHEN NOT enabled THEN 'DISABLED'
           WHEN $2='VCENTER_CONFIG_INVALID' THEN 'CONFIG_INVALID'
           WHEN $2='VCENTER_AUTH_FAILED' THEN 'AUTH_FAILED'
           WHEN $2='VCENTER_TLS_UNTRUSTED' THEN 'TLS_FAILED'
-          WHEN $2='VCENTER_TLS_HOSTNAME_MISMATCH' THEN 'TLS_FAILED'
+          WHEN $2 IN ('VCENTER_TLS_HOSTNAME_MISMATCH','VCENTER_TLS_EXPIRED','VCENTER_TLS_HANDSHAKE_FAILED') THEN 'TLS_FAILED'
           WHEN $2='VCENTER_DNS_FAILED' THEN 'DNS_FAILED'
           WHEN $2='VCENTER_PERMISSION_DENIED' THEN 'PERMISSION_DENIED'
           WHEN $2='VCENTER_API_UNSUPPORTED' THEN 'UNSUPPORTED_VERSION'
@@ -153,7 +167,7 @@ export class VCenterConnectorRepository {
           ELSE 'DEGRADED' END,
         configuration_status=CASE WHEN $2='VCENTER_CONFIG_INVALID' THEN 'INVALID' ELSE configuration_status END,
         connection_status=CASE WHEN $2='VCENTER_AUTH_FAILED' THEN 'AUTH_FAILED'
-          WHEN $2 IN ('VCENTER_TLS_UNTRUSTED','VCENTER_TLS_HOSTNAME_MISMATCH') THEN 'TLS_FAILED'
+          WHEN $2 IN ('VCENTER_TLS_UNTRUSTED','VCENTER_TLS_HOSTNAME_MISMATCH','VCENTER_TLS_EXPIRED','VCENTER_TLS_HANDSHAKE_FAILED') THEN 'TLS_FAILED'
           WHEN $2='VCENTER_DNS_FAILED' THEN 'DNS_FAILED'
           WHEN $2='VCENTER_CONNECT_TIMEOUT' THEN 'NETWORK_FAILED'
           WHEN $2='VCENTER_PERMISSION_DENIED' THEN 'PERMISSION_DENIED'

@@ -28,8 +28,8 @@ export function validateVCenterTransport(configuration: Pick<VCenterConnectorCon
   if (!configuration.tlsVerifyCertificates) {
     throw new VCenterEndpointPolicyError('VCENTER_CONFIG_INVALID', 'TLS certificate verification must remain enabled for vCenter connectors.');
   }
-  if (configuration.soapEndpointPath !== '/sdk' || configuration.automationApiBasePath !== '/api') {
-    throw new VCenterEndpointPolicyError('VCENTER_CONFIG_INVALID', 'vCenter SOAP and Automation API paths are fixed to /sdk and /api.');
+  if (configuration.automationApiBasePath !== '/api') {
+    throw new VCenterEndpointPolicyError('VCENTER_CONFIG_INVALID', 'vCenter REST API path is fixed to /api.');
   }
   return host;
 }
@@ -49,7 +49,7 @@ export function isPrivateOrLocalAddress(address: string): boolean {
 }
 
 /** Resolve immediately before connect to reduce DNS-rebinding SSRF risk. */
-export async function assertVCenterResolvedTarget(configuration: Pick<VCenterConnectorConfiguration, 'endpointFqdn' | 'port' | 'endpointAllowPrivateNetwork' | 'tlsVerifyCertificates' | 'soapEndpointPath' | 'automationApiBasePath'>): Promise<void> {
+export async function assertVCenterResolvedTarget(configuration: Pick<VCenterConnectorConfiguration, 'endpointFqdn' | 'port' | 'endpointAllowPrivateNetwork' | 'tlsVerifyCertificates' | 'soapEndpointPath' | 'automationApiBasePath' | 'requestTimeoutMs'>): Promise<void> {
   const host = validateVCenterTransport(configuration);
   if (host === 'localhost' || host.endsWith('.local')) {
     if (!configuration.endpointAllowPrivateNetwork) throw new VCenterEndpointPolicyError('VCENTER_CONFIG_INVALID', 'Private or local vCenter targets require explicit endpointAllowPrivateNetwork approval.');
@@ -60,7 +60,7 @@ export async function assertVCenterResolvedTarget(configuration: Pick<VCenterCon
     return;
   }
   try {
-    const addresses = (await dns.lookup(host, { all: true, verbatim: true })).map((entry) => entry.address);
+    const addresses = (await dnsLookupWithTimeout(host, configuration.requestTimeoutMs)).map((entry) => entry.address);
     if (!addresses.length) throw new Error('No DNS address returned.');
     if (!configuration.endpointAllowPrivateNetwork && addresses.some(isPrivateOrLocalAddress)) {
       throw new VCenterEndpointPolicyError('VCENTER_CONFIG_INVALID', 'vCenter DNS target resolves to a private or local address without explicit approval.');
@@ -69,6 +69,16 @@ export async function assertVCenterResolvedTarget(configuration: Pick<VCenterCon
     if (error instanceof VCenterEndpointPolicyError) throw error;
     throw new VCenterEndpointPolicyError('VCENTER_DNS_FAILED', 'vCenter endpoint DNS resolution failed.');
   }
+}
+
+async function dnsLookupWithTimeout(host: string, timeoutMs: number): Promise<Array<{ address: string; family: number }>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      dns.lookup(host, { all: true, verbatim: true }),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('DNS lookup timed out.')), timeoutMs); }),
+    ]);
+  } finally { if (timer) clearTimeout(timer); }
 }
 
 export function vCenterRequestPolicy(configuration: Pick<VCenterConnectorConfiguration, 'requestTimeoutMs' | 'responseSizeLimitBytes'>): { timeoutMs: number; maxResponseBytes: number; redirect: 'error' } {

@@ -264,7 +264,12 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
       const res = await fetchWithAuth('/api/admin/ldap/sync', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        setSyncFeedback(`LDAP sync queued (job ${data.jobId}). The directory view will update after the worker completes it.`);
+        const inventoryMessage = data.inventory?.queued
+          ? ` Inventory sync queued (run ${data.inventory.runId}).`
+          : data.inventory?.error
+            ? ` Inventory sync was not queued: ${data.inventory.error}`
+            : '';
+        setSyncFeedback(`LDAP sync queued (job ${data.jobId}).${inventoryMessage} The directory view will update after the worker completes it.`);
       } else {
         setSyncFeedback(`Sync failed: ${data.error || 'Unknown error'}`);
       }
@@ -297,7 +302,13 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
     }
   };
 
-  const filteredAudit = auditEvents.filter((evt) => {
+  const validAuditEvents = auditEvents.filter((evt) =>
+    typeof evt?.action === 'string' && evt.action.trim() &&
+    typeof evt?.actorName === 'string' && evt.actorName.trim() &&
+    typeof evt?.timestamp === 'string' && evt.timestamp.trim()
+  );
+
+  const filteredAudit = validAuditEvents.filter((evt) => {
     if (!auditSearch) return true;
     const q = auditSearch.toLowerCase();
     return (
@@ -488,7 +499,7 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
                     </div>
                   )}
                   <div className="text-caption text-semantic-placeholder">
-                    IP: <span className="text-semantic-muted">{evt.ipAddress}</span> | CID: <span className="text-semantic-muted">{evt.correlationId}</span>
+                    IP: <span className="text-semantic-muted">{evt.ipAddress || 'not-captured'}</span> | CID: <span className="text-semantic-muted">{evt.correlationId || evt.id}</span>
                   </div>
                 </div>
               ))

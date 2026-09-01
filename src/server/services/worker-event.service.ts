@@ -18,6 +18,8 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Ticket } from '../../shared/types/ticket.js';
 import type { BankUser } from '../../shared/types/auth.js';
 import { ThreatModelService } from './threat-model.service.js';
+import { VCenterInventorySyncService } from './vcenter-inventory-sync.service.js';
+import { ActiveDirectoryInventorySyncService } from './active-directory-inventory-sync.service.js';
 
 const CONSUMER_NAME = 'aegissec-general-worker-v1';
 
@@ -77,13 +79,31 @@ export class WorkerEventService {
       WorkflowRuntimeService.resumeDueInstances(new Date(String(event.payload.scheduledAt || event.occurredAt)));
     } else if (event.topic === 'ldap.sync.requested') {
       await this.syncLdapDirectory(event);
+    } else if (event.topic === 'cmdb.discovery.sync.requested') {
+      try {
+        const runId = String(event.payload.runId || event.aggregateId);
+        if (event.payload.connectorType === 'ACTIVE_DIRECTORY') await ActiveDirectoryInventorySyncService.runQueued(runId);
+        else await VCenterInventorySyncService.runQueued(runId, { correlationId: event.correlationId });
+      } catch (error: any) {
+        if (error?.retryable === true) throw new RetryableWorkerError(String(error?.message || 'vCenter discovery source is temporarily unavailable.'));
+        throw error;
+      }
+    } else if (event.topic === 'discovery.run.completed') {
+      // Discovery ingestion already committed the authoritative PostgreSQL
+      // state. This notification only needs a consumer receipt.
     } else if (event.topic === 'ai.analysis.requested') {
       await this.analyzeTicket(event);
     } else {
       logger.warn({ eventId: event.id, topic: event.topic }, 'Ignoring unsupported outbox event topic');
     }
 
-    await db.persistAsync();
+    // Discovery ingestion is authoritative in PostgreSQL and does not mutate
+    // the legacy in-memory projection. Flushing it here can fail on unrelated
+    // compatibility records after the discovery run has already succeeded,
+    // leaving the durable outbox event stuck in retry forever.
+    if (event.topic !== 'cmdb.discovery.sync.requested' && event.topic !== 'discovery.run.completed') {
+      await db.persistAsync();
+    }
     await pgClient.query(
       'INSERT INTO event_consumer_receipts(consumer_name,event_id) VALUES($1,$2) ON CONFLICT DO NOTHING',
       [CONSUMER_NAME, event.id]

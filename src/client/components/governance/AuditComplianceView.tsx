@@ -24,14 +24,20 @@ export const AuditComplianceView: React.FC = () => {
       .catch((err) => console.error('Failed to load audit logs', err));
   }, []);
 
-  const filteredEvents = auditEvents.filter((e) => {
+  const validEvents = auditEvents.filter((e) =>
+    typeof e?.action === 'string' && e.action.trim() &&
+    typeof e?.actorName === 'string' && e.actorName.trim() &&
+    typeof e?.timestamp === 'string' && e.timestamp.trim()
+  );
+
+  const filteredEvents = validEvents.filter((e) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
       e.action.toLowerCase().includes(q) ||
       e.actorName.toLowerCase().includes(q) ||
       e.entityKey?.toLowerCase().includes(q) ||
-      e.ipAddress.toLowerCase().includes(q)
+      e.ipAddress?.toLowerCase().includes(q)
     );
   });
 
@@ -122,7 +128,7 @@ export const AuditComplianceView: React.FC = () => {
                   {evt.entityKey && <span className="font-mono font-bold text-semantic-info">[{evt.entityKey}]</span>}
                 </div>
                 <div className="text-label text-semantic-muted font-mono">
-                  {new Date(evt.timestamp).toLocaleString()} • IP: {evt.ipAddress}
+                  {new Date(evt.timestamp).toLocaleString()} • IP: {evt.ipAddress || 'not-captured'} • CID: {evt.correlationId || evt.id}
                 </div>
               </div>
             ))

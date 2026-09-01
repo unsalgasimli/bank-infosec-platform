@@ -523,6 +523,9 @@ export class TicketsController {
         entityType: 'TICKET',
         entityId: newTicket.id,
         entityKey: newTicket.key,
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent'),
+        correlationId: req.correlationId,
         metadata: { title: newTicket.title, severity: newTicket.technicalSeverity },
         persist: false,
       });

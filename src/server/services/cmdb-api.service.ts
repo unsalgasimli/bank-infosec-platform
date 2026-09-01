@@ -5,8 +5,15 @@ import { AuditService } from './audit.service.js';
 import { pgClient } from '../db/postgres/client.js';
 import { CmdbFoundationRepository, nonSecretConfigurationSchema } from '../db/postgres/cmdb-foundation-repository.js';
 import { VCenterConnectorRepository } from '../db/postgres/vcenter-connector-repository.js';
+import { VCenterConnector, VCenterConnectorError, VCenterRestClient } from '../integrations/vcenter/vcenter-connector.js';
 import { isPrivateOrLocalAddress, validateVCenterTransport } from '../integrations/vcenter/vcenter-endpoint-policy.js';
+import type { VCenterConnectorConfiguration } from '../../shared/types/vcenter.js';
 import { VCenterObservabilityService } from './vcenter-observability.service.js';
+import { defaultVCenterRuntimeService } from './vcenter-runtime.service.js';
+import { VCenterCredentialCryptoService } from './vcenter-credential-crypto.service.js';
+import { VCenterInventorySyncService } from './vcenter-inventory-sync.service.js';
+import { ActiveDirectoryInventorySyncService } from './active-directory-inventory-sync.service.js';
+import { config } from '../config/index.js';
 
 const pageSchema = z.object({
   page: z.coerce.number().int().min(1).max(100000).default(1),
@@ -32,14 +39,15 @@ const pageSchema = z.object({
 }).strict();
 
 const connectorCreateSchema = z.object({
-  connectionId: z.string().trim().min(1).max(128),
+  connectionId: z.string().trim().min(1).max(128).optional(),
   name: z.string().trim().min(1).max(255).optional(),
   description: z.string().trim().max(4000).default(''),
   connectorType: z.string().trim().min(1).max(64),
   environment: z.string().trim().min(1).max(32).default('UNKNOWN'),
   enabled: z.boolean().default(false),
   nonSecretConfiguration: nonSecretConfigurationSchema.default({}),
-  secretReference: z.string().trim().min(1).max(512).optional(),
+  username: z.string().trim().min(1).max(512).optional(),
+  password: z.string().min(1).max(4096).optional(),
   tlsCaReference: z.string().trim().min(1).max(512).optional(),
   tlsVerifyCertificates: z.boolean().default(true),
   endpointAllowPrivateNetwork: z.boolean().default(false),
@@ -50,6 +58,10 @@ const connectorCreateSchema = z.object({
   port: z.number().int().min(1).max(65535).optional(),
   soapEndpointPath: z.string().trim().min(1).max(255).default('/sdk'),
   automationApiBasePath: z.string().trim().min(1).max(255).default('/api'),
+  ldapUrl: z.string().trim().max(1024).optional(),
+  baseDn: z.string().trim().max(1024).optional(),
+  bindUser: z.string().trim().max(512).optional(),
+  secretReference: z.string().trim().min(1).max(512).optional(),
 }).strict();
 
 const connectorUpdateSchema = connectorCreateSchema.partial().extend({ version: z.number().int().positive() }).strict();
@@ -124,6 +136,19 @@ function withoutConnectorSecrets(row: any): any {
 function rejectVCenterEndpointOverrides(configuration: Record<string, unknown>): void {
   if (['endpointUrl', 'endpoint', 'baseUrl'].some((key) => Object.prototype.hasOwnProperty.call(configuration, key))) {
     throw Object.assign(new Error('vCenter endpoint is configured only by endpointFqdn and port; arbitrary URL overrides are not allowed.'), { statusCode: 400 });
+  }
+}
+
+async function verifyVCenterBeforeCreation(configuration: VCenterConnectorConfiguration, username: string, password: string): Promise<Awaited<ReturnType<VCenterConnector['connect']>>> {
+  const client = new VCenterRestClient();
+  try {
+    return await new VCenterConnector(configuration, client).connect({ username, password });
+  } catch (error) {
+    if (error instanceof VCenterConnectorError) Object.assign(error, { statusCode: 422 });
+    else if (error instanceof Error) Object.assign(error, { statusCode: 422, code: (error as any).code || 'VCENTER_CONFIG_INVALID' });
+    throw error;
+  } finally {
+    client.invalidate(configuration.connectorId);
   }
 }
 
@@ -218,7 +243,7 @@ export class CmdbApiService {
   public static async getConnectorHealth(actor: BankUser | undefined, id: string): Promise<any> {
     requirePermission(actor, 'asset_discovery.health');
     const connector = await this.getConnector(actor, id);
-    return { connector, metrics: VCenterObservabilityService.snapshot(id) };
+    return { connector, metrics: connector.connectorType === 'VCENTER' ? VCenterObservabilityService.snapshot(id) : { connectorType: connector.connectorType, lastSyncAt: connector.lastSyncAt, lastSuccessfulSyncAt: connector.lastSuccessfulSyncAt, consecutiveFailures: connector.consecutiveFailures } };
   }
 
   public static async listConnectorRuns(actor: BankUser | undefined, id: string, limit = 100): Promise<any[]> {
@@ -230,65 +255,122 @@ export class CmdbApiService {
     return CmdbFoundationRepository.listSyncRuns(id, boundedLimit);
   }
 
-  public static async testConnector(actor: BankUser | undefined, id: string, request: { correlationId?: string; ip?: string; userAgent?: string } = {}): Promise<never> {
-    requirePermission(actor, 'asset_discovery.test');
-    z.string().trim().min(1).max(64).parse(id);
-    await pgClient.transaction(async (client) => {
-      const current = await client.query('SELECT id FROM cmdb_discovery_connectors WHERE id=$1 AND connector_type_id=\'VCENTER\' AND deleted_at IS NULL', [id]);
-      if (!current.rows[0]) throw Object.assign(new Error('vCenter connector not found.'), { statusCode: 404, code: 'DISCOVERY_CONNECTOR_NOT_FOUND' });
-      await AuditService.logPostgres(client, {
-        actor, action: 'CMDB_CONNECTOR_TESTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id,
-        correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent,
-        metadata: { status: 'CONNECTOR_IMPLEMENTATION_NOT_READY', connectorType: 'VCENTER' },
-      });
-    });
-    throw Object.assign(new Error('Real vCenter DNS, TLS, authentication, identity and capability validation is not implemented yet.'), {
-      statusCode: 501,
-      code: 'CONNECTOR_IMPLEMENTATION_NOT_READY',
-    });
+  /** Read-only evidence inventory. VMware objects stay source records until governed correlation. */
+  public static async listDiscoveryEvidence(actor: BankUser | undefined, page = 1, pageSize = 25): Promise<any> {
+    requirePermission(actor, 'asset_discovery.read');
+    const safePage = z.number().int().min(1).max(100000).parse(page); const safeSize = z.number().int().min(1).max(100).parse(pageSize);
+    const [items, count] = await Promise.all([
+      pgClient.query(`SELECT s.id,s.connector_id,s.external_object_type,s.external_object_id,s.source_name,s.status,s.last_seen_at,s.last_sync_run_id,s.last_correlation_outcome,COALESCE(c.name,dc.name) connector_name,c.connector_type_id
+        FROM cmdb_source_records s JOIN cmdb_discovery_connectors c ON c.id=s.connector_id LEFT JOIN department_connections dc ON dc.id=c.connection_id
+        WHERE c.connector_type_id IN ('VCENTER','ACTIVE_DIRECTORY') AND c.deleted_at IS NULL ORDER BY s.last_seen_at DESC,s.id LIMIT $1 OFFSET $2`, [safeSize, (safePage - 1) * safeSize]),
+      pgClient.query(`SELECT count(*)::int count FROM cmdb_source_records s JOIN cmdb_discovery_connectors c ON c.id=s.connector_id WHERE c.connector_type_id IN ('VCENTER','ACTIVE_DIRECTORY') AND c.deleted_at IS NULL`),
+    ]);
+    return { items: items.rows.map((row) => ({ id: row.id, connectorId: row.connector_id, connectorName: row.connector_name, connectorType: row.connector_type_id, objectType: row.external_object_type, objectId: row.external_object_id, name: row.source_name, status: row.status, lastSeenAt: row.last_seen_at, lastSyncRunId: row.last_sync_run_id, correlationOutcome: row.last_correlation_outcome })), total: Number(count.rows[0]?.count || 0), page: safePage, pageSize: safeSize };
   }
 
-  public static async triggerConnectorSync(actor: BankUser | undefined, id: string, request: { correlationId?: string; ip?: string; userAgent?: string } = {}): Promise<never> {
+  public static async testConnector(actor: BankUser | undefined, id: string, request: { correlationId?: string; ip?: string; userAgent?: string } = {}): Promise<any> {
+    requirePermission(actor, 'asset_discovery.test');
+    z.string().trim().min(1).max(64).parse(id);
+    const connector = await this.getConnector(actor, id);
+    if (connector.connectorType === 'ACTIVE_DIRECTORY') {
+      // A test must be non-mutating. AD inventory itself runs only through the
+      // durable sync command, never from this management endpoint.
+      const source = connector.nonSecretConfiguration || {};
+      const secret = await pgClient.query<{ secret_reference: string | null }>('SELECT secret_reference FROM cmdb_discovery_connectors WHERE id=$1 AND deleted_at IS NULL', [id]);
+      const ready = String(source.url || config.LDAP_URL || '').startsWith('ldaps://') && Boolean(source.baseDn || config.LDAP_BASE_DN) && Boolean(source.bindUser || config.LDAP_BIND_USER) && /^env:\/\/[A-Z][A-Z0-9_]*$/.test(String(secret.rows[0]?.secret_reference || ''));
+      if (!ready) throw Object.assign(new Error('Active Directory connector is missing LDAPS, base DN, read-only bind user, or a server-side secret.'), { statusCode: 422, code: 'AD_CONNECTOR_CONFIG_INVALID' });
+      return { connectorId: id, snapshot: { testResult: { status: 'READY_FOR_READ_ONLY_SYNC', transport: 'LDAPS', credentials: 'SERVER_SIDE_SECRET_REFERENCE', writeOperations: 'BLOCKED' } } };
+    }
+    await pgClient.transaction(async (client) => AuditService.logPostgres(client, {
+      actor, action: 'VCENTER_CONNECTION_TEST_STARTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id,
+      correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent,
+      metadata: { connectorType: 'VCENTER' },
+    }));
+    try {
+      const result = await defaultVCenterRuntimeService.connectAndPersist(id, { correlationId: request.correlationId });
+      await pgClient.transaction(async (client) => AuditService.logPostgres(client, {
+        actor, action: 'VCENTER_CONNECTION_TEST_SUCCEEDED', entityType: 'DISCOVERY_CONNECTOR', entityId: id,
+        correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent,
+        metadata: { status: 'SUCCEEDED', connectorType: 'VCENTER' },
+      }).then(async () => {
+        await AuditService.logPostgres(client, { actor, action: 'VCENTER_SERVER_IDENTITY_DETECTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { instanceUuidDetected: Boolean(result.snapshot.server.instanceUuid) } });
+        await AuditService.logPostgres(client, { actor, action: 'VCENTER_CAPABILITIES_UPDATED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { supportsRestApi: result.snapshot.capabilities.supportsRestApi, supportsVmInventory: result.snapshot.capabilities.supportsVmInventory, supportsHostInventory: result.snapshot.capabilities.supportsHostInventory, supportsClusterInventory: result.snapshot.capabilities.supportsClusterInventory, supportsDatacenterInventory: result.snapshot.capabilities.supportsDatacenterInventory, supportsTagging: result.snapshot.capabilities.supportsTagging } });
+      }));
+      return result;
+    } catch (error: any) {
+      await pgClient.transaction(async (client) => AuditService.logPostgres(client, {
+        actor, action: 'VCENTER_CONNECTION_TEST_FAILED', entityType: 'DISCOVERY_CONNECTOR', entityId: id,
+        correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent,
+        metadata: { status: 'FAILED', connectorType: 'VCENTER', errorCode: typeof error?.code === 'string' ? error.code : 'VCENTER_INTERNAL_ERROR' },
+      })).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  public static async triggerConnectorSync(actor: BankUser | undefined, id: string, syncType: unknown = 'FULL', request: { correlationId?: string; ip?: string; userAgent?: string } = {}): Promise<any> {
     requirePermission(actor, 'asset_discovery.run');
     z.string().trim().min(1).max(64).parse(id);
-    await pgClient.transaction(async (client) => {
-      const current = await client.query('SELECT id FROM cmdb_discovery_connectors WHERE id=$1 AND deleted_at IS NULL', [id]);
-      if (!current.rows[0]) throw Object.assign(new Error('Discovery connector not found.'), { statusCode: 404, code: 'DISCOVERY_CONNECTOR_NOT_FOUND' });
-      await AuditService.logPostgres(client, {
-        actor, action: 'CMDB_SYNC_TRIGGERED', entityType: 'DISCOVERY_CONNECTOR', entityId: id,
-        correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent,
-        metadata: { status: 'CONNECTOR_IMPLEMENTATION_NOT_READY' },
-      });
-    });
-    throw Object.assign(new Error('vCenter inventory synchronization is not implemented yet.'), { statusCode: 501, code: 'CONNECTOR_IMPLEMENTATION_NOT_READY' });
+    const runType = z.enum(['FULL', 'INCREMENTAL']).parse(syncType);
+    const connector = await this.getConnector(actor, id);
+    const result = connector.connectorType === 'ACTIVE_DIRECTORY'
+      ? await ActiveDirectoryInventorySyncService.enqueue(id, actor!, runType, { correlationId: request.correlationId })
+      : await VCenterInventorySyncService.enqueue(id, actor!, runType, { correlationId: request.correlationId });
+    await pgClient.transaction(async (client) => AuditService.logPostgres(client, { actor: actor!, action: 'CMDB_SYNC_TRIGGERED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { status: result.state, runId: result.runId, runType } }));
+    return result;
+  }
+
+  /**
+   * Queue the AD inventory projection from the same operator action that
+   * queues the human directory sync. The connector is bootstrapped from the
+   * server-owned LDAP configuration when it has not been registered yet.
+   */
+  public static async triggerActiveDirectoryInventorySync(actor: BankUser | undefined, request: { correlationId?: string; ip?: string; userAgent?: string } = {}): Promise<any> {
+    requirePermission(actor, 'asset_discovery.run');
+    const existing = await pgClient.query<{ id: string; enabled: boolean }>(
+      "SELECT id,enabled FROM cmdb_discovery_connectors WHERE connector_type_id='ACTIVE_DIRECTORY' AND deleted_at IS NULL ORDER BY created_at LIMIT 1",
+    );
+    let connectorId = existing.rows[0]?.id;
+    if (!connectorId) {
+      const bootstrapped = await this.bootstrapActiveDirectoryConnector(actor, request);
+      connectorId = bootstrapped.connector.id;
+    } else if (!existing.rows[0].enabled) {
+      throw Object.assign(new Error('The Active Directory inventory connector is disabled. Enable it from Inventory Sync Runs first.'), { statusCode: 409, code: 'DISCOVERY_CONNECTOR_DISABLED' });
+    }
+    return ActiveDirectoryInventorySyncService.enqueue(connectorId, actor!, 'FULL', { correlationId: request.correlationId });
   }
 
   public static async createConnector(actor: BankUser | undefined, raw: unknown, request: { correlationId?: string; ip?: string; userAgent?: string } = {}): Promise<any> {
     requirePermission(actor, 'asset_discovery.manage');
     const input = connectorCreateSchema.parse(raw);
+    if (input.connectorType === 'VCENTER' && (!input.username || !input.password)) throw Object.assign(new Error('vCenter service-account username and password are required.'), { statusCode: 400 });
+    if (input.connectorType === 'ACTIVE_DIRECTORY') {
+      const ldapUrl = input.ldapUrl || String(input.nonSecretConfiguration.url || '');
+      const baseDn = input.baseDn || String(input.nonSecretConfiguration.baseDn || '');
+      const bindUser = input.bindUser || String(input.nonSecretConfiguration.bindUser || '');
+      if (!ldapUrl.startsWith('ldaps://') || !baseDn || !bindUser || !input.secretReference) throw Object.assign(new Error('Active Directory requires LDAPS URL, base DN, dedicated read-only bind identity, and a vault/secret reference.'), { statusCode: 400 });
+    }
     validateEndpoint(input.nonSecretConfiguration, input.endpointAllowPrivateNetwork);
     if (input.connectorType === 'VCENTER') rejectVCenterEndpointOverrides(input.nonSecretConfiguration);
     if (input.connectorType === 'VCENTER' && !input.endpointFqdn) throw Object.assign(new Error('endpointFqdn is required for a vCenter connector.'), { statusCode: 400 });
     if (input.connectorType !== 'VCENTER' && (input.endpointFqdn || input.port !== undefined)) throw Object.assign(new Error('vCenter endpoint fields are only valid for a VCENTER connector.'), { statusCode: 400 });
     const vcenterEndpoint = input.connectorType === 'VCENTER' ? validateVCenterEndpoint(input.endpointFqdn!, input.port || 443, input.tlsVerifyCertificates, input.soapEndpointPath, input.automationApiBasePath) : undefined;
     if (vcenterEndpoint && !input.endpointAllowPrivateNetwork && (vcenterEndpoint === 'localhost' || vcenterEndpoint.endsWith('.local') || isPrivateOrLocalAddress(vcenterEndpoint))) throw Object.assign(new Error('Private or local vCenter targets require explicit endpointAllowPrivateNetwork approval.'), { statusCode: 400 });
+    const id = `dconn-${cryptoRandom()}`;
+    const connectionSnapshot = vcenterEndpoint ? await verifyVCenterBeforeCreation({ connectorId: id, endpointFqdn: vcenterEndpoint, port: input.port || 443, soapEndpointPath: input.soapEndpointPath, automationApiBasePath: input.automationApiBasePath, tlsVerifyCertificates: input.tlsVerifyCertificates, tlsCaReference: input.tlsCaReference, requestTimeoutMs: input.requestTimeoutMs, responseSizeLimitBytes: input.responseSizeLimitBytes, endpointAllowPrivateNetwork: input.endpointAllowPrivateNetwork, accessMode: 'READ_ONLY' }, input.username!, input.password!) : undefined;
     return pgClient.transaction(async (client) => {
-      const connection = await client.query('SELECT id FROM department_connections WHERE id=$1 AND deleted_at IS NULL', [input.connectionId]);
-      if (!connection.rows[0]) throw Object.assign(new Error('The referenced department connection does not exist.'), { statusCode: 400 });
-      if (input.name) await client.query('UPDATE department_connections SET name=$2,description=$3,updated_at=NOW() WHERE id=$1', [input.connectionId, input.name, input.description]);
-      if (vcenterEndpoint) {
+       if (vcenterEndpoint) {
         const duplicate = await client.query(`
-          SELECT c.id, dc.name
+           SELECT c.id, COALESCE(c.name, dc.name) AS name
           FROM cmdb_vcenter_connector_profiles v
           JOIN cmdb_discovery_connectors c ON c.id=v.connector_id
-          JOIN department_connections dc ON dc.id=c.connection_id
+           LEFT JOIN department_connections dc ON dc.id=c.connection_id
           WHERE c.connector_type_id='VCENTER' AND c.deleted_at IS NULL AND dc.deleted_at IS NULL
             AND lower(v.endpoint_fqdn)=lower($1) AND v.port=$2
           LIMIT 1`, [vcenterEndpoint, input.port || 443]);
         if (duplicate.rows[0]) throw Object.assign(new Error(`A vCenter connector already targets ${vcenterEndpoint}:${input.port || 443} (${duplicate.rows[0].name}).`), { statusCode: 409, code: 'VCENTER_DUPLICATE_TARGET' });
       }
-      const id = `dconn-${cryptoRandom()}`;
-      const inserted = await client.query(`INSERT INTO cmdb_discovery_connectors(id,connection_id,connector_type_id,environment,enabled,health_status,operational_state,configuration_status,connection_status,discovery_status,non_secret_configuration,secret_reference,tls_ca_reference,tls_verify_certificates,endpoint_allow_private_network,request_timeout_ms,schedule_minutes,created_by_user_id,updated_by_user_id) VALUES($1,$2,$3,$4,$5,CASE WHEN $5 THEN 'UNKNOWN' ELSE 'DISABLED' END,CASE WHEN $5 THEN 'IDLE' ELSE 'DISABLED' END,CASE WHEN $3='VCENTER' THEN 'VALID' ELSE 'UNKNOWN' END,'UNKNOWN','UNKNOWN',$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$13) RETURNING *`, [id, input.connectionId, input.connectorType, input.environment, input.enabled, JSON.stringify(input.nonSecretConfiguration), input.secretReference || null, input.tlsCaReference || null, input.tlsVerifyCertificates, input.endpointAllowPrivateNetwork, input.requestTimeoutMs, input.scheduleMinutes, actor.id]);
+       const adConfiguration = input.connectorType === 'ACTIVE_DIRECTORY' ? { ...input.nonSecretConfiguration, url: input.ldapUrl || input.nonSecretConfiguration.url, baseDn: input.baseDn || input.nonSecretConfiguration.baseDn, bindUser: input.bindUser || input.nonSecretConfiguration.bindUser, accessMode: 'READ_ONLY', incrementalStrategy: 'usnChanged-or-whenChanged' } : input.nonSecretConfiguration;
+       const inserted = await client.query(`INSERT INTO cmdb_discovery_connectors(id,connection_id,name,description,connector_type_id,environment,enabled,health_status,operational_state,configuration_status,connection_status,discovery_status,non_secret_configuration,secret_reference,tls_ca_reference,tls_verify_certificates,endpoint_allow_private_network,request_timeout_ms,schedule_minutes,created_by_user_id,updated_by_user_id) VALUES($1,$2,$3,$4,$5::varchar,$6,$7,CASE WHEN $7 THEN 'UNKNOWN' ELSE 'DISABLED' END,CASE WHEN $7 THEN 'IDLE' ELSE 'DISABLED' END,CASE WHEN $5::varchar IN ('VCENTER','ACTIVE_DIRECTORY') THEN 'VALID' ELSE 'UNKNOWN' END,'UNKNOWN','UNKNOWN',$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$15) RETURNING *`, [id, input.connectionId || null, input.name || `CMDB connector ${id}`, input.description, input.connectorType, input.environment, input.enabled, JSON.stringify(adConfiguration), input.connectorType === 'ACTIVE_DIRECTORY' ? input.secretReference : null, input.tlsCaReference || null, input.tlsVerifyCertificates, input.endpointAllowPrivateNetwork, input.requestTimeoutMs, input.scheduleMinutes, actor.id]);
       if (vcenterEndpoint) {
         await VCenterConnectorRepository.createProfile(client, {
           connectorId: id,
@@ -298,16 +380,39 @@ export class CmdbApiService {
           automationApiBasePath: input.automationApiBasePath,
           responseSizeLimitBytes: input.responseSizeLimitBytes,
         });
+        await VCenterConnectorRepository.upsertCredential(client, id, VCenterCredentialCryptoService.encrypt({ username: input.username!, password: input.password! }));
+        await VCenterConnectorRepository.recordConnectionSuccessInTransaction(client, id, connectionSnapshot!);
       }
-      await AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_CREATED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, after: { ...input, secretReference: input.secretReference ? '[CONFIGURED]' : undefined, tlsCaReference: input.tlsCaReference ? '[CONFIGURED]' : undefined } });
+      await AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_CREATED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, after: { ...input, username: input.username ? '[CONFIGURED]' : undefined, password: input.password ? '[REDACTED]' : undefined, tlsCaReference: input.tlsCaReference ? '[CONFIGURED]' : undefined, connectionTest: vcenterEndpoint ? 'PASSED' : 'NOT_REQUIRED' } });
       return withoutConnectorSecrets(inserted.rows[0]);
     });
+  }
+
+  /** Register the already-configured, read-only directory connection as a CMDB source without exposing its password. */
+  public static async bootstrapActiveDirectoryConnector(actor: BankUser | undefined, request: { correlationId?: string; ip?: string; userAgent?: string } = {}): Promise<any> {
+    requirePermission(actor, 'asset_discovery.manage');
+    // User synchronization and CMDB discovery share the same AD source. If
+    // the source has already been registered (for example through the AD
+    // connector form), use that persisted configuration instead of requiring
+    // the legacy process-level LDAP_* variables again.
+    const existing = await pgClient.query<{ id: string }>("SELECT id FROM cmdb_discovery_connectors WHERE connector_type_id='ACTIVE_DIRECTORY' AND deleted_at IS NULL ORDER BY created_at LIMIT 1");
+    if (existing.rows[0]) return { connector: await this.getConnector(actor, existing.rows[0].id), created: false };
+
+    if (!config.LDAP_ENABLED || !config.LDAP_URL.startsWith('ldaps://') || !config.LDAP_BASE_DN || !config.LDAP_BIND_USER || !config.LDAP_BIND_PASSWORD) {
+      throw Object.assign(new Error('Server Active Directory configuration is incomplete. Configure LDAPS URL, base DN, dedicated read-only bind user and LDAP_BIND_PASSWORD first.'), { statusCode: 422, code: 'AD_SERVER_CONFIGURATION_INCOMPLETE' });
+    }
+    const connector = await this.createConnector(actor, {
+      name: config.LDAP_DOMAIN ? `Active Directory (${config.LDAP_DOMAIN})` : 'Active Directory', connectorType: 'ACTIVE_DIRECTORY', environment: 'PRODUCTION', enabled: true,
+      ldapUrl: config.LDAP_URL, baseDn: config.LDAP_BASE_DN, bindUser: config.LDAP_BIND_USER, secretReference: 'env://LDAP_BIND_PASSWORD', tlsVerifyCertificates: config.LDAP_TLS_REJECT_UNAUTHORIZED !== false, endpointAllowPrivateNetwork: true, requestTimeoutMs: 30000, scheduleMinutes: 0,
+    }, request);
+    return { connector, created: true };
   }
 
   public static async updateConnector(actor: BankUser | undefined, id: string, raw: unknown, request: { correlationId?: string; ip?: string; userAgent?: string } = {}): Promise<any> {
     requirePermission(actor, 'asset_discovery.manage');
     z.string().trim().min(1).max(64).parse(id);
-    const input = connectorUpdateSchema.parse(raw);
+      const input = connectorUpdateSchema.parse(raw);
+    if (('username' in input) !== ('password' in input)) throw Object.assign(new Error('vCenter username and password must be changed together.'), { statusCode: 400 });
     if (input.nonSecretConfiguration) validateEndpoint(input.nonSecretConfiguration, input.endpointAllowPrivateNetwork ?? false);
     return pgClient.transaction(async (client) => {
       const current = await client.query('SELECT * FROM cmdb_discovery_connectors WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [id]);
@@ -326,8 +431,9 @@ export class CmdbApiService {
       }
       const fields: string[] = []; const values: unknown[] = [];
       const set = (column: string, value: unknown) => { values.push(value); fields.push(`${column}=$${values.length}`); };
-      for (const [key, column] of Object.entries({ connectorType: 'connector_type_id', environment: 'environment', enabled: 'enabled', secretReference: 'secret_reference', tlsCaReference: 'tls_ca_reference', tlsVerifyCertificates: 'tls_verify_certificates', endpointAllowPrivateNetwork: 'endpoint_allow_private_network', requestTimeoutMs: 'request_timeout_ms', scheduleMinutes: 'schedule_minutes' })) if (key in input) set(column, (input as any)[key]);
-      if ('name' in input || 'description' in input) await client.query('UPDATE department_connections SET name=COALESCE($2,name),description=COALESCE($3,description),updated_at=NOW() WHERE id=$1', [current.rows[0].connection_id, input.name || null, input.description]);
+      for (const [key, column] of Object.entries({ connectorType: 'connector_type_id', environment: 'environment', enabled: 'enabled', tlsCaReference: 'tls_ca_reference', tlsVerifyCertificates: 'tls_verify_certificates', endpointAllowPrivateNetwork: 'endpoint_allow_private_network', requestTimeoutMs: 'request_timeout_ms', scheduleMinutes: 'schedule_minutes' })) if (key in input) set(column, (input as any)[key]);
+       if ('name' in input) set('name', input.name);
+       if ('description' in input) set('description', input.description);
       if (input.nonSecretConfiguration) set('non_secret_configuration', JSON.stringify(input.nonSecretConfiguration));
       const nextEnabled = 'enabled' in input ? Boolean(input.enabled) : Boolean(current.rows[0].enabled);
       values.push(nextEnabled);
@@ -347,8 +453,8 @@ export class CmdbApiService {
           SELECT c.id, dc.name
           FROM cmdb_vcenter_connector_profiles v
           JOIN cmdb_discovery_connectors c ON c.id=v.connector_id
-          JOIN department_connections dc ON dc.id=c.connection_id
-          WHERE c.connector_type_id='VCENTER' AND c.deleted_at IS NULL AND dc.deleted_at IS NULL
+           LEFT JOIN department_connections dc ON dc.id=c.connection_id
+           WHERE c.connector_type_id='VCENTER' AND c.deleted_at IS NULL AND (dc.deleted_at IS NULL OR c.connection_id IS NULL)
             AND c.id<>$1 AND lower(v.endpoint_fqdn)=lower($2) AND v.port=$3
           LIMIT 1`, [id, normalizedEndpoint, port]);
         if (duplicate.rows[0]) throw Object.assign(new Error(`A vCenter connector already targets ${normalizedEndpoint}:${port} (${duplicate.rows[0].name}).`), { statusCode: 409, code: 'VCENTER_DUPLICATE_TARGET' });
@@ -360,13 +466,14 @@ export class CmdbApiService {
           automationApiBasePath: input.automationApiBasePath || currentProfile?.automation_api_base_path || '/api',
           responseSizeLimitBytes: input.responseSizeLimitBytes || Number(currentProfile?.response_size_limit_bytes || 4194304),
         });
+        if (input.username && input.password) await VCenterConnectorRepository.upsertCredential(client, id, VCenterCredentialCryptoService.encrypt({ username: input.username, password: input.password }));
       }
       await AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_UPDATED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, before: { ...current.rows[0], secret_reference: undefined, tls_ca_reference: undefined }, after: { ...updated.rows[0], secret_reference: undefined, tls_ca_reference: undefined } });
       const before = current.rows[0];
       const after = updated.rows[0];
       const auditChanges: Array<{ action: 'CMDB_CONNECTOR_ENDPOINT_CHANGED' | 'CMDB_CONNECTOR_CREDENTIAL_CHANGED' | 'CMDB_CONNECTOR_CA_CHANGED' | 'CMDB_CONNECTOR_TLS_POLICY_CHANGED'; field: string; oldValue: unknown; newValue: unknown }> = [];
       if (currentProfile && (input.endpointFqdn || input.port !== undefined) && (currentProfile.endpoint_fqdn !== (input.endpointFqdn || currentProfile.endpoint_fqdn) || Number(currentProfile.port) !== (input.port || Number(currentProfile.port)))) auditChanges.push({ action: 'CMDB_CONNECTOR_ENDPOINT_CHANGED', field: 'endpoint', oldValue: `${currentProfile.endpoint_fqdn}:${currentProfile.port}`, newValue: `${input.endpointFqdn || currentProfile.endpoint_fqdn}:${input.port || Number(currentProfile.port)}` });
-      if ('secretReference' in input && before.secret_reference !== after.secret_reference) auditChanges.push({ action: 'CMDB_CONNECTOR_CREDENTIAL_CHANGED', field: 'credentialSecretReference', oldValue: Boolean(before.secret_reference), newValue: Boolean(after.secret_reference) });
+      if ('username' in input) auditChanges.push({ action: 'CMDB_CONNECTOR_CREDENTIAL_CHANGED', field: 'encryptedServiceCredential', oldValue: '[REDACTED]', newValue: '[ROTATED]' });
       if ('tlsCaReference' in input && before.tls_ca_reference !== after.tls_ca_reference) auditChanges.push({ action: 'CMDB_CONNECTOR_CA_CHANGED', field: 'tlsCaReference', oldValue: Boolean(before.tls_ca_reference), newValue: Boolean(after.tls_ca_reference) });
       if ('tlsVerifyCertificates' in input && Boolean(before.tls_verify_certificates) !== Boolean(after.tls_verify_certificates)) auditChanges.push({ action: 'CMDB_CONNECTOR_TLS_POLICY_CHANGED', field: 'tlsVerifyCertificates', oldValue: Boolean(before.tls_verify_certificates), newValue: Boolean(after.tls_verify_certificates) });
       for (const change of auditChanges) await AuditService.logPostgres(client, { actor, action: change.action, entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, fieldChanges: [{ field: change.field, oldValue: change.oldValue, newValue: change.newValue }] });
