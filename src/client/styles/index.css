@@ -20,6 +20,28 @@ body {
   font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
 }
 
+/* Modal viewport contract: every fixed modal owns the complete viewport and
+   never lets a long form push its actions outside the visible screen. */
+.fixed.inset-0.z-modal,
+.fixed.inset-0.z-dsDialog {
+  isolation: isolate;
+  /* Modal backdrops must cover persistent TopBar/Sidebar layers as well. */
+  z-index: var(--z-dialog);
+  overscroll-behavior: contain;
+}
+
+.fixed.inset-0.z-modal form[role='dialog'],
+.fixed.inset-0.z-dsDialog form[role='dialog'] {
+  max-height: calc(100dvh - 2rem);
+}
+
+.fixed.inset-0.z-modal form[role='dialog'] > :nth-child(2),
+.fixed.inset-0.z-dsDialog form[role='dialog'] > :nth-child(2) {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 /* Shared scrollbar policy. The custom class remains an opt-in alias. */
 ::-webkit-scrollbar,
 .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }

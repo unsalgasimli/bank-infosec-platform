@@ -97,13 +97,21 @@ export class CmdbPrecedenceService {
         effective_value: unknown;
         effective_value_hash: string;
         precedence: number;
+        confidence: number;
+        observed_at: Date | string;
         manual_lock: boolean;
-      }>(`SELECT effective_value,effective_value_hash,precedence,manual_lock
+      }>(`SELECT effective_value,effective_value_hash,precedence,confidence,observed_at,manual_lock
           FROM cmdb_asset_attribute_state WHERE asset_id=$1 AND attribute_path=$2 FOR UPDATE`,
       [input.assetId, attribute.path]);
       const state = current.rows[0];
       if (state?.manual_lock && !allowOverrideManual) continue;
       if (state && Number(state.precedence) > precedence) continue;
+      if (state && Number(state.precedence) === precedence) {
+        const currentObservedAt = new Date(state.observed_at).valueOf();
+        const incomingObservedAt = new Date(input.observedAt).valueOf();
+        if (currentObservedAt > incomingObservedAt) continue;
+        if (currentObservedAt === incomingObservedAt && Number(state.confidence) > attribute.confidence) continue;
+      }
 
       if (state?.effective_value_hash === valueHash) {
         await client.query(`

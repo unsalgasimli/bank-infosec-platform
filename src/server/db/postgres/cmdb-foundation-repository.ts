@@ -27,6 +27,7 @@ const identifierTypes = [
   'MAC_ADDRESS',
   'AGENT_ID',
   'EDR_DEVICE_ID',
+  'CORTEX_ASSET_ID',
   'SCCM_RESOURCE_ID',
   'AD_OBJECT_GUID',
   'OTHER',
@@ -206,7 +207,7 @@ export function normalizeAssetIdentifier(type: AssetIdentifierType, value: strin
 }
 
 export function isStrongAssetIdentifier(type: AssetIdentifierType): boolean {
-  return ['SERIAL_NUMBER', 'BIOS_UUID', 'VMWARE_INSTANCE_UUID', 'CLOUD_INSTANCE_ID', 'AGENT_ID', 'EDR_DEVICE_ID', 'SCCM_RESOURCE_ID', 'AD_OBJECT_GUID'].includes(type);
+  return ['SERIAL_NUMBER', 'BIOS_UUID', 'VMWARE_INSTANCE_UUID', 'CLOUD_INSTANCE_ID', 'AGENT_ID', 'EDR_DEVICE_ID', 'CORTEX_ASSET_ID', 'SCCM_RESOURCE_ID', 'AD_OBJECT_GUID'].includes(type);
 }
 
 const optionalText = (value: unknown): string | undefined => value === null || value === undefined || value === '' ? undefined : String(value);

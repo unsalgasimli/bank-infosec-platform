@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { CortexClient, CortexConnectorError, type CortexTransport } from '../server/integrations/cortex/cortex-client.js';
-import { cortexEndpointPayloadMapper } from '../server/services/cortex-inventory-sync.service.js';
+import { cortexAuthenticationHeaders, CortexClient, CortexConnectorError, type CortexTransport } from '../server/integrations/cortex/cortex-client.js';
+import { cortexEndpointPayloadMapper, cortexUnifiedAssetPayloadMapper } from '../server/services/cortex-inventory-sync.service.js';
 
 const envelope = { connectorId: 'cortex-a', syncRunId: 'run-a', sourceObjectType: 'CORTEX_ENDPOINT', sourceObjectId: 'ep-1', observedAt: '2026-09-01T00:00:00.000Z', rawPayload: {} } as const;
 const configuration = { endpointUrl: 'https://localhost', endpointAllowPrivateNetwork: true, tlsVerifyCertificates: true, requestTimeoutMs: 1000, responseSizeLimitBytes: 65536, apiKeyId: '42', apiKey: 'not-a-real-secret', maxRetries: 1 };
@@ -16,6 +16,23 @@ test('Cortex endpoint normalizes through the generic observation DTO with scoped
   assert.throws(() => cortexEndpointPayloadMapper.validateRaw({ endpoint_name: 'missing-id' }), /endpoint_id/);
 });
 
+test('Cortex Unified Asset Inventory preserves native classification and emits strong cross-source identifiers', () => {
+  const raw = cortexUnifiedAssetPayloadMapper.validateRaw({
+    'xdm.asset.strong_id': 'asset-77', 'xdm.asset.name': 'srv-01.bank.example',
+    'xdm.asset.type.class': 'Compute', 'xdm.asset.type.category': 'Virtual Machine', 'xdm.asset.type.type': 'VMware VM',
+    'xdm.host.fqdn': 'srv-01.bank.example', 'xdm.host.bios_uuid': '11111111-2222-3333-4444-555555555555',
+    'xdm.host.serial_number': 'SER-77', 'xdm.host.mac_addresses': ['02:11:22:33:44:55'],
+    'xdm.host.ipv4_addresses': ['10.20.30.40'], endpoint_id: 'endpoint-77', agent_version: '8.7.1',
+    operational_status: 'PROTECTED', content_status: 'up_to_date', unknown_asset_field: { preserved: true },
+  });
+  const dto = cortexUnifiedAssetPayloadMapper.normalize(raw, { ...envelope, sourceObjectType: 'CORTEX_ASSET', sourceObjectId: 'asset-77' });
+  assert.equal(dto.classification.type, 'virtual_machine');
+  assert.equal((dto.sourceSpecificMetadata.cortex as any).assetClass, 'Compute');
+  assert.ok(dto.identity.identifiers.some((item) => item.type === 'CORTEX_ASSET_ID' && item.value === 'asset-77'));
+  assert.ok(dto.identity.identifiers.some((item) => item.type === 'BIOS_UUID'));
+  assert.equal(((dto.sourceSpecificMetadata.cortex as any).securityTelemetry as any).unknown_asset_field.preserved, true);
+});
+
 test('Cortex client retries a rate-limited transport response and never exposes auth headers to callers', async () => {
   let attempts = 0;
   const transport: CortexTransport = async (request) => {
@@ -28,6 +45,36 @@ test('Cortex client retries a rate-limited transport response and never exposes 
   };
   const page = await new CortexClient(configuration, transport).page(0, 'correlation-test');
   assert.equal(attempts, 2); assert.equal(page.endpoints[0].endpoint_id, 'ep-1');
+});
+
+test('Cortex page windows use the documented exclusive upper bound and preserve API counts', async () => {
+  const requests: Array<Record<string, any>> = [];
+  const transport: CortexTransport = async (request) => {
+    requests.push(JSON.parse(request.body || '{}'));
+    return request.url.pathname.endsWith('/endpoints/get_endpoint')
+      ? { statusCode: 200, headers: {}, body: { reply: { endpoints: [{ endpoint_id: 'ep-1' }], total_count: 225, result_count: 1 } } }
+      : { statusCode: 200, headers: {}, body: { reply: { data: [{ 'xdm.asset.strong_id': 'asset-1' }], metadata: { total_count: 1200, filter_count: 1 } } } };
+  };
+  const client = new CortexClient({ ...configuration, pageSize: 100 }, transport);
+  const endpointPage = await client.endpointPage(100, 'endpoint-page-window');
+  const assetPage = await client.assetPage(1000, 'asset-page-window');
+  assert.equal(requests[0].request_data.search_from, 100);
+  assert.equal(requests[0].request_data.search_to, 200);
+  assert.equal(requests[1].search_from, 1000);
+  assert.equal(requests[1].search_to, 1100);
+  assert.equal(endpointPage.totalCount, 225);
+  assert.equal(endpointPage.resultCount, 1);
+  assert.equal(assetPage.totalCount, 1200);
+  assert.equal(assetPage.resultCount, 1);
+});
+
+test('Cortex Advanced API keys send a fresh nonce, timestamp, and SHA-256 proof instead of the raw secret', () => {
+  const headers = cortexAuthenticationHeaders({ ...configuration, apiKeySecurityLevel: 'ADVANCED' }, 'a'.repeat(64), '1725148800000');
+  assert.equal(headers.authorization, '82a4a109074d577af275a60a46ae1d657ba9d477e3332a5c1e95c45cb6626ee4');
+  assert.equal(headers['x-xdr-auth-id'], '42');
+  assert.equal(headers['x-xdr-nonce'], 'a'.repeat(64));
+  assert.equal(headers['x-xdr-timestamp'], '1725148800000');
+  assert.equal(Object.values(headers).includes(configuration.apiKey), false);
 });
 
 test('Cortex client handles authentication failures and malformed replies safely', async () => {
@@ -45,4 +92,19 @@ test('Cortex client never follows a redirect for an authenticated POST and repor
     () => new CortexClient(configuration, redirected).page(0, 'correlation-test'),
     (error: any) => error instanceof CortexConnectorError && error.code === 'CORTEX_API_REDIRECT' && error.message.includes('https://api-tenant.xdr.paloaltonetworks.com'),
   );
+});
+
+test('Cortex capability detection tolerates tenant/license variance and reports only exposed inventories', async () => {
+  const transport: CortexTransport = async (request) => {
+    if (request.url.pathname.endsWith('/endpoints/get_endpoint')) {
+      assert.equal(JSON.parse(request.body || '{}').request_data.search_to, 1);
+      return { statusCode: 403, headers: {}, body: {} };
+    }
+    return { statusCode: 200, headers: {}, body: { reply: { data: [{ field: 'xdm.asset.strong_id' }] } } };
+  };
+  const capabilities = await new CortexClient(configuration, transport).detectCapabilities('capability-test');
+  assert.equal(capabilities.endpointInventory.available, false);
+  assert.equal(capabilities.endpointInventory.reason, 'FORBIDDEN_OR_UNLICENSED');
+  assert.equal(capabilities.unifiedAssetInventory.available, true);
+  assert.equal(capabilities.unifiedAssetInventory.schemaFieldCount, 1);
 });

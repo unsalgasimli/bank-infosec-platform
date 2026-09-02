@@ -25,7 +25,7 @@ const typeMap: Record<RawInventory['objectType'], string> = {
 
 function identifiersFor(value: RawInventory, connectorId: string) {
   const payload = value.payload;
-  const identifiers: Array<{ type: 'VMWARE_INSTANCE_UUID' | 'BIOS_UUID' | 'SERIAL_NUMBER'; namespace: string; value: string; confidence: number; primary: boolean }> = [];
+  const identifiers: Array<{ type: 'VMWARE_INSTANCE_UUID' | 'BIOS_UUID' | 'SERIAL_NUMBER' | 'FQDN'; namespace: string; value: string; confidence: number; primary: boolean }> = [];
   const vmInstanceUuid = payload.instance_uuid ?? payload.vm_uuid ?? payload.instanceUuid;
   if ((value.objectType === 'VirtualMachine' || value.objectType === 'VCenterServer') && typeof vmInstanceUuid === 'string' && vmInstanceUuid.trim()) {
     identifiers.push({ type: 'VMWARE_INSTANCE_UUID', namespace: connectorId, value: vmInstanceUuid, confidence: 100, primary: true });
@@ -108,7 +108,9 @@ export const vCenterInventoryPayloadMapper: DiscoveryPayloadMapper<RawInventory>
     const p = value.payload; const cpu = finiteInteger(p.cpu_count) ?? finiteInteger(record(p.cpu).count); const memoryMiB = finiteInteger(p.memory_size_MiB) ?? finiteInteger(record(p.memory).size_MiB);
     const identifiers = identifiersFor(value, envelope.connectorId);
     const guest = record(p.guest); const configuredOs = stringRef(p, 'guest_os', 'guestOs'); const reportedOs = stringRef(guest, 'name', 'full_name') || configuredOs;
-    return { schemaVersion: 1 as const, source: { connectorId: envelope.connectorId, objectType: value.objectType, objectId: value.objectId, ...(typeof p.bios_uuid === 'string' ? { nativeUuid: p.bios_uuid } : {}) }, identity: { name: value.name, ...(stringRef(guest, 'host_name', 'hostname') ? { hostname: stringRef(guest, 'host_name', 'hostname') } : {}), identifiers }, classification: { type: typeMap[value.objectType], environment: 'UNKNOWN' as const }, compute: { ...(cpu !== undefined ? { cpuCount: cpu } : {}), ...(memoryMiB !== undefined ? { memoryBytes: memoryMiB * 1024 * 1024 } : {}) }, operatingSystem: { ...(configuredOs ? { configured: configuredOs } : {}), ...(reportedOs ? { reported: reportedOs } : {}) }, network: networkFor(p), storage: storageFor(p), placement: { relationships: relationshipsFor(value) }, tags: [], technicalState: String(p.power_state || p.connection_state || 'UNKNOWN').slice(0, 64), sourceSpecificMetadata: { vcenterObjectType: value.objectType, vcenterObjectId: value.objectId, inventorySummary: p } };
+    const guestName = stringRef(guest, 'host_name', 'hostname'); const guestFqdn = guestName?.includes('.') ? guestName : undefined; const guestHostname = guestName;
+    if (guestFqdn) identifiers.push({ type: 'FQDN', namespace: 'DNS', value: guestFqdn, confidence: 90, primary: false });
+    return { schemaVersion: 1 as const, source: { connectorId: envelope.connectorId, objectType: value.objectType, objectId: value.objectId, ...(typeof p.bios_uuid === 'string' ? { nativeUuid: p.bios_uuid } : {}) }, identity: { name: value.name, ...(guestHostname ? { hostname: guestHostname } : {}), ...(guestFqdn ? { fqdn: guestFqdn } : {}), identifiers }, classification: { type: typeMap[value.objectType], environment: 'UNKNOWN' as const }, compute: { ...(cpu !== undefined ? { cpuCount: cpu } : {}), ...(memoryMiB !== undefined ? { memoryBytes: memoryMiB * 1024 * 1024 } : {}) }, operatingSystem: { ...(configuredOs ? { configured: configuredOs } : {}), ...(reportedOs ? { reported: reportedOs } : {}) }, network: networkFor(p), storage: storageFor(p), placement: { relationships: relationshipsFor(value) }, tags: [], technicalState: String(p.power_state || p.connection_state || 'UNKNOWN').slice(0, 64), sourceSpecificMetadata: { vcenterObjectType: value.objectType, vcenterObjectId: value.objectId, inventorySummary: p } };
   },
 };
 

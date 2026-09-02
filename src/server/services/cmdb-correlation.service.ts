@@ -4,7 +4,7 @@ import type { NormalizedDiscoveryDto, NormalizedDiscoveryIdentifier } from '../.
 import type { AssetIdentifierType } from '../../shared/types/cmdb-discovery.js';
 import { isStrongAssetIdentifier, normalizeAssetIdentifier } from '../db/postgres/cmdb-foundation-repository.js';
 
-export const CORRELATION_RULE_VERSION = 'cmdb-identity-v2';
+export const CORRELATION_RULE_VERSION = 'cmdb-identity-v3';
 
 /**
  * Stable, source-neutral decisions persisted with every observation. These
@@ -108,6 +108,14 @@ function candidateMap(evidence: CorrelationEvidence[]): CorrelationCandidate[] {
   return [...candidates.values()].sort((left, right) => right.score - left.score || left.assetId.localeCompare(right.assetId));
 }
 
+function osFamily(value: unknown): string | undefined {
+  const normalized = String(value || '').toLowerCase();
+  if (normalized.includes('windows')) return 'WINDOWS';
+  if (normalized.includes('linux') || /ubuntu|debian|rhel|centos|suse|fedora/.test(normalized)) return 'LINUX';
+  if (normalized.includes('mac os') || normalized.includes('macos') || normalized.includes('darwin')) return 'MACOS';
+  return undefined;
+}
+
 export class CmdbCorrelationService {
   public static async acquireIdentityLocks(client: pg.PoolClient, identifiers: ExtractedIdentifier[]): Promise<void> {
     const lockKeys = identifiers
@@ -154,6 +162,33 @@ export class CmdbCorrelationService {
       }
     }
 
+    const fqdnCandidateIds = new Set(evidence.filter((item) => item.signal === 'FQDN').map((item) => item.assetId));
+
+    // OS family is supporting evidence only. Restrict it to assets already
+    // selected by exact FQDN so a common OS family cannot introduce unrelated
+    // candidates or produce an automatic link by itself (or with an IP).
+    const incomingOsFamily = osFamily(dto.operatingSystem.reported || dto.operatingSystem.configured);
+    if (incomingOsFamily && fqdnCandidateIds.size) {
+      const observed = await client.query<{ asset_id: string; effective_value: unknown }>(`
+        SELECT asset_id,effective_value FROM cmdb_asset_attribute_state
+        WHERE asset_id=ANY($1::varchar[])
+          AND attribute_path IN ('operatingSystem.name','operatingSystem.reported','operatingSystem.configured')`, [[...fqdnCandidateIds]]);
+      for (const item of observed.rows) if (osFamily(item.effective_value) === incomingOsFamily) {
+        evidence.push({ signal: 'OS_FAMILY', strength: 'WEAK', value: incomingOsFamily, assetId: item.asset_id, score: 10 });
+      }
+    }
+
+    if (fqdnCandidateIds.size) {
+      const corroboration = await client.query<{ asset_id: string; source_count: string }>(`
+        SELECT sr.asset_id,count(DISTINCT c.connector_type_id)::text source_count
+        FROM cmdb_source_records sr JOIN cmdb_discovery_connectors c ON c.id=sr.connector_id
+        WHERE sr.asset_id=ANY($1::varchar[]) AND sr.status='ACTIVE' AND sr.connector_id<>$2
+        GROUP BY sr.asset_id`, [[...fqdnCandidateIds], dto.source.connectorId]);
+      for (const item of corroboration.rows) if (Number(item.source_count) > 0) {
+        evidence.push({ signal: 'INDEPENDENT_SOURCE', strength: 'WEAK', value: item.source_count, assetId: item.asset_id, score: 10 });
+      }
+    }
+
     const candidates = candidateMap(evidence);
     const inputStrong = identifiers.filter((identifier) => identifier.strength === 'STRONG');
     const strongCandidateIds = new Set(evidence.filter((item) => item.strength === 'STRONG').map((item) => item.assetId));
@@ -195,14 +230,20 @@ export class CmdbCorrelationService {
     if (strongCandidateIds.size > 1) {
       return { outcome: 'IDENTITY_CONFLICT', confidence: 0, candidates, evidence, summary: 'Strong identifiers resolve to more than one canonical asset.' };
     }
+    if (candidates.length === 1 && candidates[0].mediumSignalCount >= 2) {
+      return { outcome: 'AUTO_LINK', assetId: candidates[0].assetId, confidence: 85, candidates, evidence, summary: 'Two independent composite identifiers agree on one canonical asset; hostname and IP were not used as sole identity.' };
+    }
+    if (candidates.length === 1) {
+      const signals = new Set(candidates[0].evidence.map((item) => item.signal));
+      if (signals.has('FQDN') && signals.has('OS_FAMILY') && signals.has('INDEPENDENT_SOURCE')) {
+        return { outcome: 'AUTO_LINK', assetId: candidates[0].assetId, confidence: 80, candidates, evidence, summary: 'Exact FQDN, OS family, and independently active source coverage corroborate one canonical asset.' };
+      }
+    }
     if (inputStrong.length > 0) {
-      return { outcome: 'CREATE_NEW', confidence: 100, candidates, evidence, summary: 'Strong identity evidence is new; weak similarities are not allowed to auto-merge it.' };
+      return { outcome: 'CREATE_NEW', confidence: 100, candidates, evidence, summary: 'Strong identity evidence is new; hostname or IP similarity is not allowed to auto-merge it.' };
     }
     if (candidates.length === 0) {
       return { outcome: 'CREATE_NEW', confidence: 100, candidates, evidence, summary: 'No canonical identity evidence matched.' };
-    }
-    if (candidates.length === 1 && candidates[0].mediumSignalCount >= 2) {
-      return { outcome: 'AUTO_LINK', assetId: candidates[0].assetId, confidence: 80, candidates, evidence, summary: 'Two independent composite identifiers agree on one canonical asset.' };
     }
     return { outcome: 'REVIEW_REQUIRED', confidence: Math.min(79, candidates[0]?.score || 0), candidates, evidence, summary: 'Only weak or ambiguous evidence matched; human correlation review is required.' };
   }

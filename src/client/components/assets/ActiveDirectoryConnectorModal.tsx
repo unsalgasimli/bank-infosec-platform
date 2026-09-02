@@ -3,6 +3,7 @@ import { AlertCircle, Loader2, X } from 'lucide-react';
 
 type Props = {
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
+  connector?: any;
   onClose: () => void;
   onSaved: () => Promise<void>;
   t: (key: string) => string;
@@ -15,14 +16,14 @@ const readJson = async (response: Response): Promise<any> => {
 };
 
 /** Dedicated, password-free CMDB AD connector form. Bind secrets never enter the browser. */
-export const ActiveDirectoryConnectorModal: React.FC<Props> = ({ fetchWithAuth, onClose, onSaved, t }) => {
-  const [form, setForm] = useState({ name: 'Active Directory', environment: 'PRODUCTION', ldapUrl: '', baseDn: '', bindUser: '', secretReference: 'env://LDAP_BIND_PASSWORD', tlsCaReference: '', enabled: true });
+export const ActiveDirectoryConnectorModal: React.FC<Props> = ({ fetchWithAuth, connector, onClose, onSaved, t }) => {
+  const [form, setForm] = useState(() => ({ name: connector?.name || 'Active Directory', environment: connector?.environment || 'PRODUCTION', ldapUrl: connector?.nonSecretConfiguration?.url || '', baseDn: connector?.nonSecretConfiguration?.baseDn || '', bindUser: connector?.nonSecretConfiguration?.bindUser || '', secretReference: connector?.secretReference || 'env://LDAP_BIND_PASSWORD', tlsCaReference: connector?.nonSecretConfiguration?.tlsCaReference || '', enabled: connector ? Boolean(connector.enabled) : true }));
   const [saving, setSaving] = useState(false); const [error, setError] = useState('');
   const update = (key: keyof typeof form, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }));
   const save = async (event: React.FormEvent) => {
     event.preventDefault(); setSaving(true); setError('');
     try {
-      const response = await fetchWithAuth('/api/cmdb/discovery/connectors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      const response = await fetchWithAuth(connector ? `/api/cmdb/discovery/connectors/${encodeURIComponent(connector.id)}` : '/api/cmdb/discovery/connectors', { method: connector ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...(connector ? { version: Number(connector.version) } : {}),
         name: form.name, connectorType: 'ACTIVE_DIRECTORY', environment: form.environment, ldapUrl: form.ldapUrl, baseDn: form.baseDn, bindUser: form.bindUser, secretReference: form.secretReference, tlsCaReference: form.tlsCaReference || undefined, tlsVerifyCertificates: true, endpointAllowPrivateNetwork: true, enabled: form.enabled, requestTimeoutMs: 30000, scheduleMinutes: 0,
       }) });
       const data = await readJson(response); if (!response.ok || !data.success) throw new Error(data.error || t('Could not save connector.'));

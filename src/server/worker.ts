@@ -19,7 +19,12 @@ async function startWorker(): Promise<void> {
   // method through `this`, so passing it as an unbound callback breaks every
   // RabbitMQ delivery with "processCommittedEvent" undefined.
   await QueueService.consume(DISCOVERY_QUEUE, (event) => WorkerEventService.process(event));
-  await QueueService.consume('aegissec.worker', (event) => WorkerEventService.process(event));
+  // The legacy general queue is bound with '#', so discovery events are also
+  // delivered there. Acknowledge that duplicate without executing it; the
+  // dedicated discovery queue is the sole owner of cmdb.discovery.* work.
+  await QueueService.consume('aegissec.worker', (event) => event.topic.startsWith('cmdb.discovery.')
+    ? Promise.resolve()
+    : WorkerEventService.process(event));
   await WorkerEventService.recoverQueuedDiscoveryRuns();
   OutboxRelayService.start();
   logger.info('AegisSec asynchronous worker is ready');

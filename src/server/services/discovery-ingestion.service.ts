@@ -60,6 +60,16 @@ type RawObservationRow = {
 const sha256 = (value: unknown): string => crypto.createHash('sha256').update(typeof value === 'string' ? value : stableJson(value)).digest('hex');
 const deterministicId = (prefix: string, value: unknown): string => `${prefix}-${sha256(value).slice(0, 32)}`;
 const relationshipTypeId = (value: string): string => value.toLowerCase();
+const transientDatabaseError = (error: unknown): boolean => {
+  const candidate = error as { code?: unknown; message?: unknown };
+  return ['40001', '40P01', '55P03'].includes(String(candidate?.code || ''))
+    || /(?:canceling statement due to lock timeout|deadlock detected|could not serialize access)/i.test(String(candidate?.message || ''));
+};
+const retryDelay = (attempt: number) => new Promise<void>((resolve) => {
+  const exponential = Math.min(2000, 100 * 2 ** attempt);
+  const jitter = Math.floor(Math.random() * Math.max(1, Math.floor(exponential / 2)));
+  setTimeout(resolve, exponential + jitter);
+});
 
 export class DiscoveryIngestionError extends Error {
   public constructor(message: string, public readonly code: string, public readonly retryable = false) {
@@ -93,7 +103,18 @@ export class DiscoveryIngestionService {
         || dto.source.objectId !== envelope.sourceObjectId) {
         throw new DiscoveryIngestionError('Normalized source identity must exactly match the observation envelope.', 'SOURCE_IDENTITY_MISMATCH');
       }
-      const result = await this.processNormalizedObservation(envelope, dto, rawHash, observation.id);
+      let result: DiscoveryIngestionResult | undefined;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        try {
+          result = await this.processNormalizedObservation(envelope, dto, rawHash, observation.id);
+          break;
+        } catch (error) {
+          if (!transientDatabaseError(error) || attempt === 3) throw error;
+          logger.warn({ connectorId: envelope.connectorId, syncRunId: envelope.syncRunId, sourceObjectType: envelope.sourceObjectType, sourceObjectId: envelope.sourceObjectId, attempt: attempt + 1 }, 'Retrying discovery observation after transient database contention');
+          await retryDelay(attempt);
+        }
+      }
+      if (!result) throw new DiscoveryIngestionError('Discovery observation retry loop completed without a result.', 'OBSERVATION_RETRY_EXHAUSTED');
       logger.info({
         connectorId: envelope.connectorId,
         syncRunId: envelope.syncRunId,
@@ -194,6 +215,8 @@ export class DiscoveryIngestionService {
         UPDATE cmdb_discovery_sync_runs
         SET state=CASE WHEN failed_count>0 THEN 'PARTIAL' ELSE 'SUCCEEDED' END,
             started_at=COALESCE(started_at,NOW()),
+            discovered_count=(SELECT count(DISTINCT (source_object_type,source_object_id)) FROM cmdb_raw_observations WHERE sync_run_id=$1 AND accounted_at IS NOT NULL),
+            processed_count=(SELECT count(*) FROM cmdb_raw_observations WHERE sync_run_id=$1 AND accounted_at IS NOT NULL),
             stale_candidate_count=$2,completed_at=NOW(),updated_at=NOW()
         WHERE id=$1`, [runId, staleCandidates]);
       await client.query(`
@@ -247,14 +270,20 @@ export class DiscoveryIngestionService {
     if (!connectorResult.rows[0]) throw new DiscoveryIngestionError('Discovery run not found.', 'RUN_NOT_FOUND');
     const locked = await ConnectorScopedLockService.withLock(connectorResult.rows[0].connector_id, 'sync', () => pgClient.transaction(async (client) => {
       const message = error ? (error instanceof Error ? error.message : String(error)).slice(0, 4000) : undefined;
+      const code = error ? String((error as { code?: unknown })?.code || 'DISCOVERY_PARTIAL_FAILURE').slice(0, 128) : undefined;
       const run = await client.query<{ connector_id: string }>(`UPDATE cmdb_discovery_sync_runs
         SET state='PARTIAL',started_at=COALESCE(started_at,NOW()),completed_at=NOW(),checkpoint=$2,
             error_summary=CASE WHEN $3::text IS NULL THEN error_summary ELSE error_summary || jsonb_build_array(jsonb_build_object('message',$3,'at',NOW(),'partial',true)) END,
+            failed_count=failed_count+CASE WHEN $3::text IS NULL THEN 0 ELSE 1 END,
+            discovered_count=(SELECT count(DISTINCT (source_object_type,source_object_id)) FROM cmdb_raw_observations WHERE sync_run_id=$1 AND accounted_at IS NOT NULL),
+            processed_count=(SELECT count(*) FROM cmdb_raw_observations WHERE sync_run_id=$1 AND accounted_at IS NOT NULL),
             updated_at=NOW()
         WHERE id=$1 AND state NOT IN ('SUCCEEDED','PARTIAL','FAILED','CANCELLED') RETURNING connector_id`, [runId, JSON.stringify(checkpoint), message || null]);
       if (!run.rows[0]) return;
       await client.query(`UPDATE cmdb_discovery_connectors SET last_sync_at=NOW(),health_status=CASE WHEN enabled THEN 'DEGRADED' ELSE 'DISABLED' END,
-        operational_state=CASE WHEN enabled THEN 'DEGRADED' ELSE 'DISABLED' END,consecutive_failures=consecutive_failures+1,checkpoint=$2,updated_at=NOW() WHERE id=$1`, [run.rows[0].connector_id, JSON.stringify(checkpoint)]);
+        operational_state=CASE WHEN enabled THEN 'DEGRADED' ELSE 'DISABLED' END,consecutive_failures=consecutive_failures+1,checkpoint=$2,
+        last_failure_at=CASE WHEN $3::text IS NULL THEN last_failure_at ELSE NOW() END,
+        last_failure_code=COALESCE($4,last_failure_code),last_failure_message=COALESCE($3,last_failure_message),updated_at=NOW() WHERE id=$1`, [run.rows[0].connector_id, JSON.stringify(checkpoint), message || null, code || null]);
       await this.insertOutbox(client, 'discovery.run.completed', 'DISCOVERY_RUN', runId, { runId, connectorId: run.rows[0].connector_id, partial: true, absenceReconciliation: false }, `discovery.run.completed:${runId}`);
     }));
     if (!locked.acquired) throw new DiscoveryIngestionError('Another sync operation is already running for this connector.', 'CONNECTOR_SYNC_LOCKED');
@@ -335,45 +364,6 @@ export class DiscoveryIngestionService {
         id: sourceRecord.id,
         assetId: sourceRecord.asset_id || undefined,
       }, dto, identifiers);
-
-      const connectorType = await client.query<{ connector_type_id: string }>(
-        'SELECT connector_type_id FROM cmdb_discovery_connectors WHERE id=$1 AND deleted_at IS NULL',
-        [envelope.connectorId],
-      );
-      const isVCenter = connectorType.rows[0]?.connector_type_id === 'VCENTER';
-
-      // VMware observations remain evidence until a governed reconciliation
-      // decision explicitly promotes them. This prevents an adapter from
-      // directly creating or mutating canonical configuration_items.
-      if (isVCenter) {
-        const matchedAssetId = resolution.outcome === 'AUTO_LINK' ? resolution.assetId : undefined;
-        await client.query(`UPDATE cmdb_source_records
-          SET asset_id=$2,status=$3,last_correlation_outcome=$4,correlation_rule_version=$5,updated_at=NOW()
-          WHERE id=$1`, [
-          sourceRecord.id,
-          matchedAssetId || null,
-          matchedAssetId ? 'ACTIVE' : 'UNMATCHED',
-          resolution.outcome,
-          CORRELATION_RULE_VERSION,
-        ]);
-        const correlationCaseId = await CmdbCorrelationService.persistDecision(client, {
-          observationId, sourceRecordId: sourceRecord.id, resolution,
-          ...(matchedAssetId ? { selectedAssetId: matchedAssetId } : {}),
-          observedAt: envelope.observedAt,
-        });
-        await client.query("UPDATE cmdb_raw_observations SET processing_status='PROCESSED',processed_at=NOW() WHERE id=$1", [observationId]);
-        await this.accountObservation(client, observationId, envelope.syncRunId, resolution.outcome, false, false);
-        if (correlationCaseId) {
-          await this.insertOutbox(client, 'asset.correlation.required', 'CORRELATION_CASE', correlationCaseId, {
-            correlationCaseId, sourceRecordId: sourceRecord.id, connectorId: envelope.connectorId, outcome: resolution.outcome,
-          }, `asset.correlation.required:${correlationCaseId}:${observationId}`);
-        }
-        return {
-          observationId, sourceRecordId: sourceRecord.id, assetId: matchedAssetId,
-          outcome: resolution.outcome, correlationCaseId, assetCreated: false,
-          reactivated: false, unchanged: false, changedFields: [],
-        };
-      }
 
       let assetId = resolution.assetId;
       let assetCreated = false;

@@ -38,7 +38,11 @@ services:
       - S3_FORCE_PATH_STYLE=${S3_FORCE_PATH_STYLE:-false}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in the deployment environment}
       - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY:-${JWT_SECRET:?JWT_SECRET must be set in the deployment environment}}
+      # Must be identical for every process that reads connector credentials.
+      # A missing or changed KEK makes AES-GCM ciphertext intentionally unreadable.
+      - VCENTER_CREDENTIAL_KEK=${VCENTER_CREDENTIAL_KEK:?VCENTER_CREDENTIAL_KEK must be set for vCenter credential encryption}
       - CORTEX_API_KEY=${CORTEX_API_KEY:-}
+      - CORTEX_API_KEY_SECURITY_LEVEL=${CORTEX_API_KEY_SECURITY_LEVEL:-STANDARD}
       - RABBITMQ_ENABLED=true
       - RABBITMQ_URL=amqp://${RABBITMQ_USER:-aegissec}:${RABBITMQ_PASSWORD:-${DB_PASSWORD:?RABBITMQ_PASSWORD or DB_PASSWORD must be set}}@rabbitmq:5672/${RABBITMQ_VHOST:-aegissec}
       - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE:-aegissec.events}
@@ -110,7 +114,9 @@ services:
       - REDIS_URL=${DOCKER_REDIS_URL:-redis://:${REDIS_PASSWORD:-${DB_PASSWORD:?REDIS_PASSWORD or DB_PASSWORD must be set}}@redis:6379}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in the deployment environment}
       - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY:-${JWT_SECRET:?JWT_SECRET must be set in the deployment environment}}
+      - VCENTER_CREDENTIAL_KEK=${VCENTER_CREDENTIAL_KEK:?VCENTER_CREDENTIAL_KEK must be set for vCenter credential encryption}
       - CORTEX_API_KEY=${CORTEX_API_KEY:-}
+      - CORTEX_API_KEY_SECURITY_LEVEL=${CORTEX_API_KEY_SECURITY_LEVEL:-STANDARD}
       - RABBITMQ_ENABLED=true
       - RABBITMQ_URL=amqp://${RABBITMQ_USER:-aegissec}:${RABBITMQ_PASSWORD:-${DB_PASSWORD:?RABBITMQ_PASSWORD or DB_PASSWORD must be set}}@rabbitmq:5672/${RABBITMQ_VHOST:-aegissec}
       - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE:-aegissec.events}
@@ -177,6 +183,7 @@ services:
       - REDIS_URL=${DOCKER_REDIS_URL:-redis://:${REDIS_PASSWORD:-${DB_PASSWORD:?REDIS_PASSWORD or DB_PASSWORD must be set}}@redis:6379}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in the deployment environment}
       - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY:-${JWT_SECRET:?JWT_SECRET must be set in the deployment environment}}
+      - VCENTER_CREDENTIAL_KEK=${VCENTER_CREDENTIAL_KEK:?VCENTER_CREDENTIAL_KEK must be set for vCenter credential encryption}
       - LDAP_SYNC_AUTO_ENABLED=${LDAP_SYNC_AUTO_ENABLED:-true}
       - LDAP_ENABLED=${LDAP_ENABLED:-true}
       - LDAP_URL=${LDAP_URL:?LDAP_URL must be set for USER SYNC and CMDB discovery}

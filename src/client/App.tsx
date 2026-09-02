@@ -9,7 +9,6 @@ import { ServiceCatalogView } from './components/views/ServiceCatalogView.js';
 import { CMDBRelationshipMapView } from './components/assets/CMDBRelationshipMapView.js';
 import { CMDBExplorerView } from './components/assets/CMDBExplorerView.js';
 import { DiscoveryAdminView } from './components/assets/DiscoveryAdminView.js';
-import { ConnectorCrudPanel } from './components/assets/ConnectorCrudPanel.js';
 import { AuditComplianceView } from './components/governance/AuditComplianceView.js';
 import { IdeateCanvasView } from './components/ideate/IdeateCanvasView.js';
 import { WrikeRequestFormsView } from './components/views/WrikeRequestFormsView.js';
@@ -640,7 +639,7 @@ export const App: React.FC = () => {
             <CMDBExplorerView mode="assets" />
           )}
 
-          {activeDestination === 'discovery-sources' && <><ConnectorCrudPanel fetchWithAuth={fetchWithAuth} t={t} /><DiscoveryAdminView mode="sources" onNavigateToRuns={(connectorId) => { handleNavigate('discovery-runs'); window.setTimeout(() => window.dispatchEvent(new CustomEvent('aegis:discovery-select-connector', { detail: connectorId })), 0); }} /></>}
+          {activeDestination === 'discovery-sources' && <DiscoveryAdminView mode="sources" onNavigateToRuns={(connectorId) => { handleNavigate('discovery-runs'); window.setTimeout(() => window.dispatchEvent(new CustomEvent('aegis:discovery-select-connector', { detail: connectorId })), 0); }} />}
           {activeDestination === 'discovery-runs' && <DiscoveryAdminView mode="runs" />}
           {activeDestination === 'correlation-review' && <DiscoveryAdminView mode="correlation" />}
 

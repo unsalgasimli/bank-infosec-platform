@@ -35,6 +35,7 @@ const pageSchema = z.object({
   supportGroupId: z.string().trim().max(128).optional(),
   businessServiceId: z.string().trim().max(64).optional(),
   sourceConnectorId: z.string().trim().max(64).optional(),
+  posture: z.enum(['missing-cortex','cortex-offline','partially-protected','vcenter-without-cortex','ad-without-cortex','cortex-only','identity-conflict','stale-assets']).optional(),
   stale: z.enum(['true', 'false']).optional(),
   missingOwner: z.enum(['true', 'false']).optional(),
   includeArchived: z.enum(['true', 'false']).default('false'),
@@ -106,6 +107,9 @@ function mapAsset(row: any): any {
     details: row.details || {}, version: Number(row.version || 1), createdAt: row.created_at?.toISOString?.() || row.created_at,
     updatedAt: row.updated_at?.toISOString?.() || row.updated_at, archivedAt: row.archived_at?.toISOString?.() || row.archived_at || undefined,
     sourceCount: Number(row.source_count || 0), relationshipCount: Number(row.relationship_count || 0),
+    sourceCoverage: Array.isArray(row.source_coverage) ? row.source_coverage : [],
+    cortexSecurity: row.cortex_security || undefined,
+    openFindingCount: Number(row.open_finding_count || 0),
   };
 }
 
@@ -174,6 +178,14 @@ export class CmdbApiService {
     if (query.businessServiceId) add('EXISTS (SELECT 1 FROM ci_relationships r_bs WHERE r_bs.source_ci_id=a.id AND r_bs.target_ci_id = ? AND r_bs.status=\'ACTIVE\' AND r_bs.archived_at IS NULL)', query.businessServiceId);
     if (query.stale === 'true') where.push("a.lifecycle_state IN ('STALE','DECOMMISSION_CANDIDATE')");
     if (query.missingOwner === 'true') where.push('a.owner_user_id IS NULL AND a.technical_owner_user_id IS NULL AND a.business_owner_user_id IS NULL');
+    if (query.posture === 'missing-cortex') where.push("EXISTS (SELECT 1 FROM cmdb_source_records sr JOIN cmdb_discovery_connectors c ON c.id=sr.connector_id WHERE sr.asset_id=a.id AND sr.status='ACTIVE' AND c.connector_type_id IN ('VCENTER','ACTIVE_DIRECTORY')) AND NOT EXISTS (SELECT 1 FROM cmdb_source_records sr JOIN cmdb_discovery_connectors c ON c.id=sr.connector_id WHERE sr.asset_id=a.id AND sr.status='ACTIVE' AND c.connector_type_id='CORTEX')");
+    if (query.posture === 'cortex-offline') where.push("EXISTS (SELECT 1 FROM cmdb_security_findings f WHERE f.asset_id=a.id AND f.state='OPEN' AND f.finding_type='CORTEX_OFFLINE')");
+    if (query.posture === 'partially-protected') where.push("EXISTS (SELECT 1 FROM cmdb_cortex_security_posture p WHERE p.asset_id=a.id AND p.protection_state='PARTIALLY_PROTECTED')");
+    if (query.posture === 'vcenter-without-cortex') where.push("EXISTS (SELECT 1 FROM cmdb_security_findings f WHERE f.asset_id=a.id AND f.state='OPEN' AND f.finding_type IN ('VCENTER_WITHOUT_CORTEX','CORTEX_MISSING'))");
+    if (query.posture === 'ad-without-cortex') where.push("EXISTS (SELECT 1 FROM cmdb_security_findings f WHERE f.asset_id=a.id AND f.state='OPEN' AND f.finding_type IN ('AD_WITHOUT_CORTEX','CORTEX_MISSING'))");
+    if (query.posture === 'cortex-only') where.push("EXISTS (SELECT 1 FROM cmdb_security_findings f WHERE f.asset_id=a.id AND f.state='OPEN' AND f.finding_type='CORTEX_ONLY')");
+    if (query.posture === 'identity-conflict') where.push("EXISTS (SELECT 1 FROM cmdb_security_findings f WHERE f.asset_id=a.id AND f.state='OPEN' AND f.finding_type='IDENTITY_CONFLICT')");
+    if (query.posture === 'stale-assets') where.push("(a.lifecycle_state IN ('STALE','DECOMMISSION_CANDIDATE') OR EXISTS (SELECT 1 FROM cmdb_source_records sr WHERE sr.asset_id=a.id AND sr.status IN ('MISSING','STALE')))");
     if (query.search) {
       params.push(`%${query.search.toLowerCase()}%`);
       const p = `$${params.length}`;
@@ -185,14 +197,23 @@ export class CmdbApiService {
     const direction = query.sortDirection === 'asc' ? 'ASC' : 'DESC';
     const offset = (query.page - 1) * query.pageSize;
     const dataParams = [...params, query.pageSize, offset];
-    const result = await pgClient.query(`SELECT a.*, (SELECT count(*) FROM cmdb_source_records sr WHERE sr.asset_id=a.id) AS source_count, (SELECT count(*) FROM ci_relationships rr WHERE (rr.source_ci_id=a.id OR rr.target_ci_id=a.id) AND rr.status='ACTIVE' AND rr.archived_at IS NULL) AS relationship_count ${base} ORDER BY ${sort} ${direction}, a.id LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`, dataParams as any[]);
+    const result = await pgClient.query(`SELECT a.*,
+      (SELECT count(*) FROM cmdb_source_records sr WHERE sr.asset_id=a.id) AS source_count,
+      ARRAY(SELECT DISTINCT c.connector_type_id FROM cmdb_source_records sr JOIN cmdb_discovery_connectors c ON c.id=sr.connector_id WHERE sr.asset_id=a.id ORDER BY c.connector_type_id) AS source_coverage,
+      (SELECT to_jsonb(p)-'asset_id' FROM cmdb_cortex_security_posture p WHERE p.asset_id=a.id) AS cortex_security,
+      (SELECT count(*) FROM cmdb_security_findings f WHERE f.asset_id=a.id AND f.state='OPEN') AS open_finding_count,
+      (SELECT count(*) FROM ci_relationships rr WHERE (rr.source_ci_id=a.id OR rr.target_ci_id=a.id) AND rr.status='ACTIVE' AND rr.archived_at IS NULL) AS relationship_count ${base} ORDER BY ${sort} ${direction}, a.id LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`, dataParams as any[]);
     return { items: result.rows.map(mapAsset), total: Number(count.rows[0]?.count || 0), page: query.page, pageSize: query.pageSize };
   }
 
   public static async getAsset(actor: BankUser | undefined, id: string): Promise<any> {
     requirePermission(actor, 'assets.read');
     z.string().trim().min(1).max(64).parse(id);
-    const result = await pgClient.query(`SELECT a.*, (SELECT count(*) FROM cmdb_source_records sr WHERE sr.asset_id=a.id) AS source_count, (SELECT count(*) FROM ci_relationships rr WHERE (rr.source_ci_id=a.id OR rr.target_ci_id=a.id) AND rr.status='ACTIVE' AND rr.archived_at IS NULL) AS relationship_count FROM configuration_items a WHERE a.id=$1`, [id]);
+    const result = await pgClient.query(`SELECT a.*, (SELECT count(*) FROM cmdb_source_records sr WHERE sr.asset_id=a.id) AS source_count,
+      ARRAY(SELECT DISTINCT c.connector_type_id FROM cmdb_source_records sr JOIN cmdb_discovery_connectors c ON c.id=sr.connector_id WHERE sr.asset_id=a.id ORDER BY c.connector_type_id) AS source_coverage,
+      (SELECT to_jsonb(p)-'asset_id' FROM cmdb_cortex_security_posture p WHERE p.asset_id=a.id) AS cortex_security,
+      (SELECT count(*) FROM cmdb_security_findings f WHERE f.asset_id=a.id AND f.state='OPEN') AS open_finding_count,
+      (SELECT count(*) FROM ci_relationships rr WHERE (rr.source_ci_id=a.id OR rr.target_ci_id=a.id) AND rr.status='ACTIVE' AND rr.archived_at IS NULL) AS relationship_count FROM configuration_items a WHERE a.id=$1`, [id]);
     if (!result.rows[0]) throw Object.assign(new Error('Configuration item not found.'), { statusCode: 404 });
     return mapAsset(result.rows[0]);
   }
@@ -200,12 +221,15 @@ export class CmdbApiService {
   public static async listAssetSubresources(actor: BankUser | undefined, assetId: string): Promise<any> {
     requirePermission(actor, 'assets.read');
     await this.getAsset(actor, assetId);
-    const [identifiers, sources, network, storage, changes, provenance] = await Promise.all([
+    const [identifiers, sources, network, storage, changes, provenance, posture, findings, conflicts] = await Promise.all([
       CmdbFoundationRepository.listAssetIdentifiers(assetId), CmdbFoundationRepository.listSourceRecords(assetId), CmdbFoundationRepository.listNetwork(assetId),
       CmdbFoundationRepository.listStorage(assetId), CmdbFoundationRepository.listMaterialChanges(assetId), CmdbFoundationRepository.listProvenance(assetId),
+      pgClient.query('SELECT * FROM cmdb_cortex_security_posture WHERE asset_id=$1', [assetId]),
+      pgClient.query("SELECT * FROM cmdb_security_findings WHERE asset_id=$1 ORDER BY (state='OPEN') DESC,last_observed_at DESC", [assetId]),
+      pgClient.query(`SELECT c.*,cc.score,cc.evidence FROM cmdb_correlation_cases c JOIN cmdb_correlation_candidates cc ON cc.case_id=c.id WHERE cc.asset_id=$1 ORDER BY c.opened_at DESC`, [assetId]),
     ]);
     const relationships = await this.listAssetRelationships(actor, assetId);
-    return { identifiers, sources: sources.map((source) => ({ ...source, secretReference: undefined })), network, storage, history: changes, provenance, relationships };
+    return { identifiers, sources: sources.map((source) => ({ ...source, secretReference: undefined })), network, storage, history: changes, provenance, relationships, cortexSecurity: posture.rows[0] || null, findings: findings.rows, conflicts: conflicts.rows };
   }
 
   public static async listAssetRelationships(actor: BankUser | undefined, assetId: string): Promise<any> {
@@ -386,6 +410,8 @@ export class CmdbApiService {
     if (input.connectorType === 'CORTEX') {
       const endpointUrl = String(input.nonSecretConfiguration.endpointUrl || ''); const apiKeyId = String(input.nonSecretConfiguration.apiKeyId || '');
       if (!endpointUrl || !apiKeyId || !effectiveSecretReference) throw Object.assign(new Error('Cortex requires endpointUrl and API key ID. Configure CORTEX_API_KEY on the server.'), { statusCode: 400 });
+      if (!/^env:\/\/[A-Z][A-Z0-9_]*$/.test(effectiveSecretReference)) throw Object.assign(new Error('Cortex API secret must be a server-side env:// reference.'), { statusCode: 400 });
+      if (!['STANDARD','ADVANCED'].includes(String(input.nonSecretConfiguration.apiKeySecurityLevel || 'STANDARD').toUpperCase())) throw Object.assign(new Error('Cortex API key security level must be STANDARD or ADVANCED.'), { statusCode: 400 });
       validateCortexTransport({ endpointUrl, endpointAllowPrivateNetwork: input.endpointAllowPrivateNetwork, tlsVerifyCertificates: input.tlsVerifyCertificates, requestTimeoutMs: input.requestTimeoutMs, responseSizeLimitBytes: input.responseSizeLimitBytes });
     }
     validateEndpoint(input.nonSecretConfiguration, input.endpointAllowPrivateNetwork);
@@ -462,7 +488,7 @@ export class CmdbApiService {
       const input = connectorUpdateSchema.parse(raw);
     if (('username' in input) !== ('password' in input)) throw Object.assign(new Error('vCenter username and password must be changed together.'), { statusCode: 400 });
     if (input.nonSecretConfiguration) validateEndpoint(input.nonSecretConfiguration, input.endpointAllowPrivateNetwork ?? false);
-    return pgClient.transaction(async (client) => {
+    await pgClient.transaction(async (client) => {
       const current = await client.query('SELECT * FROM cmdb_discovery_connectors WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [id]);
       if (!current.rows[0]) throw Object.assign(new Error('Discovery connector not found.'), { statusCode: 404 });
       if (Number(current.rows[0].version) !== input.version) throw Object.assign(new Error('Connector was changed by another user.'), { statusCode: 409 });
@@ -533,6 +559,9 @@ export class CmdbApiService {
       for (const change of auditChanges) await AuditService.logPostgres(client, { actor, action: change.action, entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, fieldChanges: [{ field: change.field, oldValue: change.oldValue, newValue: change.newValue }] });
       return withoutConnectorSecrets(updated.rows[0]);
     });
+    // vCenter profile values live in a separate table. Return the canonical
+    // projection after commit so callers receive the persisted endpoint too.
+    return this.getConnector(actor, id);
   }
 
   /** Soft-delete preserves discovery evidence and the audit trail. A connector

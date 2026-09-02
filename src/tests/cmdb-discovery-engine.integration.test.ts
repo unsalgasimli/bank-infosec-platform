@@ -213,16 +213,66 @@ test('generic CMDB discovery engine is deterministic, concurrent-safe and lifecy
     assert.equal(conflicted.outcome, 'IDENTITY_CONFLICT');
     assert.equal(conflicted.assetId, undefined);
     assert.ok(conflicted.correlationCaseId);
+    await DiscoveryIngestionService.reconcileAndCompleteRun(conflictRun);
 
-    // VCENTER observations remain source evidence and cannot create or mutate canonical assets.
+    // vCenter evidence is normalized and reconciled before canonical creation;
+    // it never bypasses the generic reconciliation decision.
     const assetsBeforeVCenter = Number((await pgClient.query('SELECT count(*) AS count FROM configuration_items')).rows[0].count);
     const vcenterRun = await createRun('dconn-test-vcenter');
     const vcenter = await ingest(vcenterRun, baseDto({ connectorId: 'dconn-test-vcenter', objectId: 'vm-vcenter-only', name: 'vCenter-only VM', hostname: 'vcenter-only-host', biosUuid: 'cccccccc-cccc-cccc-cccc-cccccccccccc', ip: '10.20.30.80' }), 16);
-    assert.equal(vcenter.assetCreated, false);
-    assert.equal(vcenter.assetId, undefined);
-    assert.equal(Number((await pgClient.query('SELECT count(*) AS count FROM configuration_items')).rows[0].count), assetsBeforeVCenter);
-    assert.equal(Number((await pgClient.query("SELECT count(*) AS count FROM cmdb_source_records WHERE connector_id='dconn-test-vcenter' AND external_object_id='vm-vcenter-only' AND asset_id IS NULL")).rows[0].count), 1);
+    assert.equal(vcenter.outcome, 'CREATE_NEW');
+    assert.equal(vcenter.assetCreated, true);
+    assert.ok(vcenter.assetId);
+    assert.equal(Number((await pgClient.query('SELECT count(*) AS count FROM configuration_items')).rows[0].count), assetsBeforeVCenter + 1);
+    assert.equal(Number((await pgClient.query("SELECT count(*) AS count FROM cmdb_source_records WHERE connector_id='dconn-test-vcenter' AND external_object_id='vm-vcenter-only' AND asset_id=$1", [vcenter.assetId])).rows[0].count), 1);
     assert.equal((await pgClient.query('SELECT processing_status FROM cmdb_raw_observations WHERE id=$1', [vcenter.observationId])).rows[0].processing_status, 'PROCESSED');
+    await DiscoveryIngestionService.reconcileAndCompleteRun(vcenterRun);
+
+    // Required acceptance: one server observed by Cortex, AD and vCenter is
+    // one canonical asset. Source identities and authoritative attributes stay
+    // separately traceable. The link uses exact FQDN + OS/source corroboration
+    // and exact FQDN + MAC; hostname/IP alone are never sufficient.
+    const tripleFqdn = 'triple-source-01.bank.example';
+    const tripleMac = '02:aa:bb:cc:dd:77';
+    const cortexTriple = normalizedDiscoveryDtoSchema.parse({
+      schemaVersion: 1, source: { connectorId: 'dconn-test-primary', objectType: 'CORTEX_ENDPOINT', objectId: 'cortex-endpoint-triple', nativeUuid: 'cortex-endpoint-triple' },
+      identity: { name: 'triple-source-01', hostname: 'triple-source-01', fqdn: tripleFqdn, identifiers: [{ type: 'EDR_DEVICE_ID', namespace: 'dconn-test-primary', value: 'cortex-endpoint-triple', confidence: 100, primary: true }, { type: 'FQDN', namespace: 'DNS', value: tripleFqdn, confidence: 90, primary: false }, { type: 'MAC_ADDRESS', namespace: 'GLOBAL', value: tripleMac, confidence: 80, primary: false }] },
+      classification: { type: 'physical_server', subtype: 'SERVER', environment: 'TEST' }, compute: {},
+      operatingSystem: { reported: 'Windows Server 2022', version: '2022' }, network: { interfaces: [{ key: 'cortex-nic', technicalState: 'UP', virtual: false, macAddresses: [tripleMac], ipAddresses: [{ address: '10.77.0.10', role: 'ENDPOINT', primary: true, dynamic: true }] }] },
+      storage: { disks: [] }, placement: { relationships: [] }, tags: [], technicalState: 'CONNECTED', sourceSpecificMetadata: { cortex: { endpointId: 'cortex-endpoint-triple', agentInstalled: true, agentStatus: 'CONNECTED', agentVersion: '8.7.1', protectionState: 'PROTECTED', contentStatus: 'up_to_date', contentVersion: '9001', firstSeen: '2026-08-01T00:00:00.000Z', lastSeen: '2026-08-28T08:17:00.000Z' } },
+    });
+    const cortexRun = await createRun('dconn-test-primary');
+    const cortexResult = await ingest(cortexRun, cortexTriple, 17);
+    assert.ok(cortexResult.assetId);
+    await DiscoveryIngestionService.reconcileAndCompleteRun(cortexRun);
+
+    const adTriple = normalizedDiscoveryDtoSchema.parse({
+      schemaVersion: 1, source: { connectorId: 'dconn-test-secondary', objectType: 'Computer', objectId: 'ad-object-guid-triple', nativeUuid: 'ad-object-guid-triple' },
+      identity: { name: 'TRIPLE-SOURCE-01$', hostname: 'triple-source-01', fqdn: tripleFqdn, identifiers: [{ type: 'AD_OBJECT_GUID', namespace: 'dconn-test-secondary', value: 'ad-object-guid-triple', confidence: 100, primary: true }, { type: 'FQDN', namespace: 'DNS', value: tripleFqdn, confidence: 90, primary: false }] },
+      classification: { type: 'physical_server', subtype: 'Computer', environment: 'TEST' }, compute: {}, operatingSystem: { configured: 'Windows Server 2022' }, network: { interfaces: [] }, storage: { disks: [] }, placement: { relationships: [] }, tags: [], technicalState: 'ACTIVE', sourceSpecificMetadata: { distinguishedName: 'CN=TRIPLE-SOURCE-01,OU=Servers,DC=bank,DC=example', accountStatus: { enabled: true } },
+    });
+    const adRun = await createRun('dconn-test-secondary');
+    const adResult = await ingest(adRun, adTriple, 18);
+    assert.equal(adResult.outcome, 'AUTO_LINK'); assert.equal(adResult.assetId, cortexResult.assetId);
+    await DiscoveryIngestionService.reconcileAndCompleteRun(adRun);
+
+    const vcenterTriple = normalizedDiscoveryDtoSchema.parse({
+      schemaVersion: 1, source: { connectorId: 'dconn-test-vcenter', objectType: 'VirtualMachine', objectId: 'vm-triple', nativeUuid: 'bios-triple' },
+      identity: { name: 'Triple source VM', hostname: 'triple-source-01', fqdn: tripleFqdn, identifiers: [{ type: 'BIOS_UUID', namespace: 'GLOBAL', value: '77777777-7777-7777-7777-777777777777', confidence: 100, primary: true }, { type: 'FQDN', namespace: 'DNS', value: tripleFqdn, confidence: 90, primary: false }, { type: 'MAC_ADDRESS', namespace: 'GLOBAL', value: tripleMac, confidence: 80, primary: false }] },
+      classification: { type: 'virtual_machine', environment: 'TEST' }, compute: { cpuCount: 8, memoryBytes: 32 * gib }, operatingSystem: { configured: 'windows9Server64Guest', reported: 'Windows Server 2022' }, network: { interfaces: [{ key: '4000', technicalState: 'CONNECTED', virtual: true, macAddresses: [tripleMac], ipAddresses: [{ address: '10.77.0.11', role: 'GUEST', primary: true, dynamic: true }] }] }, storage: { disks: [] }, placement: { relationships: [] }, tags: [], technicalState: 'POWERED_ON', sourceSpecificMetadata: { vcenterObjectType: 'VirtualMachine', vcenterObjectId: 'vm-triple' },
+    });
+    const tripleVcenterRun = await createRun('dconn-test-vcenter');
+    const vcenterResult = await ingest(tripleVcenterRun, vcenterTriple, 19);
+    assert.equal(vcenterResult.outcome, 'AUTO_LINK'); assert.equal(vcenterResult.assetId, cortexResult.assetId);
+    await DiscoveryIngestionService.reconcileAndCompleteRun(tripleVcenterRun);
+    const tripleSources = await pgClient.query("SELECT count(*) count,count(DISTINCT asset_id) assets FROM cmdb_source_records WHERE (connector_id,external_object_id) IN (('dconn-test-primary','cortex-endpoint-triple'),('dconn-test-secondary','ad-object-guid-triple'),('dconn-test-vcenter','vm-triple'))");
+    assert.equal(Number(tripleSources.rows[0].count), 3); assert.equal(Number(tripleSources.rows[0].assets), 1);
+    const traceable = await pgClient.query("SELECT identifier_type_id,connector_id,source_record_id FROM cmdb_asset_identifiers WHERE asset_id=$1 AND identifier_type_id IN ('EDR_DEVICE_ID','AD_OBJECT_GUID','BIOS_UUID') AND retired_at IS NULL", [cortexResult.assetId]);
+    assert.deepEqual(new Set(traceable.rows.map((row) => row.identifier_type_id)), new Set(['EDR_DEVICE_ID','AD_OBJECT_GUID','BIOS_UUID']));
+    assert.ok(traceable.rows.every((row) => row.connector_id && row.source_record_id));
+    const authoritative = await pgClient.query("SELECT attribute_path,connector_id FROM cmdb_asset_attribute_state WHERE asset_id=$1 AND attribute_path IN ('compute.cpuCount','operatingSystem.name')", [cortexResult.assetId]);
+    assert.equal(authoritative.rows.find((row) => row.attribute_path === 'compute.cpuCount')?.connector_id, 'dconn-test-vcenter');
+    assert.equal(authoritative.rows.find((row) => row.attribute_path === 'operatingSystem.name')?.connector_id, 'dconn-test-primary');
 
     // The database claim guard is the final integrity boundary: an adapter
     // cannot attach an active strong identifier to a second canonical asset.

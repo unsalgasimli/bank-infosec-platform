@@ -45,6 +45,7 @@ export type AssetIdentifierType =
   | 'MAC_ADDRESS'
   | 'AGENT_ID'
   | 'EDR_DEVICE_ID'
+  | 'CORTEX_ASSET_ID'
   | 'SCCM_RESOURCE_ID'
   | 'AD_OBJECT_GUID'
   | 'OTHER';

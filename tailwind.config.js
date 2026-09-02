@@ -226,6 +226,9 @@ export default {
         dsSlow: 'var(--duration-slow)',
       },
       zIndex: {
+        // Legacy feature modals still use z-modal; keep it mapped to the
+        // shared modal token until those JSX surfaces are migrated.
+        modal: 'var(--z-modal)',
         dsBase: 'var(--z-base)',
         dsContent: 'var(--z-content)',
         dsSticky: 'var(--z-sticky)',

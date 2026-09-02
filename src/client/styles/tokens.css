@@ -306,7 +306,9 @@
   --z-floating: 40;
   --z-dropdown: 40;
   --z-overlay: 50;
-  --z-modal: 60;
+  /* Feature modals must clear the persistent sidebar, while shared dialogs
+     remain the top interactive layer for nested/priority dialogs. */
+  --z-modal: 80;
   --z-toast: 70;
   --z-dialog: 90;
 }
