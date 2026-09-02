@@ -18,17 +18,18 @@ test('Cortex endpoint normalizes through the generic observation DTO with scoped
 
 test('Cortex Unified Asset Inventory preserves native classification and emits strong cross-source identifiers', () => {
   const raw = cortexUnifiedAssetPayloadMapper.validateRaw({
-    'xdm.asset.strong_id': 'asset-77', 'xdm.asset.name': 'srv-01.bank.example',
-    'xdm.asset.type.class': 'Compute', 'xdm.asset.type.category': 'Virtual Machine', 'xdm.asset.type.type': 'VMware VM',
+    'xdm.asset.id': 'cortex-native-77', 'xdm.asset.strong_id': 'asset-77', 'xdm.asset.name': 'srv-01.bank.example',
+    'xdm.asset.type.class': 'Compute', 'xdm.asset.type.category': 'Virtual Machine', 'xdm.asset.type.name': 'VMware VM',
     'xdm.host.fqdn': 'srv-01.bank.example', 'xdm.host.bios_uuid': '11111111-2222-3333-4444-555555555555',
     'xdm.host.serial_number': 'SER-77', 'xdm.host.mac_addresses': ['02:11:22:33:44:55'],
     'xdm.host.ipv4_addresses': ['10.20.30.40'], endpoint_id: 'endpoint-77', agent_version: '8.7.1',
     operational_status: 'PROTECTED', content_status: 'up_to_date', unknown_asset_field: { preserved: true },
   });
-  const dto = cortexUnifiedAssetPayloadMapper.normalize(raw, { ...envelope, sourceObjectType: 'CORTEX_ASSET', sourceObjectId: 'asset-77' });
+  const dto = cortexUnifiedAssetPayloadMapper.normalize(raw, { ...envelope, sourceObjectType: 'CORTEX_ASSET', sourceObjectId: 'cortex-native-77' });
   assert.equal(dto.classification.type, 'virtual_machine');
   assert.equal((dto.sourceSpecificMetadata.cortex as any).assetClass, 'Compute');
-  assert.ok(dto.identity.identifiers.some((item) => item.type === 'CORTEX_ASSET_ID' && item.value === 'asset-77'));
+  assert.ok(dto.identity.identifiers.some((item) => item.type === 'CORTEX_ASSET_ID' && item.value === 'cortex-native-77'));
+  assert.ok(dto.identity.identifiers.some((item) => item.value === 'asset-77'));
   assert.ok(dto.identity.identifiers.some((item) => item.type === 'BIOS_UUID'));
   assert.equal(((dto.sourceSpecificMetadata.cortex as any).securityTelemetry as any).unknown_asset_field.preserved, true);
 });
@@ -61,7 +62,7 @@ test('Cortex page windows use the documented exclusive upper bound and preserve 
   assert.equal(requests[0].request_data.search_from, 100);
   assert.equal(requests[0].request_data.search_to, 200);
   assert.equal(requests[1].search_from, 1000);
-  assert.equal(requests[1].search_to, 1100);
+  assert.equal(requests[1].search_to, 2000);
   assert.equal(endpointPage.totalCount, 225);
   assert.equal(endpointPage.resultCount, 1);
   assert.equal(assetPage.totalCount, 1200);
@@ -94,17 +95,12 @@ test('Cortex client never follows a redirect for an authenticated POST and repor
   );
 });
 
-test('Cortex capability detection tolerates tenant/license variance and reports only exposed inventories', async () => {
+test('Cortex capability detection probes only native Asset Inventory, not Endpoint Management', async () => {
   const transport: CortexTransport = async (request) => {
-    if (request.url.pathname.endsWith('/endpoints/get_endpoint')) {
-      assert.equal(JSON.parse(request.body || '{}').request_data.search_to, 1);
-      return { statusCode: 403, headers: {}, body: {} };
-    }
+    assert.equal(request.url.pathname.endsWith('/assets/schema'), true);
     return { statusCode: 200, headers: {}, body: { reply: { data: [{ field: 'xdm.asset.strong_id' }] } } };
   };
   const capabilities = await new CortexClient(configuration, transport).detectCapabilities('capability-test');
-  assert.equal(capabilities.endpointInventory.available, false);
-  assert.equal(capabilities.endpointInventory.reason, 'FORBIDDEN_OR_UNLICENSED');
   assert.equal(capabilities.unifiedAssetInventory.available, true);
   assert.equal(capabilities.unifiedAssetInventory.schemaFieldCount, 1);
 });

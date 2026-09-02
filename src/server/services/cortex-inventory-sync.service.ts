@@ -66,7 +66,8 @@ export const cortexEndpointPayloadMapper: DiscoveryPayloadMapper<CortexRecord> =
   },
 };
 
-const assetIdOf = (record: CortexRecord) => pickText(record, 'xdm.asset.strong_id', 'xdm.asset.id', 'asset_id', 'id', '_id');
+const sourceAssetIdOf = (record: CortexRecord) => pickText(record, 'xdm.asset.id');
+const strongIdOf = (record: CortexRecord) => pickText(record, 'xdm.asset.strong_id');
 const typeForUnifiedAsset = (assetClass?: string, category?: string, assetType?: string): string => {
   const combined = `${assetClass || ''} ${category || ''} ${assetType || ''}`;
   if (/virtual machine|\bvm\b/i.test(combined)) return 'virtual_machine';
@@ -80,12 +81,13 @@ const typeForUnifiedAsset = (assetClass?: string, category?: string, assetType?:
 
 export const cortexUnifiedAssetPayloadMapper: DiscoveryPayloadMapper<CortexRecord> = {
   name: 'cortex-xdr-unified-assets-v1', normalizedSchemaVersion: 1,
-  validateRaw(payload: unknown) { const record = payload as CortexRecord; if (!record || typeof record !== 'object' || !assetIdOf(record)) throw new Error('Invalid Cortex unified asset record: persistent asset ID is required.'); return record; },
+  validateRaw(payload: unknown) { const record = payload as CortexRecord; if (!record || typeof record !== 'object' || !sourceAssetIdOf(record)) throw new Error('Invalid Cortex unified asset record: xdm.asset.id is required.'); return record; },
   normalize(record, envelope): NormalizedDiscoveryDto {
-    const assetId = assetIdOf(record)!;
+    const assetId = sourceAssetIdOf(record)!;
+    const strongId = strongIdOf(record);
     const assetClass = pickText(record, 'xdm.asset.type.class', 'asset_class', 'class');
     const assetCategory = pickText(record, 'xdm.asset.type.category', 'asset_category', 'category');
-    const assetType = pickText(record, 'xdm.asset.type.type', 'xdm.asset.type', 'asset_type', 'type');
+    const assetType = pickText(record, 'xdm.asset.type.name', 'xdm.asset.type.type', 'xdm.asset.type', 'asset_type', 'type');
     const name = pickText(record, 'xdm.asset.name', 'name', 'hostname') || assetId;
     const rawFqdn = pickText(record, 'xdm.host.fqdn', 'xdm.asset.fqdn', 'fqdn');
     const rawHostname = pickText(record, 'xdm.host.hostname', 'hostname', 'host_name') || (/^[^.]+(?:\..+)?$/.test(name) ? name : undefined);
@@ -99,6 +101,7 @@ export const cortexUnifiedAssetPayloadMapper: DiscoveryPayloadMapper<CortexRecor
     const cloudInstanceId = pickText(record, 'xdm.asset.cloud.instance_id', 'cloud_instance_id', 'instance_id');
     const endpointId = pickText(record, 'xdm.endpoint.endpoint_id', 'xdm.agent.endpoint_id', 'endpoint_id', 'agent_id');
     const identifiers: NormalizedDiscoveryDto['identity']['identifiers'] = [{ type: 'CORTEX_ASSET_ID', namespace: envelope.connectorId, value: assetId, confidence: 100, primary: true }];
+    if (strongId && strongId !== assetId) identifiers.push({ type: 'OTHER', namespace: `${envelope.connectorId}:CORTEX_STRONG_ID`, value: strongId, confidence: 100, primary: false });
     if (endpointId) identifiers.push({ type: 'EDR_DEVICE_ID', namespace: envelope.connectorId, value: endpointId, confidence: 100, primary: false });
     if (biosUuid) identifiers.push({ type: 'BIOS_UUID', namespace: 'GLOBAL', value: biosUuid, confidence: 100, primary: false });
     if (serialNumber) identifiers.push({ type: 'SERIAL_NUMBER', namespace: 'GLOBAL', value: serialNumber, confidence: 95, primary: false });
@@ -118,7 +121,7 @@ export const cortexUnifiedAssetPayloadMapper: DiscoveryPayloadMapper<CortexRecor
       operatingSystem: { ...(pickText(record, 'xdm.host.os.name', 'operating_system', 'os_name') ? { reported: pickText(record, 'xdm.host.os.name', 'operating_system', 'os_name') } : {}), ...(pickText(record, 'xdm.host.os.version', 'os_version') ? { version: pickText(record, 'xdm.host.os.version', 'os_version') } : {}) },
       placement: { relationships: [] }, tags: [], technicalState: agentStatus,
       sourceSpecificMetadata: { cortex: {
-        assetId, endpointId, assetClass, assetCategory, assetType, agentInstalled: Boolean(endpointId || agentVersion), agentVersion, agentStatus,
+        assetId, strongId, provider: pickText(record, 'xdm.asset.provider'), realm: pickText(record, 'xdm.asset.realm'), assetTypeId: pickText(record, 'xdm.asset.type.id'), groupIds: strings(pick(record, 'xdm.asset.group_ids')), issuesBreakdown: pick(record, 'issues_breakdown'), casesBreakdown: pick(record, 'cases_breakdown'), endpointId, assetClass, assetCategory, assetType, agentInstalled: Boolean(endpointId || agentVersion), agentVersion, agentStatus,
         protectionState, firstSeen, lastSeen, isolationStatus: pickText(record, 'xdm.endpoint.isolation_status', 'is_isolated', 'isolation_status'),
         contentStatus: pickText(record, 'xdm.endpoint.content_status', 'content_status'), contentVersion: pickText(record, 'xdm.endpoint.content_version', 'content_version'),
         securityPolicies: strings(pick(record, 'xdm.endpoint.assigned_security_policies', 'security_policies', 'assigned_security_policy')),
@@ -145,7 +148,7 @@ async function configFor(row: any) {
   if (!apiKeyId || !endpointUrl) throw new CortexConnectorError('CORTEX_CONFIG_INVALID', 'Cortex endpointUrl and apiKeyId are required.');
   const caReference = text(row.tls_ca_reference);
   const tlsCa = caReference ? await (async () => { if (!caReference.startsWith('file://')) throw new CortexConnectorError('CORTEX_CONFIG_INVALID', 'Custom Cortex CA references must be backend-resolved file:// references.'); return fs.readFile(new URL(caReference), 'utf8'); })() : undefined;
-  return { endpointUrl, apiKeyId, apiKey: secret(row.secret_reference), apiKeySecurityLevel: apiKeySecurityLevel(c.apiKeySecurityLevel ?? process.env.CORTEX_API_KEY_SECURITY_LEVEL), tlsCa, tlsVerifyCertificates: row.tls_verify_certificates !== false, endpointAllowPrivateNetwork: Boolean(row.endpoint_allow_private_network), requestTimeoutMs: Number(row.request_timeout_ms || 30000), responseSizeLimitBytes: Number(c.responseSizeLimitBytes || 4194304), pageSize: Number(c.pageSize || 100), maxRetries: Number(c.maxRetries ?? 3) };
+  return { endpointUrl, apiKeyId, apiKey: secret(row.secret_reference), apiKeySecurityLevel: apiKeySecurityLevel(c.apiKeySecurityLevel ?? process.env.CORTEX_API_KEY_SECURITY_LEVEL), tlsCa, tlsVerifyCertificates: row.tls_verify_certificates !== false, endpointAllowPrivateNetwork: Boolean(row.endpoint_allow_private_network), requestTimeoutMs: Number(row.request_timeoutMs || row.request_timeout_ms || 30000), responseSizeLimitBytes: Number(c.responseSizeLimitBytes || 4194304), pageSize: 1000, maxRetries: 5, sustainedRps: 2, maxBurst: 4, maxConcurrency: 2 };
 }
 const checkpointOf = (value: unknown): Record<string, unknown> => { try { const parsed = typeof value === 'string' ? JSON.parse(value) : value; return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}; } catch { return {}; } };
 
@@ -160,7 +163,7 @@ export class CortexInventorySyncService {
     const row = await pgClient.query("SELECT non_secret_configuration,secret_reference,tls_ca_reference,tls_verify_certificates,endpoint_allow_private_network,request_timeout_ms FROM cmdb_discovery_connectors WHERE id=$1 AND connector_type_id='CORTEX' AND deleted_at IS NULL", [connectorId]);
     if (!row.rows[0]) throw new CortexConnectorError('DISCOVERY_CONNECTOR_NOT_FOUND', 'Cortex connector was not found.');
     const configuration = await configFor(row.rows[0]); const capabilities = await new CortexClient(configuration).detectCapabilities(correlationId);
-    if (!capabilities.endpointInventory.available && !capabilities.unifiedAssetInventory.available) throw new CortexConnectorError('CORTEX_NO_INVENTORY_CAPABILITY', 'The API key or tenant exposes neither Endpoint nor Unified Asset Inventory APIs.');
+    if (!capabilities.unifiedAssetInventory.available) throw new CortexConnectorError('CORTEX_NO_INVENTORY_CAPABILITY', 'The API key or tenant does not expose the native Cortex Asset Inventory API.');
     await this.persistCapabilities(connectorId, capabilities);
     return { connectorId, capabilities, transport: 'HTTPS', tlsVerification: 'ENABLED' };
   }
@@ -198,41 +201,41 @@ export class CortexInventorySyncService {
     try {
       const configuration = await configFor(run); const client = new CortexClient(configuration); const correlationId = context.correlationId || run.correlation_id || `cmdb.discovery.sync:${runId}`;
       const capabilities = await client.detectCapabilities(correlationId, context.signal);
-      if (!capabilities.endpointInventory.available && !capabilities.unifiedAssetInventory.available) throw new CortexConnectorError('CORTEX_NO_INVENTORY_CAPABILITY', 'The Cortex tenant exposes no supported inventory API to this key.');
+      if (!capabilities.unifiedAssetInventory.available) throw new CortexConnectorError('CORTEX_NO_INVENTORY_CAPABILITY', 'The Cortex tenant does not expose the native Asset Inventory API to this key.');
       await this.persistCapabilities(run.connector_id, capabilities);
 
-      const ingestPages = async (kind: 'ENDPOINT' | 'ASSET') => {
-        let offset = 0; const pageSize = kind === 'ENDPOINT' ? Math.min(100, Math.max(1, configuration.pageSize || 100)) : Math.min(1000, Math.max(1, configuration.pageSize || 100));
-        const checkpointKey = kind === 'ENDPOINT' ? 'endpointInventory' : 'unifiedAssetInventory';
+      const ingestPages = async () => {
+        let offset = 0; const pageSize = 1000; let expectedTotal: number | undefined;
+        const checkpointKey = 'unifiedAssetInventory';
         for (;;) {
           requested += pageSize;
-          nextCheckpoint.currentCapability = kind;
+          nextCheckpoint.currentCapability = 'ASSET';
           nextCheckpoint[checkpointKey] = { offset, requestedTo: offset + pageSize, state: 'REQUESTING' };
           const incremental = run.run_type === 'INCREMENTAL';
-          const page = kind === 'ENDPOINT'
-            ? await client.endpointPage(offset, correlationId, { ...(incremental && Number(checkpoint.endpointLastSeen) ? { lastSeenAfter: Number(checkpoint.endpointLastSeen) } : {}), signal: context.signal })
-            : await client.assetPage(offset, correlationId, { ...(incremental && Number(checkpoint.assetLastObserved) ? { lastObservedAfter: Number(checkpoint.assetLastObserved) } : {}), signal: context.signal });
+          const page = await client.assetPage(offset, correlationId, { ...(incremental && Number(checkpoint.assetLastObserved) ? { lastObservedAfter: Number(checkpoint.assetLastObserved) } : {}), signal: context.signal });
+          if (page.totalCount !== undefined) expectedTotal ??= page.totalCount;
+          if (expectedTotal !== undefined && page.totalCount !== undefined && page.totalCount !== expectedTotal) throw new CortexConnectorError('CORTEX_TOTAL_COUNT_CHANGED', 'Cortex Asset Inventory total_count changed during this run; reconciliation cannot be trusted.', true);
           received += page.records.length;
           const observedAt = new Date().toISOString();
-          const mapper = kind === 'ENDPOINT' ? cortexEndpointPayloadMapper : cortexUnifiedAssetPayloadMapper;
-          const batch = await DiscoveryIngestionService.ingestBatch(page.records.map((rawPayload) => ({ connectorId: run.connector_id, syncRunId: runId, sourceObjectType: kind === 'ENDPOINT' ? 'CORTEX_ENDPOINT' : 'CORTEX_ASSET', sourceObjectId: kind === 'ENDPOINT' ? String(rawPayload.endpoint_id || 'INVALID') : String(assetIdOf(rawPayload) || 'INVALID'), observedAt, rawPayload })), mapper);
+          const batch = await DiscoveryIngestionService.ingestBatch(page.records.map((rawPayload) => ({ connectorId: run.connector_id, syncRunId: runId, sourceObjectType: 'CORTEX_ASSET', sourceObjectId: String(sourceAssetIdOf(rawPayload) || 'INVALID'), observedAt, rawPayload })), cortexUnifiedAssetPayloadMapper);
           outcomes.push(...batch.succeeded.map((item) => item.outcome)); succeeded += batch.succeeded.length; failed += batch.failed.length;
-          if (kind === 'ENDPOINT') { const max = Math.max(Number(nextCheckpoint.endpointLastSeen || 0), ...page.records.map((record) => epoch(record.last_seen) || 0)); if (max) nextCheckpoint.endpointLastSeen = max; }
-          else { const max = Math.max(Number(nextCheckpoint.assetLastObserved || 0), ...page.records.map((record) => epoch(pick(record, 'xdm.asset.last_observed', 'last_observed', 'last_seen')) || 0)); if (max) nextCheckpoint.assetLastObserved = max; }
+          { const max = Math.max(Number(nextCheckpoint.assetLastObserved || 0), ...page.records.map((record) => epoch(pick(record, 'xdm.asset.last_observed', 'last_observed', 'last_seen')) || 0)); if (max) nextCheckpoint.assetLastObserved = max; }
           const previousOffset = offset;
           offset += page.records.length;
-          const completed = page.records.length === 0 || (page.totalCount !== undefined && offset >= page.totalCount);
+          const completed = page.records.length === 0 || (expectedTotal !== undefined && offset >= expectedTotal);
           nextCheckpoint[checkpointKey] = { offset, requestedTo: previousOffset + pageSize, totalCount: page.totalCount ?? null, resultCount: page.resultCount ?? page.records.length, state: completed ? 'COMPLETED' : 'PAGING' };
           await pgClient.query("UPDATE cmdb_discovery_sync_runs SET requested_count=$2,received_count=$3,checkpoint=$4,updated_at=NOW() WHERE id=$1", [runId, requested, received, JSON.stringify(nextCheckpoint)]);
           // A short non-empty page is not end-of-data. total_count is the
           // authoritative completion signal; when it is omitted we continue
           // until Cortex returns an empty page.
-          if (completed) break;
-          if (offset <= previousOffset) throw new CortexConnectorError('CORTEX_PAGINATION_STALLED', `Cortex ${kind.toLowerCase()} pagination made no forward progress.`);
+          if (completed) {
+            if (expectedTotal === undefined || received !== expectedTotal || succeeded !== received || failed !== 0) throw new CortexConnectorError('CORTEX_RECONCILIATION_MISMATCH', `Cortex reconciliation failed: expected ${expectedTotal ?? 'unknown'}, fetched ${received}, persisted ${succeeded}, rejected ${failed}.`);
+            break;
+          }
+          if (offset <= previousOffset) throw new CortexConnectorError('CORTEX_PAGINATION_STALLED', 'Cortex asset pagination made no forward progress.');
         }
       };
-      if (capabilities.endpointInventory.available) await ingestPages('ENDPOINT');
-      if (capabilities.unifiedAssetInventory.available) await ingestPages('ASSET');
+      await ingestPages();
       if (failed) await DiscoveryIngestionService.completePartialRun(runId, { ...nextCheckpoint, requested, received, reason: 'INVALID_RECORDS' });
       else await DiscoveryIngestionService.reconcileAndCompleteRun(runId);
       const security = await CortexSecurityPostureService.reconcileConnector(run.connector_id);

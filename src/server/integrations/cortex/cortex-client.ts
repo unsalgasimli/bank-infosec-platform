@@ -11,6 +11,9 @@ export type CortexClientConfiguration = CortexTransportConfiguration & {
   tlsCa?: string;
   pageSize?: number;
   maxRetries?: number;
+  sustainedRps?: number;
+  maxBurst?: number;
+  maxConcurrency?: number;
 };
 export type CortexTransport = (request: {
   method: 'GET' | 'POST'; url: URL; body?: string; headers: Record<string, string>;
@@ -20,9 +23,48 @@ export type CortexTransport = (request: {
 export type CortexCapability = { available: boolean; statusCode?: number; reason?: string };
 export type CortexPage = { records: Record<string, unknown>[]; totalCount?: number; resultCount?: number };
 export type CortexCapabilities = {
-  endpointInventory: CortexCapability;
   unifiedAssetInventory: CortexCapability & { schemaFieldCount?: number };
 };
+
+/** A tenant-wide governor keeps independently queued connector runs below the
+ * Cortex tenant limit.  Defaults are deliberately well below the 10 RPS API
+ * ceiling: 2 sustained RPS, a four-request burst and two in-flight requests. */
+class CortexTenantRequestGovernor {
+  private static readonly governors = new Map<string, CortexTenantRequestGovernor>();
+  private tokens: number;
+  private lastRefill = Date.now();
+  private active = 0;
+  private readonly waiters: Array<() => void> = [];
+
+  private constructor(private readonly rps: number, private readonly burst: number, private readonly concurrency: number) { this.tokens = burst; }
+  public static for(configuration: CortexClientConfiguration): CortexTenantRequestGovernor {
+    const origin = new URL(configuration.endpointUrl).origin.toLowerCase();
+    const rps = Math.min(2, Math.max(1, Number(configuration.sustainedRps || 2)));
+    const burst = Math.min(4, Math.max(1, Math.floor(Number(configuration.maxBurst || 4))));
+    const concurrency = Math.min(2, Math.max(1, Math.floor(Number(configuration.maxConcurrency || 2))));
+    const key = `${origin}|${rps}|${burst}|${concurrency}`;
+    const existing = this.governors.get(key);
+    if (existing) return existing;
+    const governor = new CortexTenantRequestGovernor(rps, burst, concurrency);
+    this.governors.set(key, governor);
+    return governor;
+  }
+  public async acquire(signal?: AbortSignal): Promise<() => void> {
+    for (;;) {
+      const now = Date.now();
+      this.tokens = Math.min(this.burst, this.tokens + ((now - this.lastRefill) / 1000) * this.rps);
+      this.lastRefill = now;
+      if (this.active < this.concurrency && this.tokens >= 1) { this.tokens -= 1; this.active += 1; return () => { this.active -= 1; this.waiters.shift()?.(); }; }
+      const tokenDelay = this.tokens >= 1 ? 10 : Math.ceil((1 - this.tokens) / this.rps * 1000);
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, Math.max(10, tokenDelay));
+        const wake = () => { clearTimeout(timer); resolve(); };
+        this.waiters.push(wake);
+        signal?.addEventListener('abort', () => { clearTimeout(timer); const index = this.waiters.indexOf(wake); if (index >= 0) this.waiters.splice(index, 1); reject(Object.assign(new Error('Cortex request cancelled.'), { code: 'ABORT_ERR' })); }, { once: true });
+      });
+    }
+  }
+}
 
 const endpointReplySchema = z.object({ reply: z.object({
   endpoints: z.array(z.record(z.unknown())).optional(),
@@ -114,14 +156,16 @@ export class CortexClient {
     for (let attempt = 0;; attempt += 1) {
       try {
         const origin = await assertCortexResolvedTarget(this.configuration);
+        const release = await CortexTenantRequestGovernor.for(this.configuration).acquire(signal);
         const requestUrl = new URL(path, origin);
         const serialized = method === 'POST' ? JSON.stringify(body ?? {}) : undefined;
-        const result = await this.transport({
+        let result: Awaited<ReturnType<CortexTransport>>;
+        try { result = await this.transport({
           method, url: requestUrl, body: serialized,
           headers: { accept: 'application/json', ...(serialized ? { 'content-type': 'application/json' } : {}), ...cortexAuthenticationHeaders(this.configuration), 'x-correlation-id': correlationId },
           timeoutMs: this.configuration.requestTimeoutMs, maxResponseBytes: this.configuration.responseSizeLimitBytes,
           ca: this.configuration.tlsCa, signal,
-        });
+        }); } finally { release(); }
         if (result.statusCode === 401) throw new CortexConnectorError('CORTEX_AUTH_FAILED', 'Cortex authentication was rejected.', false, result.statusCode, result.headers);
         if (result.statusCode >= 300 && result.statusCode < 400) {
           const apiOrigin = redirectApiOrigin(result.headers.location, requestUrl);
@@ -162,7 +206,10 @@ export class CortexClient {
   }
 
   public async assetPage(searchFrom: number, correlationId: string, options: { lastObservedAfter?: number; signal?: AbortSignal } = {}): Promise<CortexPage> {
-    const pageSize = Math.min(1000, Math.max(1, this.configuration.pageSize || 100));
+    // Asset Inventory is intentionally always fetched in Cortex's documented
+    // 1,000-record windows. Connector configuration cannot silently downgrade
+    // a CMDB reconciliation run to endpoint-sized pages.
+    const pageSize = 1000;
     const filters = options.lastObservedAfter === undefined ? undefined : { AND: [{ SEARCH_FIELD: 'xdm.asset.last_observed', SEARCH_TYPE: 'GTE', SEARCH_VALUE: options.lastObservedAfter }] };
     const result = await this.request('POST', '/public_api/v1/assets', { ...(filters ? { filters } : {}), on_demand_fields: ['xdm.host.ipv4_addresses', 'xdm.host.mac_addresses'], sort: [{ FIELD: 'xdm.asset.strong_id', ORDER: 'ASC' }], search_from: searchFrom, search_to: searchFrom + pageSize }, correlationId, options.signal);
     if (result.statusCode < 200 || result.statusCode >= 300) throw new CortexConnectorError('CORTEX_CAPABILITY_UNAVAILABLE', `Cortex Unified Asset Inventory API is unavailable (HTTP ${result.statusCode}).`, false, result.statusCode, result.headers);
@@ -184,9 +231,9 @@ export class CortexClient {
         throw error;
       }
     };
-    // Capability probing should not download an inventory page that the sync
-    // will immediately request again.
-    const endpointInventory = await capability(() => this.endpointPage(0, correlationId, { pageSize: 1, signal }));
+    // CMDB discovery intentionally probes the native unified inventory only.
+    // Endpoint Management remains available as a later Cortex-specific
+    // enrichment adapter, never as a fallback inventory source.
     let schemaFieldCount: number | undefined;
     const unifiedAssetInventory = await capability(async () => {
       const result = await this.request('GET', '/public_api/v1/assets/schema', undefined, correlationId, signal);
@@ -195,6 +242,6 @@ export class CortexClient {
       const fields = Array.isArray(reply?.data) ? reply.data : Array.isArray(reply?.fields) ? reply.fields : [];
       schemaFieldCount = fields.length;
     });
-    return { endpointInventory, unifiedAssetInventory: { ...unifiedAssetInventory, ...(schemaFieldCount === undefined ? {} : { schemaFieldCount }) } };
+    return { unifiedAssetInventory: { ...unifiedAssetInventory, ...(schemaFieldCount === undefined ? {} : { schemaFieldCount }) } };
   }
 }

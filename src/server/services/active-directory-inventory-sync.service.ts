@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
 import { config } from '../config/index.js';
 import { pgClient } from '../db/postgres/client.js';
 import { StrictReadOnlyLdapClient } from '../utils/readonly-ldap-client.js';
@@ -35,6 +36,13 @@ function resolveConnectorSecret(reference: unknown): string {
   const secret = process.env[match[1]];
   if (!secret) throw Object.assign(new Error('Active Directory bind secret reference is unavailable to this server.'), { code: 'AD_SECRET_UNAVAILABLE' });
   return resolveSecret(secret);
+}
+async function resolveConnectorCa(reference: unknown): Promise<string | undefined> {
+  const value = String(reference || '').trim();
+  if (!value) return undefined;
+  if (!value.startsWith('file://')) throw Object.assign(new Error('Active Directory CA reference must be a backend-resolved file:// reference.'), { code: 'AD_CA_REFERENCE_INVALID' });
+  try { return await fs.readFile(new URL(value), 'utf8'); }
+  catch { throw Object.assign(new Error('Active Directory CA reference cannot be read by this server.'), { code: 'AD_CA_REFERENCE_UNAVAILABLE' }); }
 }
 const objectTypeFor = (entry: Entry): AdObjectType | undefined => {
   const classes = values(entry.objectClass).map((value) => value.toLowerCase());
@@ -86,6 +94,25 @@ export const activeDirectoryInventoryPayloadMapper: DiscoveryPayloadMapper<AdInv
 };
 
 export class ActiveDirectoryInventorySyncService {
+  /** Proves the persisted connector can establish a read-only LDAPS session.
+   * It deliberately performs a base-object read only; inventory is never run
+   * from the Test action. */
+  public static async testConnection(connectorId: string) {
+    const result = await pgClient.query<any>(`SELECT non_secret_configuration,secret_reference,tls_ca_reference,tls_verify_certificates
+      FROM cmdb_discovery_connectors WHERE id=$1 AND connector_type_id='ACTIVE_DIRECTORY' AND deleted_at IS NULL`, [connectorId]);
+    const row = result.rows[0];
+    if (!row) throw Object.assign(new Error('Active Directory connector was not found.'), { statusCode: 404, code: 'DISCOVERY_CONNECTOR_NOT_FOUND' });
+    const source = row.non_secret_configuration || {};
+    const url = String(source.url || ''); const baseDn = String(source.baseDn || ''); const bindUser = String(source.bindUser || '');
+    if (!url.startsWith('ldaps://') || !baseDn || !bindUser) throw Object.assign(new Error('Active Directory connector requires LDAPS, base DN and a read-only bind identity.'), { statusCode: 422, code: 'AD_CONNECTOR_CONFIG_INVALID' });
+    const client = new StrictReadOnlyLdapClient({ url, timeout: 30000, connectTimeout: 10000, tlsRejectUnauthorized: row.tls_verify_certificates !== false, caCertContent: await resolveConnectorCa(row.tls_ca_reference) });
+    try {
+      await client.bind(bindUser, resolveConnectorSecret(row.secret_reference));
+      await client.search(baseDn, { scope: 'base', filter: '(objectClass=*)', attributes: ['distinguishedName'] });
+      return { connectorId, snapshot: { testResult: { status: 'SUCCEEDED', transport: 'LDAPS', authentication: 'SUCCEEDED', readOnlyProbe: 'SUCCEEDED', writeOperations: 'BLOCKED' } } };
+    } finally { await client.unbind().catch(() => undefined); }
+  }
+
   public static async enqueue(connectorId: string, actor: BankUser, runType: 'FULL' | 'INCREMENTAL' = 'INCREMENTAL', context: { correlationId?: string } = {}) {
     const runId = `dsrun-${crypto.randomUUID()}`;
     await pgClient.transaction(async (client) => {
@@ -109,7 +136,7 @@ export class ActiveDirectoryInventorySyncService {
     try {
       const source = run.non_secret_configuration || {}; const url = String(source.url || config.LDAP_URL || ''); const baseDn = String(source.baseDn || config.LDAP_BASE_DN || ''); const bindUser = String(source.bindUser || config.LDAP_BIND_USER || ''); const password = resolveConnectorSecret(run.secret_reference);
       if (!url.startsWith('ldaps://') || !baseDn || !bindUser || !password) throw Object.assign(new Error('Active Directory connector requires LDAPS, base DN, dedicated read-only bind identity and a server-side secret.'), { code: 'AD_CONNECTOR_CONFIG_INVALID' });
-      client = new StrictReadOnlyLdapClient({ url, timeout: 30000, connectTimeout: 10000, tlsRejectUnauthorized: run.tls_verify_certificates !== false, caCertPath: config.LDAP_CA_CERT_PATH });
+      client = new StrictReadOnlyLdapClient({ url, timeout: 30000, connectTimeout: 10000, tlsRejectUnauthorized: run.tls_verify_certificates !== false, caCertContent: await resolveConnectorCa(run.tls_ca_reference), caCertPath: config.LDAP_CA_CERT_PATH });
       await client.bind(bindUser, password);
       const attributes = ['objectGUID','objectClass','distinguishedName','name','cn','sAMAccountName','userPrincipalName','displayName','mail','department','title','manager','company','enabled','userAccountControl','accountExpires','pwdLastSet','lastLogon','lastLogonTimestamp','whenCreated','whenChanged','operatingSystem','operatingSystemVersion','dNSHostName','member','memberOf','groupType','servicePrincipalName','description'];
       // This connector is the CMDB asset source, not the USER SYNC source.

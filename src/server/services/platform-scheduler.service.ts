@@ -2,6 +2,7 @@ import { config } from '../config/index.js';
 import { db } from '../db/database.js';
 import { logger } from './logger.service.js';
 import { OutboxService } from './outbox.service.js';
+import { CortexInventorySchedulerService } from './cortex-inventory-scheduler.service.js';
 
 /** Emits durable schedule ticks; it never executes ticket work in-process. */
 export class PlatformSchedulerService {
@@ -45,6 +46,7 @@ export class PlatformSchedulerService {
       }
       db.persist();
       await db.flush();
+      await CortexInventorySchedulerService.enqueueDue(now);
     } finally {
       this.slaInFlight = false;
     }

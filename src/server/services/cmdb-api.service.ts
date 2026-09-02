@@ -323,13 +323,15 @@ export class CmdbApiService {
     z.string().trim().min(1).max(64).parse(id);
     const connector = await this.getConnector(actor, id);
     if (connector.connectorType === 'ACTIVE_DIRECTORY') {
-      // A test must be non-mutating. AD inventory itself runs only through the
-      // durable sync command, never from this management endpoint.
-      const source = connector.nonSecretConfiguration || {};
-      const secret = await pgClient.query<{ secret_reference: string | null }>('SELECT secret_reference FROM cmdb_discovery_connectors WHERE id=$1 AND deleted_at IS NULL', [id]);
-      const ready = String(source.url || config.LDAP_URL || '').startsWith('ldaps://') && Boolean(source.baseDn || config.LDAP_BASE_DN) && Boolean(source.bindUser || config.LDAP_BIND_USER) && /^env:\/\/[A-Z][A-Z0-9_]*$/.test(String(secret.rows[0]?.secret_reference || ''));
-      if (!ready) throw Object.assign(new Error('Active Directory connector is missing LDAPS, base DN, read-only bind user, or a server-side secret.'), { statusCode: 422, code: 'AD_CONNECTOR_CONFIG_INVALID' });
-      return { connectorId: id, snapshot: { testResult: { status: 'READY_FOR_READ_ONLY_SYNC', transport: 'LDAPS', credentials: 'SERVER_SIDE_SECRET_REFERENCE', writeOperations: 'BLOCKED' } } };
+      await pgClient.transaction(async (client) => AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_TESTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { connectorType: 'ACTIVE_DIRECTORY', status: 'STARTED' } }));
+      try {
+        const result = await ActiveDirectoryInventorySyncService.testConnection(id);
+        await pgClient.transaction(async (client) => AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_TESTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { connectorType: 'ACTIVE_DIRECTORY', status: 'SUCCEEDED' } }));
+        return result;
+      } catch (error: any) {
+        await pgClient.transaction(async (client) => AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_TESTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { connectorType: 'ACTIVE_DIRECTORY', status: 'FAILED', errorCode: String(error?.code || 'AD_CONNECTION_TEST_FAILED') } })).catch(() => undefined);
+        throw error;
+      }
     }
     if (connector.connectorType === 'CORTEX') {
       await pgClient.transaction(async (client) => AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_TESTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { connectorType: 'CORTEX', status: 'STARTED' } }));
@@ -494,7 +496,17 @@ export class CmdbApiService {
       if (Number(current.rows[0].version) !== input.version) throw Object.assign(new Error('Connector was changed by another user.'), { statusCode: 409 });
       const currentType = String(current.rows[0].connector_type_id);
       const nextType = input.connectorType || currentType;
-      if (currentType === 'VCENTER' && nextType !== 'VCENTER') throw Object.assign(new Error('A vCenter connector type is immutable after creation.'), { statusCode: 409 });
+      if (currentType !== nextType) throw Object.assign(new Error('Connector type is immutable after creation.'), { statusCode: 409 });
+      const currentConfiguration = current.rows[0].non_secret_configuration || {};
+      const nextConfiguration = { ...currentConfiguration, ...(input.nonSecretConfiguration || {}) } as Record<string, unknown>;
+      if (nextType === 'ACTIVE_DIRECTORY') {
+        if ('ldapUrl' in input) nextConfiguration.url = input.ldapUrl;
+        if ('baseDn' in input) nextConfiguration.baseDn = input.baseDn;
+        if ('bindUser' in input) nextConfiguration.bindUser = input.bindUser;
+        const nextSecretReference = 'secretReference' in input ? input.secretReference : current.rows[0].secret_reference;
+        if (!String(nextConfiguration.url || '').startsWith('ldaps://') || !nextConfiguration.baseDn || !nextConfiguration.bindUser || !/^env:\/\/[A-Z][A-Z0-9_]*$/.test(String(nextSecretReference || ''))) throw Object.assign(new Error('Active Directory requires LDAPS URL, base DN, dedicated read-only bind identity, and a server-side env:// secret reference.'), { statusCode: 400, code: 'AD_CONNECTOR_CONFIG_INVALID' });
+        if (input.tlsVerifyCertificates === false) throw Object.assign(new Error('TLS certificate verification must remain enabled for Active Directory connectors.'), { statusCode: 400 });
+      }
       let currentProfile: any;
       if (nextType === 'VCENTER') {
         if (input.nonSecretConfiguration) rejectVCenterEndpointOverrides(input.nonSecretConfiguration);
@@ -505,7 +517,6 @@ export class CmdbApiService {
       }
       if (nextType === 'CORTEX') {
         if (input.tlsVerifyCertificates === false) throw Object.assign(new Error('TLS certificate verification must remain enabled for Cortex connectors.'), { statusCode: 400 });
-        const nextConfiguration = input.nonSecretConfiguration || current.rows[0].non_secret_configuration || {};
         validateCortexTransport({ endpointUrl: String(nextConfiguration.endpointUrl || ''), endpointAllowPrivateNetwork: input.endpointAllowPrivateNetwork ?? Boolean(current.rows[0].endpoint_allow_private_network), tlsVerifyCertificates: input.tlsVerifyCertificates ?? Boolean(current.rows[0].tls_verify_certificates), requestTimeoutMs: input.requestTimeoutMs ?? Number(current.rows[0].request_timeout_ms), responseSizeLimitBytes: Number(nextConfiguration.responseSizeLimitBytes || input.responseSizeLimitBytes || 4194304) });
         if ('secretReference' in input && !/^env:\/\/[A-Z][A-Z0-9_]*$/.test(String(input.secretReference))) throw Object.assign(new Error('Cortex API secret must be a server-side env:// reference.'), { statusCode: 400 });
       }
@@ -514,7 +525,7 @@ export class CmdbApiService {
       for (const [key, column] of Object.entries({ connectorType: 'connector_type_id', environment: 'environment', enabled: 'enabled', tlsCaReference: 'tls_ca_reference', tlsVerifyCertificates: 'tls_verify_certificates', endpointAllowPrivateNetwork: 'endpoint_allow_private_network', requestTimeoutMs: 'request_timeout_ms', scheduleMinutes: 'schedule_minutes', secretReference: 'secret_reference' })) if (key in input) set(column, (input as any)[key]);
        if ('name' in input) set('name', input.name);
        if ('description' in input) set('description', input.description);
-      if (input.nonSecretConfiguration) set('non_secret_configuration', JSON.stringify(input.nonSecretConfiguration));
+      if (input.nonSecretConfiguration || nextType === 'ACTIVE_DIRECTORY' && ('ldapUrl' in input || 'baseDn' in input || 'bindUser' in input)) set('non_secret_configuration', JSON.stringify(nextConfiguration));
       const nextEnabled = 'enabled' in input ? Boolean(input.enabled) : Boolean(current.rows[0].enabled);
       values.push(nextEnabled);
       const enabledParam = `$${values.length}`;
