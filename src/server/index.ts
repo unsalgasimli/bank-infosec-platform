@@ -17,6 +17,7 @@ import { errorHandlerMiddleware } from './middleware/error.middleware.js';
 import { runMigrations } from './db/postgres/migrate.js';
 import { shutdownTelemetry, startTelemetry } from './services/telemetry.service.js';
 import { LocalOutboxWorkerService } from './services/local-outbox-worker.service.js';
+import { WorkerEventService } from './services/worker-event.service.js';
 
 import { TicketsController } from './controllers/tickets.controller.js';
 import { ApprovalsController, FindingsController } from './controllers/approvals.controller.js';
@@ -261,6 +262,12 @@ app.delete('/api/cmdb/relationships/:id', CMDBController.deleteRelationship);
 // PostgreSQL-backed, server-paginated asset inventory for production clients.
 app.get('/api/cmdb/assets', CMDBController.apiAssets);
 app.get('/api/cmdb/assets/:id', CMDBController.apiAssetDetail);
+app.get('/api/cmdb/operating-systems', CMDBController.operatingSystems);
+app.get('/api/cmdb/custom-fields', CMDBController.customFields);
+app.post('/api/cmdb/custom-fields', CMDBController.createCustomField);
+app.patch('/api/cmdb/custom-fields/:id', CMDBController.updateCustomField);
+app.delete('/api/cmdb/custom-fields/:id', CMDBController.deleteCustomField);
+app.patch('/api/cmdb/assets/:id/custom-fields', CMDBController.updateAssetCustomFields);
 app.get('/api/cmdb/assets/:id/subresources', CMDBController.apiAssetSubresources);
 app.get('/api/cmdb/assets/:id/identifiers', CMDBController.apiAssetIdentifiers);
 app.get('/api/cmdb/assets/:id/sources', CMDBController.apiAssetSources);
@@ -387,6 +394,7 @@ app.use(errorHandlerMiddleware);
 
 // 17. Server Startup & Graceful Shutdown
 let server: ReturnType<typeof app.listen> | null = null;
+let discoveryRecoveryTimer: NodeJS.Timeout | undefined;
 
 async function startServer(): Promise<void> {
   await startTelemetry('api');
@@ -394,6 +402,17 @@ async function startServer(): Promise<void> {
     await runMigrations();
     await db.initialize();
     logger.info('PostgreSQL projection hydrated and selected as the runtime source of truth.');
+    // A development API restart can interrupt a local outbox handler after it
+    // has marked a run RUNNING. Recover the durable run before starting the
+    // next polling cycle so it cannot remain at 0/0 until lock expiry.
+    if (config.NODE_ENV !== 'production' && !config.RABBITMQ_ENABLED) {
+      void WorkerEventService.recoverQueuedDiscoveryRuns().catch((error) => logger.error({ error }, 'Discovery run recovery failed after API restart'));
+      discoveryRecoveryTimer = setInterval(() => {
+        void WorkerEventService.recoverQueuedDiscoveryRuns()
+          .catch((error) => logger.error({ error }, 'Discovery run lease recovery failed'));
+      }, 60_000);
+      discoveryRecoveryTimer.unref?.();
+    }
     LocalOutboxWorkerService.start();
   }
 
@@ -423,6 +442,9 @@ void startServer().catch((err) => {
 // Graceful Shutdown
 async function handleGracefulShutdown(signal: string) {
   logger.info({ signal }, 'Received shutdown signal, terminating server gracefully...');
+
+  if (discoveryRecoveryTimer) clearInterval(discoveryRecoveryTimer);
+  discoveryRecoveryTimer = undefined;
 
   // Stop background scheduler timers
   LocalOutboxWorkerService.stop();

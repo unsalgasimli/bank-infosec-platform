@@ -69,13 +69,13 @@ export class VCenterRuntimeService {
   }
 
   /** Reads connector-scoped, read-only VMware inventory after a verified connection. */
-  public async discoverInventory(connectorId: string, context: { correlationId?: string } = {}): Promise<VCenterInventoryObject[]> {
+  public async discoverInventory(connectorId: string, context: { correlationId?: string } = {}, onProgress?: (progress: { objectType: VCenterInventoryObject['objectType']; discovered: number; phase: 'LISTED' | 'COLLECTED' }) => Promise<void> | void): Promise<VCenterInventoryObject[]> {
     await this.connectAndPersist(connectorId, context);
     const configuration = await VCenterConnectorRepository.find(connectorId);
     const storedCredential = await VCenterConnectorRepository.findCredential(connectorId);
     if (!configuration || !storedCredential) throw new VCenterRuntimeError('VCENTER_CONFIG_INVALID', 'vCenter connector configuration is incomplete.');
     const runtime = this.registry.getOrCreate(configuration);
-    try { return await runtime.discover(VCenterCredentialCryptoService.decrypt(storedCredential)); }
+    try { return await runtime.discover(VCenterCredentialCryptoService.decrypt(storedCredential), onProgress); }
     finally { await runtime.disconnect().catch(() => undefined); }
   }
 }

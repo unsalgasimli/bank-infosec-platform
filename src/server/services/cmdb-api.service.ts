@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { v4 as uuidv4 } from 'uuid';
 import type { BankUser, CmdbPermission } from '../../shared/types/auth.js';
 import { AuthService } from './auth.service.js';
 import { AuditService } from './audit.service.js';
@@ -14,6 +15,7 @@ import { VCenterCredentialCryptoService } from './vcenter-credential-crypto.serv
 import { VCenterInventorySyncService } from './vcenter-inventory-sync.service.js';
 import { ActiveDirectoryInventorySyncService } from './active-directory-inventory-sync.service.js';
 import { CortexInventorySyncService } from './cortex-inventory-sync.service.js';
+import { SmbPrinterInventorySyncService } from './smb-printer-inventory-sync.service.js';
 import { validateCortexTransport } from '../integrations/cortex/cortex-endpoint-policy.js';
 import { config } from '../config/index.js';
 
@@ -21,9 +23,12 @@ const pageSchema = z.object({
   page: z.coerce.number().int().min(1).max(100000).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
   search: z.string().trim().max(255).optional(),
+  operatingSystem: z.string().trim().max(255).optional(),
+  operatingSystems: z.preprocess((value) => Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : value, z.array(z.string().trim().min(1).max(255)).max(100).optional()),
   sortBy: z.enum(['name', 'ciNumber', 'environment', 'lifecycleState', 'criticality', 'lastSeenAt', 'updatedAt']).default('updatedAt'),
   sortDirection: z.enum(['asc', 'desc']).default('desc'),
   typeId: z.string().trim().max(64).optional(),
+  typeIds: z.preprocess((value) => Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : value, z.array(z.string().trim().min(1).max(64)).max(30).optional()),
   environment: z.string().trim().max(32).optional(),
   lifecycleState: z.string().trim().max(32).optional(),
   lifecycleStatus: z.string().trim().max(32).optional(),
@@ -31,10 +36,14 @@ const pageSchema = z.object({
   status: z.string().trim().max(32).optional(),
   criticality: z.string().trim().max(32).optional(),
   ownerUserId: z.string().trim().max(64).optional(),
+  owner: z.string().trim().max(255).optional(),
   departmentId: z.string().trim().max(128).optional(),
   supportGroupId: z.string().trim().max(128).optional(),
   businessServiceId: z.string().trim().max(64).optional(),
   sourceConnectorId: z.string().trim().max(64).optional(),
+  sourceConnectorIds: z.preprocess((value) => Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : value, z.array(z.string().trim().min(1).max(64)).max(100).optional()),
+  sourceType: z.enum(['VCENTER', 'ACTIVE_DIRECTORY', 'CORTEX', 'SMB_PRINTER']).optional(),
+  sourceTypes: z.preprocess((value) => Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : value, z.array(z.enum(['VCENTER', 'ACTIVE_DIRECTORY', 'CORTEX', 'SMB_PRINTER'])).max(4).optional()),
   posture: z.enum(['missing-cortex','cortex-offline','partially-protected','vcenter-without-cortex','ad-without-cortex','cortex-only','identity-conflict','stale-assets']).optional(),
   stale: z.enum(['true', 'false']).optional(),
   missingOwner: z.enum(['true', 'false']).optional(),
@@ -65,10 +74,12 @@ const connectorCreateSchema = z.object({
   baseDn: z.string().trim().max(1024).optional(),
   bindUser: z.string().trim().max(512).optional(),
   secretReference: z.string().trim().min(1).max(512).optional(),
+  smbHost: z.string().trim().max(255).optional(),
 }).strict();
 
 const connectorUpdateSchema = connectorCreateSchema.partial().extend({ version: z.number().int().positive() }).strict();
 const connectorTypeQuerySchema = z.string().trim().max(64).optional();
+const cortexInventoryScopeSchema = z.enum(['ENDPOINTS', 'ASSETS']);
 const correlationResolutionSchema = z.object({
   action: z.enum(['MATCH_EXISTING', 'CREATE_NEW', 'DISMISS']),
   assetId: z.string().trim().min(1).max(64).optional(),
@@ -83,6 +94,28 @@ const sortableColumns: Record<string, string> = {
   criticality: 'a.criticality', lastSeenAt: 'a.last_seen_at', updatedAt: 'a.updated_at',
 };
 
+const customFieldTypeSchema = z.enum(['TEXT', 'NUMBER', 'BOOLEAN', 'DATE', 'SELECT', 'MULTI_SELECT', 'USER']);
+const customFieldKeySchema = z.string().trim().min(2).max(64).regex(/^[a-z][a-z0-9_]*$/, 'Field key must start with a lowercase letter and contain only lowercase letters, numbers and underscores.');
+const customFieldDefinitionSchema = z.object({
+  key: customFieldKeySchema,
+  label: z.string().trim().min(1).max(128),
+  type: customFieldTypeSchema,
+  options: z.array(z.string().trim().min(1).max(128)).max(100).default([]),
+  description: z.string().trim().max(1000).default(''),
+  displayOrder: z.number().int().min(0).max(10000).default(0),
+  isActive: z.boolean().default(true),
+}).strict();
+const customFieldUpdateSchema = customFieldDefinitionSchema.partial().extend({ version: z.number().int().positive() }).strict();
+const customFieldValuesSchema = z.object({
+  version: z.number().int().positive(),
+  values: z.record(z.string().max(64), z.unknown()).default({}),
+}).strict();
+
+const effectiveIpSql = `(SELECT host(ip.ip_address) FROM cmdb_ip_addresses ip WHERE ip.asset_id=a.id AND ip.retired_at IS NULL ORDER BY ip.is_primary DESC, ip.last_seen_at DESC, ip.id LIMIT 1)`;
+const customEnvironmentSql = `(SELECT val.value #>> '{}' FROM cmdb_custom_field_values val JOIN cmdb_custom_field_definitions def ON def.id=val.field_id WHERE val.asset_id=a.id AND def.field_key='environment' AND def.is_active AND def.deleted_at IS NULL LIMIT 1)`;
+const effectiveEnvironmentSql = `COALESCE(NULLIF(${customEnvironmentSql}, ''), NULLIF(a.environment, 'UNKNOWN'), NULLIF(a.source_payload #>> '{environment}', 'UNKNOWN'), NULLIF((SELECT COALESCE(sr.normalized_payload #>> '{classification,environment}', sr.normalized_payload #>> '{sourceSpecificMetadata,environment}', sr.normalized_payload #>> '{sourceSpecificMetadata,environmentName}') FROM cmdb_source_records sr WHERE sr.asset_id=a.id AND sr.status='ACTIVE' ORDER BY sr.last_seen_at DESC, sr.id LIMIT 1), 'UNKNOWN'), 'UNKNOWN')`;
+const customFieldsSql = `(SELECT COALESCE(jsonb_object_agg(def.field_key, val.value ORDER BY def.display_order, def.label), '{}'::jsonb) FROM cmdb_custom_field_values val JOIN cmdb_custom_field_definitions def ON def.id=val.field_id WHERE val.asset_id=a.id AND def.is_active AND def.deleted_at IS NULL)`;
+
 function requirePermission(actor: BankUser | undefined, permission: CmdbPermission): asserts actor is BankUser {
   AuthService.assertCmdbPermission(actor, permission);
 }
@@ -91,14 +124,16 @@ function mapAsset(row: any): any {
   return {
     id: row.id, ciNumber: row.ci_number, assetKey: row.asset_key, name: row.name, displayName: row.display_name || row.name,
     typeId: row.type_id, assetSubtype: row.asset_subtype || undefined, status: row.status, lifecycleState: row.lifecycle_state,
-    lifecycleStatus: row.lifecycle_status, technicalStatus: row.technical_status, environment: row.environment,
+    lifecycleStatus: row.lifecycle_status, technicalStatus: row.technical_status, environment: row.effective_environment || row.environment,
     criticality: row.criticality, businessCriticality: row.business_criticality || undefined, description: row.description || undefined,
     ownerUserId: row.owner_user_id || undefined, technicalOwnerUserId: row.technical_owner_user_id || undefined,
     businessOwnerUserId: row.business_owner_user_id || undefined, supportGroupId: row.support_group_id || undefined,
+    ownerName: row.owner_name || undefined, technicalOwnerName: row.technical_owner_name || undefined,
+    businessOwnerName: row.business_owner_name || undefined,
     departmentId: row.department_id || undefined, locationId: row.location_id || undefined, vendor: row.vendor || undefined,
     manufacturer: row.manufacturer || undefined, model: row.model || undefined, serialNumber: row.serial_number || undefined,
     assetTag: row.asset_tag || undefined, hostname: row.hostname || undefined, fqdn: row.fqdn || undefined,
-    ipAddress: row.ip_address || undefined, macAddress: row.mac_address || undefined, operatingSystem: row.operating_system || undefined,
+    ipAddress: row.ip_address || row.effective_ip_address || undefined, macAddress: row.mac_address || undefined, operatingSystem: row.operating_system || undefined,
     osVersion: row.os_version || undefined, cpuCount: row.cpu_count == null ? undefined : Number(row.cpu_count), memoryBytes: row.memory_bytes == null ? undefined : Number(row.memory_bytes),
     source: row.source, sourceSystem: row.source_system || undefined,
     sourceRecordId: row.source_record_id || undefined, discoveryStatus: row.discovery_status, lastDiscoveredAt: row.last_discovered_at?.toISOString?.() || row.last_discovered_at || undefined,
@@ -108,9 +143,52 @@ function mapAsset(row: any): any {
     updatedAt: row.updated_at?.toISOString?.() || row.updated_at, archivedAt: row.archived_at?.toISOString?.() || row.archived_at || undefined,
     sourceCount: Number(row.source_count || 0), relationshipCount: Number(row.relationship_count || 0),
     sourceCoverage: Array.isArray(row.source_coverage) ? row.source_coverage : [],
+    correlationState: row.correlation_state || undefined,
+    correlationConfidence: row.correlation_confidence == null ? undefined : Number(row.correlation_confidence),
+    conflictCount: Number(row.conflict_count || 0),
     cortexSecurity: row.cortex_security || undefined,
     openFindingCount: Number(row.open_finding_count || 0),
+    discoveredOwnerNames: Array.isArray(row.discovered_owner_names) ? row.discovered_owner_names : [],
+    customFields: row.custom_fields && typeof row.custom_fields === 'object' ? row.custom_fields : {},
   };
+}
+
+function mapCustomField(row: any): any {
+  return {
+    id: row.id, key: row.field_key, label: row.label, type: row.data_type,
+    options: Array.isArray(row.options) ? row.options : [], description: row.description || '',
+    displayOrder: Number(row.display_order || 0), isActive: Boolean(row.is_active), isSystem: Boolean(row.is_system),
+    version: Number(row.version || 1), createdAt: row.created_at?.toISOString?.() || row.created_at,
+    updatedAt: row.updated_at?.toISOString?.() || row.updated_at,
+  };
+}
+
+function validateCustomFieldValue(field: any, value: unknown): unknown {
+  if (value === null || value === undefined || value === '') return null;
+  switch (field.data_type) {
+    case 'TEXT':
+      return z.string().trim().max(4000).parse(value) || null;
+    case 'NUMBER':
+      return z.number().finite().parse(value);
+    case 'BOOLEAN':
+      return z.boolean().parse(value);
+    case 'DATE':
+      return z.string().date().parse(value);
+    case 'USER':
+      return z.string().trim().min(1).max(64).parse(value);
+    case 'SELECT': {
+      const selected = z.string().trim().min(1).max(128).parse(value);
+      if (!field.options.includes(selected)) throw Object.assign(new Error(`Value is not valid for custom field "${field.label}".`), { statusCode: 400 });
+      return selected;
+    }
+    case 'MULTI_SELECT': {
+      const selected = z.array(z.string().trim().min(1).max(128)).max(100).parse(value);
+      if (selected.some((item) => !field.options.includes(item))) throw Object.assign(new Error(`One or more values are not valid for custom field "${field.label}".`), { statusCode: 400 });
+      return [...new Set(selected)];
+    }
+    default:
+      throw Object.assign(new Error('Unsupported custom field type.'), { statusCode: 400 });
+  }
 }
 
 function validateEndpoint(configuration: Record<string, unknown>, allowPrivate: boolean): void {
@@ -145,15 +223,23 @@ function rejectVCenterEndpointOverrides(configuration: Record<string, unknown>):
   }
 }
 
+const VCENTER_CREATE_VALIDATION_TIMEOUT_MS = 35_000;
+
 async function verifyVCenterBeforeCreation(configuration: VCenterConnectorConfiguration, username: string, password: string): Promise<Awaited<ReturnType<VCenterConnector['connect']>>> {
   const client = new VCenterRestClient();
+  let timeout: NodeJS.Timeout | undefined;
   try {
-    return await new VCenterConnector(configuration, client).connect({ username, password });
+    const validation = new VCenterConnector(configuration, client).connect({ username, password });
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(() => reject(Object.assign(new Error('vCenter validation did not finish within 35 seconds. Verify reachability, TLS and the service-account permissions, then try again.'), { statusCode: 504, code: 'VCENTER_CONNECT_TIMEOUT' })), VCENTER_CREATE_VALIDATION_TIMEOUT_MS);
+    });
+    return await Promise.race([validation, deadline]);
   } catch (error) {
     if (error instanceof VCenterConnectorError) Object.assign(error, { statusCode: 422 });
-    else if (error instanceof Error) Object.assign(error, { statusCode: 422, code: (error as any).code || 'VCENTER_CONFIG_INVALID' });
+    else if (error instanceof Error) Object.assign(error, { statusCode: Number((error as any).statusCode) || 422, code: (error as any).code || 'VCENTER_CONFIG_INVALID' });
     throw error;
   } finally {
+    if (timeout) clearTimeout(timeout);
     client.invalidate(configuration.connectorId);
   }
 }
@@ -166,15 +252,65 @@ export class CmdbApiService {
     const params: unknown[] = [];
     const add = (sql: string, value: unknown) => { params.push(value); where.push(sql.replace('?', `$${params.length}`)); };
     if (query.typeId) add('a.type_id = ?', query.typeId);
-    if (query.environment) add('a.environment = ?', query.environment);
+    if (query.typeIds?.length) add('a.type_id = ANY(?::text[])', query.typeIds);
+    if (query.environment) { params.push(query.environment); where.push(`${effectiveEnvironmentSql} = $${params.length}`); }
+    if (query.operatingSystem) {
+      params.push(`%${query.operatingSystem.toLowerCase()}%`);
+      const p = `$${params.length}`;
+      where.push(`(
+        lower(COALESCE(a.operating_system,'')) LIKE ${p}
+        OR lower(COALESCE(a.os_version,'')) LIKE ${p}
+        OR EXISTS (SELECT 1 FROM cmdb_source_records os_source WHERE os_source.asset_id=a.id AND lower(COALESCE(os_source.normalized_payload #>> '{operatingSystem,reported}', os_source.normalized_payload #>> '{operatingSystem,configured}', os_source.normalized_payload #>> '{operatingSystem,name}', os_source.normalized_payload #>> '{operatingSystem,version}', '')) LIKE ${p})
+      )`);
+    }
+    if (query.operatingSystems?.length) {
+      params.push(query.operatingSystems.map((value) => value.trim().toLowerCase().replace(/\s+/g, ' ')));
+      const p = `$${params.length}`;
+      where.push(`(
+        lower(regexp_replace(btrim(COALESCE(a.operating_system,'')), '\\s+', ' ', 'g')) = ANY(${p}::text[])
+        OR lower(regexp_replace(btrim(COALESCE(a.os_version,'')), '\\s+', ' ', 'g')) = ANY(${p}::text[])
+        OR EXISTS (
+          SELECT 1
+            FROM (VALUES
+              (a.source_payload #>> '{operatingSystem,reported}'),
+              (a.source_payload #>> '{operatingSystem,configured}'),
+              (a.source_payload #>> '{operatingSystem,name}')
+            ) AS asset_os(value)
+           WHERE lower(regexp_replace(btrim(COALESCE(asset_os.value,'')), '\\s+', ' ', 'g')) = ANY(${p}::text[])
+        )
+        OR EXISTS (
+          SELECT 1
+            FROM cmdb_source_records os_source
+            CROSS JOIN LATERAL (VALUES
+              (os_source.normalized_payload #>> '{operatingSystem,reported}'),
+              (os_source.normalized_payload #>> '{operatingSystem,configured}'),
+              (os_source.normalized_payload #>> '{operatingSystem,name}')
+            ) AS source_os(value)
+           WHERE os_source.asset_id=a.id
+             AND lower(regexp_replace(btrim(COALESCE(source_os.value,'')), '\\s+', ' ', 'g')) = ANY(${p}::text[])
+        )
+      )`);
+    }
     if (query.lifecycleState || query.lifecycleStatus) add('a.lifecycle_state = ?', query.lifecycleState || query.lifecycleStatus);
     if (query.quality) add('a.discovery_status = ?', query.quality);
     if (query.status) add('a.status = ?', query.status);
     if (query.criticality) add('a.criticality = ?', query.criticality);
     if (query.ownerUserId) add('(a.owner_user_id = ? OR a.technical_owner_user_id = ? OR a.business_owner_user_id = ?)', query.ownerUserId);
+    if (query.owner) {
+      params.push(`%${query.owner.toLowerCase()}%`);
+      const p = `$${params.length}`;
+      where.push(`(
+        EXISTS (SELECT 1 FROM bank_users owner_filter WHERE owner_filter.id IN (a.owner_user_id,a.technical_owner_user_id,a.business_owner_user_id) AND lower(owner_filter.full_name) LIKE ${p})
+        OR (a.type_id='directory_user' AND (lower(a.name) LIKE ${p} OR lower(COALESCE(a.display_name,'')) LIKE ${p}))
+        OR EXISTS (SELECT 1 FROM cmdb_source_records owner_source WHERE owner_source.asset_id=a.id AND lower(COALESCE(owner_source.normalized_payload::text,'')) LIKE ${p})
+      )`);
+    }
     if (query.departmentId) add('a.department_id = ?', query.departmentId);
     if (query.supportGroupId) add('a.support_group_id = ?', query.supportGroupId);
     if (query.sourceConnectorId) add('EXISTS (SELECT 1 FROM cmdb_source_records sr_filter WHERE sr_filter.asset_id=a.id AND sr_filter.connector_id = ?)', query.sourceConnectorId);
+    if (query.sourceConnectorIds?.length) add('EXISTS (SELECT 1 FROM cmdb_source_records sr_filter WHERE sr_filter.asset_id=a.id AND sr_filter.connector_id = ANY(?::text[]))', query.sourceConnectorIds);
+    if (query.sourceType) add("EXISTS (SELECT 1 FROM cmdb_source_records sr_filter JOIN cmdb_discovery_connectors c_filter ON c_filter.id=sr_filter.connector_id WHERE sr_filter.asset_id=a.id AND sr_filter.status='ACTIVE' AND c_filter.connector_type_id = ?)", query.sourceType);
+    if (query.sourceTypes?.length) add("EXISTS (SELECT 1 FROM cmdb_source_records sr_filter JOIN cmdb_discovery_connectors c_filter ON c_filter.id=sr_filter.connector_id WHERE sr_filter.asset_id=a.id AND sr_filter.status='ACTIVE' AND c_filter.connector_type_id = ANY(?::text[]))", query.sourceTypes);
     if (query.businessServiceId) add('EXISTS (SELECT 1 FROM ci_relationships r_bs WHERE r_bs.source_ci_id=a.id AND r_bs.target_ci_id = ? AND r_bs.status=\'ACTIVE\' AND r_bs.archived_at IS NULL)', query.businessServiceId);
     if (query.stale === 'true') where.push("a.lifecycle_state IN ('STALE','DECOMMISSION_CANDIDATE')");
     if (query.missingOwner === 'true') where.push('a.owner_user_id IS NULL AND a.technical_owner_user_id IS NULL AND a.business_owner_user_id IS NULL');
@@ -189,7 +325,7 @@ export class CmdbApiService {
     if (query.search) {
       params.push(`%${query.search.toLowerCase()}%`);
       const p = `$${params.length}`;
-      where.push(`(lower(a.name) LIKE ${p} OR lower(COALESCE(a.display_name,'')) LIKE ${p} OR lower(COALESCE(a.hostname,'')) LIKE ${p} OR lower(COALESCE(a.fqdn,'')) LIKE ${p} OR lower(COALESCE(a.serial_number,'')) LIKE ${p} OR lower(COALESCE(a.ip_address,'')) LIKE ${p} OR lower(COALESCE(a.mac_address,'')) LIKE ${p} OR lower(a.ci_number) LIKE ${p} OR EXISTS (SELECT 1 FROM cmdb_asset_identifiers ai_s WHERE ai_s.asset_id=a.id AND ai_s.retired_at IS NULL AND lower(ai_s.normalized_value) LIKE ${p}) OR EXISTS (SELECT 1 FROM cmdb_source_records sr_s WHERE sr_s.asset_id=a.id AND lower(sr_s.external_object_id) LIKE ${p}) OR EXISTS (SELECT 1 FROM cmdb_network_interfaces ni_s JOIN cmdb_mac_addresses ma_s ON ma_s.interface_id=ni_s.id WHERE ni_s.asset_id=a.id AND ma_s.retired_at IS NULL AND lower(ma_s.normalized_mac) LIKE ${p}) OR EXISTS (SELECT 1 FROM cmdb_ip_addresses ip_s WHERE ip_s.asset_id=a.id AND ip_s.retired_at IS NULL AND host(ip_s.ip_address) LIKE ${p}))`);
+      where.push(`(lower(a.name) LIKE ${p} OR lower(COALESCE(a.display_name,'')) LIKE ${p} OR lower(COALESCE(a.hostname,'')) LIKE ${p} OR lower(COALESCE(a.fqdn,'')) LIKE ${p} OR lower(COALESCE(a.serial_number,'')) LIKE ${p} OR lower(COALESCE(a.asset_tag,'')) LIKE ${p} OR lower(COALESCE(a.ip_address,'')) LIKE ${p} OR lower(COALESCE(a.mac_address,'')) LIKE ${p} OR lower(COALESCE(a.operating_system,'')) LIKE ${p} OR lower(COALESCE(a.os_version,'')) LIKE ${p} OR lower(COALESCE(a.vendor,'')) LIKE ${p} OR lower(COALESCE(a.manufacturer,'')) LIKE ${p} OR lower(COALESCE(a.model,'')) LIKE ${p} OR lower(COALESCE(a.description,'')) LIKE ${p} OR lower(COALESCE(a.details::text,'')) LIKE ${p} OR lower(a.ci_number) LIKE ${p} OR EXISTS (SELECT 1 FROM bank_users owner_search WHERE owner_search.id IN (a.owner_user_id,a.technical_owner_user_id,a.business_owner_user_id) AND lower(owner_search.full_name) LIKE ${p}) OR EXISTS (SELECT 1 FROM cmdb_asset_identifiers ai_s WHERE ai_s.asset_id=a.id AND ai_s.retired_at IS NULL AND lower(ai_s.normalized_value) LIKE ${p}) OR EXISTS (SELECT 1 FROM cmdb_source_records sr_s WHERE sr_s.asset_id=a.id AND (lower(sr_s.external_object_id) LIKE ${p} OR lower(COALESCE(sr_s.source_name,'')) LIKE ${p} OR lower(COALESCE(sr_s.normalized_payload::text,'')) LIKE ${p})) OR EXISTS (SELECT 1 FROM cmdb_network_interfaces ni_s JOIN cmdb_mac_addresses ma_s ON ma_s.interface_id=ni_s.id WHERE ni_s.asset_id=a.id AND ma_s.retired_at IS NULL AND lower(ma_s.normalized_mac) LIKE ${p}) OR EXISTS (SELECT 1 FROM cmdb_ip_addresses ip_s WHERE ip_s.asset_id=a.id AND ip_s.retired_at IS NULL AND host(ip_s.ip_address) LIKE ${p}))`);
     }
     const base = `FROM configuration_items a WHERE ${where.join(' AND ')}`;
     const count = await pgClient.query<{ count: string }>(`SELECT count(*) AS count ${base}`, params as any[]);
@@ -197,11 +333,32 @@ export class CmdbApiService {
     const direction = query.sortDirection === 'asc' ? 'ASC' : 'DESC';
     const offset = (query.page - 1) * query.pageSize;
     const dataParams = [...params, query.pageSize, offset];
-    const result = await pgClient.query(`SELECT a.*,
+    const result = await pgClient.query(`SELECT a.*, ${effectiveIpSql} AS effective_ip_address, ${effectiveEnvironmentSql} AS effective_environment, ${customFieldsSql} AS custom_fields,
       (SELECT count(*) FROM cmdb_source_records sr WHERE sr.asset_id=a.id) AS source_count,
       ARRAY(SELECT DISTINCT c.connector_type_id FROM cmdb_source_records sr JOIN cmdb_discovery_connectors c ON c.id=sr.connector_id WHERE sr.asset_id=a.id ORDER BY c.connector_type_id) AS source_coverage,
       (SELECT to_jsonb(p)-'asset_id' FROM cmdb_cortex_security_posture p WHERE p.asset_id=a.id) AS cortex_security,
       (SELECT count(*) FROM cmdb_security_findings f WHERE f.asset_id=a.id AND f.state='OPEN') AS open_finding_count,
+      (SELECT CASE
+        WHEN EXISTS (SELECT 1 FROM cmdb_correlation_cases c JOIN cmdb_correlation_candidates cc ON cc.case_id=c.id WHERE cc.asset_id=a.id AND c.status='OPEN' AND c.outcome='IDENTITY_CONFLICT') THEN 'CONFLICT'
+        WHEN EXISTS (SELECT 1 FROM cmdb_correlation_cases c JOIN cmdb_correlation_candidates cc ON cc.case_id=c.id WHERE cc.asset_id=a.id AND c.status='OPEN' AND c.outcome='REVIEW_REQUIRED') THEN 'NEEDS_REVIEW'
+        WHEN EXISTS (SELECT 1 FROM cmdb_source_records sr WHERE sr.asset_id=a.id AND sr.last_correlation_outcome='AUTO_LINK') THEN 'AUTO_CORRELATED'
+        WHEN EXISTS (SELECT 1 FROM cmdb_source_records sr WHERE sr.asset_id=a.id AND sr.last_correlation_outcome='CREATE_NEW') THEN 'VERIFIED'
+        WHEN EXISTS (SELECT 1 FROM cmdb_source_records sr WHERE sr.asset_id=a.id) THEN 'VERIFIED'
+        ELSE 'MANUAL'
+      END) AS correlation_state,
+      (SELECT COALESCE(MAX(cc.score), MAX(cd.confidence)) FROM cmdb_source_records sr
+        LEFT JOIN cmdb_correlation_cases c ON c.source_record_id=sr.id
+        LEFT JOIN cmdb_correlation_candidates cc ON cc.case_id=c.id AND cc.asset_id=a.id
+        LEFT JOIN cmdb_correlation_decisions cd ON cd.source_record_id=sr.id AND cd.selected_asset_id=a.id
+        WHERE sr.asset_id=a.id OR cd.selected_asset_id=a.id) AS correlation_confidence,
+      (SELECT count(DISTINCT c.id) FROM cmdb_correlation_cases c JOIN cmdb_correlation_candidates cc ON cc.case_id=c.id WHERE cc.asset_id=a.id AND c.status='OPEN' AND c.outcome='IDENTITY_CONFLICT') AS conflict_count,
+      (SELECT full_name FROM bank_users u WHERE u.id=a.owner_user_id) AS owner_name,
+      (SELECT full_name FROM bank_users u WHERE u.id=a.technical_owner_user_id) AS technical_owner_name,
+      (SELECT full_name FROM bank_users u WHERE u.id=a.business_owner_user_id) AS business_owner_name,
+      ARRAY(SELECT DISTINCT owner_name FROM (
+        SELECT NULLIF(COALESCE(sr.normalized_payload #>> '{sourceSpecificMetadata,cortex,ownerName}', sr.normalized_payload #>> '{sourceSpecificMetadata,cortex,owner}', sr.normalized_payload #>> '{sourceSpecificMetadata,cortex,securityTelemetry,user_name}', sr.normalized_payload #>> '{sourceSpecificMetadata,cortex,securityTelemetry,username}', sr.normalized_payload #>> '{sourceSpecificMetadata,cortex,ownerCandidates,0}'), '') AS owner_name
+        FROM cmdb_source_records sr WHERE sr.asset_id=a.id
+      ) discovered_owners WHERE owner_name IS NOT NULL ORDER BY owner_name) AS discovered_owner_names,
       (SELECT count(*) FROM ci_relationships rr WHERE (rr.source_ci_id=a.id OR rr.target_ci_id=a.id) AND rr.status='ACTIVE' AND rr.archived_at IS NULL) AS relationship_count ${base} ORDER BY ${sort} ${direction}, a.id LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`, dataParams as any[]);
     return { items: result.rows.map(mapAsset), total: Number(count.rows[0]?.count || 0), page: query.page, pageSize: query.pageSize };
   }
@@ -209,13 +366,147 @@ export class CmdbApiService {
   public static async getAsset(actor: BankUser | undefined, id: string): Promise<any> {
     requirePermission(actor, 'assets.read');
     z.string().trim().min(1).max(64).parse(id);
-    const result = await pgClient.query(`SELECT a.*, (SELECT count(*) FROM cmdb_source_records sr WHERE sr.asset_id=a.id) AS source_count,
+    const result = await pgClient.query(`SELECT a.*, ${effectiveIpSql} AS effective_ip_address, ${effectiveEnvironmentSql} AS effective_environment, ${customFieldsSql} AS custom_fields, (SELECT count(*) FROM cmdb_source_records sr WHERE sr.asset_id=a.id) AS source_count,
       ARRAY(SELECT DISTINCT c.connector_type_id FROM cmdb_source_records sr JOIN cmdb_discovery_connectors c ON c.id=sr.connector_id WHERE sr.asset_id=a.id ORDER BY c.connector_type_id) AS source_coverage,
       (SELECT to_jsonb(p)-'asset_id' FROM cmdb_cortex_security_posture p WHERE p.asset_id=a.id) AS cortex_security,
       (SELECT count(*) FROM cmdb_security_findings f WHERE f.asset_id=a.id AND f.state='OPEN') AS open_finding_count,
+      (SELECT CASE
+        WHEN EXISTS (SELECT 1 FROM cmdb_correlation_cases c JOIN cmdb_correlation_candidates cc ON cc.case_id=c.id WHERE cc.asset_id=a.id AND c.status='OPEN' AND c.outcome='IDENTITY_CONFLICT') THEN 'CONFLICT'
+        WHEN EXISTS (SELECT 1 FROM cmdb_correlation_cases c JOIN cmdb_correlation_candidates cc ON cc.case_id=c.id WHERE cc.asset_id=a.id AND c.status='OPEN' AND c.outcome='REVIEW_REQUIRED') THEN 'NEEDS_REVIEW'
+        WHEN EXISTS (SELECT 1 FROM cmdb_source_records sr WHERE sr.asset_id=a.id AND sr.last_correlation_outcome='AUTO_LINK') THEN 'AUTO_CORRELATED'
+        WHEN EXISTS (SELECT 1 FROM cmdb_source_records sr WHERE sr.asset_id=a.id AND sr.last_correlation_outcome='CREATE_NEW') THEN 'VERIFIED'
+        WHEN EXISTS (SELECT 1 FROM cmdb_source_records sr WHERE sr.asset_id=a.id) THEN 'VERIFIED'
+        ELSE 'MANUAL'
+      END) AS correlation_state,
+      (SELECT COALESCE(MAX(cc.score), MAX(cd.confidence)) FROM cmdb_source_records sr
+        LEFT JOIN cmdb_correlation_cases c ON c.source_record_id=sr.id
+        LEFT JOIN cmdb_correlation_candidates cc ON cc.case_id=c.id AND cc.asset_id=a.id
+        LEFT JOIN cmdb_correlation_decisions cd ON cd.source_record_id=sr.id AND cd.selected_asset_id=a.id
+        WHERE sr.asset_id=a.id OR cd.selected_asset_id=a.id) AS correlation_confidence,
+      (SELECT count(DISTINCT c.id) FROM cmdb_correlation_cases c JOIN cmdb_correlation_candidates cc ON cc.case_id=c.id WHERE cc.asset_id=a.id AND c.status='OPEN' AND c.outcome='IDENTITY_CONFLICT') AS conflict_count,
+      (SELECT full_name FROM bank_users u WHERE u.id=a.owner_user_id) AS owner_name,
+      (SELECT full_name FROM bank_users u WHERE u.id=a.technical_owner_user_id) AS technical_owner_name,
+      (SELECT full_name FROM bank_users u WHERE u.id=a.business_owner_user_id) AS business_owner_name,
+      ARRAY(SELECT DISTINCT owner_name FROM (
+        SELECT NULLIF(COALESCE(sr.normalized_payload #>> '{sourceSpecificMetadata,cortex,ownerName}', sr.normalized_payload #>> '{sourceSpecificMetadata,cortex,owner}', sr.normalized_payload #>> '{sourceSpecificMetadata,cortex,securityTelemetry,user_name}', sr.normalized_payload #>> '{sourceSpecificMetadata,cortex,securityTelemetry,username}', sr.normalized_payload #>> '{sourceSpecificMetadata,cortex,ownerCandidates,0}'), '') AS owner_name
+        FROM cmdb_source_records sr WHERE sr.asset_id=a.id
+      ) discovered_owners WHERE owner_name IS NOT NULL ORDER BY owner_name) AS discovered_owner_names,
       (SELECT count(*) FROM ci_relationships rr WHERE (rr.source_ci_id=a.id OR rr.target_ci_id=a.id) AND rr.status='ACTIVE' AND rr.archived_at IS NULL) AS relationship_count FROM configuration_items a WHERE a.id=$1`, [id]);
     if (!result.rows[0]) throw Object.assign(new Error('Configuration item not found.'), { statusCode: 404 });
     return mapAsset(result.rows[0]);
+  }
+
+  public static async listCustomFields(actor: BankUser | undefined): Promise<any[]> {
+    requirePermission(actor, 'assets.read');
+    const result = await pgClient.query(`SELECT * FROM cmdb_custom_field_definitions WHERE deleted_at IS NULL AND is_active ORDER BY display_order, label, id`);
+    return result.rows.map(mapCustomField);
+  }
+
+  public static async listOperatingSystems(actor: BankUser | undefined): Promise<any[]> {
+    requirePermission(actor, 'assets.read');
+    await pgClient.query(`
+      WITH observed(name) AS (
+        SELECT NULLIF(BTRIM(operating_system), '') FROM configuration_items
+        UNION ALL SELECT NULLIF(BTRIM(os_version), '') FROM configuration_items
+        UNION ALL SELECT NULLIF(BTRIM(normalized_payload #>> '{operatingSystem,reported}'), '') FROM cmdb_source_records
+        UNION ALL SELECT NULLIF(BTRIM(normalized_payload #>> '{operatingSystem,configured}'), '') FROM cmdb_source_records
+        UNION ALL SELECT NULLIF(BTRIM(normalized_payload #>> '{operatingSystem,name}'), '') FROM cmdb_source_records
+      ), normalized AS (
+        SELECT MIN(name) AS name, LOWER(REGEXP_REPLACE(BTRIM(name), '\\s+', ' ', 'g')) AS normalized_name
+          FROM observed
+         WHERE name IS NOT NULL
+         GROUP BY LOWER(REGEXP_REPLACE(BTRIM(name), '\\s+', ' ', 'g'))
+      )
+      INSERT INTO cmdb_operating_systems (id, name, normalized_name)
+      SELECT 'cmdb-os-' || MD5(normalized_name), name, normalized_name FROM normalized
+      ON CONFLICT (normalized_name) DO UPDATE SET last_seen_at=NOW(), updated_at=NOW(), is_active=TRUE
+    `);
+    const result = await pgClient.query(`SELECT id, name, normalized_name AS "normalizedName" FROM cmdb_operating_systems WHERE is_active ORDER BY LOWER(name), id`);
+    return result.rows;
+  }
+
+  public static async createCustomField(actor: BankUser | undefined, raw: unknown, request: { correlationId?: string; ip?: string; userAgent?: string } = {}): Promise<any> {
+    requirePermission(actor, 'assets.update');
+    const input = customFieldDefinitionSchema.parse(raw);
+    if (!['SELECT', 'MULTI_SELECT'].includes(input.type) && input.options.length) throw Object.assign(new Error('Options are only supported for select custom fields.'), { statusCode: 400 });
+    const id = `cmdb-cf-${uuidv4()}`;
+    try {
+      return await pgClient.transaction(async (client) => {
+        const result = await client.query(`INSERT INTO cmdb_custom_field_definitions(id,field_key,label,data_type,options,description,display_order,is_active,created_by_user_id,updated_by_user_id) VALUES($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$9) RETURNING *`, [id, input.key, input.label, input.type, JSON.stringify(input.options), input.description, input.displayOrder, input.isActive, actor.id]);
+        await AuditService.logPostgres(client, { actor, action: 'CMDB_CUSTOM_FIELD_CREATED', entityType: 'CMDB_CUSTOM_FIELD', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, after: { ...input, id } });
+        return mapCustomField(result.rows[0]);
+      });
+    } catch (error: any) {
+      if (error?.code === '23505') throw Object.assign(new Error('A custom field with that key already exists.'), { statusCode: 409, code: 'CMDB_CUSTOM_FIELD_KEY_EXISTS' });
+      throw error;
+    }
+  }
+
+  public static async updateCustomField(actor: BankUser | undefined, id: string, raw: unknown, request: { correlationId?: string; ip?: string; userAgent?: string } = {}): Promise<any> {
+    requirePermission(actor, 'assets.update');
+    z.string().trim().min(1).max(64).parse(id);
+    const input = customFieldUpdateSchema.parse(raw);
+    if (input.type && !['SELECT', 'MULTI_SELECT'].includes(input.type) && input.options?.length) throw Object.assign(new Error('Options are only supported for select custom fields.'), { statusCode: 400 });
+    return pgClient.transaction(async (client) => {
+      const current = await client.query('SELECT * FROM cmdb_custom_field_definitions WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [id]);
+      if (!current.rows[0]) throw Object.assign(new Error('Custom field not found.'), { statusCode: 404 });
+      const before = current.rows[0];
+      if (before.is_system) throw Object.assign(new Error('System custom fields cannot be reconfigured.'), { statusCode: 400 });
+      const next = { key: input.key ?? before.field_key, label: input.label ?? before.label, type: input.type ?? before.data_type, options: input.options ?? (Array.isArray(before.options) ? before.options : []), description: input.description ?? before.description, displayOrder: input.displayOrder ?? before.display_order, isActive: input.isActive ?? before.is_active };
+      if (!['SELECT', 'MULTI_SELECT'].includes(next.type) && next.options.length) throw Object.assign(new Error('Options are only supported for select custom fields.'), { statusCode: 400 });
+      const updated = await client.query(`UPDATE cmdb_custom_field_definitions SET field_key=$2,label=$3,data_type=$4,options=$5::jsonb,description=$6,display_order=$7,is_active=$8,updated_by_user_id=$9,updated_at=NOW(),version=version+1 WHERE id=$1 AND version=$10 AND deleted_at IS NULL RETURNING *`, [id, next.key, next.label, next.type, JSON.stringify(next.options), next.description, next.displayOrder, next.isActive, actor.id, input.version]);
+      if (!updated.rows[0]) throw Object.assign(new Error('This custom field was changed by another user. Refresh before saving.'), { statusCode: 409 });
+      await AuditService.logPostgres(client, { actor, action: 'CMDB_CUSTOM_FIELD_UPDATED', entityType: 'CMDB_CUSTOM_FIELD', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, before, after: updated.rows[0] });
+      return mapCustomField(updated.rows[0]);
+    }).catch((error: any) => { if (error?.code === '23505') throw Object.assign(new Error('A custom field with that key already exists.'), { statusCode: 409, code: 'CMDB_CUSTOM_FIELD_KEY_EXISTS' }); throw error; });
+  }
+
+  public static async deleteCustomField(actor: BankUser | undefined, id: string, raw: unknown, request: { correlationId?: string; ip?: string; userAgent?: string } = {}): Promise<{ id: string; deleted: true }> {
+    requirePermission(actor, 'assets.update');
+    const input = z.object({ version: z.number().int().positive() }).strict().parse(raw || {});
+    return pgClient.transaction(async (client) => {
+      const current = await client.query('SELECT * FROM cmdb_custom_field_definitions WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [id]);
+      if (!current.rows[0]) throw Object.assign(new Error('Custom field not found.'), { statusCode: 404 });
+      if (current.rows[0].is_system) throw Object.assign(new Error('System custom fields cannot be removed.'), { statusCode: 400 });
+      const deleted = await client.query('UPDATE cmdb_custom_field_definitions SET is_active=FALSE,deleted_at=NOW(),updated_by_user_id=$2,updated_at=NOW(),version=version+1 WHERE id=$1 AND version=$3 AND deleted_at IS NULL RETURNING id', [id, actor.id, input.version]);
+      if (!deleted.rows[0]) throw Object.assign(new Error('This custom field was changed by another user. Refresh before deleting.'), { statusCode: 409 });
+      await AuditService.logPostgres(client, { actor, action: 'CMDB_CUSTOM_FIELD_DELETED', entityType: 'CMDB_CUSTOM_FIELD', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, before: current.rows[0], after: { deleted: true } });
+      return { id, deleted: true as const };
+    });
+  }
+
+  public static async updateAssetCustomFields(actor: BankUser | undefined, assetId: string, raw: unknown, request: { correlationId?: string; ip?: string; userAgent?: string } = {}): Promise<any> {
+    requirePermission(actor, 'assets.update');
+    z.string().trim().min(1).max(64).parse(assetId);
+    const input = customFieldValuesSchema.parse(raw);
+    return pgClient.transaction(async (client) => {
+      const asset = await client.query('SELECT id,version FROM configuration_items WHERE id=$1 AND archived_at IS NULL FOR UPDATE', [assetId]);
+      if (!asset.rows[0]) throw Object.assign(new Error('Configuration item not found.'), { statusCode: 404 });
+      if (Number(asset.rows[0].version) !== input.version) throw Object.assign(new Error('This asset was changed by another user. Refresh before saving.'), { statusCode: 409 });
+      const keys = Object.keys(input.values);
+      const fields = keys.length ? await client.query('SELECT * FROM cmdb_custom_field_definitions WHERE field_key=ANY($1::text[]) AND deleted_at IS NULL AND is_active', [keys]) : { rows: [] } as any;
+      const byKey = new Map<string, any>(fields.rows.map((field: any) => [String(field.field_key), field] as [string, any]));
+      const unknown = keys.find((key) => !byKey.has(key));
+      if (unknown) throw Object.assign(new Error(`Custom field "${unknown}" is not active or does not exist.`), { statusCode: 400 });
+      const previous = await client.query(`SELECT def.field_key,val.value FROM cmdb_custom_field_values val JOIN cmdb_custom_field_definitions def ON def.id=val.field_id WHERE val.asset_id=$1 AND def.deleted_at IS NULL`, [assetId]);
+      const before = Object.fromEntries(previous.rows.map((row: any) => [row.field_key, row.value]));
+      const after = { ...before } as Record<string, unknown>;
+      for (const [key, rawValue] of Object.entries(input.values)) {
+        const field = byKey.get(key)!;
+        const normalized = validateCustomFieldValue(field, rawValue);
+        if (normalized === null) {
+          await client.query('DELETE FROM cmdb_custom_field_values WHERE asset_id=$1 AND field_id=$2', [assetId, field.id]);
+          delete after[key];
+        } else {
+          await client.query(`INSERT INTO cmdb_custom_field_values(id,asset_id,field_id,value,created_by_user_id,updated_by_user_id) VALUES($1,$2,$3,$4::jsonb,$5,$5) ON CONFLICT(asset_id,field_id) DO UPDATE SET value=EXCLUDED.value,updated_by_user_id=EXCLUDED.updated_by_user_id,updated_at=NOW(),version=cmdb_custom_field_values.version+1`, [`cmdb-cfv-${uuidv4()}`, assetId, field.id, JSON.stringify(normalized), actor.id]);
+          after[key] = normalized;
+        }
+      }
+      const updatedAsset = await client.query('UPDATE configuration_items SET version=version+1,updated_at=NOW(),updated_by=$2 WHERE id=$1 AND version=$3 RETURNING version', [assetId, actor.id, input.version]);
+      if (!updatedAsset.rows[0]) throw Object.assign(new Error('This asset was changed by another user. Refresh before saving.'), { statusCode: 409 });
+      await AuditService.logPostgres(client, { actor, action: 'CMDB_ASSET_CUSTOM_FIELDS_UPDATED', entityType: 'CONFIGURATION_ITEM', entityId: assetId, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, before, after });
+      return { assetId, version: Number(updatedAsset.rows[0].version), customFields: after };
+    });
   }
 
   public static async listAssetSubresources(actor: BankUser | undefined, assetId: string): Promise<any> {
@@ -269,7 +560,26 @@ export class CmdbApiService {
   public static async getConnectorHealth(actor: BankUser | undefined, id: string): Promise<any> {
     requirePermission(actor, 'asset_discovery.health');
     const connector = await this.getConnector(actor, id);
-    return { connector, metrics: connector.connectorType === 'VCENTER' ? VCenterObservabilityService.snapshot(id) : { connectorType: connector.connectorType, lastSyncAt: connector.lastSyncAt, lastSuccessfulSyncAt: connector.lastSuccessfulSyncAt, consecutiveFailures: connector.consecutiveFailures } };
+    const metrics = connector.connectorType === 'VCENTER'
+      ? VCenterObservabilityService.snapshot(id)
+      : {
+        connectorType: connector.connectorType,
+        healthStatus: connector.healthStatus,
+        lastSyncAt: connector.lastSyncAt,
+        lastSuccessfulSyncAt: connector.lastSuccessfulSyncAt,
+        lastFailureAt: connector.lastFailureAt,
+        lastFailureCode: connector.lastFailureCode,
+        lastFailureMessage: connector.lastFailureMessage,
+        consecutiveFailures: connector.consecutiveFailures,
+        latestRun: connector.latestRun,
+      };
+    return {
+      connector,
+      metrics,
+      checkedAt: new Date().toISOString(),
+      liveProbe: false,
+      note: 'This is a persisted health snapshot. Use Test Connection for a live connector probe.',
+    };
   }
 
   public static async listConnectorRuns(actor: BankUser | undefined, id: string, limit = 100): Promise<any[]> {
@@ -288,8 +598,8 @@ export class CmdbApiService {
     const [items, count] = await Promise.all([
       pgClient.query(`SELECT s.id,s.connector_id,s.external_object_type,s.external_object_id,s.source_name,s.status,s.last_seen_at,s.last_sync_run_id,s.last_correlation_outcome,COALESCE(c.name,dc.name) connector_name,c.connector_type_id
         FROM cmdb_source_records s JOIN cmdb_discovery_connectors c ON c.id=s.connector_id LEFT JOIN department_connections dc ON dc.id=c.connection_id
-        WHERE c.connector_type_id IN ('VCENTER','ACTIVE_DIRECTORY','CORTEX') AND c.deleted_at IS NULL ORDER BY s.last_seen_at DESC,s.id LIMIT $1 OFFSET $2`, [safeSize, (safePage - 1) * safeSize]),
-      pgClient.query(`SELECT count(*)::int count FROM cmdb_source_records s JOIN cmdb_discovery_connectors c ON c.id=s.connector_id WHERE c.connector_type_id IN ('VCENTER','ACTIVE_DIRECTORY','CORTEX') AND c.deleted_at IS NULL`),
+        WHERE c.connector_type_id IN ('VCENTER','ACTIVE_DIRECTORY','CORTEX','SMB_PRINTER') AND c.deleted_at IS NULL ORDER BY s.last_seen_at DESC,s.id LIMIT $1 OFFSET $2`, [safeSize, (safePage - 1) * safeSize]),
+      pgClient.query(`SELECT count(*)::int count FROM cmdb_source_records s JOIN cmdb_discovery_connectors c ON c.id=s.connector_id WHERE c.connector_type_id IN ('VCENTER','ACTIVE_DIRECTORY','CORTEX','SMB_PRINTER') AND c.deleted_at IS NULL`),
     ]);
     return { items: items.rows.map((row) => ({ id: row.id, connectorId: row.connector_id, connectorName: row.connector_name, connectorType: row.connector_type_id, objectType: row.external_object_type, objectId: row.external_object_id, name: row.source_name, status: row.status, lastSeenAt: row.last_seen_at, lastSyncRunId: row.last_sync_run_id, correlationOutcome: row.last_correlation_outcome })), total: Number(count.rows[0]?.count || 0), page: safePage, pageSize: safeSize };
   }
@@ -313,9 +623,10 @@ export class CmdbApiService {
       count(*) FILTER (WHERE f.vcenter_vm AND NOT COALESCE(f.cortex,false)) vcenter_vms_without_cortex
       FROM assets a LEFT JOIN source_flags f ON f.asset_id=a.id)
       SELECT counts.*, (SELECT count(*) FROM cmdb_correlation_cases WHERE status='OPEN' AND outcome='IDENTITY_CONFLICT') identity_conflicts,
+      (SELECT count(*) FROM configuration_items a WHERE a.archived_at IS NULL AND (a.lifecycle_state IN ('STALE','DECOMMISSION_CANDIDATE') OR EXISTS (SELECT 1 FROM cmdb_source_records sr WHERE sr.asset_id=a.id AND sr.status IN ('MISSING','STALE')))) stale_or_unseen,
       (SELECT count(*) FROM cmdb_correlation_cases WHERE status='OPEN' AND outcome='REVIEW_REQUIRED') reconciliation_required FROM counts`);
     const row = result.rows[0] || {}; const total = Number(row.total || 0); const number = (key: string) => Number(row[key] || 0);
-    return { totalCanonicalAssets: total, cortexManaged: number('cortex_managed'), cortexMissing: number('cortex_missing'), cortexStale: number('cortex_stale'), fullyCorrelatedVcenterAdCortex: number('fully_correlated'), adWithoutCortex: number('ad_without_cortex'), cortexWithoutAd: number('cortex_without_ad'), vcenterVmsWithoutCortex: number('vcenter_vms_without_cortex'), identityConflicts: number('identity_conflicts'), reconciliationRequired: number('reconciliation_required'), cortexCoveragePercent: total ? Math.round(number('cortex_managed') / total * 100) : 0, generatedAt: new Date().toISOString() };
+    return { totalCanonicalAssets: total, cortexManaged: number('cortex_managed'), cortexMissing: number('cortex_missing'), cortexStale: number('cortex_stale'), fullyCorrelatedVcenterAdCortex: number('fully_correlated'), adWithoutCortex: number('ad_without_cortex'), cortexWithoutAd: number('cortex_without_ad'), vcenterVmsWithoutCortex: number('vcenter_vms_without_cortex'), identityConflicts: number('identity_conflicts'), reconciliationRequired: number('reconciliation_required'), staleOrUnseen: number('stale_or_unseen'), cortexCoveragePercent: total ? Math.round(number('cortex_managed') / total * 100) : 0, generatedAt: new Date().toISOString() };
   }
 
   public static async testConnector(actor: BankUser | undefined, id: string, request: { correlationId?: string; ip?: string; userAgent?: string } = {}): Promise<any> {
@@ -337,6 +648,11 @@ export class CmdbApiService {
       await pgClient.transaction(async (client) => AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_TESTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { connectorType: 'CORTEX', status: 'STARTED' } }));
       try { const result = await CortexInventorySyncService.testConnection(id, request.correlationId); await pgClient.transaction(async (client) => AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_TESTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { connectorType: 'CORTEX', status: 'SUCCEEDED' } })); return result; }
       catch (error: any) { await pgClient.transaction(async (client) => AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_TESTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { connectorType: 'CORTEX', status: 'FAILED', errorCode: String(error?.code || 'CORTEX_INTERNAL_ERROR') } })).catch(() => undefined); throw error; }
+    }
+    if (connector.connectorType === 'SMB_PRINTER') {
+      await pgClient.transaction(async (client) => AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_TESTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { connectorType: 'SMB_PRINTER', accessMode: 'READ_ONLY', status: 'STARTED' } }));
+      try { const result = await SmbPrinterInventorySyncService.testConnection(id); await pgClient.transaction(async (client) => AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_TESTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { connectorType: 'SMB_PRINTER', accessMode: 'READ_ONLY', status: 'SUCCEEDED' } })); return result; }
+      catch (error: any) { await pgClient.transaction(async (client) => AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_TESTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { connectorType: 'SMB_PRINTER', accessMode: 'READ_ONLY', status: 'FAILED', errorCode: String(error?.code || 'SMB_PRINTER_CONNECTION_TEST_FAILED') } })).catch(() => undefined); throw error; }
     }
     await pgClient.transaction(async (client) => AuditService.logPostgres(client, {
       actor, action: 'VCENTER_CONNECTION_TEST_STARTED', entityType: 'DISCOVERY_CONNECTOR', entityId: id,
@@ -364,17 +680,22 @@ export class CmdbApiService {
     }
   }
 
-  public static async triggerConnectorSync(actor: BankUser | undefined, id: string, syncType: unknown = 'FULL', request: { correlationId?: string; ip?: string; userAgent?: string } = {}): Promise<any> {
+  public static async triggerConnectorSync(actor: BankUser | undefined, id: string, syncType: unknown = 'FULL', inventoryScope: unknown = undefined, request: { correlationId?: string; ip?: string; userAgent?: string } = {}): Promise<any> {
     requirePermission(actor, 'asset_discovery.run');
     z.string().trim().min(1).max(64).parse(id);
     const runType = z.enum(['FULL', 'INCREMENTAL']).parse(syncType);
     const connector = await this.getConnector(actor, id);
+    const cortexInventoryScope = connector.connectorType === 'CORTEX'
+      ? cortexInventoryScopeSchema.default('ENDPOINTS').parse(inventoryScope)
+      : undefined;
     const result = connector.connectorType === 'ACTIVE_DIRECTORY'
       ? await ActiveDirectoryInventorySyncService.enqueue(id, actor!, runType, { correlationId: request.correlationId })
       : connector.connectorType === 'CORTEX'
-        ? await CortexInventorySyncService.enqueue(id, actor!, runType, { correlationId: request.correlationId })
-      : await VCenterInventorySyncService.enqueue(id, actor!, runType, { correlationId: request.correlationId });
-    await pgClient.transaction(async (client) => AuditService.logPostgres(client, { actor: actor!, action: 'CMDB_SYNC_TRIGGERED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { status: result.state, runId: result.runId, runType } }));
+        ? await CortexInventorySyncService.enqueue(id, actor!, runType, cortexInventoryScope!, { correlationId: request.correlationId })
+        : connector.connectorType === 'SMB_PRINTER'
+          ? await SmbPrinterInventorySyncService.enqueue(id, actor!, runType, { correlationId: request.correlationId })
+        : await VCenterInventorySyncService.enqueue(id, actor!, runType, { correlationId: request.correlationId });
+    await pgClient.transaction(async (client) => AuditService.logPostgres(client, { actor: actor!, action: 'CMDB_SYNC_TRIGGERED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, metadata: { status: result.state, runId: result.runId, runType, inventoryScope: cortexInventoryScope } }));
     return result;
   }
 
@@ -408,6 +729,11 @@ export class CmdbApiService {
       const bindUser = input.bindUser || String(input.nonSecretConfiguration.bindUser || '');
       if (!ldapUrl.startsWith('ldaps://') || !baseDn || !bindUser || !input.secretReference) throw Object.assign(new Error('Active Directory requires LDAPS URL, base DN, dedicated read-only bind identity, and a vault/secret reference.'), { statusCode: 400 });
     }
+    if (input.connectorType === 'SMB_PRINTER') {
+      const host = input.smbHost || String(input.nonSecretConfiguration.host || '');
+      if (!/^(?:[a-z0-9][a-z0-9.-]{0,252}|(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3})$/i.test(host)) throw Object.assign(new Error('SMB printer discovery requires a valid printer-server hostname or IPv4 address.'), { statusCode: 400, code: 'SMB_PRINTER_HOST_INVALID' });
+      if (input.secretReference || input.username || input.password) throw Object.assign(new Error('SMB printer discovery does not accept credentials. It uses the Windows worker identity for read-only SMB enumeration.'), { statusCode: 400, code: 'SMB_PRINTER_CREDENTIALS_FORBIDDEN' });
+    }
     const effectiveSecretReference = input.connectorType === 'CORTEX' && !input.secretReference && process.env.CORTEX_API_KEY ? 'env://CORTEX_API_KEY' : input.secretReference;
     if (input.connectorType === 'CORTEX') {
       const endpointUrl = String(input.nonSecretConfiguration.endpointUrl || ''); const apiKeyId = String(input.nonSecretConfiguration.apiKeyId || '');
@@ -436,8 +762,8 @@ export class CmdbApiService {
           LIMIT 1`, [vcenterEndpoint, input.port || 443]);
         if (duplicate.rows[0]) throw Object.assign(new Error(`A vCenter connector already targets ${vcenterEndpoint}:${input.port || 443} (${duplicate.rows[0].name}).`), { statusCode: 409, code: 'VCENTER_DUPLICATE_TARGET' });
       }
-       const adConfiguration = input.connectorType === 'ACTIVE_DIRECTORY' ? { ...input.nonSecretConfiguration, url: input.ldapUrl || input.nonSecretConfiguration.url, baseDn: input.baseDn || input.nonSecretConfiguration.baseDn, bindUser: input.bindUser || input.nonSecretConfiguration.bindUser, accessMode: 'READ_ONLY', incrementalStrategy: 'usnChanged-or-whenChanged' } : input.connectorType === 'CORTEX' ? { ...input.nonSecretConfiguration, responseSizeLimitBytes: input.responseSizeLimitBytes } : input.nonSecretConfiguration;
-       const inserted = await client.query(`INSERT INTO cmdb_discovery_connectors(id,connection_id,name,description,connector_type_id,environment,enabled,health_status,operational_state,configuration_status,connection_status,discovery_status,non_secret_configuration,secret_reference,tls_ca_reference,tls_verify_certificates,endpoint_allow_private_network,request_timeout_ms,schedule_minutes,created_by_user_id,updated_by_user_id) VALUES($1,$2,$3,$4,$5::varchar,$6,$7,CASE WHEN $7 THEN 'UNKNOWN' ELSE 'DISABLED' END,CASE WHEN $7 THEN 'IDLE' ELSE 'DISABLED' END,CASE WHEN $5::varchar IN ('VCENTER','ACTIVE_DIRECTORY','CORTEX') THEN 'VALID' ELSE 'UNKNOWN' END,'UNKNOWN','UNKNOWN',$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$15) RETURNING *`, [id, input.connectionId || null, input.name || `CMDB connector ${id}`, input.description, input.connectorType, input.environment, input.enabled, JSON.stringify(adConfiguration), ['ACTIVE_DIRECTORY','CORTEX'].includes(input.connectorType) ? effectiveSecretReference : null, input.tlsCaReference || null, input.tlsVerifyCertificates, input.endpointAllowPrivateNetwork, input.requestTimeoutMs, input.scheduleMinutes, actor.id]);
+       const adConfiguration = input.connectorType === 'ACTIVE_DIRECTORY' ? { ...input.nonSecretConfiguration, url: input.ldapUrl || input.nonSecretConfiguration.url, baseDn: input.baseDn || input.nonSecretConfiguration.baseDn, bindUser: input.bindUser || input.nonSecretConfiguration.bindUser, accessMode: 'READ_ONLY', incrementalStrategy: 'usnChanged-or-whenChanged' } : input.connectorType === 'SMB_PRINTER' ? { host: input.smbHost || input.nonSecretConfiguration.host, transport: 'SMB', accessMode: 'READ_ONLY', discoveryOperation: 'net view', writeOperations: 'BLOCKED' } : input.connectorType === 'CORTEX' ? { ...input.nonSecretConfiguration, responseSizeLimitBytes: input.responseSizeLimitBytes } : input.nonSecretConfiguration;
+       const inserted = await client.query(`INSERT INTO cmdb_discovery_connectors(id,connection_id,name,description,connector_type_id,environment,enabled,health_status,operational_state,configuration_status,connection_status,discovery_status,non_secret_configuration,secret_reference,tls_ca_reference,tls_verify_certificates,endpoint_allow_private_network,request_timeout_ms,schedule_minutes,created_by_user_id,updated_by_user_id) VALUES($1,$2,$3,$4,$5::varchar,$6,$7,CASE WHEN $7 THEN 'UNKNOWN' ELSE 'DISABLED' END,CASE WHEN $7 THEN 'IDLE' ELSE 'DISABLED' END,CASE WHEN $5::varchar IN ('VCENTER','ACTIVE_DIRECTORY','CORTEX','SMB_PRINTER') THEN 'VALID' ELSE 'UNKNOWN' END,'UNKNOWN','UNKNOWN',$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$15) RETURNING *`, [id, input.connectionId || null, input.name || `CMDB connector ${id}`, input.description, input.connectorType, input.environment, input.enabled, JSON.stringify(adConfiguration), ['ACTIVE_DIRECTORY','CORTEX'].includes(input.connectorType) ? effectiveSecretReference : null, input.tlsCaReference || null, input.tlsVerifyCertificates, input.endpointAllowPrivateNetwork, input.requestTimeoutMs, input.scheduleMinutes, actor.id]);
       if (vcenterEndpoint) {
         await VCenterConnectorRepository.createProfile(client, {
           connectorId: id,
@@ -520,12 +846,18 @@ export class CmdbApiService {
         validateCortexTransport({ endpointUrl: String(nextConfiguration.endpointUrl || ''), endpointAllowPrivateNetwork: input.endpointAllowPrivateNetwork ?? Boolean(current.rows[0].endpoint_allow_private_network), tlsVerifyCertificates: input.tlsVerifyCertificates ?? Boolean(current.rows[0].tls_verify_certificates), requestTimeoutMs: input.requestTimeoutMs ?? Number(current.rows[0].request_timeout_ms), responseSizeLimitBytes: Number(nextConfiguration.responseSizeLimitBytes || input.responseSizeLimitBytes || 4194304) });
         if ('secretReference' in input && !/^env:\/\/[A-Z][A-Z0-9_]*$/.test(String(input.secretReference))) throw Object.assign(new Error('Cortex API secret must be a server-side env:// reference.'), { statusCode: 400 });
       }
+      if (nextType === 'SMB_PRINTER') {
+        if ('smbHost' in input) nextConfiguration.host = input.smbHost;
+        if (!/^(?:[a-z0-9][a-z0-9.-]{0,252}|(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3})$/i.test(String(nextConfiguration.host || ''))) throw Object.assign(new Error('SMB printer discovery requires a valid printer-server hostname or IPv4 address.'), { statusCode: 400, code: 'SMB_PRINTER_HOST_INVALID' });
+        if ('secretReference' in input || 'username' in input || 'password' in input) throw Object.assign(new Error('SMB printer discovery does not accept credentials.'), { statusCode: 400, code: 'SMB_PRINTER_CREDENTIALS_FORBIDDEN' });
+        Object.assign(nextConfiguration, { transport: 'SMB', accessMode: 'READ_ONLY', discoveryOperation: 'net view', writeOperations: 'BLOCKED' });
+      }
       const fields: string[] = []; const values: unknown[] = [];
       const set = (column: string, value: unknown) => { values.push(value); fields.push(`${column}=$${values.length}`); };
       for (const [key, column] of Object.entries({ connectorType: 'connector_type_id', environment: 'environment', enabled: 'enabled', tlsCaReference: 'tls_ca_reference', tlsVerifyCertificates: 'tls_verify_certificates', endpointAllowPrivateNetwork: 'endpoint_allow_private_network', requestTimeoutMs: 'request_timeout_ms', scheduleMinutes: 'schedule_minutes', secretReference: 'secret_reference' })) if (key in input) set(column, (input as any)[key]);
        if ('name' in input) set('name', input.name);
        if ('description' in input) set('description', input.description);
-      if (input.nonSecretConfiguration || nextType === 'ACTIVE_DIRECTORY' && ('ldapUrl' in input || 'baseDn' in input || 'bindUser' in input)) set('non_secret_configuration', JSON.stringify(nextConfiguration));
+      if (input.nonSecretConfiguration || nextType === 'ACTIVE_DIRECTORY' && ('ldapUrl' in input || 'baseDn' in input || 'bindUser' in input) || nextType === 'SMB_PRINTER' && 'smbHost' in input) set('non_secret_configuration', JSON.stringify(nextConfiguration));
       const nextEnabled = 'enabled' in input ? Boolean(input.enabled) : Boolean(current.rows[0].enabled);
       values.push(nextEnabled);
       const enabledParam = `$${values.length}`;
@@ -589,6 +921,9 @@ export class CmdbApiService {
       if (activeRuns.rows[0]) throw Object.assign(new Error('Stop or complete the active discovery run before deleting this connector.'), { statusCode: 409, code: 'CONNECTOR_RUN_ACTIVE' });
       const deleted = await client.query("UPDATE cmdb_discovery_connectors SET enabled=FALSE,health_status='DISABLED',operational_state='DISABLED',deleted_at=NOW(),updated_at=NOW(),updated_by_user_id=$2,version=version+1 WHERE id=$1 AND version=$3 RETURNING *", [id, actor.id, version]);
       if (!deleted.rows[0]) throw Object.assign(new Error('Connector delete lost a concurrent write.'), { statusCode: 409 });
+      // Preserve the profile for audit/history while releasing the endpoint
+      // namespace for a future connector after this soft deletion.
+      await client.query('UPDATE cmdb_vcenter_connector_profiles SET deleted_at=$2,updated_at=NOW() WHERE connector_id=$1', [id, deleted.rows[0].deleted_at]);
       await AuditService.logPostgres(client, { actor, action: 'CMDB_CONNECTOR_DELETED', entityType: 'DISCOVERY_CONNECTOR', entityId: id, correlationId: request.correlationId, ipAddress: request.ip, userAgent: request.userAgent, before: { ...current.rows[0], secret_reference: undefined, tls_ca_reference: undefined }, after: { deleted: true } });
       return { id, deleted: true as const };
     });

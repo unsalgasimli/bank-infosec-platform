@@ -8,6 +8,9 @@ import { DISCOVERY_QUEUE, QueueService } from './services/queue.service.js';
 import { WorkerEventService } from './services/worker-event.service.js';
 import { shutdownTelemetry, startTelemetry } from './services/telemetry.service.js';
 
+const DISCOVERY_RECOVERY_INTERVAL_MS = 60_000;
+let discoveryRecoveryTimer: NodeJS.Timeout | undefined;
+
 async function startWorker(): Promise<void> {
   if (config.DB_TYPE !== 'postgres') throw new Error('The worker requires DB_TYPE=postgres.');
   if (!QueueService.enabled()) throw new Error('The worker requires RABBITMQ_ENABLED=true.');
@@ -26,12 +29,21 @@ async function startWorker(): Promise<void> {
     ? Promise.resolve()
     : WorkerEventService.process(event));
   await WorkerEventService.recoverQueuedDiscoveryRuns();
+  // Startup-only recovery misses a run if the old process died while its lease
+  // was still fresh. Reclaim only expired leases from the durable run table.
+  discoveryRecoveryTimer = setInterval(() => {
+    void WorkerEventService.recoverQueuedDiscoveryRuns()
+      .catch((error) => logger.error({ error }, 'Discovery run lease recovery failed'));
+  }, DISCOVERY_RECOVERY_INTERVAL_MS);
+  discoveryRecoveryTimer.unref?.();
   OutboxRelayService.start();
   logger.info('AegisSec asynchronous worker is ready');
 }
 
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'Stopping AegisSec worker');
+  if (discoveryRecoveryTimer) clearInterval(discoveryRecoveryTimer);
+  discoveryRecoveryTimer = undefined;
   OutboxRelayService.stop();
   await db.flush();
   await QueueService.close();

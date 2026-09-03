@@ -21,17 +21,26 @@ import { ThreatModelService } from './threat-model.service.js';
 import { VCenterInventorySyncService } from './vcenter-inventory-sync.service.js';
 import { ActiveDirectoryInventorySyncService } from './active-directory-inventory-sync.service.js';
 import { CortexInventorySyncService } from './cortex-inventory-sync.service.js';
+import { SmbPrinterInventorySyncService } from './smb-printer-inventory-sync.service.js';
 
 const CONSUMER_NAME = 'aegissec-general-worker-v1';
 
 export class WorkerEventService {
-  /** Recover durable runs whose broker event was delayed or whose worker stopped mid-run. */
+  /**
+   * Recover commands that were never delivered, or a run whose owning worker
+   * disappeared. A RUNNING row retains a five-minute lease so a healthy long
+   * inventory job is never executed twice by the recovery loop.
+   */
   public static async recoverQueuedDiscoveryRuns(limit = 100): Promise<void> {
     const runs = await pgClient.query<{ id: string; connector_type_id: string; correlation_id: string | null }>(`
       SELECT r.id,c.connector_type_id,r.correlation_id
       FROM cmdb_discovery_sync_runs r
       JOIN cmdb_discovery_connectors c ON c.id=r.connector_id
-      WHERE r.state IN ('QUEUED','RUNNING') AND c.deleted_at IS NULL
+      WHERE c.deleted_at IS NULL
+        AND (
+          r.state = 'QUEUED'
+          OR (r.state = 'RUNNING' AND r.updated_at < NOW() - INTERVAL '5 minutes')
+        )
       ORDER BY r.queued_at
       LIMIT $1`, [limit]);
     for (const run of runs.rows) {
@@ -39,6 +48,7 @@ export class WorkerEventService {
         if (run.connector_type_id === 'ACTIVE_DIRECTORY') await ActiveDirectoryInventorySyncService.runQueued(run.id);
         else if (run.connector_type_id === 'CORTEX') await CortexInventorySyncService.runQueued(run.id, { correlationId: run.correlation_id || undefined });
         else if (run.connector_type_id === 'VCENTER') await VCenterInventorySyncService.runQueued(run.id, { correlationId: run.correlation_id || undefined });
+        else if (run.connector_type_id === 'SMB_PRINTER') await SmbPrinterInventorySyncService.runQueued(run.id);
       } catch (error) {
         logger.error({ error, runId: run.id, connectorType: run.connector_type_id }, 'Queued discovery run recovery failed');
       }
@@ -105,6 +115,7 @@ export class WorkerEventService {
         const runId = String(event.payload.runId || event.aggregateId);
         if (event.payload.connectorType === 'ACTIVE_DIRECTORY') await ActiveDirectoryInventorySyncService.runQueued(runId);
         else if (event.payload.connectorType === 'CORTEX') await CortexInventorySyncService.runQueued(runId, { correlationId: event.correlationId });
+        else if (event.payload.connectorType === 'SMB_PRINTER') await SmbPrinterInventorySyncService.runQueued(runId);
         else await VCenterInventorySyncService.runQueued(runId, { correlationId: event.correlationId });
       } catch (error: any) {
         if (error?.retryable === true) throw new RetryableWorkerError(String(error?.message || 'vCenter discovery source is temporarily unavailable.'));

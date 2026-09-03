@@ -21,8 +21,9 @@ export type CortexTransport = (request: {
 }) => Promise<{ statusCode: number; headers: Record<string, string | string[] | undefined>; body: unknown }>;
 
 export type CortexCapability = { available: boolean; statusCode?: number; reason?: string };
-export type CortexPage = { records: Record<string, unknown>[]; totalCount?: number; resultCount?: number };
+export type CortexPage = { records: Record<string, unknown>[]; totalCount?: number; resultCount?: number; usedOnDemandFieldFallback?: boolean };
 export type CortexCapabilities = {
+  endpointManagement: CortexCapability;
   unifiedAssetInventory: CortexCapability & { schemaFieldCount?: number };
 };
 
@@ -173,7 +174,7 @@ export class CortexClient {
             ? `Cortex redirected this request. Update the connector Base URL to the Cortex API origin: ${apiOrigin}.`
             : 'Cortex redirected this request. Configure the API origin shown in Cortex, not the console or sign-in URL.', false, result.statusCode, result.headers);
         }
-        if ([408, 425, 429].includes(result.statusCode) || result.statusCode >= 500) throw new CortexConnectorError(result.statusCode === 429 ? 'CORTEX_RATE_LIMITED' : 'CORTEX_SERVER_ERROR', 'Cortex API is temporarily unavailable.', true, result.statusCode, result.headers);
+        if ([408, 425, 429].includes(result.statusCode) || result.statusCode >= 500) throw new CortexConnectorError(result.statusCode === 429 ? 'CORTEX_RATE_LIMITED' : 'CORTEX_SERVER_ERROR', `Cortex API is temporarily unavailable (HTTP ${result.statusCode}).`, true, result.statusCode, result.headers);
         return result;
       } catch (error: any) {
         if (['DEPTH_ZERO_SELF_SIGNED_CERT', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'CERT_HAS_EXPIRED', 'ERR_TLS_CERT_ALTNAME_INVALID'].includes(String(error?.code))) throw new CortexConnectorError('CORTEX_TLS_FAILED', 'Cortex TLS certificate validation failed.');
@@ -210,8 +211,36 @@ export class CortexClient {
     // 1,000-record windows. Connector configuration cannot silently downgrade
     // a CMDB reconciliation run to endpoint-sized pages.
     const pageSize = 1000;
-    const filters = options.lastObservedAfter === undefined ? undefined : { AND: [{ SEARCH_FIELD: 'xdm.asset.last_observed', SEARCH_TYPE: 'GTE', SEARCH_VALUE: options.lastObservedAfter }] };
-    const result = await this.request('POST', '/public_api/v1/assets', { ...(filters ? { filters } : {}), on_demand_fields: ['xdm.host.ipv4_addresses', 'xdm.host.mac_addresses'], sort: [{ FIELD: 'xdm.asset.strong_id', ORDER: 'ASC' }], search_from: searchFrom, search_to: searchFrom + pageSize }, correlationId, options.signal);
+    // Asset Inventory requires a non-empty `filters.AND` array.  A missing
+    // filter is reported as an opaque HTTP 500 by Cortex instead of a request
+    // validation error, which made every full sync fail before page one.
+    // This is the documented broad inventory filter; append the durable
+    // watermark only for incremental runs.
+    const filters = {
+      AND: [
+        { SEARCH_FIELD: 'xdm.asset.type.class', SEARCH_TYPE: 'NEQ', SEARCH_VALUE: 'Other' },
+        ...(options.lastObservedAfter === undefined ? [] : [{ SEARCH_FIELD: 'xdm.asset.last_observed', SEARCH_TYPE: 'GTE', SEARCH_VALUE: options.lastObservedAfter }]),
+      ],
+    };
+    // Keep the inventory request to the documented portable subset. Some 5.x
+    // tenants reject optional sort expressions or unsupported on-demand fields
+    // with an opaque HTTP 500 instead of a validation response.
+    // This tenant uses the Cortex XDR envelope for Asset Inventory. The API
+    // returns HTTP 500 / err_code 101 when the otherwise valid filters and
+    // paging fields are not nested below `request_data`.
+    const basePayload = { request_data: { filters, sort: [{ FIELD: 'xdm.asset.id', ORDER: 'ASC' }], search_from: searchFrom, search_to: searchFrom + pageSize } };
+    let usedOnDemandFieldFallback = false;
+    let result: Awaited<ReturnType<CortexClient['request']>>;
+    try {
+      result = await this.request('POST', '/public_api/v1/assets', { request_data: { ...basePayload.request_data, on_demand_fields: ['xdm.host.ipv4_addresses'] } }, correlationId, options.signal);
+    } catch (error) {
+      // Cortex 5.x tenants can return 500 for an otherwise valid asset page
+      // when an on-demand field is not licensed/exposed. Keep the native asset
+      // sync available, but make the degraded field set auditable to the run.
+      if (!(error instanceof CortexConnectorError) || error.code !== 'CORTEX_SERVER_ERROR' || (error.statusCode || 0) < 500) throw error;
+      usedOnDemandFieldFallback = true;
+      result = await this.request('POST', '/public_api/v1/assets', basePayload, correlationId, options.signal);
+    }
     if (result.statusCode < 200 || result.statusCode >= 300) throw new CortexConnectorError('CORTEX_CAPABILITY_UNAVAILABLE', `Cortex Unified Asset Inventory API is unavailable (HTTP ${result.statusCode}).`, false, result.statusCode, result.headers);
     const reply = assetReplySchema.safeParse(result.body);
     if (!reply.success) throw new CortexConnectorError('CORTEX_RESPONSE_INVALID', 'Cortex Unified Asset Inventory API returned an invalid reply envelope.');
@@ -219,29 +248,25 @@ export class CortexClient {
       records: reply.data.reply.data || [],
       totalCount: reply.data.reply.metadata?.total_count ?? reply.data.reply.total_count,
       resultCount: reply.data.reply.metadata?.filter_count ?? reply.data.reply.result_count,
+      usedOnDemandFieldFallback,
     };
   }
 
-  public async detectCapabilities(correlationId: string, signal?: AbortSignal): Promise<CortexCapabilities> {
+  public async detectCapabilities(correlationId: string, signal?: AbortSignal, scope: 'ENDPOINTS' | 'ASSETS' | 'ALL' = 'ALL'): Promise<CortexCapabilities> {
     const capability = async (operation: () => Promise<unknown>): Promise<CortexCapability> => {
       try { await operation(); return { available: true }; }
       catch (error: any) {
         if (error instanceof CortexConnectorError && error.code === 'CORTEX_AUTH_FAILED') throw error;
-        if (error instanceof CortexConnectorError && error.code === 'CORTEX_CAPABILITY_UNAVAILABLE') return { available: false, statusCode: error.statusCode, reason: error.statusCode === 403 ? 'FORBIDDEN_OR_UNLICENSED' : 'NOT_EXPOSED' };
+        if (error instanceof CortexConnectorError) return { available: false, statusCode: error.statusCode, reason: error.code === 'CORTEX_CAPABILITY_UNAVAILABLE' ? (error.statusCode === 403 ? 'FORBIDDEN_OR_UNLICENSED' : 'NOT_EXPOSED') : error.code };
         throw error;
       }
     };
-    // CMDB discovery intentionally probes the native unified inventory only.
-    // Endpoint Management remains available as a later Cortex-specific
-    // enrichment adapter, never as a fallback inventory source.
-    let schemaFieldCount: number | undefined;
-    const unifiedAssetInventory = await capability(async () => {
-      const result = await this.request('GET', '/public_api/v1/assets/schema', undefined, correlationId, signal);
-      if (result.statusCode < 200 || result.statusCode >= 300) throw new CortexConnectorError('CORTEX_CAPABILITY_UNAVAILABLE', `Cortex Asset Inventory schema API is unavailable (HTTP ${result.statusCode}).`, false, result.statusCode, result.headers);
-      const reply = (result.body as any)?.reply;
-      const fields = Array.isArray(reply?.data) ? reply.data : Array.isArray(reply?.fields) ? reply.fields : [];
-      schemaFieldCount = fields.length;
-    });
-    return { unifiedAssetInventory: { ...unifiedAssetInventory, ...(schemaFieldCount === undefined ? {} : { schemaFieldCount }) } };
+    // These are separate Cortex datasets. Endpoint Management is the fast,
+    // operational endpoint inventory; native Asset Inventory is the broad
+    // CMDB-oriented catalog and may be materially larger or unavailable.
+    const notChecked = { available: false, reason: 'NOT_CHECKED' } as const;
+    const endpointManagement = scope === 'ASSETS' ? notChecked : await capability(() => this.endpointPage(0, correlationId, { signal }));
+    const unifiedAssetInventory = scope === 'ENDPOINTS' ? notChecked : await capability(() => this.assetPage(0, correlationId, { signal }));
+    return { endpointManagement, unifiedAssetInventory };
   }
 }

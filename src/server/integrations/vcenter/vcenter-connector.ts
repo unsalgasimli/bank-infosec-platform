@@ -2,6 +2,8 @@ import https from 'node:https';
 import tls from 'node:tls';
 import fs from 'node:fs/promises';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import type { VCenterCapabilities, VCenterCertificateMetadata, VCenterConnectionSnapshot, VCenterConnectorConfiguration, VCenterErrorCode, VCenterRuntimeState, VCenterServerInfo, VCenterConnectionTestResult } from '../../../shared/types/vcenter.js';
 import { assertVCenterResolvedTarget, validateVCenterTransport, vCenterRequestPolicy } from './vcenter-endpoint-policy.js';
 
@@ -31,12 +33,26 @@ function certificateMetadata(socket: tls.TLSSocket | null | undefined): VCenterC
 type HttpResult = { status: number; body: string; certificate?: VCenterCertificateMetadata };
 const asRecord = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const stringValue = (value: unknown): string | undefined => typeof value === 'string' && value.trim() ? value.trim() : undefined;
+function customCaFilePath(reference: string): string {
+  if (!reference.startsWith('file://')) throw new VCenterConnectorError('VCENTER_CONFIG_INVALID', 'Custom vCenter CA references must be backend-resolved file:// references.', false);
+  const nativePath = fileURLToPath(reference);
+  if (process.platform === 'win32') return nativePath;
+  const hostRoot = process.env.VCENTER_CA_HOST_ROOT?.replace(/\\/g, '/').replace(/\/+$/, '');
+  const mountRoot = process.env.VCENTER_CA_MOUNT_ROOT;
+  const windowsPath = nativePath.replace(/^\/([A-Za-z]:\/)/, '$1').replace(/\\/g, '/');
+  if (hostRoot && mountRoot && windowsPath.toLowerCase().startsWith(`${hostRoot.toLowerCase()}/`)) {
+    return path.posix.join(mountRoot, windowsPath.slice(hostRoot.length + 1));
+  }
+  return nativePath;
+}
 
 /** Connector-local REST client. Tokens never leave this in-memory map. */
 export class VCenterRestClient {
   private readonly sessions = new Map<string, VCenterRestSession>();
   private readonly agent = new https.Agent({ keepAlive: true, maxSockets: 4, maxFreeSockets: 2, scheduling: 'lifo' });
-  public constructor(private readonly caResolver: (reference: string) => Promise<string | undefined> = async (reference) => { if (!reference.startsWith('file://')) throw new VCenterConnectorError('VCENTER_CONFIG_INVALID', 'Custom vCenter CA references must be backend-resolved file:// references.', false); return fs.readFile(new URL(reference), 'utf8'); }) {}
+  public constructor(private readonly caResolver: (reference: string) => Promise<string | undefined> = async (reference) => {
+    return fs.readFile(customCaFilePath(reference), 'utf8');
+  }) {}
   public async test(configuration: VCenterConnectorConfiguration, rawCredential: unknown): Promise<VCenterConnectionSnapshot> {
     validateVCenterTransport(configuration); await assertVCenterResolvedTarget(configuration);
     const ca = configuration.tlsCaReference ? await this.caResolver(configuration.tlsCaReference) : undefined; const certificate = await this.handshake(configuration, ca); const creds = credential(rawCredential); const session = await this.createSession(configuration, creds, ca);
@@ -46,7 +62,7 @@ export class VCenterRestClient {
     return { server: info, capabilities, certificate, connectionTestedAt: new Date().toISOString(), testResult: { status: 'READY', connection: { validateConfig: 'OK', resolveSecret: 'OK', dns: 'OK', tcp: 'OK', tls: 'OK', authentication: 'OK', session: 'OK', inventory: 'OK', permissions: 'OK', serverInfo: version.status < 400 ? 'OK' : 'SKIPPED' }, server: info, capabilities, session: sessionIdentity(sessionInfo.body, creds.username) } };
   }
   public invalidate(connectorId: string): void { this.sessions.delete(connectorId); }
-  public async discover(configuration: VCenterConnectorConfiguration, rawCredential: unknown): Promise<VCenterInventoryObject[]> {
+  public async discover(configuration: VCenterConnectorConfiguration, rawCredential: unknown, onProgress?: (progress: { objectType: VCenterInventoryObject['objectType']; discovered: number; phase: 'LISTED' | 'COLLECTED' }) => Promise<void> | void): Promise<VCenterInventoryObject[]> {
     validateVCenterTransport(configuration); await assertVCenterResolvedTarget(configuration);
     const ca = configuration.tlsCaReference ? await this.caResolver(configuration.tlsCaReference) : undefined; const creds = credential(rawCredential);
     // These are documented, independent REST inventory collections. Keep each
@@ -61,7 +77,22 @@ export class VCenterRestClient {
       ['ResourcePool', '/api/vcenter/resource-pool', 'resource_pool'],
     ];
     const objects: VCenterInventoryObject[] = [];
-    for (const [objectType, path, idKey] of endpoints) { const response = await this.withSessionRetry(configuration, creds, ca, (active) => this.request(configuration, path, 'GET', active.token, {}, ca)); if (response.status >= 400) throw this.httpError(response.status, `vCenter ${objectType} inventory query failed.`); let rows: unknown; try { rows = JSON.parse(response.body); } catch { throw new VCenterConnectorError('VCENTER_RESPONSE_INVALID', `vCenter ${objectType} inventory response was not valid JSON.`, false); } if (!Array.isArray(rows)) throw new VCenterConnectorError('VCENTER_RESPONSE_INVALID', `vCenter ${objectType} inventory response was not an array.`, false); for (const row of rows) { if (!row || typeof row !== 'object') continue; const payload = row as Record<string, unknown>; const objectId = payload[idKey]; const name = payload.name; if (typeof objectId !== 'string' || !objectId || typeof name !== 'string' || !name) throw new VCenterConnectorError('VCENTER_RESPONSE_INVALID', `vCenter ${objectType} inventory contains an object without a stable ID or name.`, false); objects.push({ objectType, objectId, name, payload: objectType === 'VirtualMachine' ? await this.hydrateVirtualMachine(configuration, creds, ca, objectId, payload) : payload }); } }
+    for (const [objectType, path, idKey] of endpoints) {
+      const response = await this.withSessionRetry(configuration, creds, ca, (active) => this.request(configuration, path, 'GET', active.token, {}, ca));
+      if (response.status >= 400) throw this.httpError(response.status, `vCenter ${objectType} inventory query failed.`);
+      let rows: unknown;
+      try { rows = JSON.parse(response.body); } catch { throw new VCenterConnectorError('VCENTER_RESPONSE_INVALID', `vCenter ${objectType} inventory response was not valid JSON.`, false); }
+      if (!Array.isArray(rows)) throw new VCenterConnectorError('VCENTER_RESPONSE_INVALID', `vCenter ${objectType} inventory response was not an array.`, false);
+      await onProgress?.({ objectType, discovered: objects.length, phase: 'LISTED' });
+      for (const row of rows) {
+        if (!row || typeof row !== 'object') continue;
+        const payload = row as Record<string, unknown>;
+        const objectId = payload[idKey]; const name = payload.name;
+        if (typeof objectId !== 'string' || !objectId || typeof name !== 'string' || !name) throw new VCenterConnectorError('VCENTER_RESPONSE_INVALID', `vCenter ${objectType} inventory contains an object without a stable ID or name.`, false);
+        objects.push({ objectType, objectId, name, payload: objectType === 'VirtualMachine' ? await this.hydrateVirtualMachine(configuration, creds, ca, objectId, payload) : payload });
+        await onProgress?.({ objectType, discovered: objects.length, phase: 'COLLECTED' });
+      }
+    }
     return objects;
   }
   /**
@@ -122,4 +153,4 @@ export class VCenterRestClient {
 function serverInfo(body: string): VCenterServerInfo { try { const parsed = JSON.parse(body); const version = String(parsed.version || parsed.product_version || '8.x'); const instanceUuid = stringValue(parsed.instance_uuid) || stringValue(parsed.instanceUuid) || stringValue(parsed.system_uuid); return { product: String(parsed.product || 'VMware vCenter Server'), version, build: String(parsed.build || parsed.build_number || ''), apiVersion: version, ...(instanceUuid ? { instanceUuid } : {}) }; } catch { return { product: 'VMware vCenter Server', version: '8.x', build: '' }; } }
 function capabilitiesFor(info: VCenterServerInfo): VCenterCapabilities { return { version: info.version, build: info.build, ...(info.apiVersion ? { apiVersion: info.apiVersion } : {}), supportsRestApi: true, supportsVmInventory: true, supportsHostInventory: true, supportsClusterInventory: true, supportsDatacenterInventory: true, supportsDatastoreInventory: true, supportsNetworkInventory: true, supportsResourcePoolInventory: true, supportsTagging: true }; }
 function sessionIdentity(body: string, fallbackUsername: string): { username: string; createdAt?: string; lastAccessedAt?: string } { try { const value = JSON.parse(body); return { username: String(value.user || value.username || fallbackUsername), ...(value.creation_time ? { createdAt: String(value.creation_time) } : {}), ...(value.last_access_time ? { lastAccessedAt: String(value.last_access_time) } : {}) }; } catch { return { username: fallbackUsername }; } }
-export class VCenterConnector { private readonly runtimeState: VCenterRuntimeState; public constructor(public readonly configuration: VCenterConnectorConfiguration, private readonly client: VCenterRestClient) { validateVCenterTransport(configuration); this.runtimeState = { connectorId: configuration.connectorId, retryAttempt: 0 }; } public getRuntimeState(): VCenterRuntimeState { return { ...this.runtimeState }; } public markRetryableFailure(code: VCenterErrorCode, now = new Date()): void { if (!VCenterRetryPolicy.isRetryable(code)) return; this.runtimeState.retryAttempt += 1; this.runtimeState.nextRetryAt = new Date(now.getTime() + VCenterRetryPolicy.delayMs(this.runtimeState.retryAttempt)).toISOString(); } public markConnectionSuccess(): void { this.runtimeState.retryAttempt = 0; delete this.runtimeState.nextRetryAt; } public connect(rawCredential: unknown): Promise<VCenterConnectionSnapshot> { return this.client.test(this.configuration, rawCredential); } public discover(rawCredential: unknown): Promise<VCenterInventoryObject[]> { return this.client.discover(this.configuration, rawCredential); } public disconnect(): Promise<void> { this.client.invalidate(this.configuration.connectorId); return Promise.resolve(); } }
+export class VCenterConnector { private readonly runtimeState: VCenterRuntimeState; public constructor(public readonly configuration: VCenterConnectorConfiguration, private readonly client: VCenterRestClient) { validateVCenterTransport(configuration); this.runtimeState = { connectorId: configuration.connectorId, retryAttempt: 0 }; } public getRuntimeState(): VCenterRuntimeState { return { ...this.runtimeState }; } public markRetryableFailure(code: VCenterErrorCode, now = new Date()): void { if (!VCenterRetryPolicy.isRetryable(code)) return; this.runtimeState.retryAttempt += 1; this.runtimeState.nextRetryAt = new Date(now.getTime() + VCenterRetryPolicy.delayMs(this.runtimeState.retryAttempt)).toISOString(); } public markConnectionSuccess(): void { this.runtimeState.retryAttempt = 0; delete this.runtimeState.nextRetryAt; } public connect(rawCredential: unknown): Promise<VCenterConnectionSnapshot> { return this.client.test(this.configuration, rawCredential); } public discover(rawCredential: unknown, onProgress?: (progress: { objectType: VCenterInventoryObject['objectType']; discovered: number; phase: 'LISTED' | 'COLLECTED' }) => Promise<void> | void): Promise<VCenterInventoryObject[]> { return this.client.discover(this.configuration, rawCredential, onProgress); } public disconnect(): Promise<void> { this.client.invalidate(this.configuration.connectorId); return Promise.resolve(); } }

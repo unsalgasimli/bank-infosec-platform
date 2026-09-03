@@ -417,9 +417,9 @@ export class CmdbFoundationRepository {
   public static async listSourceRecords(assetId: string): Promise<DiscoverySourceRecord[]> {
     const result = await pgClient.query(`
       SELECT s.id, s.asset_id, s.connector_id, c.connector_type_id, s.external_object_type, s.external_object_id,
-             native_uuid, source_name, source_path, first_seen_at, last_seen_at,
-             last_sync_run_id, current_observation_hash, normalized_payload_hash,
-             revision, status, missing_since, retired_at, created_at, updated_at
+             s.native_uuid, s.source_name, s.source_path, s.first_seen_at, s.last_seen_at,
+             s.last_sync_run_id, s.current_observation_hash, s.normalized_payload_hash,
+             s.revision, s.status, s.missing_since, s.retired_at, s.created_at, s.updated_at
       FROM cmdb_source_records s JOIN cmdb_discovery_connectors c ON c.id=s.connector_id WHERE s.asset_id=$1 ORDER BY s.last_seen_at DESC, s.id`, [assetId]);
     return result.rows.map((row) => ({
       id: row.id,

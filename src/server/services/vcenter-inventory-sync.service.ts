@@ -133,7 +133,12 @@ export class VCenterInventorySyncService {
           JSON.stringify({ runId, connectorId, actorId: actor.id, runType }), context.correlationId || `cmdb.discovery.sync:${runId}`,
         ]);
       });
-    } catch (error: any) { if (error?.code === '23505') throw Object.assign(new Error('Another inventory sync is already running for this vCenter connector.'), { statusCode: 409, code: 'CONNECTOR_SYNC_LOCKED' }); throw error; }
+    } catch (error: any) {
+      if (error?.code === '23505' && error?.constraint === 'uq_cmdb_discovery_connector_active_run') {
+        throw Object.assign(new Error('Another inventory sync is already running for this vCenter connector.'), { statusCode: 409, code: 'CONNECTOR_SYNC_LOCKED' });
+      }
+      throw error;
+    }
     return { runId, state: 'QUEUED', runType };
   }
 
@@ -152,7 +157,11 @@ export class VCenterInventorySyncService {
       const connector = await pgClient.query<{ name: string; detected_instance_uuid: string | null; detected_product: string | null; detected_version: string | null; detected_build: string | null }>(`SELECT name,detected_instance_uuid,detected_product,detected_version,detected_build FROM cmdb_discovery_connectors WHERE id=$1 AND connector_type_id='VCENTER' AND deleted_at IS NULL`, [run.connector_id]);
       if (!connector.rows[0]) throw Object.assign(new Error('vCenter connector was not found.'), { code: 'DISCOVERY_CONNECTOR_NOT_FOUND' });
       const source = connector.rows[0];
-      const objects: VCenterInventoryObject[] = [{ objectType: 'VCenterServer', objectId: run.connector_id, name: source.name, payload: { vcenter: run.connector_id, ...(source.detected_instance_uuid ? { instance_uuid: source.detected_instance_uuid } : {}), ...(source.detected_product ? { product: source.detected_product } : {}), ...(source.detected_version ? { version: source.detected_version } : {}), ...(source.detected_build ? { build: source.detected_build } : {}) } }, ...(await defaultVCenterRuntimeService.discoverInventory(run.connector_id, context)).map((object) => ({ ...object, payload: { ...object.payload, vcenter: run.connector_id } }))];
+      await pgClient.query("UPDATE cmdb_discovery_sync_runs SET discovered_count=1,checkpoint='Collecting vCenter inventory',updated_at=NOW() WHERE id=$1 AND state='RUNNING'", [runId]);
+      const inventory = await defaultVCenterRuntimeService.discoverInventory(run.connector_id, context, async (progress) => {
+        await pgClient.query("UPDATE cmdb_discovery_sync_runs SET discovered_count=$2,checkpoint=$3,updated_at=NOW() WHERE id=$1 AND state='RUNNING'", [runId, progress.discovered + 1, `${progress.phase === 'LISTED' ? 'Listing' : 'Collected'} ${progress.objectType} inventory`]);
+      });
+      const objects: VCenterInventoryObject[] = [{ objectType: 'VCenterServer', objectId: run.connector_id, name: source.name, payload: { vcenter: run.connector_id, ...(source.detected_instance_uuid ? { instance_uuid: source.detected_instance_uuid } : {}), ...(source.detected_product ? { product: source.detected_product } : {}), ...(source.detected_version ? { version: source.detected_version } : {}), ...(source.detected_build ? { build: source.detected_build } : {}) } }, ...inventory.map((object) => ({ ...object, payload: { ...object.payload, vcenter: run.connector_id } }))];
       const observedAt = new Date().toISOString();
       const batch = await DiscoveryIngestionService.ingestBatch(objects.map((rawPayload) => ({ connectorId: run.connector_id, syncRunId: runId, sourceObjectType: rawPayload.objectType, sourceObjectId: rawPayload.objectId, observedAt, rawPayload })), vCenterInventoryPayloadMapper);
       // reconcileAndCompleteRun explicitly performs absence handling only for

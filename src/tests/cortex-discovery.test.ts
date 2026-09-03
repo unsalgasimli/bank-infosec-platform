@@ -34,6 +34,20 @@ test('Cortex Unified Asset Inventory preserves native classification and emits s
   assert.equal(((dto.sourceSpecificMetadata.cortex as any).securityTelemetry as any).unknown_asset_field.preserved, true);
 });
 
+test('Cortex Unified Asset Inventory maps identity and cloud-runtime taxonomy to canonical CMDB CI types', () => {
+  const group = cortexUnifiedAssetPayloadMapper.normalize(cortexUnifiedAssetPayloadMapper.validateRaw({
+    'xdm.asset.id': 'group-1', 'xdm.asset.type.class': 'Identity', 'xdm.asset.type.category': 'IAM Group', 'xdm.asset.type.name': 'AD Group', 'xdm.identity.group.dn': 'CN=SG-Admins,DC=bank,DC=example', 'xdm.asset.tags': ['privileged'],
+  }), { ...envelope, sourceObjectType: 'CORTEX_ASSET', sourceObjectId: 'group-1' });
+  const runtime = cortexUnifiedAssetPayloadMapper.normalize(cortexUnifiedAssetPayloadMapper.validateRaw({
+    'xdm.asset.id': 'image-1', 'xdm.asset.type.class': 'Compute', 'xdm.asset.type.category': 'Container Image', 'xdm.asset.type.name': 'Runtime Image', 'xdm.business_application.names': ['payments'],
+  }), { ...envelope, sourceObjectType: 'CORTEX_ASSET', sourceObjectId: 'image-1' });
+  assert.equal(group.classification.type, 'directory_group');
+  assert.equal(group.identity.name, 'CN=SG-Admins,DC=bank,DC=example');
+  assert.deepEqual(group.tags, [{ key: 'cortex', value: 'privileged' }]);
+  assert.equal(runtime.classification.type, 'cloud_resource');
+  assert.ok(runtime.tags.some((tag) => tag.key === 'businessApplication' && tag.value === 'business-application:payments'));
+});
+
 test('Cortex client retries a rate-limited transport response and never exposes auth headers to callers', async () => {
   let attempts = 0;
   const transport: CortexTransport = async (request) => {
@@ -61,12 +75,32 @@ test('Cortex page windows use the documented exclusive upper bound and preserve 
   const assetPage = await client.assetPage(1000, 'asset-page-window');
   assert.equal(requests[0].request_data.search_from, 100);
   assert.equal(requests[0].request_data.search_to, 200);
-  assert.equal(requests[1].search_from, 1000);
-  assert.equal(requests[1].search_to, 2000);
+  assert.equal(requests[1].request_data.search_from, 1000);
+  assert.equal(requests[1].request_data.search_to, 2000);
+  assert.deepEqual(requests[1].request_data.sort, [{ FIELD: 'xdm.asset.id', ORDER: 'ASC' }]);
+  assert.deepEqual(requests[1].request_data.filters, { AND: [{ SEARCH_FIELD: 'xdm.asset.type.class', SEARCH_TYPE: 'NEQ', SEARCH_VALUE: 'Other' }] });
   assert.equal(endpointPage.totalCount, 225);
   assert.equal(endpointPage.resultCount, 1);
   assert.equal(assetPage.totalCount, 1200);
   assert.equal(assetPage.resultCount, 1);
+});
+
+test('Cortex Asset Inventory retries the same native page without optional fields only after an upstream 5xx', async () => {
+  const payloads: Array<Record<string, unknown>> = [];
+  let attempts = 0;
+  const transport: CortexTransport = async (request) => {
+    attempts += 1; payloads.push(JSON.parse(request.body || '{}'));
+    return attempts === 1
+      ? { statusCode: 500, headers: {}, body: {} }
+      : { statusCode: 200, headers: {}, body: { reply: { data: [], metadata: { total_count: 0, filter_count: 0 } } } };
+  };
+  const page = await new CortexClient({ ...configuration, maxRetries: 0 }, transport).assetPage(0, 'asset-field-fallback');
+  assert.equal(page.usedOnDemandFieldFallback, true);
+  assert.deepEqual(payloads[0].request_data.on_demand_fields, ['xdm.host.ipv4_addresses']);
+  assert.deepEqual(payloads[0].request_data.filters, { AND: [{ SEARCH_FIELD: 'xdm.asset.type.class', SEARCH_TYPE: 'NEQ', SEARCH_VALUE: 'Other' }] });
+  assert.equal('on_demand_fields' in payloads[1].request_data, false);
+  assert.deepEqual(payloads[1].request_data.filters, payloads[0].request_data.filters);
+  assert.equal(payloads[1].request_data.search_to, 1000);
 });
 
 test('Cortex Advanced API keys send a fresh nonce, timestamp, and SHA-256 proof instead of the raw secret', () => {
@@ -95,12 +129,30 @@ test('Cortex client never follows a redirect for an authenticated POST and repor
   );
 });
 
-test('Cortex capability detection probes only native Asset Inventory, not Endpoint Management', async () => {
+test('Cortex capability detection keeps Endpoint Management and native Asset Inventory independent', async () => {
   const transport: CortexTransport = async (request) => {
-    assert.equal(request.url.pathname.endsWith('/assets/schema'), true);
-    return { statusCode: 200, headers: {}, body: { reply: { data: [{ field: 'xdm.asset.strong_id' }] } } };
+    const body = JSON.parse(request.body || '{}');
+    if (request.url.pathname.endsWith('/endpoints/get_endpoint')) {
+      assert.equal(body.request_data.search_from, 0);
+      assert.equal(body.request_data.search_to, 100);
+      return { statusCode: 200, headers: {}, body: { reply: { endpoints: [], total_count: 0, result_count: 0 } } };
+    }
+    assert.equal(request.url.pathname.endsWith('/assets'), true);
+    assert.equal(body.request_data.search_from, 0);
+    assert.equal(body.request_data.search_to, 1000);
+    return { statusCode: 500, headers: {}, body: {} };
   };
   const capabilities = await new CortexClient(configuration, transport).detectCapabilities('capability-test');
-  assert.equal(capabilities.unifiedAssetInventory.available, true);
-  assert.equal(capabilities.unifiedAssetInventory.schemaFieldCount, 1);
+  assert.equal(capabilities.endpointManagement.available, true);
+  assert.equal(capabilities.unifiedAssetInventory.available, false);
+  assert.equal(capabilities.unifiedAssetInventory.reason, 'CORTEX_SERVER_ERROR');
+
+  let assetRequested = false;
+  const endpointOnly = await new CortexClient(configuration, async (request) => {
+    assetRequested ||= request.url.pathname.endsWith('/assets');
+    return { statusCode: 200, headers: {}, body: { reply: { endpoints: [], total_count: 0, result_count: 0 } } };
+  }).detectCapabilities('endpoint-only-test', undefined, 'ENDPOINTS');
+  assert.equal(endpointOnly.endpointManagement.available, true);
+  assert.equal(endpointOnly.unifiedAssetInventory.reason, 'NOT_CHECKED');
+  assert.equal(assetRequested, false);
 });

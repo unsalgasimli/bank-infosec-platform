@@ -21,7 +21,7 @@ export default defineConfig({
           // Keep the dev API separate from Docker's IPv4 loopback listener.
           // The local API binds to IPv6 loopback, so Vite cannot accidentally
           // proxy /api requests to an unrelated Docker service on 127.0.0.1.
-          target: 'http://[::1]:4000',
+          target: 'http://127.0.0.1:4001',
           changeOrigin: false,
           secure: false,
           xfwd: true,

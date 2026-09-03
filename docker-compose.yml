@@ -41,6 +41,8 @@ services:
       # Must be identical for every process that reads connector credentials.
       # A missing or changed KEK makes AES-GCM ciphertext intentionally unreadable.
       - VCENTER_CREDENTIAL_KEK=${VCENTER_CREDENTIAL_KEK:?VCENTER_CREDENTIAL_KEK must be set for vCenter credential encryption}
+      - VCENTER_CA_HOST_ROOT=${VCENTER_CA_HOST_ROOT:-}
+      - VCENTER_CA_MOUNT_ROOT=${VCENTER_CA_MOUNT_ROOT:-/run/vcenter-ca}
       - CORTEX_API_KEY=${CORTEX_API_KEY:-}
       - CORTEX_API_KEY_SECURITY_LEVEL=${CORTEX_API_KEY_SECURITY_LEVEL:-STANDARD}
       - RABBITMQ_ENABLED=true
@@ -68,6 +70,7 @@ services:
       - "127.0.0.1:${APP_PORT:-4000}:4000"
     volumes:
       - app_storage:/app/data/storage
+      - ${VCENTER_CA_HOST_ROOT:?VCENTER_CA_HOST_ROOT must be set for file-based vCenter CA bundles}:${VCENTER_CA_MOUNT_ROOT:-/run/vcenter-ca}:ro
     secrets:
       - ldap_bind_password
     depends_on:
@@ -115,6 +118,8 @@ services:
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in the deployment environment}
       - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY:-${JWT_SECRET:?JWT_SECRET must be set in the deployment environment}}
       - VCENTER_CREDENTIAL_KEK=${VCENTER_CREDENTIAL_KEK:?VCENTER_CREDENTIAL_KEK must be set for vCenter credential encryption}
+      - VCENTER_CA_HOST_ROOT=${VCENTER_CA_HOST_ROOT:-}
+      - VCENTER_CA_MOUNT_ROOT=${VCENTER_CA_MOUNT_ROOT:-/run/vcenter-ca}
       - CORTEX_API_KEY=${CORTEX_API_KEY:-}
       - CORTEX_API_KEY_SECURITY_LEVEL=${CORTEX_API_KEY_SECURITY_LEVEL:-STANDARD}
       - RABBITMQ_ENABLED=true
@@ -154,6 +159,8 @@ services:
         condition: service_healthy
     networks:
       - bank_internal_network
+    volumes:
+      - ${VCENTER_CA_HOST_ROOT:?VCENTER_CA_HOST_ROOT must be set for file-based vCenter CA bundles}:${VCENTER_CA_MOUNT_ROOT:-/run/vcenter-ca}:ro
     secrets:
       - ldap_bind_password
 

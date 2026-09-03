@@ -8,6 +8,7 @@ import { MyWorkOverviewView } from './components/views/MyWorkOverviewView.js';
 import { ServiceCatalogView } from './components/views/ServiceCatalogView.js';
 import { CMDBRelationshipMapView } from './components/assets/CMDBRelationshipMapView.js';
 import { CMDBExplorerView } from './components/assets/CMDBExplorerView.js';
+import { CMDBAssetInventoryView } from './components/assets/CMDBAssetInventoryView.js';
 import { DiscoveryAdminView } from './components/assets/DiscoveryAdminView.js';
 import { AuditComplianceView } from './components/governance/AuditComplianceView.js';
 import { IdeateCanvasView } from './components/ideate/IdeateCanvasView.js';
@@ -636,7 +637,7 @@ export const App: React.FC = () => {
           {/* 5. ASSETS & CMDB MODULE                                                   */}
           {/* ========================================================================= */}
           {activeDestination === 'asset-inventory' && (
-            <CMDBExplorerView mode="assets" />
+            <CMDBAssetInventoryView />
           )}
 
           {activeDestination === 'discovery-sources' && <DiscoveryAdminView mode="sources" onNavigateToRuns={(connectorId) => { handleNavigate('discovery-runs'); window.setTimeout(() => window.dispatchEvent(new CustomEvent('aegis:discovery-select-connector', { detail: connectorId })), 0); }} />}
