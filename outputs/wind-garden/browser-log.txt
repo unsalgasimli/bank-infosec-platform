@@ -1,0 +1,181 @@
+{
+  "viewports": [
+    {
+      "width": 2560,
+      "height": 1440,
+      "overflow": false,
+      "submit": {
+        "x": 1811,
+        "y": 930.953125,
+        "width": 380,
+        "height": 52,
+        "top": 930.953125,
+        "right": 2191,
+        "bottom": 982.953125,
+        "left": 1811
+      },
+      "canvas": {
+        "x": 135.703125,
+        "y": 47,
+        "width": 1713.296875,
+        "height": 1118,
+        "top": 47,
+        "right": 1849,
+        "bottom": 1165,
+        "left": 135.703125
+      }
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "overflow": false,
+      "submit": {
+        "x": 1390.171875,
+        "y": 750.953125,
+        "width": 380,
+        "height": 52,
+        "top": 750.953125,
+        "right": 1770.171875,
+        "bottom": 802.953125,
+        "left": 1390.171875
+      },
+      "canvas": {
+        "x": 49.484375,
+        "y": 65,
+        "width": 1353.09375,
+        "height": 808.390625,
+        "top": 65,
+        "right": 1402.578125,
+        "bottom": 873.390625,
+        "left": 49.484375
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "overflow": false,
+      "submit": {
+        "x": 1042.875,
+        "y": 645.796875,
+        "width": 333.765625,
+        "height": 52,
+        "top": 645.796875,
+        "right": 1376.640625,
+        "bottom": 697.796875,
+        "left": 1042.875
+      },
+      "canvas": {
+        "x": 37.125,
+        "y": 74,
+        "width": 1014.796875,
+        "height": 623.1875,
+        "top": 74,
+        "right": 1051.921875,
+        "bottom": 697.1875,
+        "left": 37.125
+      }
+    },
+    {
+      "width": 1280,
+      "height": 720,
+      "overflow": false,
+      "submit": {
+        "x": 905.640625,
+        "y": 553.71875,
+        "width": 318.046875,
+        "height": 52,
+        "top": 553.71875,
+        "right": 1223.6875,
+        "bottom": 605.71875,
+        "left": 905.640625
+      },
+      "canvas": {
+        "x": 33.640625,
+        "y": 45.609375,
+        "width": 877.15625,
+        "height": 597.546875,
+        "top": 45.609375,
+        "right": 910.796875,
+        "bottom": 643.15625,
+        "left": 33.640625
+      }
+    },
+    {
+      "width": 820,
+      "height": 1180,
+      "overflow": false,
+      "submit": {
+        "x": 190,
+        "y": 498.734375,
+        "width": 440,
+        "height": 52,
+        "top": 498.734375,
+        "right": 630,
+        "bottom": 550.734375,
+        "left": 190
+      },
+      "canvas": {
+        "x": 1,
+        "y": 712.671875,
+        "width": 818,
+        "height": 380,
+        "top": 712.671875,
+        "right": 819,
+        "bottom": 1092.671875,
+        "left": 1
+      }
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "overflow": false,
+      "submit": {
+        "x": 25,
+        "y": 549.6875,
+        "width": 340,
+        "height": 52,
+        "top": 549.6875,
+        "right": 365,
+        "bottom": 601.6875,
+        "left": 25
+      },
+      "canvas": {
+        "x": 1,
+        "y": 763.625,
+        "width": 388,
+        "height": 380,
+        "top": 763.625,
+        "right": 389,
+        "bottom": 1143.625,
+        "left": 1
+      }
+    }
+  ],
+  "checks": [
+    "Optional puzzle completed through accessible controls; all three dials aligned",
+    "Constrained pointer drag completed",
+    "Keyboard text input and password visibility preserved",
+    "Pause stops WebGL draw calls",
+    "Reduced motion stops continuous WebGL draws",
+    "Malformed upstream authentication response shows an accessible error and permits retry",
+    "Presentation-only fixture: success transition completes and unmount stops scene draws (not live authentication proof)",
+    "Unavailable WebGL: local illustration and fully usable form"
+  ],
+  "errors": [
+    "Cannot read properties of undefined (reading 'split')"
+  ],
+  "performance": {
+    "frameIntervals": {
+      "meanMs": 52.37899159663864,
+      "p95Ms": 83.29999999999563
+    },
+    "drawCallsDuringSample": 4806,
+    "automaticallyPaused": true
+  },
+  "liveAuthentication": {
+    "status": null,
+    "success": false,
+    "message": "Not retried: prior live attempts recorded separately"
+  },
+  "failure": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: 'Catch the wind', exact: true })\u001b[22m\n\u001b[2m    - locator resolved to <button type=\"button\" aria-expanded=\"false\" class=\"garden-explore\" aria-controls=\"garden-puzzle\">…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - element is outside of the viewport\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - element is outside of the viewport\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    56 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is visible, enabled and stable\u001b[22m\n\u001b[2m       - scrolling into view if needed\u001b[22m\n\u001b[2m       - done scrolling\u001b[22m\n\u001b[2m       - element is outside of the viewport\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n\n    at C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\scratch\\wind-garden-qa.mjs:109:73"
+}

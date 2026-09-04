@@ -1,0 +1,542 @@
+/* ==========================================================================
+   ALIVE MODE EXPERIENCE TOKENS & KINETIC MICRO-FOUNDATION
+   Matte Near-Blacks with High-Contrast Electric Cyber Mint Accents
+   Scoped strictly under [data-ui-experience="alive"]
+   ========================================================================== */
+
+[data-ui-experience="alive"] {
+  color-scheme: dark;
+
+  /* Kinetic Motion Variables */
+  --alive-motion-instant: 120ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  --alive-motion-ui: 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  --alive-motion-structural: 280ms cubic-bezier(0.16, 1, 0.3, 1);
+  --alive-glow-brand: 0 0 20px -2px rgba(0, 245, 118, 0.35);
+
+  /* Matte Near-Black Surface Scale (Elevation via Luminance Hierarchy) */
+  --surface-page: #09090B;        /* True matte near-black canvas */
+  --surface-page-muted: #0D0D10;  /* Recessed workspace well */
+  --surface-panel: #121215;       /* Primary card, header & sidebar matte panel */
+  --surface-subtle: #17171C;      /* Input fields, nested cards & chips */
+  --surface-hover: #202027;       /* Tactile hover elevation */
+  --surface-selected: #262632;    /* Active destination / selection */
+  --surface-neutral-soft: #141418;
+
+  /* High-Contrast Neutral Typography (WCAG AAA & AA Compliant) */
+  --text-primary: #EDEDEF;        /* Crisp matte off-white (16.2:1 contrast) */
+  --text-strong: #F4F4F5;         /* High-contrast subheadings */
+  --text-strongest: #FFFFFF;      /* Titanium white headings (19.8:1 contrast) */
+  --text-secondary: #A1A1AA;      /* Captions, secondary labels (6.2:1 contrast) */
+  --text-muted: #71717A;          /* Timestamps, shortcuts, non-actionable labels */
+  --text-placeholder: #52525B;    /* Form placeholders */
+  --text-inverse: #09090B;        /* Dark text for vibrant inverted buttons */
+
+  /* Hairline Matte Precision Borders */
+  --border-subtle: #1C1C22;       /* Subtle row dividers, table gridlines */
+  --border-default: #272731;      /* Crisp matte card boundaries */
+  --border-strong: #3B3B48;       /* Active card edges, popovers & dialog outlines */
+  --border-focus: #00F576;        /* High-visibility electric cyber mint focus ring */
+
+  /* Contrasting Luminous Accent & Status Indicators */
+  --color-brand-500: #00F576;     /* Electric Cyber Mint signature */
+  --color-brand-600: #00DC6A;
+  --color-brand-700: #00B85C;
+  --color-brand-accent: #00F576;
+  --color-brand-ink: #FFFFFF;
+  --status-success-bg: rgba(0, 245, 118, 0.12);
+  --status-success-text: #00F576;
+  --status-warning-bg: rgba(251, 191, 36, 0.12);
+  --status-warning-text: #FBBF24;
+  --status-danger-bg: rgba(255, 83, 83, 0.14);
+  --status-danger-text: #FF5353;
+  --status-info-bg: rgba(56, 189, 248, 0.12);
+  --status-info-text: #38BDF8;
+
+  /* Jira/Wrike Primitives Remapped for Matte Near-Black Alive Workspace */
+  --color-jira-surface: #121215;
+  --color-jira-surface-muted: #17171C;
+  --color-jira-text: #EDEDEF;
+  --color-jira-text-strong: #FFFFFF;
+  --color-jira-muted: #A1A1AA;
+  --color-jira-muted-strong: #D4D4D8;
+  --color-jira-muted-light: #71717A;
+  --color-jira-border: #272731;
+  --color-jira-border-strong: #3B3B48;
+  --color-jira-hover: #202027;
+  --color-jira-todo-bg: #262632;
+  --color-jira-todo-text: #38BDF8;
+  --color-jira-blue-50: #101C2E;
+  --color-jira-blue-600: #38BDF8;
+  --color-jira-review-bg: #241432;
+  --color-jira-review-text: #C084FC;
+  --color-jira-blocked-bg: #2E1014;
+  --color-jira-blocked-text: #FCA5A5;
+  --color-jira-done-bg: #092615;
+  --color-jira-done-text: #00F576;
+  --color-canvas: #09090B;
+  --surface-project-canvas: #09090B;
+  --color-content-strong: #EDEDEF;
+  --color-content-alt: #A1A1AA;
+  --color-table-border: #272731;
+  --border-project: #272731;
+  --border-project-strong: #3B3B48;
+  --color-neutral-0: #121215;
+  --color-neutral-50: #121215;
+  --color-neutral-100: #17171C;
+  --color-neutral-150: #09090B;
+  --color-neutral-200: #202027;
+  --color-neutral-250: #262632;
+  --color-neutral-300: #272731;
+  --color-neutral-350: #3B3B48;
+  --color-neutral-400: #71717A;
+  --color-neutral-500: #A1A1AA;
+  --color-neutral-600: #D4D4D8;
+  --color-neutral-700: #E4E4E7;
+  --color-neutral-900: #FAFAFA;
+  --color-neutral-950: #FFFFFF;
+  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 20px -2px rgba(0, 0, 0, 0.6);
+}
+
+/* Reduced motion accessibility */
+@media (prefers-reduced-motion: reduce) {
+  [data-ui-experience="alive"] {
+    --alive-motion-instant: 0.01ms;
+    --alive-motion-ui: 0.01ms;
+    --alive-motion-structural: 0.01ms;
+  }
+}
+
+/* Kinetic Interactive Elements */
+[data-ui-experience="alive"] .alive-workspace-canvas {
+  background: radial-gradient(ellipse at 50% -15%, rgba(32, 32, 40, 0.5) 0%, rgba(9, 9, 11, 1) 100%);
+  transition: background var(--alive-motion-structural);
+}
+
+[data-ui-experience="alive"] .alive-card {
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: 0.75rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 18px -2px rgba(0, 0, 0, 0.5);
+  transition: transform var(--alive-motion-instant), border-color var(--alive-motion-instant), box-shadow var(--alive-motion-instant);
+}
+
+[data-ui-experience="alive"] .alive-card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 6px 24px -2px rgba(0, 0, 0, 0.65);
+}
+
+[data-ui-experience="alive"] .alive-interactive-row {
+  transition: background var(--alive-motion-ui), transform var(--alive-motion-instant), border-color var(--alive-motion-ui);
+}
+
+[data-ui-experience="alive"] .alive-interactive-row:hover {
+  background: var(--surface-hover);
+}
+
+[data-ui-experience="alive"] .alive-interactive-row:active {
+  transform: scale(0.995);
+}
+
+[data-ui-experience="alive"] .alive-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: transform var(--alive-motion-instant), opacity var(--alive-motion-instant);
+}
+
+/* High-Contrast Luminous Primary CTA (WCAG AAA contrast 11.5:1 on vibrant cyber mint) */
+[data-ui-experience="alive"] .alive-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: linear-gradient(135deg, #00F576 0%, #00DC6A 100%);
+  color: #041407;
+  font-weight: 700;
+  font-size: 0.8125rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(0, 245, 118, 0.4);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 16px -2px rgba(0, 245, 118, 0.4);
+  transition: transform var(--alive-motion-instant), box-shadow var(--alive-motion-instant), filter var(--alive-motion-instant);
+}
+
+[data-ui-experience="alive"] .alive-btn-primary:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45), 0 0 22px 0px rgba(0, 245, 118, 0.55);
+}
+
+[data-ui-experience="alive"] .alive-btn-primary:active {
+  transform: scale(0.97);
+}
+
+[data-ui-experience="alive"] .alive-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--border-default);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: background var(--alive-motion-instant), border-color var(--alive-motion-instant), transform var(--alive-motion-instant);
+}
+
+[data-ui-experience="alive"] .alive-btn-secondary:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+  color: var(--text-strongest);
+}
+
+[data-ui-experience="alive"] .alive-btn-secondary:active {
+  transform: scale(0.97);
+}
+
+[data-ui-experience="alive"] .alive-inspector-panel {
+  box-shadow: -12px 0 40px -5px rgba(0, 0, 0, 0.7);
+  border-left: 1px solid var(--border-default);
+  transition: transform var(--alive-motion-structural), opacity var(--alive-motion-structural);
+}
+
+[data-ui-experience="alive"] .alive-dock {
+  background: rgba(18, 18, 21, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 16px 36px -4px rgba(0, 0, 0, 0.75);
+  border-radius: 9999px;
+}
+
+[data-ui-experience="alive"] .alive-status-pulse {
+  position: relative;
+}
+
+[data-ui-experience="alive"] .alive-status-pulse::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 9999px;
+  background: currentColor;
+  opacity: 0.45;
+  animation: alive-pulse-ring 2.4s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+@keyframes alive-pulse-ring {
+  0% { transform: scale(0.85); opacity: 0.6; }
+  50% { transform: scale(1.6); opacity: 0; }
+  100% { transform: scale(0.85); opacity: 0; }
+}
+
+[data-ui-experience="alive"] .alive-command-item {
+  transition: background var(--alive-motion-instant), transform var(--alive-motion-instant);
+}
+
+[data-ui-experience="alive"] .alive-command-item:hover,
+[data-ui-experience="alive"] .alive-command-item[data-selected="true"] {
+  background: var(--surface-hover);
+}
+
+/* ==========================================================================
+   ALIVE MODE ADAPTATIONS FOR CORE PLATFORM COMPONENTS
+   ========================================================================== */
+
+[data-ui-experience="alive"] .wrike-card {
+  background-color: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 18px -2px rgba(0, 0, 0, 0.5);
+  transition: border-color var(--alive-motion-ui), box-shadow var(--alive-motion-ui);
+}
+
+[data-ui-experience="alive"] .jira-input,
+[data-ui-experience="alive"] select.jira-input,
+[data-ui-experience="alive"] .wrike-input,
+[data-ui-experience="alive"] select.wrike-select {
+  background-color: var(--surface-subtle);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  transition: border-color var(--alive-motion-instant), background-color var(--alive-motion-instant), box-shadow var(--alive-motion-instant);
+}
+
+[data-ui-experience="alive"] .jira-input:hover,
+[data-ui-experience="alive"] select.jira-input:hover,
+[data-ui-experience="alive"] .wrike-input:hover,
+[data-ui-experience="alive"] select.wrike-select:hover {
+  border-color: var(--border-strong);
+  background-color: var(--surface-hover);
+}
+
+[data-ui-experience="alive"] .jira-input:focus,
+[data-ui-experience="alive"] .jira-input:focus-visible,
+[data-ui-experience="alive"] select.jira-input:focus,
+[data-ui-experience="alive"] select.jira-input:focus-visible,
+[data-ui-experience="alive"] .wrike-input:focus,
+[data-ui-experience="alive"] .wrike-input:focus-visible {
+  outline: none;
+  background-color: var(--surface-panel);
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px rgba(0, 245, 118, 0.35);
+}
+
+[data-ui-experience="alive"] .jira-input::placeholder,
+[data-ui-experience="alive"] .wrike-input::placeholder {
+  color: var(--text-placeholder);
+}
+
+[data-ui-experience="alive"] select option {
+  background-color: var(--surface-panel);
+  color: var(--text-primary);
+}
+
+[data-ui-experience="alive"] .jira-btn-subtle {
+  background-color: var(--surface-subtle);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: background-color var(--alive-motion-instant), color var(--alive-motion-instant), border-color var(--alive-motion-instant), transform var(--alive-motion-instant);
+}
+
+[data-ui-experience="alive"] .jira-btn-subtle:hover {
+  background-color: var(--surface-hover);
+  color: var(--text-strongest);
+  border-color: var(--border-strong);
+  transform: translateY(-0.5px);
+}
+
+[data-ui-experience="alive"] .jira-btn-subtle:active {
+  transform: scale(0.97);
+}
+
+[data-ui-experience="alive"] .jira-btn-primary {
+  background: linear-gradient(135deg, #00F576 0%, #00DC6A 100%);
+  color: #041407;
+  font-weight: 700;
+  border: 1px solid rgba(0, 245, 118, 0.4);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 16px -2px rgba(0, 245, 118, 0.4);
+  transition: transform var(--alive-motion-instant), filter var(--alive-motion-instant);
+}
+
+[data-ui-experience="alive"] .jira-btn-primary:hover {
+  filter: brightness(1.06);
+  transform: translateY(-0.5px);
+}
+
+[data-ui-experience="alive"] .jira-btn-primary:active {
+  transform: scale(0.97);
+}
+
+[data-ui-experience="alive"] .jira-table th,
+[data-ui-experience="alive"] .wrike-table th {
+  background-color: var(--surface-subtle);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-default);
+}
+
+[data-ui-experience="alive"] .jira-table td,
+[data-ui-experience="alive"] .wrike-table td {
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+[data-ui-experience="alive"] .jira-table tbody tr,
+[data-ui-experience="alive"] .wrike-table tbody tr {
+  transition: background-color var(--alive-motion-instant);
+}
+
+[data-ui-experience="alive"] .jira-table tbody tr:hover,
+[data-ui-experience="alive"] .wrike-table tbody tr:hover {
+  background-color: var(--surface-hover);
+}
+
+[data-ui-experience="alive"] .wrike-dropdown-menu {
+  background-color: var(--surface-panel);
+  border: 1px solid var(--border-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 16px 36px -4px rgba(0, 0, 0, 0.75);
+}
+
+/* ========================================================================= */
+/* ALIVE MODALS, DIALOGS, DRAWERS, POPUPS & DROPDOWNS                        */
+/* ========================================================================= */
+
+/* Backdrop overlay with matte dark blur */
+[data-ui-experience="alive"] .fixed.inset-0.z-dsDialog,
+[data-ui-experience="alive"] .fixed.inset-0.z-modal,
+[data-ui-experience="alive"] .fixed.inset-0[role="dialog"],
+[data-ui-experience="alive"] .fixed.inset-0 > [class*="bg-slate-950"],
+[data-ui-experience="alive"] .fixed.inset-0 > [class*="bg-black"],
+[data-ui-experience="alive"] .fixed.inset-0 > [class*="bg-slate-900"] {
+  backdrop-filter: blur(8px) saturate(120%);
+}
+
+/* Modal Dialog containers */
+[data-ui-experience="alive"] [role="dialog"],
+[data-ui-experience="alive"] [role="alertdialog"],
+[data-ui-experience="alive"] [aria-modal="true"],
+[data-ui-experience="alive"] .fixed.inset-0 section[role="dialog"],
+[data-ui-experience="alive"] .fixed.inset-0 form[role="dialog"],
+[data-ui-experience="alive"] .fixed.inset-0 > div > section,
+[data-ui-experience="alive"] .fixed.inset-0 > div > form {
+  background-color: var(--surface-panel) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 28px 80px -12px rgba(0, 0, 0, 0.92), 0 0 0 1px var(--border-default) !important;
+}
+
+/* Modal Header and Footer strips */
+[data-ui-experience="alive"] [role="dialog"] header,
+[data-ui-experience="alive"] [role="dialog"] footer,
+[data-ui-experience="alive"] .fixed.inset-0 header,
+[data-ui-experience="alive"] .fixed.inset-0 footer {
+  background-color: var(--surface-panel) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Neutralize hardcoded white backgrounds inside modals and portaled overlays */
+[data-ui-experience="alive"] [role="dialog"] .bg-white,
+[data-ui-experience="alive"] [role="dialog"] .bg-white\/95,
+[data-ui-experience="alive"] [role="dialog"] .bg-white\/90,
+[data-ui-experience="alive"] [role="dialog"] .bg-white\/80,
+[data-ui-experience="alive"] [role="dialog"] .bg-white\/70,
+[data-ui-experience="alive"] [aria-modal="true"] .bg-white,
+[data-ui-experience="alive"] [aria-modal="true"] .bg-white\/95,
+[data-ui-experience="alive"] [aria-modal="true"] .bg-white\/90,
+[data-ui-experience="alive"] [aria-modal="true"] .bg-white\/80,
+[data-ui-experience="alive"] [aria-modal="true"] .bg-white\/70,
+[data-ui-experience="alive"] .fixed.inset-0 .bg-white,
+[data-ui-experience="alive"] .fixed.inset-0 .bg-white\/95,
+[data-ui-experience="alive"] .fixed.inset-0 .bg-white\/90,
+[data-ui-experience="alive"] .fixed.inset-0 .bg-white\/80,
+[data-ui-experience="alive"] .fixed.inset-0 .bg-white\/70,
+[data-ui-experience="alive"] aside.bg-white,
+[data-ui-experience="alive"] section.bg-white {
+  background-color: var(--surface-panel) !important;
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+/* Neutralize hardcoded slate-50 / light backgrounds to matte subtle wells */
+[data-ui-experience="alive"] [role="dialog"] .bg-slate-50,
+[data-ui-experience="alive"] [role="dialog"] .bg-slate-50\/70,
+[data-ui-experience="alive"] [role="dialog"] .bg-slate-50\/55,
+[data-ui-experience="alive"] [role="dialog"] .bg-slate-100,
+[data-ui-experience="alive"] [aria-modal="true"] .bg-slate-50,
+[data-ui-experience="alive"] [aria-modal="true"] .bg-slate-50\/70,
+[data-ui-experience="alive"] [aria-modal="true"] .bg-slate-50\/55,
+[data-ui-experience="alive"] [aria-modal="true"] .bg-slate-100,
+[data-ui-experience="alive"] .fixed.inset-0 .bg-slate-50,
+[data-ui-experience="alive"] .fixed.inset-0 .bg-slate-50\/70,
+[data-ui-experience="alive"] .fixed.inset-0 .bg-slate-50\/55,
+[data-ui-experience="alive"] .fixed.inset-0 .bg-slate-100 {
+  background-color: var(--surface-subtle) !important;
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+/* Ensure text elements in modals have high-contrast visibility */
+[data-ui-experience="alive"] [role="dialog"] .text-slate-900,
+[data-ui-experience="alive"] [role="dialog"] .text-slate-800,
+[data-ui-experience="alive"] [role="dialog"] .text-slate-700,
+[data-ui-experience="alive"] [aria-modal="true"] .text-slate-900,
+[data-ui-experience="alive"] [aria-modal="true"] .text-slate-800,
+[data-ui-experience="alive"] [aria-modal="true"] .text-slate-700,
+[data-ui-experience="alive"] .fixed.inset-0 .text-slate-900,
+[data-ui-experience="alive"] .fixed.inset-0 .text-slate-800,
+[data-ui-experience="alive"] .fixed.inset-0 .text-slate-700 {
+  color: var(--text-strongest) !important;
+}
+
+[data-ui-experience="alive"] [role="dialog"] .text-slate-600,
+[data-ui-experience="alive"] [role="dialog"] .text-slate-500,
+[data-ui-experience="alive"] [aria-modal="true"] .text-slate-600,
+[data-ui-experience="alive"] [aria-modal="true"] .text-slate-500,
+[data-ui-experience="alive"] .fixed.inset-0 .text-slate-600,
+[data-ui-experience="alive"] .fixed.inset-0 .text-slate-500 {
+  color: var(--text-muted) !important;
+}
+
+[data-ui-experience="alive"] [role="dialog"] .text-slate-400,
+[data-ui-experience="alive"] [aria-modal="true"] .text-slate-400,
+[data-ui-experience="alive"] .fixed.inset-0 .text-slate-400 {
+  color: var(--text-subtle) !important;
+}
+
+[data-ui-experience="alive"] [role="dialog"] .border-slate-200,
+[data-ui-experience="alive"] [role="dialog"] .border-slate-300,
+[data-ui-experience="alive"] [aria-modal="true"] .border-slate-200,
+[data-ui-experience="alive"] [aria-modal="true"] .border-slate-300,
+[data-ui-experience="alive"] .fixed.inset-0 .border-slate-200,
+[data-ui-experience="alive"] .fixed.inset-0 .border-slate-300 {
+  border-color: var(--border-default) !important;
+}
+
+/* Modal Inputs & Textareas */
+[data-ui-experience="alive"] [role="dialog"] input:not([type="checkbox"]):not([type="radio"]),
+[data-ui-experience="alive"] [role="dialog"] textarea,
+[data-ui-experience="alive"] [aria-modal="true"] input:not([type="checkbox"]):not([type="radio"]),
+[data-ui-experience="alive"] [aria-modal="true"] textarea,
+[data-ui-experience="alive"] .fixed.inset-0 input:not([type="checkbox"]):not([type="radio"]),
+[data-ui-experience="alive"] .fixed.inset-0 textarea {
+  background-color: var(--surface-subtle) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-strongest) !important;
+}
+
+[data-ui-experience="alive"] [role="dialog"] input:not([type="checkbox"]):not([type="radio"]):focus,
+[data-ui-experience="alive"] [role="dialog"] textarea:focus,
+[data-ui-experience="alive"] [aria-modal="true"] input:not([type="checkbox"]):not([type="radio"]):focus,
+[data-ui-experience="alive"] [aria-modal="true"] textarea:focus,
+[data-ui-experience="alive"] .fixed.inset-0 input:not([type="checkbox"]):not([type="radio"]):focus,
+[data-ui-experience="alive"] .fixed.inset-0 textarea:focus {
+  border-color: var(--color-brand-500) !important;
+  box-shadow: 0 0 0 3px rgba(0, 245, 118, 0.15) !important;
+}
+
+/* Floating Dropdown Menus, Popovers, & Listboxes */
+[data-ui-experience="alive"] [role="listbox"],
+[data-ui-experience="alive"] [role="menu"],
+[data-ui-experience="alive"] [role="combobox"] + div[role="listbox"],
+[data-ui-experience="alive"] .z-dsDropdown,
+[data-ui-experience="alive"] .z-dropdown {
+  background-color: var(--surface-panel) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 20px 50px -6px rgba(0, 0, 0, 0.88), 0 0 0 1px var(--border-default) !important;
+}
+
+[data-ui-experience="alive"] [role="listbox"] [role="option"],
+[data-ui-experience="alive"] [role="menu"] [role="menuitem"] {
+  color: var(--text-primary) !important;
+}
+
+[data-ui-experience="alive"] [role="listbox"] [role="option"]:hover,
+[data-ui-experience="alive"] [role="listbox"] [role="option"][aria-selected="true"],
+[data-ui-experience="alive"] [role="menu"] [role="menuitem"]:hover {
+  background-color: var(--surface-hover) !important;
+  color: var(--text-strongest) !important;
+}
+
+/* Side Drawers (e.g., CMDB Asset Inspector) */
+[data-ui-experience="alive"] aside[role="dialog"],
+[data-ui-experience="alive"] .fixed.inset-0 aside,
+[data-ui-experience="alive"] aside.bg-white {
+  background-color: var(--surface-panel) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+  box-shadow: -16px 0 60px -8px rgba(0, 0, 0, 0.9) !important;
+}
+
+[data-ui-experience="alive"] aside header,
+[data-ui-experience="alive"] aside nav {
+  background-color: var(--surface-panel) !important;
+  border-color: var(--border-default) !important;
+}

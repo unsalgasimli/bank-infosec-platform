@@ -1,216 +1,287 @@
-import React, { useState } from 'react';
-import { useAuth } from '../../context/AuthContext.js';
-import { useI18n } from '../../context/I18nContext.js';
+import React, { useEffect, useRef, useState } from "react";
 import {
-  Activity,
-  AlertCircle,
   ArrowRight,
-  CheckCircle2,
-  Database,
   Eye,
   EyeOff,
-  FileCheck2,
-  Lock,
-  RefreshCw,
-  Server,
+  LockKeyhole,
+  LoaderCircle,
   ShieldCheck,
-  Users,
-} from 'lucide-react';
+} from "lucide-react";
+import { useAuth } from "../../context/AuthContext.js";
+import { useI18n } from "../../context/I18nContext.js";
+import { WindGarden } from "./garden/WindGarden.js";
+import type { GardenPhase } from "./garden/garden-state.js";
+import "./garden/wind-garden.css";
 
 interface BankAuthPortalProps {
   onLoginSuccess?: () => void;
+  onAuthenticationStart?: () => void;
+  onAuthenticationFailure?: () => void;
 }
 
-const readinessRows = [
-  { label: 'Directory services', value: 'Online', icon: Server },
-  { label: 'Identity perimeter', value: 'Synchronized', icon: Database },
-  { label: 'Append-only evidence log', value: 'Protected', icon: FileCheck2 },
-];
-
-export const BankAuthPortal: React.FC<BankAuthPortalProps> = ({ onLoginSuccess }) => {
-  const { ldapLogin } = useAuth();
+export const BankAuthPortal: React.FC<BankAuthPortalProps> = ({
+  onLoginSuccess,
+  onAuthenticationStart,
+  onAuthenticationFailure,
+}) => {
+  const { ldapLogin, currentUser } = useAuth();
   const { language, setLanguage, t } = useI18n();
-  const [usernameOrEmail, setUsernameOrEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [usernameOrEmail, setUsernameOrEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [reducedMotion, setReducedMotion] = useState(
+    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  const mounted = useRef(true);
+  const successCallback = useRef(onLoginSuccess);
+  successCallback.current = onLoginSuccess;
+  const copy = (en: string, az: string) => (language === "az" ? az : en);
+  const phase: GardenPhase = currentUser
+    ? "entering"
+    : isLoading
+      ? "pending"
+      : errorMessage
+        ? "error"
+        : "idle";
+
+  useEffect(() => {
+    mounted.current = true;
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(media.matches);
+    media.addEventListener("change", update);
+    return () => {
+      mounted.current = false;
+      media.removeEventListener("change", update);
+    };
+  }, []);
+  useEffect(() => {
+    if (!currentUser) return;
+    setPassword("");
+    // The identity was already validated by AuthContext. Only presentation waits.
+    const timer = window.setTimeout(
+      () => successCallback.current?.(),
+      reducedMotion ? 0 : 800,
+    );
+    return () => window.clearTimeout(timer);
+  }, [currentUser, reducedMotion]);
 
   const handleLDAPSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isLoading || currentUser) return;
     const username = usernameOrEmail.trim();
     if (!username) {
-      setErrorMessage(t('Username or corporate email is required.'));
+      setErrorMessage(t("Username or corporate email is required."));
       return;
     }
-
     setIsLoading(true);
     setErrorMessage(null);
-    setSuccessMessage(null);
+    onAuthenticationStart?.();
     try {
-      const result = await ldapLogin({ usernameOrEmail: username, password: password.trim() });
+      // Preserve the existing payload and credential normalization contract.
+      const result = await ldapLogin({
+        usernameOrEmail: username,
+        password: password.trim(),
+      });
+      if (!mounted.current) return;
       if (!result.success) {
-        setErrorMessage(result.message || t('LDAP authentication failed.'));
-        return;
+        setErrorMessage(result.message || t("LDAP authentication failed."));
+        setIsLoading(false);
+        onAuthenticationFailure?.();
       }
-
-      setPassword('');
-      setSuccessMessage(t('Authenticated. Entering system...'));
-      window.setTimeout(() => onLoginSuccess?.(), 350);
-    } finally {
-      setIsLoading(false);
+    } catch {
+      if (mounted.current) {
+        setErrorMessage(
+          copy(
+            "Unable to connect. Please try again.",
+            "Bağlantı qurulmadı. Yenidən cəhd edin.",
+          ),
+        );
+        setIsLoading(false);
+        onAuthenticationFailure?.();
+      }
     }
   };
 
   return (
-    <main className="auth-shell" aria-labelledby="auth-title" data-i18n-skip>
-      <section className="auth-brief" aria-label={t('Security Operations Workspace')}>
-        <div className="auth-brief__inner">
-          <div className="auth-brand-lockup">
-            <div className="auth-brand-mark" aria-hidden="true">A</div>
-            <div>
-              <p className="auth-brand-name">Apex Bank GRC</p>
-              <p className="auth-brand-caption">{t('Enterprise security operations')}</p>
-            </div>
+    <main
+      className={`garden-login ${phase === "entering" ? "is-entering" : ""}`}
+      data-i18n-skip
+      data-motion={reducedMotion ? "reduced" : "full"}
+    >
+      <a className="garden-skip" href="#garden-username">
+        {copy("Skip to sign in", "Girişə keç")}
+      </a>
+      <header className="garden-header">
+        <a
+          className="garden-brand"
+          href="#garden-username"
+          aria-label="Apex Bank GRC"
+        >
+          <span className="garden-brand__symbol" aria-hidden="true">
+            a<span>·</span>
+          </span>
+          <span>
+            APEX<span>BANK GRC</span>
+          </span>
+        </a>
+        <span className="garden-header__note">
+          {copy(
+            "A place for everything that matters.",
+            "Önəmli olan hər şey üçün bir məkan.",
+          )}
+        </span>
+        <div
+          className="garden-language"
+          role="group"
+          aria-label={t("Switch language")}
+        >
+          <button
+            type="button"
+            onClick={() => setLanguage("az")}
+            aria-pressed={language === "az"}
+          >
+            AZ
+          </button>
+          <span>/</span>
+          <button
+            type="button"
+            onClick={() => setLanguage("en")}
+            aria-pressed={language === "en"}
+          >
+            EN
+          </button>
+        </div>
+      </header>
+      <div className="garden-layout">
+        <WindGarden
+          language={language}
+          phase={phase}
+          reducedMotion={reducedMotion}
+        />
+        <section className="garden-access" aria-labelledby="garden-auth-title">
+          <div className="garden-access__rule">
+            <span>{copy("YOUR WORKSPACE", "SİZİN İŞ SAHƏNİZ")}</span>
+            <ShieldCheck size={18} aria-hidden="true" />
           </div>
-
-          <div className="auth-brief__content">
-            <div className="auth-kicker">
-              <span className="auth-kicker__dot" />
-              {t('Security Operations Workspace')}
-            </div>
-            <h1>{t('Control room access')}</h1>
-            <p className="auth-brief__description">
-              {t('A single operating surface for security work, evidence, and accountable decisions.')}
+          <div className="garden-access__content">
+            <p className="garden-eyebrow">
+              {copy("GOOD TO HAVE YOU HERE", "SİZİ BURADA GÖRMƏK XOŞDUR")}
             </p>
-
-            <div className="auth-signal-card">
-              <div className="auth-signal-card__header">
-                <div>
-                  <p className="auth-micro-label">{t('Identity perimeter')}</p>
-                  <p className="auth-signal-card__title">{t('Workspace readiness')}</p>
-                </div>
-                <span className="auth-status-pill"><Activity className="h-3.5 w-3.5" /> {t('Operational')}</span>
-              </div>
-              <div className="auth-signal-graph" aria-hidden="true">
-                <div className="auth-graph-grid" />
-                <svg viewBox="0 0 540 112" preserveAspectRatio="none" role="presentation">
-                  <path d="M0 82H540" className="auth-graph-axis" />
-                  <path d="M0 76 C33 76, 39 51, 74 57 S116 82, 151 66 S188 24, 224 45 S269 87, 303 68 S347 51, 377 58 S416 85, 446 42 S493 31, 540 19" className="auth-graph-line" />
-                  <circle cx="540" cy="19" r="4" className="auth-graph-point" />
-                </svg>
-                <span className="auth-graph-label auth-graph-label--left">{t('Authentication path')} / 01</span>
-                <span className="auth-graph-label auth-graph-label--right">{t('Verified')}</span>
-              </div>
-              <div className="auth-signal-card__footer">
-                <span>{t('Live directory boundary')}</span>
-                <span className="auth-mono">LDAPS / TIER 1</span>
-              </div>
-            </div>
-
-            <div className="auth-readiness-list">
-              {readinessRows.map(({ label, value, icon: Icon }) => (
-                <div className="auth-readiness-row" key={label}>
-                  <span className="auth-readiness-row__icon"><Icon className="h-4 w-4" /></span>
-                  <span className="auth-readiness-row__label">{t(label)}</span>
-                  <span className="auth-readiness-row__value"><span />{t(value)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="auth-brief__footer">
-            <span className="auth-mono">APEX / IS-PLATFORM</span>
-            <span>{t('Access is limited to authorized bank personnel.')}</span>
-          </div>
-        </div>
-      </section>
-
-      <section className="auth-form-surface">
-        <div className="auth-form-surface__topbar">
-          <span className="auth-form-index">01 / 02</span>
-          <div className="auth-language-switcher" role="group" aria-label={t('Switch language')}>
-            <button type="button" onClick={() => setLanguage('az')} aria-pressed={language === 'az'}>AZ</button>
-            <button type="button" onClick={() => setLanguage('en')} aria-pressed={language === 'en'}>EN</button>
-          </div>
-        </div>
-
-        <div className="auth-form-content">
-          <div className="auth-form-heading">
-            <div className="auth-form-icon" aria-hidden="true"><ShieldCheck className="h-5 w-5" /></div>
-            <p className="auth-micro-label">{t('Corporate credentials')}</p>
-            <h2 id="auth-title">{t('Enter the security workspace')}</h2>
-            <p>{t('Use your corporate directory credentials.')}</p>
-          </div>
-
-          {errorMessage && (
-            <div className="auth-message auth-message--error" role="alert">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>{errorMessage}</span>
-            </div>
-          )}
-          {successMessage && (
-            <div className="auth-message auth-message--success">
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-              <span>{successMessage}</span>
-            </div>
-          )}
-
-          <form className="auth-form" onSubmit={handleLDAPSubmit}>
-            <label className="auth-field">
-              <span>{t('Username or corporate email')}</span>
-              <div className="auth-input-wrap">
+            <h2 id="garden-auth-title">
+              {copy("Welcome", "Xoş")}
+              <br />
+              <em>{copy("inside.", "gəlmisiniz.")}</em>
+            </h2>
+            <p className="garden-access__intro">
+              {t("Use your corporate directory credentials.")}
+            </p>
+            <form
+              className="garden-form"
+              onSubmit={handleLDAPSubmit}
+              aria-busy={isLoading}
+            >
+              <label htmlFor="garden-username">
+                {t("Username or corporate email")}
+              </label>
+              <input
+                id="garden-username"
+                name="username"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                required
+                value={usernameOrEmail}
+                onChange={(event) => setUsernameOrEmail(event.target.value)}
+                placeholder={copy("your.name@apex.az", "adınız@apex.az")}
+                readOnly={isLoading || !!currentUser}
+                aria-describedby={
+                  errorMessage ? "garden-auth-error" : undefined
+                }
+              />
+              <label
+                className="garden-password-label"
+                htmlFor="garden-password"
+              >
+                <span>{t("Password / Smart Card PIN")}</span>
+                {import.meta.env.DEV && <small>{t("Dev: optional")}</small>}
+              </label>
+              <div className="garden-password">
                 <input
-                  autoComplete="username"
-                  onChange={(event) => setUsernameOrEmail(event.target.value)}
-                  placeholder={t('username or corporate email')}
-                  required
-                  value={usernameOrEmail}
-                />
-                <Users className="auth-input-icon" aria-hidden="true" />
-              </div>
-            </label>
-
-            <label className="auth-field">
-              <span className="auth-field__label-row">
-                <span>{t('Password / Smart Card PIN')}</span>
-                <span className="auth-field__hint">{t('Dev: optional')}</span>
-              </span>
-              <div className="auth-input-wrap">
-                <input
+                  id="garden-password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder={t('Leave blank for dev bypass')}
-                  type={showPassword ? 'text' : 'password'}
                   value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder={copy(
+                    "Enter your password",
+                    "Şifrənizi daxil edin",
+                  )}
+                  readOnly={isLoading || !!currentUser}
+                  aria-describedby={
+                    errorMessage ? "garden-auth-error" : undefined
+                  }
                 />
-                <button aria-label={t('Toggle password visibility')} className="auth-input-action" onClick={() => setShowPassword((shown) => !shown)} type="button">
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((shown) => !shown)}
+                  aria-label={t("Toggle password visibility")}
+                  aria-pressed={showPassword}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
-            </label>
-
-            <button className="auth-submit" disabled={isLoading} type="submit">
-              <span className="auth-submit__label">
-                {isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
-                {isLoading ? t('Authenticating...') : t('Sign In')}
+              {errorMessage && (
+                <p
+                  id="garden-auth-error"
+                  className="garden-auth-error"
+                  role="alert"
+                >
+                  {errorMessage}
+                </p>
+              )}
+              <button
+                className="garden-submit"
+                disabled={isLoading || !!currentUser}
+                type="submit"
+              >
+                <span>
+                  {currentUser
+                    ? copy("Come on in", "Buyurun")
+                    : isLoading
+                      ? t("Authenticating...")
+                      : t("Sign In")}
+                </span>
+                {isLoading && !currentUser ? (
+                  <LoaderCircle
+                    size={19}
+                    className="garden-loading"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <ArrowRight size={20} aria-hidden="true" />
+                )}
+              </button>
+              <span className="garden-auth-status" role="status">
+                {currentUser ? t("Authenticated. Entering system...") : ""}
               </span>
-              {!isLoading && <ArrowRight className="h-4 w-4" />}
-            </button>
-          </form>
-
-          <div className="auth-form-note">
-            <Lock className="h-3.5 w-3.5" />
-            <span>{t('Session securely stored; terminates upon logout.')}</span>
+            </form>
+            <p className="garden-session-note">
+              <LockKeyhole size={13} aria-hidden="true" />
+              {t("Session securely stored; terminates upon logout.")}
+            </p>
           </div>
-        </div>
-
-        <div className="auth-form-surface__footer">
-          <span><span className="auth-live-dot" /> {t('Directory verified')}</span>
-          <span className="auth-mono">{t('Secure session')} / HTTP-ONLY</span>
-        </div>
-      </section>
+          <footer className="garden-access__footer">
+            <span>APEX / IS-PLATFORM</span>
+            <p>{t("Access is limited to authorized bank personnel.")}</p>
+          </footer>
+        </section>
+      </div>
+      <div className="garden-entry" aria-hidden="true">
+        <div />
+      </div>
     </main>
   );
 };

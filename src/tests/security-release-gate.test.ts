@@ -36,10 +36,26 @@ test('high threat requires a current approved exception and never treats a ticke
   assert.equal(accepted.allowed, true);
 });
 
+test('risk acceptance must match architecture independently of threat text version',()=>{
+  const state={...approved,threatModel:{...approved.threatModel,architectureVersion:3},threats:[{id:'th-high',key:'TM-HIGH',inherentScore:12,status:'ACCEPTED',contentVersion:1}],exceptions:[{threatId:'th-high',status:'APPROVED',expiresAt:'2027-01-01T00:00:00.000Z',threatContentVersion:1,architectureVersion:2}]};
+  assert.equal(evaluateSecurityReleaseGate(state,new Date('2026-09-04')).allowed,false);
+  state.exceptions[0].architectureVersion=3;
+  assert.equal(evaluateSecurityReleaseGate(state,new Date('2026-09-04')).securityGate,'CONDITIONAL');
+});
+
 test('a passing result without linked evidence is still release-blocking', () => {
   const result = evaluateSecurityReleaseGate({ ...approved, verifications: [{ controlId: 'ctl-1', result: 'PASS' }] }, new Date('2026-08-27T00:00:00.000Z'));
   assert.equal(result.allowed, false);
   assert.match(result.blockers.join('\n'), /no linked evidence/);
+});
+
+test('risk acceptance for an older threat content version never authorizes changed scenarios',()=>{
+  const state={...approved,threats:[{id:'th-high',key:'TM-HIGH',inherentScore:12,status:'ACCEPTED',contentVersion:2}],exceptions:[{threatId:'th-high',status:'APPROVED',expiresAt:'2027-01-01T00:00:00.000Z',threatContentVersion:1}]};
+  assert.equal(evaluateSecurityReleaseGate(state,new Date('2026-09-04')).allowed,false);
+  state.exceptions[0].threatContentVersion=2;
+  assert.equal(evaluateSecurityReleaseGate(state,new Date('2026-09-04')).securityGate,'CONDITIONAL');
+  state.exceptions.push({threatId:'th-high',status:'APPROVED',expiresAt:'2026-01-01T00:00:00.000Z',threatContentVersion:1});
+  assert.equal(evaluateSecurityReleaseGate(state,new Date('2026-09-04')).securityGate,'CONDITIONAL');
 });
 
 test('the release gate applies the configured severity and approval matrix rather than fixed UI assumptions', () => {
@@ -73,4 +89,16 @@ test('release authorization is tamper-proof, scoped to one model and release, an
   assert.throws(() => verifyReleaseAuthorization(token, { modelId: 'tm-1', releaseId: 'rel-2' }), /does not match/);
   const expired = issueReleaseAuthorization({ modelId: 'tm-1', revisionId: 'rev-1', releaseId: 'rel-1', expiresAt: '2020-01-01T00:00:00.000Z' });
   assert.throws(() => verifyReleaseAuthorization(expired, { modelId: 'tm-1', releaseId: 'rel-1' }), /expired/);
+});
+
+test('synchronous workflow does not fabricate successful production deployment from a signed token', () => {
+  const token = issueReleaseAuthorization({ modelId:'tm-1',revisionId:'rev-1',releaseId:'rel-1',expiresAt:new Date(Date.now()+60000).toISOString() });
+  assert.throws(() => (WorkflowRuntimeService as any).runGovernedAction('DEPLOY', { id:'wf',context:{environment:'PRODUCTION',threatModelId:'tm-1',releaseId:'rel-1',securityReleaseAuthorization:token} }, {id:'deploy',action:{actionKey:'DEPLOY'}}, {attemptCount:1}), /real deployment adapter/);
+});
+
+test('one implementation covers multiple threats only with verification of its exact current scope',()=>{
+  const state={...approved,threatModel:{...approved.threatModel,screeningComplete:true},threats:[{id:'a',key:'A',inherentScore:4,residualScore:1,status:'MITIGATED'},{id:'b',key:'B',inherentScore:4,residualScore:1,status:'MITIGATED'}],controls:[{id:'shared',threatId:'a',threatIds:['a','b'],scopeVersion:2,title:'Shared authorization',status:'VERIFIED',requiredBeforeRelease:true}],verifications:[{controlId:'shared',controlScopeVersion:1,result:'PASS',evidenceIds:['e'],expiresAt:'2027-01-01T00:00:00Z'}]};
+  assert.match(evaluateSecurityReleaseGate(state).blockers.join(' '),/current control scope/);
+  state.verifications[0].controlScopeVersion=2;
+  assert.equal(evaluateSecurityReleaseGate(state).allowed,true);
 });

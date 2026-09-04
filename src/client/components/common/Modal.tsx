@@ -66,7 +66,7 @@ export const Modal: React.FC<ModalProps> = ({
 
       {/* Modal Dialog Card */}
       <div
-        className={`relative w-full ${maxWidthClass} bg-white border border-semantic-border rounded-2xl shadow-modal overflow-hidden flex flex-col max-h-[92vh] z-dsContent animate-in zoom-in-95 duration-200 ring-1 ring-black/5 ${className}`}
+        className={`relative w-full ${maxWidthClass} bg-semantic-panel border border-semantic-border-strong text-semantic-primary rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] z-dsContent animate-in zoom-in-95 duration-200 ${className}`}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4.5 border-b border-semantic-border bg-semantic-subtle/90 backdrop-blur-sm shrink-0">

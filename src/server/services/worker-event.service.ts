@@ -18,6 +18,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Ticket } from '../../shared/types/ticket.js';
 import type { BankUser } from '../../shared/types/auth.js';
 import { ThreatModelService } from './threat-model.service.js';
+import { hasMaterialSecurityChange } from './threat-model-policy.js';
 import { VCenterInventorySyncService } from './vcenter-inventory-sync.service.js';
 import { ActiveDirectoryInventorySyncService } from './active-directory-inventory-sync.service.js';
 import { CortexInventorySyncService } from './cortex-inventory-sync.service.js';
@@ -96,10 +97,14 @@ export class WorkerEventService {
     } else if (event.topic === 'project.created' || event.topic === 'cmdb.ci.created') {
       await this.createSecurityScreening(event);
     } else if (event.topic === 'project.material-change') {
-      await ThreatModelService.markReviewRequiredForMaterialChange({ projectId: String(event.payload.projectId || event.aggregateId) }, this.eventActor(event));
+      const fields = Array.isArray(event.payload.changedFields) ? event.payload.changedFields.map(String) : [];
+      if (hasMaterialSecurityChange(fields)) await ThreatModelService.markReviewRequiredForMaterialChange({ projectId: String(event.payload.projectId || event.aggregateId) }, this.eventActor(event), { source:event.topic,eventId:event.id,reason:`Project security-relevant change ${event.aggregateId}: ${fields.join(', ')}` });
     } else if (event.topic === 'cmdb.ci.material-change') {
       const ciId = String(event.payload.ciId || event.aggregateId);
-      await ThreatModelService.markReviewRequiredForMaterialChange({ assetId: ciId, serviceId: ciId }, this.eventActor(event));
+      const fields = Array.isArray(event.payload.changedFields) ? event.payload.changedFields.map(String) : [];
+      if (hasMaterialSecurityChange(fields)) await ThreatModelService.markReviewRequiredForMaterialChange({ assetId: ciId, serviceId: ciId }, this.eventActor(event), { source:event.topic,eventId:event.id,reason:`CMDB security-relevant change ${ciId}: ${fields.join(', ')}` });
+    } else if (event.topic === 'threat-governance.tick') {
+      await ThreatModelService.maintainGovernance(this.eventActor(event));
     } else if (event.topic === 'attachment.scan.requested') {
       await this.scanAttachment(event);
     } else if (event.topic === 'sla.tick') {

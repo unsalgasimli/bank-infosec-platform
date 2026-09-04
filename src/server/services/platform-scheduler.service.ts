@@ -35,6 +35,7 @@ export class PlatformSchedulerService {
         ['sla.tick', 'SLA'],
         ['workflow.schedule.tick', 'WORKFLOW_SCHEDULE'],
         ['workflow.runtime.tick', 'WORKFLOW_RUNTIME'],
+        ['threat-governance.tick', 'THREAT_GOVERNANCE'],
       ] as const) {
         OutboxService.enqueue({
           topic,

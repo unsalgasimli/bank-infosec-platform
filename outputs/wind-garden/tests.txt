@@ -1,0 +1,154 @@
+$ tsx --import ./src/tests/setup.ts --test --test-concurrency=1 src/tests/**/*.test.ts
+{"level":"INFO","time":"2026-09-04T11:06:01.392Z","service":"aegissec-banking-platform","env":"development","host":"localhost","database":"bank_infosec_db","poolMin":0,"poolMax":3,"msg":"PostgreSQL connection pool initialized"}
+{"level":"INFO","time":"2026-09-04T11:06:06.607Z","service":"aegissec-banking-platform","env":"development","msg":"PostgreSQL connection pool closed"}
+✔ Active Directory computer evidence preserves AD identity while offering safe vCenter correlation keys (9.854ms)
+✔ Active Directory privileged and service identities are classified as identity evidence, never employee assets (1.7618ms)
+✔ Active Directory group and OU evidence retains graph placement without CMDB overwrite fields (0.6489ms)
+{"level":"INFO","time":"2026-09-04T11:06:08.442Z","service":"aegissec-banking-platform","env":"development","host":"localhost","database":"bank_infosec_db","poolMin":0,"poolMax":3,"msg":"PostgreSQL connection pool initialized"}
+{"level":"INFO","time":"2026-09-04T11:06:13.190Z","service":"aegissec-banking-platform","env":"development","msg":"PostgreSQL connection pool closed"}
+✔ approval nodes require exactly APPROVED and REJECTED output connections (4.5017ms)
+✔ directory-backed approval and task routes validate canonical IDs (0.9284ms)
+{"level":"INFO","time":"2026-09-04T11:06:14.275Z","service":"aegissec-banking-platform","env":"development","host":"localhost","database":"bank_infosec_db","poolMin":0,"poolMax":3,"msg":"PostgreSQL connection pool initialized"}
+{"level":"INFO","time":"2026-09-04T11:06:21.590Z","service":"aegissec-banking-platform","env":"development","msg":"PostgreSQL connection pool closed"}
+✔ server sessions isolate users and reject client-forged identities (6.5128ms)
+✔ session cookies are persistent, script-inaccessible, and HTTP-compatible (12.6119ms)
+✔ protected middleware fails closed without a valid server session (5.5513ms)
+✔ state-changing requests require an exact same-origin browser request (2.9728ms)
+✔ development empty-password login permits only an existing active directory user (254.3878ms)
+{"level":"INFO","time":"2026-09-04T11:06:23.739Z","service":"aegissec-banking-platform","env":"development","host":"localhost","database":"bank_infosec_db","poolMin":0,"poolMax":3,"msg":"PostgreSQL connection pool initialized"}
+{"level":"INFO","time":"2026-09-04T11:06:30.455Z","service":"aegissec-banking-platform","env":"development","msg":"PostgreSQL connection pool closed"}
+✔ CMDB permissions enforce role boundaries and inactive fail-closed behavior (3.6491ms)
+✔ audit sanitization redacts secret-like fields recursively (2.3325ms)
+{"level":"INFO","time":"2026-09-04T11:06:31.423Z","service":"aegissec-banking-platform","env":"development","host":"localhost","database":"bank_infosec_db","poolMin":0,"poolMax":3,"msg":"PostgreSQL connection pool initialized"}
+{"level":"INFO","time":"2026-09-04T11:06:36.834Z","service":"aegissec-banking-platform","env":"development","msg":"PostgreSQL connection pool closed"}
+﹣ cursor preserves ties/nulls/precision and excludes backdated and in-flight inserts after commit (1.1551ms) # SKIP
+{"level":"INFO","time":"2026-09-04T11:06:43.106Z","service":"aegissec-banking-platform","env":"development","host":"localhost","database":"bank_infosec_db","poolMin":0,"poolMax":3,"msg":"PostgreSQL connection pool initialized"}
+{"level":"INFO","time":"2026-09-04T11:06:48.299Z","service":"aegissec-banking-platform","env":"development","msg":"PostgreSQL connection pool closed"}
+✔ cursor signature binds actor, filter set, page size and sort but not navigation/count options (51.0028ms)
+✔ keyset SQL preserves microsecond values, uses row comparisons and handles both null orders (1.2045ms)
+{"level":"INFO","time":"2026-09-04T11:06:50.446Z","service":"aegissec-banking-platform","env":"development","host":"localhost","database":"bank_infosec_db","poolMin":0,"poolMax":3,"msg":"PostgreSQL connection pool initialized"}
+{"level":"INFO","time":"2026-09-04T11:06:54.985Z","service":"aegissec-banking-platform","env":"development","msg":"PostgreSQL connection pool closed"}
+﹣ generic CMDB discovery engine is deterministic, concurrent-safe and lifecycle-safe (1.0306ms) # SKIP
+{"level":"INFO","time":"2026-09-04T11:06:56.328Z","service":"aegissec-banking-platform","env":"development","host":"localhost","database":"bank_infosec_db","poolMin":0,"poolMax":3,"msg":"PostgreSQL connection pool initialized"}
+{"level":"INFO","time":"2026-09-04T11:07:06.088Z","service":"aegissec-banking-platform","env":"development","msg":"PostgreSQL connection pool closed"}
+✔ CMDB foundation rejects secrets recursively and stores only secret references (4.5596ms)
+✔ CMDB identifiers normalize deterministically and IP is not an identity type (4.6637ms)
+✔ CMDB lifecycle supports reactivation but treats archived assets as terminal (1.5356ms)
+✔ CMDB source records may remain unmatched but cannot claim an asset at the same time (1.0724ms)
+{"level":"INFO","time":"2026-09-04T11:07:07.813Z","service":"aegissec-banking-platform","env":"development","host":"localhost","database":"bank_infosec_db","poolMin":0,"poolMax":3,"msg":"PostgreSQL connection pool initialized"}
+{"level":"INFO","time":"2026-09-04T11:07:13.778Z","service":"aegissec-banking-platform","env":"development","msg":"PostgreSQL connection pool closed"}
+﹣ older or equal-version conflicting observations retain evidence without regressing current source or canonical state (1.2108ms) # SKIP
+{"level":"INFO","time":"2026-09-04T11:07:15.129Z","service":"aegissec-banking-platform","env":"development","host":"localhost","database":"bank_infosec_db","poolMin":0,"poolMax":3,"msg":"PostgreSQL connection pool initialized"}
+{"level":"INFO","time":"2026-09-04T11:07:23.166Z","service":"aegissec-banking-platform","env":"development","msg":"PostgreSQL connection pool closed"}
+✔ combined owner filters bind every owner slot and enrich only the selected page (53.149ms)
+✔ reconciliation candidates use one bounded batch and retain grouping and score order (3.5541ms)
+✔ read permissions are checked before any inventory or reconciliation query (1.3508ms)
+✔ zero-result search does not repeat the expensive predicate for an empty data page (3.9025ms)
+✔ manager snapshot batches edges, handles removal/self/unknown IDs, and updates only differing rows (10.457ms)
+{"level":"INFO","time":"2026-09-04T11:07:29.357Z","service":"aegissec-banking-platform","env":"development","host":"localhost","database":"bank_infosec_db","poolMin":0,"poolMax":3,"msg":"PostgreSQL connection pool initialized"}
+{"level":"INFO","time":"2026-09-04T11:07:38.785Z","service":"aegissec-banking-platform","env":"development","msg":"PostgreSQL connection pool closed"}
+﹣ run completion fences pending work, terminal workers and duplicate failure while successful retries repair accounting (1.902ms) # SKIP
+{"level":"INFO","time":"2026-09-04T11:07:40.873Z","service":"aegissec-banking-platform","env":"development","host":"localhost","database":"bank_infosec_db","poolMin":0,"poolMax":3,"msg":"PostgreSQL connection pool initialized"}
+{"level":"INFO","time":"2026-09-04T11:07:49.185Z","service":"aegissec-banking-platform","env":"development","msg":"PostgreSQL connection pool closed"}
+✔ exact search routing distinguishes identifiers from partial text and binds literal LIKE characters (6.3073ms)
+﹣ SQL search projection is transactional, incremental, exact, filterable and backfill-compatible (0.8705ms) # SKIP
+{"level":"INFO","time":"2026-09-04T11:07:55.390Z","service":"aegissec-banking-platform","env":"development","host":"localhost","database":"bank_infosec_db","poolMin":0,"poolMax":3,"msg":"PostgreSQL connection pool initialized"}
+{"level":"ERROR","time":"2026-09-04T11:08:00.990Z","service":"aegissec-banking-platform","env":"development","text":"SELECT id, source_ticket_id, target_ticket_id, relationship_type, note, created_by_user_id, created_at, source_payload FROM ticket_relationships ORDER BY created_at ASC","duration":5010,"error":{"type":"Error","message":"timeout exceeded when trying to connect","stack":"Error: timeout exceeded when trying to connect\n    at C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\node_modules\\.pnpm\\pg-pool@3.14.0_pg@8.23.0\\node_modules\\pg-pool\\index.js:45:11\n    at runNextTicks (node:internal/process/task_queues:65:5)\n    at listOnTimeout (node:internal/timers:644:9)\n    at process.processTimers (node:internal/timers:618:7)\n    at async PostgresClient.query (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\server\\db\\postgres\\client.ts:109:19)\n    at async Promise.all (index 19)\n    at async PostgresProjectionRepository.hydrate (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\server\\db\\postgres\\projection-repository.ts:122:360)\n    at async Database.initialize (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\server\\db\\database.ts:174:17)\n    at async <anonymous> (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\tests\\setup.ts:12:1)"},"msg":"PostgreSQL query failed"}
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+Error: timeout exceeded when trying to connect
+    at C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\node_modules\.pnpm\pg-pool@3.14.0_pg@8.23.0\node_modules\pg-pool\index.js:45:11
+    at runNextTicks (node:internal/process/task_queues:65:5)
+    at listOnTimeout (node:internal/timers:644:9)
+    at process.processTimers (node:internal/timers:618:7)
+    at async PostgresClient.query (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\server\db\postgres\client.ts:109:19)
+    at async Promise.all (index 19)
+    at async PostgresProjectionRepository.hydrate (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\server\db\postgres\projection-repository.ts:122:360)
+    at async Database.initialize (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\server\db\database.ts:174:17)
+    at async <anonymous> (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\tests\setup.ts:12:1)
+
+Node.js v26.7.0
+✖ src\tests\cmdb.service.test.ts (7350.2677ms)
+{"level":"INFO","time":"2026-09-04T11:08:04.600Z","service":"aegissec-banking-platform","env":"development","host":"localhost","database":"bank_infosec_db","poolMin":0,"poolMax":3,"msg":"PostgreSQL connection pool initialized"}
+{"level":"ERROR","time":"2026-09-04T11:08:10.790Z","service":"aegissec-banking-platform","env":"development","text":"SELECT id, source_ticket_id, target_ticket_id, relationship_type, note, created_by_user_id, created_at, source_payload FROM ticket_relationships ORDER BY created_at ASC","duration":5014,"error":{"type":"Error","message":"timeout exceeded when trying to connect","stack":"Error: timeout exceeded when trying to connect\n    at C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\node_modules\\.pnpm\\pg-pool@3.14.0_pg@8.23.0\\node_modules\\pg-pool\\index.js:45:11\n    at runNextTicks (node:internal/process/task_queues:65:5)\n    at listOnTimeout (node:internal/timers:644:9)\n    at process.processTimers (node:internal/timers:618:7)\n    at async PostgresClient.query (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\server\\db\\postgres\\client.ts:109:19)\n    at async Promise.all (index 19)\n    at async PostgresProjectionRepository.hydrate (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\server\\db\\postgres\\projection-repository.ts:122:360)\n    at async Database.initialize (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\server\\db\\database.ts:174:17)\n    at async <anonymous> (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\tests\\setup.ts:12:1)"},"msg":"PostgreSQL query failed"}
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+Error: timeout exceeded when trying to connect
+    at C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\node_modules\.pnpm\pg-pool@3.14.0_pg@8.23.0\node_modules\pg-pool\index.js:45:11
+    at runNextTicks (node:internal/process/task_queues:65:5)
+    at listOnTimeout (node:internal/timers:644:9)
+    at process.processTimers (node:internal/timers:618:7)
+    at async PostgresClient.query (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\server\db\postgres\client.ts:109:19)
+    at async Promise.all (index 19)
+    at async PostgresProjectionRepository.hydrate (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\server\db\postgres\projection-repository.ts:122:360)
+    at async Database.initialize (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\server\db\database.ts:174:17)
+    at async <anonymous> (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\tests\setup.ts:12:1)
+
+Node.js v26.7.0
+✖ src\tests\cortex-discovery.test.ts (9930.6513ms)
+{"level":"INFO","time":"2026-09-04T11:08:17.802Z","service":"aegissec-banking-platform","env":"development","host":"localhost","database":"bank_infosec_db","poolMin":0,"poolMax":3,"msg":"PostgreSQL connection pool initialized"}
+{"level":"ERROR","time":"2026-09-04T11:08:42.457Z","service":"aegissec-banking-platform","env":"development","text":"SELECT id, tag, name, type, ip_address, fqdn, environment, critical_asset, pci_dss_scope, owner_id, custodian_id, department_id, os, created_at, updated_at FROM bank_assets ORDER BY id","duration":5006,"error":{"type":"Error","message":"timeout exceeded when trying to connect","stack":"Error: timeout exceeded when trying to connect\n    at C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\node_modules\\.pnpm\\pg-pool@3.14.0_pg@8.23.0\\node_modules\\pg-pool\\index.js:45:11\n    at runNextTicks (node:internal/process/task_queues:65:5)\n    at listOnTimeout (node:internal/timers:644:9)\n    at process.processTimers (node:internal/timers:618:7)\n    at async PostgresClient.query (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\server\\db\\postgres\\client.ts:109:19)\n    at async Promise.all (index 5)\n    at async PostgresProjectionRepository.hydrate (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\server\\db\\postgres\\projection-repository.ts:122:360)\n    at async Database.initialize (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\server\\db\\database.ts:174:17)\n    at async <anonymous> (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\tests\\setup.ts:12:1)"},"msg":"PostgreSQL query failed"}
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+Error: timeout exceeded when trying to connect
+    at C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\node_modules\.pnpm\pg-pool@3.14.0_pg@8.23.0\node_modules\pg-pool\index.js:45:11
+    at runNextTicks (node:internal/process/task_queues:65:5)
+    at listOnTimeout (node:internal/timers:644:9)
+    at process.processTimers (node:internal/timers:618:7)
+    at async PostgresClient.query (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\server\db\postgres\client.ts:109:19)
+    at async Promise.all (index 5)
+    at async PostgresProjectionRepository.hydrate (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\server\db\postgres\projection-repository.ts:122:360)
+    at async Database.initialize (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\server\db\database.ts:174:17)
+    at async <anonymous> (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\tests\setup.ts:12:1)
+
+Node.js v26.7.0
+✖ src\tests\database-intelligence.integration.test.ts (31756.7022ms)
+{"level":"INFO","time":"2026-09-04T11:08:51.353Z","service":"aegissec-banking-platform","env":"development","host":"localhost","database":"bank_infosec_db","poolMin":0,"poolMax":3,"msg":"PostgreSQL connection pool initialized"}
+{"level":"ERROR","time":"2026-09-04T11:09:11.563Z","service":"aegissec-banking-platform","env":"development","text":"SELECT id, source_ticket_id, target_ticket_id, relationship_type, note, created_by_user_id, created_at, source_payload FROM ticket_relationships ORDER BY created_at ASC","duration":5004,"error":{"type":"Error","message":"timeout exceeded when trying to connect","stack":"Error: timeout exceeded when trying to connect\n    at C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\node_modules\\.pnpm\\pg-pool@3.14.0_pg@8.23.0\\node_modules\\pg-pool\\index.js:45:11\n    at runNextTicks (node:internal/process/task_queues:65:5)\n    at listOnTimeout (node:internal/timers:644:9)\n    at process.processTimers (node:internal/timers:618:7)\n    at async PostgresClient.query (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\server\\db\\postgres\\client.ts:109:19)\n    at async Promise.all (index 19)\n    at async PostgresProjectionRepository.hydrate (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\server\\db\\postgres\\projection-repository.ts:122:360)\n    at async Database.initialize (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\server\\db\\database.ts:174:17)\n    at async <anonymous> (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\tests\\setup.ts:12:1)"},"msg":"PostgreSQL query failed"}
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+Error: timeout exceeded when trying to connect
+    at C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\node_modules\.pnpm\pg-pool@3.14.0_pg@8.23.0\node_modules\pg-pool\index.js:45:11
+    at runNextTicks (node:internal/process/task_queues:65:5)
+    at listOnTimeout (node:internal/timers:644:9)
+    at process.processTimers (node:internal/timers:618:7)
+    at async PostgresClient.query (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\server\db\postgres\client.ts:109:19)
+    at async Promise.all (index 19)
+    at async PostgresProjectionRepository.hydrate (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\server\db\postgres\projection-repository.ts:122:360)
+    at async Database.initialize (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\server\db\database.ts:174:17)
+    at async <anonymous> (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\tests\setup.ts:12:1)
+
+Node.js v26.7.0
+✖ src\tests\directory-identity-projection.test.ts (28943.2126ms)
+{"level":"INFO","time":"2026-09-04T11:09:20.695Z","service":"aegissec-banking-platform","env":"development","host":"localhost","database":"bank_infosec_db","poolMin":0,"poolMax":3,"msg":"PostgreSQL connection pool initialized"}
+{"level":"ERROR","time":"2026-09-04T11:09:26.905Z","service":"aegissec-banking-platform","env":"development","text":"\n      UPDATE bank_users\n      SET first_name = CASE WHEN full_name = 'Encrypted Directory User' OR first_name IN ('Encrypted', 'Identity') THEN username ELSE first_name END,\n          last_name = CASE WHEN full_name = 'Encrypted Directory User' OR last_name IN ('Encrypted', 'Identity') THEN username ELSE last_name END,\n          full_name = CASE WHEN full_name = 'Encrypted Directory User' THEN username ELSE full_name END,\n          title = CASE WHEN title = 'Encrypted' THEN 'Authenticated directory user' ELSE title END,\n          source_payload = CASE WHEN full_name = 'Encrypted Directory User'\n            THEN jsonb_set(jsonb_set(COALESCE(source_payload, '{}'::jsonb), '{fullName}', to_jsonb(username), true), '{title}', to_jsonb(CASE WHEN title = 'Encrypted' THEN 'Authenticated directory user' ELSE title END), true)\n            ELSE source_payload END\n      WHERE identity_ciphertext_version >= 2\n        AND (full_name = 'Encrypted Directory User' OR first_name IN ('Encrypted', 'Identity') OR last_name IN ('Encrypted', 'Identity') OR title = 'Encrypted')","duration":5133,"error":{"type":"Error","message":"Connection terminated due to connection timeout: Connection terminated unexpectedly","stack":"Error: Connection terminated due to connection timeout\n    at C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\node_modules\\.pnpm\\pg-pool@3.14.0_pg@8.23.0\\node_modules\\pg-pool\\index.js:45:11\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async PostgresClient.query (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\server\\db\\postgres\\client.ts:109:19)\n    at async PostgresProjectionRepository.protectLegacyIdentityData (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\server\\db\\postgres\\projection-repository.ts:473:5)\n    at async Database.initialize (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\server\\db\\database.ts:173:5)\n    at async <anonymous> (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\src\\tests\\setup.ts:12:1)\ncaused by: Error: Connection terminated unexpectedly\n    at Connection.<anonymous> (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\node_modules\\.pnpm\\pg@8.23.0\\node_modules\\pg\\lib\\client.js:204:73)\n    at Connection.wrapper (node:events:639:12)\n    at Connection.emit (node:events:514:20)\n    at Socket.<anonymous> (C:\\Users\\u.gasimli\\Documents\\GitHub\\bank-infosec-platform\\node_modules\\.pnpm\\pg@8.23.0\\node_modules\\pg\\lib\\connection.js:64:12)\n    at Socket.emit (node:events:514:20)\n    at TCP.<anonymous> (node:net:362:12)"},"msg":"PostgreSQL query failed"}
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+Error: Connection terminated due to connection timeout
+    at C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\node_modules\.pnpm\pg-pool@3.14.0_pg@8.23.0\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async PostgresClient.query (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\server\db\postgres\client.ts:109:19)
+    at async PostgresProjectionRepository.protectLegacyIdentityData (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\server\db\postgres\projection-repository.ts:473:5)
+    at async Database.initialize (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\server\db\database.ts:173:5)
+    at async <anonymous> (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\src\tests\setup.ts:12:1) {
+  [cause]: Error: Connection terminated unexpectedly
+      at Connection.<anonymous> (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\node_modules\.pnpm\pg@8.23.0\node_modules\pg\lib\client.js:204:73)
+      at Connection.wrapper (node:events:639:12)
+      at Connection.emit (node:events:514:20)
+      at Socket.<anonymous> (C:\Users\u.gasimli\Documents\GitHub\bank-infosec-platform\node_modules\.pnpm\pg@8.23.0\node_modules\pg\lib\connection.js:64:12)
+      at Socket.emit (node:events:514:20)
+      at TCP.<anonymous> (node:net:362:12)
+}
+
+Node.js v26.7.0
+✖ src\tests\directory-sync-regression.test.ts (16306.5271ms)

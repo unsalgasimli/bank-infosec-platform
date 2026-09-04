@@ -1700,10 +1700,10 @@ export const UniversalWorkflowWorkspace: React.FC<{
       ) : tab === "BUILDER" ? (
         <div
           ref={builderWorkspaceRef}
-          className={`flex min-h-0 flex-1 flex-col ${isFocusMode ? "fixed inset-0 z-dsDialog h-screen bg-white shadow-2xl" : ""}`}
+          className={`flex min-h-0 flex-1 flex-col ${isFocusMode ? "fixed inset-0 z-dsDialog h-screen bg-semantic-page shadow-2xl" : ""}`}
         >
-          <div className="flex h-12 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-4 text-xs">
-            <span className="font-semibold text-slate-500">
+          <div className="flex h-12 shrink-0 items-center gap-2 border-b border-semantic-border bg-semantic-panel px-4 text-xs">
+            <span className="font-semibold text-semantic-muted">
               {t('Workflow Catalog')}
             </span>
             <ArrowRight className="h-3 w-3 text-slate-300" />
@@ -1768,17 +1768,17 @@ export const UniversalWorkflowWorkspace: React.FC<{
             </div>
           </div>
           <div className="flex min-h-0 flex-1">
-            <aside className="w-64 shrink-0 overflow-y-auto border-r border-slate-200 bg-white p-3">
-              <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 text-label font-bold">
+            <aside className="w-64 shrink-0 overflow-y-auto border-r border-semantic-border-strong bg-semantic-panel p-3 text-semantic-primary">
+              <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg bg-semantic-subtle p-1 text-label font-bold">
                 <button
                   onClick={() => setBuilderSidebarTab("NODES")}
-                  className={`rounded px-2 py-1.5 ${builderSidebarTab === "NODES" ? "bg-white shadow-xs text-slate-900" : "text-slate-500"}`}
+                  className={`rounded px-2 py-1.5 transition-colors ${builderSidebarTab === "NODES" ? "bg-semantic-panel shadow-xs text-semantic-primary font-bold" : "text-semantic-muted hover:text-semantic-primary"}`}
                 >
                   {t("Nodes")}
                 </button>
                 <button
                   onClick={() => setBuilderSidebarTab("VARIABLES")}
-                  className={`rounded px-2 py-1.5 ${builderSidebarTab === "VARIABLES" ? "bg-white shadow-xs text-slate-900" : "text-slate-500"}`}
+                  className={`rounded px-2 py-1.5 transition-colors ${builderSidebarTab === "VARIABLES" ? "bg-semantic-panel shadow-xs text-semantic-primary font-bold" : "text-semantic-muted hover:text-semantic-primary"}`}
                 >
                   {t("Variables")}
                 </button>
@@ -2294,7 +2294,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                 </div>
               </div>
             </div>
-            <aside className="w-80 shrink-0 overflow-y-auto border-l border-slate-200 bg-white p-4">
+            <aside className="w-80 shrink-0 overflow-y-auto border-l border-semantic-border-strong bg-semantic-panel p-4 text-semantic-primary">
               {selectedNode ? (
                 <NodeInspector
                   node={selectedNode}
@@ -2309,8 +2309,8 @@ export const UniversalWorkflowWorkspace: React.FC<{
                 <div>
                   <div className="mb-4 flex items-center justify-between">
                     <div>
-                      <div className="text-xs font-bold text-slate-800">Connection</div>
-                      <div className="mt-0.5 text-label text-slate-500">
+                      <div className="text-xs font-bold text-semantic-primary">Connection</div>
+                      <div className="mt-0.5 text-label text-semantic-muted">
                         {builderVersion?.nodes.find((node) => node.id === selectedEdge.sourceNodeId)?.title || selectedEdge.sourceNodeId}
                         {" → "}
                         {builderVersion?.nodes.find((node) => node.id === selectedEdge.destinationNodeId)?.title || selectedEdge.destinationNodeId}
@@ -2466,20 +2466,20 @@ export const UniversalWorkflowWorkspace: React.FC<{
         />
       )}
       {templatePendingDeletion && (
-        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="delete-workflow-template-title">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="delete-workflow-template-title">
+          <div className="w-full max-w-md rounded-2xl border border-semantic-border-strong bg-semantic-panel p-6 shadow-2xl">
             <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-rose-500/30 bg-rose-500/15 text-rose-400">
                 <Trash2 className="h-5 w-5" />
               </div>
               <div>
-                <h2 id="delete-workflow-template-title" className="text-lg font-bold text-slate-900">Remove workflow template?</h2>
-                <p className="mt-1 text-sm text-slate-500">
+                <h2 id="delete-workflow-template-title" className="text-lg font-bold text-semantic-primary">Remove workflow template?</h2>
+                <p className="mt-1 text-sm text-semantic-muted">
                   “{templatePendingDeletion.title}” will no longer appear in the catalog or accept new requests.
                 </p>
               </div>
             </div>
-            <p className="mt-4 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+            <p className="mt-4 rounded-xl border border-semantic-border bg-semantic-subtle p-3 text-xs leading-5 text-semantic-muted">
               Existing workflow runs and their audit evidence are retained.
             </p>
             <div className="mt-5 flex justify-end gap-2">
@@ -2534,15 +2534,15 @@ const WorkflowMetadataModal = ({
     { value: "COMPANY", label: "Company level", description: "Available across the company.", enabled: canCreateCompanyTemplate },
   ];
   return (
-    <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="workflow-metadata-title">
-      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+    <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="workflow-metadata-title">
+      <div className="w-full max-w-lg rounded-2xl border border-semantic-border-strong bg-semantic-panel p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-caption font-bold uppercase tracking-wider text-semantic-success">Workflow details</div>
-            <h2 id="workflow-metadata-title" className="mt-1 text-lg font-bold text-slate-900">Name and visibility</h2>
-            <p className="mt-1 text-sm text-slate-500">Choose who can use this workflow before continuing.</p>
+            <h2 id="workflow-metadata-title" className="mt-1 text-lg font-bold text-semantic-primary">Name and visibility</h2>
+            <p className="mt-1 text-sm text-semantic-muted">Choose who can use this workflow before continuing.</p>
           </div>
-          <button type="button" onClick={onClose} disabled={busy} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="Close"><X className="h-5 w-5" /></button>
+          <button type="button" onClick={onClose} disabled={busy} className="rounded-lg p-1.5 text-semantic-muted hover:bg-semantic-subtle hover:text-semantic-primary disabled:opacity-50" aria-label="Close"><X className="h-5 w-5" /></button>
         </div>
         <label className="mt-5 block">
           <span className="mini-label">Workflow name</span>
@@ -2775,24 +2775,24 @@ const TemplatePreview = ({
 }: any) => {
   const { t } = useI18n();
   return (
-    <div className="fixed inset-0 z-dsDialog flex justify-end bg-slate-950/30 backdrop-blur-[1px]">
-      <div className="flex h-full w-[620px] flex-col bg-white shadow-2xl">
-        <header className="flex items-start justify-between border-b border-slate-200 p-6">
+    <div className="fixed inset-0 z-dsDialog flex justify-end bg-slate-950/60 backdrop-blur-xs">
+      <div className="flex h-full w-[620px] flex-col border-l border-semantic-border-strong bg-semantic-panel text-semantic-primary shadow-2xl">
+        <header className="flex items-start justify-between border-b border-semantic-border bg-semantic-panel p-6">
           <div>
             <div className="mb-2 text-xs font-bold uppercase tracking-wider text-semantic-success">
               {t(detail.template.category)} · v{detail.version.version}
             </div>
-            <h2 className="text-xl font-bold">{t(detail.template.title)}</h2>
-            <p className="mt-2 text-sm text-slate-500">
+            <h2 className="text-xl font-bold text-semantic-primary">{t(detail.template.title)}</h2>
+            <p className="mt-2 text-sm text-semantic-muted">
               {t(detail.template.purpose)}
             </p>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 hover:bg-slate-100" aria-label={t('Close')}>
+          <button onClick={onClose} className="rounded-lg p-2 text-semantic-muted hover:bg-semantic-subtle hover:text-semantic-primary" aria-label={t('Close')}>
             <X className="h-5 w-5" />
           </button>
         </header>
         <div className="flex-1 overflow-y-auto p-6">
-          <div className="mb-6 grid grid-cols-4 gap-2 rounded-xl bg-slate-50 p-3">
+          <div className="mb-6 grid grid-cols-4 gap-2 rounded-xl border border-semantic-border bg-semantic-subtle p-3">
             <Metric
               value={formatDuration(detail.template.estimatedDurationMinutes)}
               label="Duration"
@@ -2802,7 +2802,7 @@ const TemplatePreview = ({
             <Metric value={detail.template.automationCount} label="Automations" />
           </div>
           <div
-            className={`rounded-xl border p-3 text-sm ${detail.preflight.valid ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"}`}
+            className={`rounded-xl border p-3 text-sm ${detail.preflight.valid ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-400" : "border-red-500/40 bg-red-500/15 text-red-400"}`}
           >
             <div className="flex items-center gap-2 font-bold">
               {detail.preflight.valid ? (
@@ -2816,7 +2816,7 @@ const TemplatePreview = ({
             </div>
           </div>
         </div>
-        <footer className="flex gap-2 border-t border-slate-200 p-4">
+        <footer className="flex gap-2 border-t border-semantic-border bg-semantic-panel p-4">
           {detail.template.canEdit && (
             <button onClick={onEdit} className="wrike-btn-secondary flex-1 py-2">
               {t('Open in Builder')}
@@ -2868,15 +2868,15 @@ const DynamicIntakeModal = ({
     localCondition(section.visibilityCondition, values),
   );
   return (
-    <div className="fixed inset-0 z-dsToast flex items-center justify-center bg-slate-950/50 p-6 backdrop-blur-sm">
-      <div className="flex max-h-dsModal w-[760px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <header className="flex items-start justify-between border-b border-slate-200 p-5">
+    <div className="fixed inset-0 z-dsToast flex items-center justify-center bg-slate-950/60 p-6 backdrop-blur-sm">
+      <div className="flex max-h-dsModal w-[760px] flex-col overflow-hidden rounded-2xl border border-semantic-border-strong bg-semantic-panel text-semantic-primary shadow-2xl">
+        <header className="flex items-start justify-between border-b border-semantic-border bg-semantic-panel p-5">
           <div>
             <div className="text-caption font-bold uppercase tracking-wider text-semantic-success">
               Quick Work Item · {requestType.domain.replaceAll("_", " ")}
             </div>
-            <h2 className="mt-1 text-lg font-bold">{requestType.name}</h2>
-            <p className="mt-1 text-xs text-slate-500">
+            <h2 className="mt-1 text-lg font-bold text-semantic-primary">{requestType.name}</h2>
+            <p className="mt-1 text-xs text-semantic-muted">
               {requestType.description}
             </p>
           </div>
@@ -2884,14 +2884,14 @@ const DynamicIntakeModal = ({
             type="button"
             onClick={onClose}
             aria-label="Close request form"
-            className="rounded-lg p-2 hover:bg-slate-100"
+            className="rounded-lg p-2 text-semantic-muted hover:bg-semantic-subtle hover:text-semantic-primary"
           >
             <X className="h-5 w-5" />
           </button>
         </header>
         {error && (
           <div
-            className="mx-5 mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+            className="mx-5 mt-4 flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/15 px-3 py-2 text-sm text-red-400"
             role="alert"
             aria-live="polite"
           >
@@ -2902,9 +2902,9 @@ const DynamicIntakeModal = ({
         <div className="flex-1 overflow-y-auto p-5">
           {sections.map((section: any) => (
             <section key={section.id} className="mb-6">
-              <h3 className="mb-1 text-sm font-bold">{section.title}</h3>
+              <h3 className="mb-1 text-sm font-bold text-semantic-primary">{section.title}</h3>
               {section.description && (
-                <p className="mb-3 text-xs text-slate-500">
+                <p className="mb-3 text-xs text-semantic-muted">
                   {section.description}
                 </p>
               )}
@@ -2941,7 +2941,7 @@ const DynamicIntakeModal = ({
             </section>
           ))}
         </div>
-        <footer className="flex items-center justify-between border-t border-slate-200 p-4">
+        <footer className="flex items-center justify-between border-t border-semantic-border bg-semantic-panel p-4">
           <div className="flex items-center gap-2 text-xs font-semibold text-semantic-success">
             <ShieldCheck className="h-4 w-4" />
             Routing, priority, calendar and targets resolve automatically.
@@ -3049,12 +3049,12 @@ const DynamicField = ({
 
   return (
     <div className={full ? "col-span-2" : ""}>
-      <span id={labelId} className="mb-1 block text-xs font-bold text-slate-700">
+      <span id={labelId} className="mb-1 block text-xs font-bold text-semantic-strong">
         {field.label}
         {required && <span className="text-red-500"> *</span>}
       </span>
       {field.description && (
-        <span className="mb-1 block text-label text-slate-500">
+        <span className="mb-1 block text-label text-semantic-muted">
           {field.description}
         </span>
       )}
@@ -3062,9 +3062,9 @@ const DynamicField = ({
         <div
           role="group"
           aria-labelledby={labelId}
-          className="flex min-h-[46px] items-center gap-3 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50/90 to-white px-3 py-2 shadow-sm"
+          className="flex min-h-[46px] items-center gap-3 rounded-xl border border-emerald-500/30 bg-semantic-subtle px-3 py-2 shadow-sm"
         >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-semantic-success shadow-sm ring-1 ring-emerald-100">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-semantic-panel text-semantic-success shadow-sm">
             {field.key === "requesterId" ? (
               <Users className="h-4 w-4" />
             ) : (
@@ -3072,18 +3072,18 @@ const DynamicField = ({
             )}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-bold text-slate-800">
+            <span className="block truncate text-sm font-bold text-semantic-primary">
               {field.key === "requesterId"
                 ? requester?.fullName || currentUser?.fullName || value
                 : department?.name || currentUser?.departmentId || value}
             </span>
-            <span className="block truncate text-label font-medium text-slate-500">
+            <span className="block truncate text-label font-medium text-semantic-muted">
               {field.key === "requesterId"
                 ? requester?.title || currentUser?.title || "Authenticated LDAP user"
                 : "Authenticated user's department / branch"}
             </span>
           </span>
-          <span className="flex shrink-0 items-center gap-1 rounded-full bg-white px-2 py-1 text-caption font-bold uppercase tracking-wide text-semantic-success ring-1 ring-emerald-200">
+          <span className="flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/30 bg-semantic-panel px-2 py-1 text-caption font-bold uppercase tracking-wide text-semantic-success">
             <LockKeyhole className="h-3 w-3" />
             LDAP session
           </span>
@@ -3121,10 +3121,10 @@ const DynamicField = ({
           aria-labelledby={labelId}
           aria-pressed={Boolean(value)}
           onClick={() => onChange(!value)}
-          className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm ${value ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-white text-slate-600"}`}
+          className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${value ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-400 font-bold" : "border-semantic-border bg-semantic-panel text-semantic-muted hover:border-semantic-border-strong hover:text-semantic-primary"}`}
         >
           <span
-            className={`flex h-4 w-4 items-center justify-center rounded border ${value ? "border-semantic-brand bg-semantic-brand text-white" : "border-slate-300"}`}
+            className={`flex h-4 w-4 items-center justify-center rounded border ${value ? "border-semantic-brand bg-semantic-brand text-slate-950 font-bold" : "border-semantic-border"}`}
           >
             {value && <Check className="h-3 w-3" />}
           </span>
@@ -4503,25 +4503,25 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDeci
   const [informationResponse, setInformationResponse] = useState("");
   return (
   <div className="flex min-h-0 flex-1">
-    <aside className="w-80 shrink-0 overflow-y-auto border-r border-slate-200 bg-white p-4">
-      <h2 className="mb-3 text-sm font-bold">Workflow executions</h2>
+    <aside className="w-80 shrink-0 overflow-y-auto border-r border-semantic-border-strong bg-semantic-panel p-4 text-semantic-primary">
+      <h2 className="mb-3 text-sm font-bold text-semantic-primary">Workflow executions</h2>
       <div className="space-y-2">
         {instances.map((instance: any) => (
           <button
             key={instance.id}
             onClick={() => onOpen(instance.id)}
-            className={`w-full rounded-xl border p-3 text-left ${execution?.instance?.id === instance.id ? "border-semantic-brand bg-emerald-50" : "border-slate-200 hover:bg-slate-50"}`}
+            className={`w-full rounded-xl border p-3 text-left transition-colors ${execution?.instance?.id === instance.id ? "border-semantic-brand bg-emerald-500/10 text-semantic-primary" : "border-semantic-border hover:bg-semantic-subtle text-semantic-primary"}`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-blue-700">
+              <span className="text-xs font-bold text-semantic-brand">
                 {instance.key}
               </span>
               <StatusPill status={instance.status} />
             </div>
-            <div className="mt-1 truncate text-sm font-semibold">
+            <div className="mt-1 truncate text-sm font-semibold text-semantic-primary">
               {instance.title}
             </div>
-            <div className="mt-1 text-caption uppercase text-slate-400">
+            <div className="mt-1 text-caption uppercase text-semantic-muted">
               {instance.domain.replaceAll("_", " ")} · Workflow v
               {instance.workflowVersion}
             </div>
@@ -4808,18 +4808,18 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDeci
       </div>
     )}
     {confirmationItem && (
-      <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-slate-950/35 p-4" role="dialog" aria-modal="true" aria-labelledby="task-confirmation-title">
-        <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+      <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="task-confirmation-title">
+        <div className="w-full max-w-md rounded-2xl border border-semantic-border-strong bg-semantic-panel p-5 shadow-2xl">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700"><CheckCircle2 className="h-5 w-5" /></div>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/15 text-emerald-400"><CheckCircle2 className="h-5 w-5" /></div>
             <div>
-              <h3 id="task-confirmation-title" className="text-base font-bold text-slate-900">{confirmationItem.isInformationRequest ? "Provide requested information" : "Confirm task"}</h3>
-              <p className="mt-1 text-sm text-slate-600">{confirmationItem.isInformationRequest ? `Respond to “${confirmationItem.title}”. Your response will be retained in the workflow timeline.` : `Are you confirming that “${confirmationItem.title}” has been completed?`}</p>
+              <h3 id="task-confirmation-title" className="text-base font-bold text-semantic-primary">{confirmationItem.isInformationRequest ? "Provide requested information" : "Confirm task"}</h3>
+              <p className="mt-1 text-sm text-semantic-muted">{confirmationItem.isInformationRequest ? `Respond to “${confirmationItem.title}”. Your response will be retained in the workflow timeline.` : `Are you confirming that “${confirmationItem.title}” has been completed?`}</p>
             </div>
           </div>
           {confirmationItem.isInformationRequest ? (
             <textarea value={informationResponse} onChange={(event) => setInformationResponse(event.target.value)} rows={4} maxLength={5000} className="wrike-input mt-4 w-full resize-y" placeholder="Provide the requested information…" />
-          ) : <p className="mt-4 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-500">Your confirmation is recorded with your authenticated identity in the workflow audit trail.</p>}
+          ) : <p className="mt-4 rounded-lg border border-semantic-border bg-semantic-subtle p-3 text-xs leading-5 text-semantic-muted">Your confirmation is recorded with your authenticated identity in the workflow audit trail.</p>}
           <div className="mt-5 flex justify-end gap-2">
             <button onClick={() => setConfirmationItem(null)} className="wrike-btn-secondary px-3 py-2 text-xs">Cancel</button>
             <button disabled={confirmationItem.isInformationRequest && !informationResponse.trim()} onClick={() => { onComplete(confirmationItem.id, confirmationItem.isInformationRequest ? { response: informationResponse.trim(), respondedFrom: "runtime-workspace" } : { confirmation: "APPROVED", confirmedFrom: "runtime-workspace" }); setConfirmationItem(null); }} className="wrike-btn-primary px-3 py-2 text-xs disabled:opacity-50">{confirmationItem.isInformationRequest ? "Submit response" : "I confirm"}</button>

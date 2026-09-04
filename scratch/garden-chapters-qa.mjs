@@ -1,0 +1,44 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const browser=await chromium.launch({headless:true});
+const results={checks:[],errors:[]};
+try {
+  const page=await browser.newPage({viewport:{width:1440,height:900}});
+  page.on('pageerror',error=>results.errors.push(error.message));
+  await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{success:false}}));
+  await page.goto('http://localhost:5173',{waitUntil:'domcontentloaded'});
+  await page.locator('.garden-stage.is-ready').waitFor({timeout:30000});
+  await page.getByRole('button',{name:'EN',exact:true}).click();
+  await page.screenshot({path:'outputs/wind-garden/foliage-desktop.png'});
+  await page.locator('#garden-username').fill('wasd');
+  await page.getByRole('button',{name:'Catch the wind',exact:true}).click();
+  for(let i=0;i<3;i++)for(let n=0;n<[2,5,7][i];n++)await page.getByRole('button',{name:new RegExp(`^Turn sail ${i+1}:`)}).click();
+  await page.locator('.garden-puzzle[data-chapter="2"]').waitFor({timeout:5000});
+  results.checks.push('First puzzle automatically reveals chapter two');
+  await page.getByRole('button',{name:/^Turn sail 1:/}).click();
+  assert.match(await page.getByRole('button',{name:/^Turn sail 2:/}).getAttribute('aria-label'),/position 7,/);
+  results.checks.push('Second chapter moves the next dial as well');
+  for(let i=1;i<3;i++)for(let n=0;n<[1,2,3][i];n++)await page.getByRole('button',{name:new RegExp(`^Turn sail ${i+1}:`)}).click();
+  await page.locator('.garden-puzzle[data-complete="true"]').waitFor();
+  await page.waitForTimeout(1800);
+  await page.screenshot({path:'outputs/wind-garden/secret-garden-reward.png'});
+  results.checks.push('Second puzzle completes in six moves and reveals the secret garden');
+  assert.equal(await page.locator('#garden-username').inputValue(),'wasd');
+  results.checks.push('Puzzle progression preserves login input');
+  await page.emulateMedia({reducedMotion:'reduce'});
+  await page.screenshot({path:'outputs/wind-garden/secret-garden-still.png'});
+  await page.getByRole('button',{name:'Start again',exact:true}).click();
+  assert.equal(await page.locator('.garden-puzzle').getAttribute('data-chapter'),'1');
+  assert.equal(await page.locator('.garden-puzzle').getAttribute('data-complete'),'false');
+  results.checks.push('Replay resets both chapters and the reward');
+  const mobile=await browser.newPage({viewport:{width:390,height:844},reducedMotion:'reduce'});
+  await mobile.route('**/api/auth/me',route=>route.fulfill({status:401,json:{success:false}}));
+  await mobile.goto('http://localhost:5173',{waitUntil:'domcontentloaded'});
+  await mobile.locator('.garden-stage.is-ready').waitFor({timeout:30000});
+  assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await mobile.screenshot({path:'outputs/wind-garden/foliage-mobile.png',fullPage:true});
+  results.checks.push('Compact mobile world renders without horizontal overflow');
+  assert.deepEqual(results.errors,[]);
+}catch(error){results.failure=error.stack;process.exitCode=1;}
+finally{fs.writeFileSync('outputs/wind-garden/chapters-results.json',JSON.stringify(results,null,2));console.log(JSON.stringify(results,null,2));await browser.close();}

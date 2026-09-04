@@ -2,6 +2,7 @@ import type { Response } from 'express';
 import { z } from 'zod';
 import type { AuthenticatedRequest } from '../middleware/auth.middleware.js';
 import { ThreatModelService } from '../services/threat-model.service.js';
+import { ThreatControlCatalogService } from '../services/threat-control-catalog.service.js';
 
 const object = z.object({}).passthrough();
 const modelInput = object.extend({ title: z.string().trim().min(1).max(255), description: z.string().max(10000).optional(), organizationId: z.string().trim().min(1).optional(), serviceId: z.string().trim().optional(), assetId: z.string().trim().optional(), projectId: z.string().trim().optional(), changeId: z.string().trim().optional(), releaseId: z.string().trim().optional(), criticality: z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']).optional(), dataClassification: z.string().trim().optional(), businessOwnerId: z.string().trim().optional(), technicalOwnerId: z.string().trim().optional() });
@@ -13,11 +14,46 @@ export class ThreatModelsController {
   private static param(value: string | string[] | undefined): string { return Array.isArray(value) ? value[0] || '' : value || ''; }
   private static async execute(req: AuthenticatedRequest, res: Response, operation: () => Promise<unknown>, created = false): Promise<void> {
     try { res.status(created ? 201 : 200).json({ success: true, ...(await operation() as object) }); }
-    catch (error) { const detail = error instanceof z.ZodError ? error.issues.map((issue) => issue.message).join('; ') : error instanceof Error ? error.message : 'Threat Modeling operation failed.'; const status = error instanceof z.ZodError || /required|invalid|must be|at least|cannot be self/i.test(detail) ? 400 : /not found/i.test(detail) ? 404 : /restricted|authority|only .* may|read-only|access/i.test(detail) ? 403 : /immutable|changed by another/i.test(detail) ? 409 : 500; res.status(status).json({ success: false, error: detail }); }
+    catch (error) {
+      const databaseCode = (error as { code?: string })?.code;
+      const detail = error instanceof z.ZodError ? error.issues.map(issue => issue.message).join('; ') : error instanceof Error ? error.message : 'Threat Modeling operation failed.';
+      const safeConstraint = ['Referenced architecture cannot be removed; resolve its links first','Flow endpoints must be distinct components in the current revision','Flow boundary must belong to the current revision','A flow crossing security zones requires a trust boundary'].includes(detail) ? detail : undefined;
+      const status = databaseCode === '23505' ? 409 : databaseCode === '23503' || databaseCode === '23514' ? 400 : databaseCode === '55000' ? 409
+        : /restricted|authority|only .* may|read-only|access|cannot approve|cannot independently verify/i.test(detail) ? 403
+        : /immutable|changed by another|already consumed|no longer current/i.test(detail) ? 409
+        : /not found/i.test(detail) ? 404
+        : error instanceof z.ZodError || /required|invalid|must|cannot|blocked|maximum|expiry|expired|renewal|requires|exceed/i.test(detail) ? 400 : 500;
+      const message = databaseCode === '23505' ? 'A duplicate security record already exists.' : databaseCode === '23503' ? 'A related record is unavailable.' : databaseCode === '23514' ? safeConstraint || 'Invalid security record relationship or state.' : databaseCode === '55000' ? 'Approved security history is immutable.' : status === 500 ? 'Threat Modeling operation failed. Contact the platform operator with the correlation ID.' : detail;
+      res.status(status).json({ success:false,error:message,correlationId:req.correlationId });
+    }
   }
-  private static context(req: AuthenticatedRequest) { return { correlationId: req.correlationId, ip: req.ip, userAgent: req.get('user-agent') }; }
+  private static context(req: AuthenticatedRequest) { return { correlationId: req.correlationId, ipAddress: req.ip, userAgent: req.get('user-agent') }; }
 
-  static list = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ threatModels: await ThreatModelService.list(req.user!) }));
+  static list = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ threatModels: await ThreatModelService.list(req.user!, req.query) }));
+  static controlCatalog = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({definitions:await ThreatControlCatalogService.list(req.query,req.user!)}));
+  static createControlDefinition = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({definition:await ThreatControlCatalogService.create(object.parse(req.body),req.user!,this.context(req))}),true);
+  static decideControlDefinition = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({decision:await ThreatControlCatalogService.decide(this.param(req.params.id),object.parse(req.body),req.user!,this.context(req))}));
+  static catalogControl = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({control:await ThreatModelService.addControl(this.param(req.params.id),object.extend({catalogVersionId:z.string().min(1),implementationKey:z.string().trim().min(1)}).parse(req.body),req.user!)}),true);
+  static mapControlThreat = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({control:await ThreatModelService.mapControlThreat(this.param(req.params.id),object.parse(req.body),req.user!)}));
+  static governancePolicy = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ policy: await ThreatModelService.governancePolicy() }));
+  static consumeReleaseAuthorization = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ releaseDecision: await ThreatModelService.consumeReleaseAuthorization(this.param(req.params.id), object.parse(req.body), req.user!) }));
+  static updateGovernancePolicy = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ policy: await ThreatModelService.updateGovernancePolicy(object.parse(req.body), req.user!) }));
+  static governanceDetail = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ governance: await ThreatModelService.governanceDetail(this.param(req.params.id), req.user!) }));
+  static requestEmergency = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req,res,async()=>({emergency:await ThreatModelService.requestEmergencyChange(this.param(req.params.id),object.parse(req.body),req.user!)}),true);
+  static decideEmergency = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req,res,async()=>({emergency:await ThreatModelService.decideEmergencyChange(this.param(req.params.id),this.param(req.params.emergencyId),object.parse(req.body),req.user!)}));
+  static deployEmergency = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req,res,async()=>({emergency:await ThreatModelService.recordEmergencyDeployment(this.param(req.params.id),this.param(req.params.emergencyId),object.parse(req.body),req.user!)}));
+  static reviewEmergency = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req,res,async()=>({emergency:await ThreatModelService.reviewEmergencyChange(this.param(req.params.id),this.param(req.params.emergencyId),object.parse(req.body),req.user!)}));
+  static closeEmergency = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req,res,async()=>({emergency:await ThreatModelService.closeEmergencyChange(this.param(req.params.id),this.param(req.params.emergencyId),req.user!)}));
+  static linkRequirementControl = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ mapping: await ThreatModelService.linkRequirementControl(this.param(req.params.id), object.parse(req.body), req.user!) }));
+  static updateScope = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => await ThreatModelService.updateScope(this.param(req.params.id), object.parse(req.body), req.user!));
+  static requirement = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ requirement: await ThreatModelService.createRequirement(this.param(req.params.id), object.parse(req.body), req.user!) }), true);
+  static compliance = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ requirement: await ThreatModelService.addComplianceRequirement(object.parse(req.body), req.user!) }), true);
+  static dataObject = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ dataObject: await ThreatModelService.addDataObject(this.param(req.params.id), object.parse(req.body), req.user!) }), true);
+  static transitionThreat = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ threat: await ThreatModelService.transitionThreat(this.param(req.params.id), object.parse(req.body), req.user!) }));
+  static updateThreat = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req,res,async()=>({threat:await ThreatModelService.updateThreat(this.param(req.params.id),object.parse(req.body),req.user!,this.context(req))}));
+  static editArchitecture = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req,res,async()=>await ThreatModelService.editArchitecture(this.param(req.params.id),this.param(req.params.entityId),{...object.parse(req.body),kind:this.param(req.params.kind)},req.user!,this.context(req)));
+  static threatLineage = (req: AuthenticatedRequest, res: Response): Promise<void> => { res.set('Cache-Control','no-store'); return this.execute(req,res,async()=>({lineage:await ThreatModelService.threatLineage(this.param(req.params.id),req.query,req.user!)})); };
+  static exportSnapshot = (req: AuthenticatedRequest, res: Response): Promise<void> => { res.set('Cache-Control','no-store'); return this.execute(req, res, async () => ({ report: await ThreatModelService.exportSnapshot(this.param(req.params.id), this.param(req.params.revisionId), req.user!) })); };
   static policy = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ policy: await ThreatModelService.policy(req.user!, String(req.query.organizationId || 'org-bank')) }));
   static updatePolicy = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ policy: await ThreatModelService.updatePolicy(z.object({ organizationId: z.string().trim().min(1).optional(), policy: z.record(z.unknown()) }).parse(req.body), req.user!) }));
   static report = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ report: await ThreatModelService.governanceReport(req.user!) }));
@@ -43,6 +79,6 @@ export class ThreatModelsController {
   static requestChanges = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => await ThreatModelService.requestChanges(this.param(req.params.id), object.parse(req.body), req.user!));
   static approve = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => await ThreatModelService.decideApproval(this.param(req.params.id), object.parse(req.body), req.user!));
   static releaseGate = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ releaseGate: await ThreatModelService.releaseGate(this.param(req.params.id), req.user!) }));
-  static authorizeRelease = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ releaseAuthorization: await ThreatModelService.authorizeRelease(this.param(req.params.id), z.object({ releaseId: z.string().trim().min(1) }).parse(req.body).releaseId, req.user!) }));
+  static authorizeRelease = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => { const input=z.object({releaseId:z.string().trim().min(1),emergencyChangeId:z.string().trim().min(1).optional()}).parse(req.body); return {releaseAuthorization:await ThreatModelService.authorizeRelease(this.param(req.params.id),input.releaseId,req.user!,input.emergencyChangeId)}; });
   static history = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => { const detail = await ThreatModelService.detail(this.param(req.params.id), req.user!); return { history: detail.history, approvals: detail.approvals, evidence: detail.evidence }; });
 }

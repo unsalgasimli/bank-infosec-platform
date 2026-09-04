@@ -156,46 +156,46 @@ export const ApprovalsTab: React.FC<ApprovalsTabProps> = ({
 
       {/* Decision Modal */}
       {selectedStep && (
-        <div className="fixed inset-0 z-dsDialog flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-semantic-panel border border-semantic-border-strong text-semantic-primary rounded-xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-semantic-border pb-3">
+              <h3 className="text-sm font-bold text-semantic-primary uppercase tracking-wider">
                 Sign Approval: {selectedStep.name}
               </h3>
-              <button onClick={() => setSelectedStep(null)} className="w-6 h-6 rounded-md hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors">✕</button>
+              <button onClick={() => setSelectedStep(null)} className="w-6 h-6 rounded-md hover:bg-semantic-subtle flex items-center justify-center text-semantic-muted hover:text-semantic-primary transition-colors">✕</button>
             </div>
 
             <div className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1.5 uppercase tracking-wider">Decision</label>
+                <label className="block text-xs font-bold text-semantic-primary mb-1.5 uppercase tracking-wider">Decision</label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
                     onClick={() => setDecision('APPROVED')}
                     className={`py-2.5 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs ${
                       decision === 'APPROVED'
-                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800 ring-2 ring-emerald-400/30'
-                        : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400 ring-2 ring-emerald-500/20'
+                        : 'bg-semantic-subtle border-semantic-border text-semantic-muted hover:text-semantic-primary hover:bg-semantic-panel'
                     }`}
                   >
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Approve
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Approve
                   </button>
                   <button
                     type="button"
                     onClick={() => setDecision('REJECTED')}
                     className={`py-2.5 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs ${
                       decision === 'REJECTED'
-                        ? 'bg-rose-50 border-rose-300 text-rose-800 ring-2 ring-rose-400/30'
-                        : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                        ? 'bg-rose-500/15 border-rose-500/40 text-rose-400 ring-2 ring-rose-500/20'
+                        : 'bg-semantic-subtle border-semantic-border text-semantic-muted hover:text-semantic-primary hover:bg-semantic-panel'
                     }`}
                   >
-                    <XCircle className="w-4 h-4 text-rose-600" /> Reject
+                    <XCircle className="w-4 h-4 text-rose-400" /> Reject
                   </button>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-800 mb-1">
+                <label className="block text-xs font-semibold text-semantic-primary mb-1">
                   Governance Review Comments (Audit Logged)
                 </label>
                 <textarea
@@ -208,7 +208,7 @@ export const ApprovalsTab: React.FC<ApprovalsTabProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-semantic-border">
               <button
                 onClick={() => setSelectedStep(null)}
                 className="jira-btn-subtle"

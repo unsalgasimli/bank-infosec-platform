@@ -30,6 +30,9 @@ export const DESTINATION_TO_PATH: Record<DestinationId | string, string> = {
 
   // Assets & CMDB
   'asset-inventory': '/assets-cmdb/inventory',
+  'discovery-sources': '/assets-cmdb/discovery-sources',
+  'discovery-runs': '/assets-cmdb/discovery-runs',
+  'correlation-review': '/assets-cmdb/correlation-review',
   'configuration-items': '/assets-cmdb/configuration-items',
   'business-services': '/assets-cmdb/business-services',
   'applications': '/assets-cmdb/applications',
@@ -90,6 +93,13 @@ PATH_TO_DESTINATION['/audit'] = 'audit-compliance';
 PATH_TO_DESTINATION['/assets'] = 'asset-inventory';
 PATH_TO_DESTINATION['/applications'] = 'applications';
 PATH_TO_DESTINATION['/cmdb'] = 'relationship-map';
+PATH_TO_DESTINATION['/discovery-sources'] = 'discovery-sources';
+PATH_TO_DESTINATION['/discovery-runs'] = 'discovery-runs';
+PATH_TO_DESTINATION['/correlation-review'] = 'correlation-review';
+PATH_TO_DESTINATION['/configuration-items'] = 'configuration-items';
+PATH_TO_DESTINATION['/business-services'] = 'business-services';
+PATH_TO_DESTINATION['/inventory'] = 'asset-inventory';
+PATH_TO_DESTINATION['/relationship-map'] = 'relationship-map';
 PATH_TO_DESTINATION['/ciso'] = 'executive-analytics';
 PATH_TO_DESTINATION['/ciso-dash'] = 'executive-analytics';
 PATH_TO_DESTINATION['/admin'] = 'admin-settings';

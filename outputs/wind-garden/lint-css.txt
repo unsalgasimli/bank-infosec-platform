@@ -1,0 +1,831 @@
+$ node scripts/audit-css.mjs --check
+{
+  "styleFiles": [
+    "src/client/components/auth/garden/wind-garden.css",
+    "src/client/styles/alive-tokens.css",
+    "src/client/styles/index.css",
+    "src/client/styles/tokens.css"
+  ],
+  "sourceFileCount": 345,
+  "cssLines": 1964,
+  "classSelectors": 103,
+  "referencedClasses": 100,
+  "unreferencedClasses": 3,
+  "classAudit": [
+    {
+      "className": "alive-btn-primary",
+      "references": 5,
+      "classification": "referenced"
+    },
+    {
+      "className": "alive-btn-secondary",
+      "references": 3,
+      "classification": "referenced"
+    },
+    {
+      "className": "alive-card",
+      "references": 8,
+      "classification": "referenced"
+    },
+    {
+      "className": "alive-command-item",
+      "references": 0,
+      "classification": "unreferenced"
+    },
+    {
+      "className": "alive-dock",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "alive-inspector-panel",
+      "references": 2,
+      "classification": "referenced"
+    },
+    {
+      "className": "alive-interactive-row",
+      "references": 2,
+      "classification": "referenced"
+    },
+    {
+      "className": "alive-pill",
+      "references": 0,
+      "classification": "unreferenced"
+    },
+    {
+      "className": "alive-status-pulse",
+      "references": 4,
+      "classification": "referenced"
+    },
+    {
+      "className": "alive-workspace-canvas",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "bg-slate-100",
+      "references": 56,
+      "classification": "referenced"
+    },
+    {
+      "className": "bg-slate-50",
+      "references": 59,
+      "classification": "referenced"
+    },
+    {
+      "className": "bg-white",
+      "references": 127,
+      "classification": "referenced"
+    },
+    {
+      "className": "border-slate-200",
+      "references": 146,
+      "classification": "referenced"
+    },
+    {
+      "className": "border-slate-300",
+      "references": 12,
+      "classification": "referenced"
+    },
+    {
+      "className": "custom-scrollbar",
+      "references": 67,
+      "classification": "referenced"
+    },
+    {
+      "className": "fixed",
+      "references": 76,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-access",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-access__content",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-access__footer",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-access__intro",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-access__rule",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-auth-error",
+      "references": 4,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-auth-status",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-bottom",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-brand",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-brand__symbol",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-caption",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-catalog",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-catalog__line",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-dial",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-dials",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-discovery",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-drag-hint",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-editorial",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-entry",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-explore",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-eyebrow",
+      "references": 2,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-fallback",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-form",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-header",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-header__note",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-language",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-layout",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-loading",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-login",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-password",
+      "references": 3,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-password-label",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-puzzle",
+      "references": 3,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-puzzle__footer",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-puzzle__heading",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-scene",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-session-note",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-skip",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-stage",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-submit",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "garden-transport",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "jira-btn-primary",
+      "references": 56,
+      "classification": "referenced"
+    },
+    {
+      "className": "jira-btn-secondary",
+      "references": 10,
+      "classification": "referenced"
+    },
+    {
+      "className": "jira-btn-subtle",
+      "references": 77,
+      "classification": "referenced"
+    },
+    {
+      "className": "jira-filter-pill",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "jira-filter-pill-inactive",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "jira-input",
+      "references": 153,
+      "classification": "referenced"
+    },
+    {
+      "className": "jira-lozenge",
+      "references": 8,
+      "classification": "referenced"
+    },
+    {
+      "className": "jira-lozenge-blocked",
+      "references": 2,
+      "classification": "referenced"
+    },
+    {
+      "className": "jira-lozenge-done",
+      "references": 2,
+      "classification": "referenced"
+    },
+    {
+      "className": "jira-lozenge-inprogress",
+      "references": 8,
+      "classification": "referenced"
+    },
+    {
+      "className": "jira-lozenge-review",
+      "references": 2,
+      "classification": "referenced"
+    },
+    {
+      "className": "jira-lozenge-todo",
+      "references": 2,
+      "classification": "referenced"
+    },
+    {
+      "className": "jira-table",
+      "references": 2,
+      "classification": "referenced"
+    },
+    {
+      "className": "mini-label",
+      "references": 32,
+      "classification": "referenced"
+    },
+    {
+      "className": "sidebar-badge",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "sidebar-edge-fade",
+      "references": 2,
+      "classification": "referenced"
+    },
+    {
+      "className": "sidebar-edge-fade-bottom",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "sidebar-edge-fade-top",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "sidebar-footer",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "sidebar-footer-action",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "sidebar-module-content",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "sidebar-module-header",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "sidebar-nav-item",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "sidebar-nav-item-active",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "sidebar-navigation",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "text-slate-400",
+      "references": 78,
+      "classification": "referenced"
+    },
+    {
+      "className": "text-slate-500",
+      "references": 113,
+      "classification": "referenced"
+    },
+    {
+      "className": "text-slate-600",
+      "references": 40,
+      "classification": "referenced"
+    },
+    {
+      "className": "text-slate-700",
+      "references": 48,
+      "classification": "referenced"
+    },
+    {
+      "className": "text-slate-800",
+      "references": 52,
+      "classification": "referenced"
+    },
+    {
+      "className": "text-slate-900",
+      "references": 32,
+      "classification": "referenced"
+    },
+    {
+      "className": "wind-garden",
+      "references": 2,
+      "classification": "referenced"
+    },
+    {
+      "className": "wrike-btn-primary",
+      "references": 56,
+      "classification": "referenced"
+    },
+    {
+      "className": "wrike-btn-secondary",
+      "references": 31,
+      "classification": "referenced"
+    },
+    {
+      "className": "wrike-canvas-grid",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "wrike-card",
+      "references": 87,
+      "classification": "referenced"
+    },
+    {
+      "className": "wrike-dropdown-menu",
+      "references": 2,
+      "classification": "referenced"
+    },
+    {
+      "className": "wrike-input",
+      "references": 64,
+      "classification": "referenced"
+    },
+    {
+      "className": "wrike-pill",
+      "references": 6,
+      "classification": "referenced"
+    },
+    {
+      "className": "wrike-pill-amber",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "wrike-pill-blue",
+      "references": 1,
+      "classification": "referenced"
+    },
+    {
+      "className": "wrike-pill-green",
+      "references": 2,
+      "classification": "referenced"
+    },
+    {
+      "className": "wrike-select",
+      "references": 7,
+      "classification": "referenced"
+    },
+    {
+      "className": "wrike-table",
+      "references": 6,
+      "classification": "referenced"
+    },
+    {
+      "className": "z-dropdown",
+      "references": 0,
+      "classification": "unreferenced"
+    },
+    {
+      "className": "z-dsDropdown",
+      "references": 1,
+      "classification": "referenced"
+    }
+  ],
+  "cssVariables": 299,
+  "unusedVariables": [
+    "alive-glow-brand"
+  ],
+  "importantDeclarations": 33,
+  "rawColorTokensInClientStyling": 468,
+  "rawColorUniqueInClientStyling": 219,
+  "rawColorTokensInAuthoredStyles": 283,
+  "rawColorTokensInClientSource": 185,
+  "rawColorUniqueInClientSource": 57,
+  "arbitraryUtilityOccurrences": 265,
+  "arbitraryUtilityUnique": 101,
+  "arbitraryColorUtilityOccurrences": 161,
+  "arbitraryColorUtilityUnique": 16,
+  "zIndexUtilities": [
+    "z-10",
+    "z-20",
+    "z-30",
+    "z-50",
+    "z-[100]",
+    "z-[101]"
+  ],
+  "inlineStyleExpressions": 37,
+  "inlineStyleFiles": [
+    "src/client/components/admin/AdminCenterView.tsx",
+    "src/client/components/alive/commands/AliveCommandLauncher.tsx",
+    "src/client/components/alive/inspectors/AliveTicketInspector.tsx",
+    "src/client/components/common/CustomSelect.tsx",
+    "src/client/components/dashboards/CISODashboard.tsx",
+    "src/client/components/dashboards/LeadDashboard.tsx",
+    "src/client/components/departments/CrossDepartmentHubView.tsx",
+    "src/client/components/departments/DepartmentAdminPortal.tsx",
+    "src/client/components/departments/DepartmentHubView.tsx",
+    "src/client/components/ideate/IdeateCanvasView.tsx",
+    "src/client/components/projects/ProjectOperationsWorkspace.tsx",
+    "src/client/components/proofing/DocumentProofingModal.tsx",
+    "src/client/components/tickets/tabs/LifecycleTab.tsx",
+    "src/client/components/tickets/TicketSplitDetail.tsx",
+    "src/client/components/views/WrikeWorkloadView.tsx",
+    "src/client/components/workflows/UniversalWorkflowWorkspace.tsx"
+  ],
+  "dynamicClassExpressionSites": 322,
+  "dynamicClassMarkers": 2702,
+  "maxSelectorSpecificity": 61,
+  "highSpecificitySelectors": [
+    {
+      "selector": ".garden-login.is-entering .garden-entry > div",
+      "specificity": 31
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] select.jira-input:hover",
+      "specificity": 31
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] select.wrike-select:hover",
+      "specificity": 31
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] select.jira-input:focus",
+      "specificity": 31
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] select.jira-input:focus-visible",
+      "specificity": 31
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .jira-table tbody tr:hover",
+      "specificity": 32
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .wrike-table tbody tr:hover",
+      "specificity": 32
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0.z-dsDialog",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0.z-modal",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0[role=\"dialog\"]",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 > [class*=\"bg-slate-950\"]",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 > [class*=\"bg-black\"]",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 > [class*=\"bg-slate-900\"]",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 section[role=\"dialog\"]",
+      "specificity": 41
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 form[role=\"dialog\"]",
+      "specificity": 41
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 > div > section",
+      "specificity": 32
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 > div > form",
+      "specificity": 32
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 header",
+      "specificity": 31
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 footer",
+      "specificity": 31
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 .bg-white",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 .bg-white\\/95",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 .bg-white\\/90",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 .bg-white\\/80",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 .bg-white\\/70",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 .bg-slate-50",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 .bg-slate-50\\/70",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 .bg-slate-50\\/55",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 .bg-slate-100",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 .text-slate-900",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 .text-slate-800",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 .text-slate-700",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 .text-slate-600",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 .text-slate-500",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 .text-slate-400",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 .border-slate-200",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 .border-slate-300",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] [role=\"dialog\"] input:not([type=\"checkbox\"]):not([type=\"radio\"])",
+      "specificity": 41
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] [aria-modal=\"true\"] input:not([type=\"checkbox\"]):not([type=\"radio\"])",
+      "specificity": 41
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 input:not([type=\"checkbox\"]):not([type=\"radio\"])",
+      "specificity": 51
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 textarea",
+      "specificity": 31
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] [role=\"dialog\"] input:not([type=\"checkbox\"]):not([type=\"radio\"]):focus",
+      "specificity": 51
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] [role=\"dialog\"] textarea:focus",
+      "specificity": 31
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] [aria-modal=\"true\"] input:not([type=\"checkbox\"]):not([type=\"radio\"]):focus",
+      "specificity": 51
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] [aria-modal=\"true\"] textarea:focus",
+      "specificity": 31
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 input:not([type=\"checkbox\"]):not([type=\"radio\"]):focus",
+      "specificity": 61
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 textarea:focus",
+      "specificity": 41
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] [role=\"combobox\"] + div[role=\"listbox\"]",
+      "specificity": 31
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] [role=\"listbox\"] [role=\"option\"]:hover",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] [role=\"listbox\"] [role=\"option\"][aria-selected=\"true\"]",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] [role=\"menu\"] [role=\"menuitem\"]:hover",
+      "specificity": 40
+    },
+    {
+      "selector": "[data-ui-experience=\"alive\"] .fixed.inset-0 aside",
+      "specificity": 31
+    },
+    {
+      "selector": ".fixed.inset-0.z-modal form[role='dialog']",
+      "specificity": 41
+    },
+    {
+      "selector": ".fixed.inset-0.z-dsDialog form[role='dialog']",
+      "specificity": 41
+    },
+    {
+      "selector": ".fixed.inset-0.z-50 form[role='dialog']",
+      "specificity": 41
+    },
+    {
+      "selector": ".fixed.inset-0.z-dsToast form[role='dialog']",
+      "specificity": 41
+    },
+    {
+      "selector": ".fixed.inset-0.z-modal form[role='dialog'] > :nth-child(2)",
+      "specificity": 51
+    },
+    {
+      "selector": ".fixed.inset-0.z-dsDialog form[role='dialog'] > :nth-child(2)",
+      "specificity": 51
+    },
+    {
+      "selector": ".fixed.inset-0.z-50 form[role='dialog'] > :nth-child(2)",
+      "specificity": 51
+    },
+    {
+      "selector": ".fixed.inset-0.z-dsToast form[role='dialog'] > :nth-child(2)",
+      "specificity": 51
+    }
+  ],
+  "keyframes": 3,
+  "unusedKeyframes": [],
+  "rawValueReview": {
+    "important": 33,
+    "hashes": 434,
+    "rgb": 19,
+    "rgba": 37,
+    "hsl": 0,
+    "hsla": 0,
+    "boxShadow": 31,
+    "borderRadius": 25,
+    "zIndex": 10,
+    "transition": 31,
+    "animation": 6,
+    "inlineStyles": 37
+  }
+}
+CSS architecture check failed: 3 unreferenced CSS selectors, 1 unused CSS variables, 33 !important declarations, non-semantic z-index utility classes
+[ELIFECYCLE] Command failed with exit code 1.

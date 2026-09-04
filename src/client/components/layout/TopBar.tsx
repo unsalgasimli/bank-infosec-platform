@@ -18,6 +18,7 @@ import { useAuth } from '../../context/AuthContext.js';
 import { useNotifications } from '../../context/NotificationContext.js';
 import { LDAPSignInModal } from '../auth/LDAPSignInModal.js';
 import { useI18n } from '../../context/I18nContext.js';
+import { AliveExperienceSwitcher } from '../alive/common/AliveExperienceSwitcher.js';
 
 interface TopBarProps {
   onOpenCreate: () => void;
@@ -110,8 +111,9 @@ export const TopBar: React.FC<TopBarProps> = ({
           </div>
         </div>
 
-        {/* Right: AI Intelligence, Notifications & User Profile */}
+        {/* Right: Experience Switcher, AI Intelligence, Notifications & User Profile */}
         <div className="flex items-center gap-3 shrink-0">
+          <AliveExperienceSwitcher />
           <div className="hidden sm:flex items-center rounded-lg border border-semantic-border-strong bg-semantic-subtle p-0.5" role="group" aria-label={t('Switch language')}>
             <button
               type="button"

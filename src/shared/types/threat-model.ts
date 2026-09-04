@@ -41,6 +41,7 @@ export interface ThreatModel {
 }
 
 export interface ThreatModelRevision {
+  architectureVersion?: number;
   id: string;
   threatModelId: string;
   revisionNumber: number;
@@ -82,6 +83,8 @@ export interface ThreatModelApplicabilityAssessment {
 }
 
 export interface ThreatModelComponent {
+  contentVersion?: number;
+  securityZone?: string;
   id: string;
   revisionId: string;
   name: string;
@@ -94,6 +97,7 @@ export interface ThreatModelComponent {
 }
 
 export interface ThreatModelDataFlow {
+  contentVersion?: number;
   id: string;
   revisionId: string;
   sourceComponentId: string;
@@ -113,6 +117,7 @@ export interface ThreatModelDataFlow {
 }
 
 export interface ThreatModelTrustBoundary {
+  contentVersion?: number;
   id: string;
   revisionId: string;
   name: string;
@@ -127,6 +132,10 @@ export interface ThreatModelTrustBoundary {
 
 export interface Threat {
   id: string;
+  contentVersion?: number;
+  lineageId?: string;
+  lineageOrigin?: 'LEGACY_UNCORRELATED' | 'NATIVE' | 'REVISION_COPY';
+  previousThreatId?: string;
   revisionId: string;
   key: string;
   title: string;
@@ -163,6 +172,12 @@ export interface Threat {
 export interface ThreatControl {
   id: string;
   threatId: string;
+  threatIds?: string[];
+  scopeVersion?: number;
+  catalogVersionId?: string;
+  catalogCode?: string;
+  catalogVersion?: number;
+  verificationGuidance?: string;
   title: string;
   description: string;
   controlType: string;
@@ -179,6 +194,7 @@ export interface ThreatControl {
 export interface ControlVerification {
   id: string;
   controlId: string;
+  controlScopeVersion?: number;
   verificationType: VerificationType;
   testCase: string;
   expectedResult: string;
@@ -203,7 +219,9 @@ export interface ThreatModelApproval {
 }
 
 export interface ThreatModelException {
+  architectureVersion?: number;
   id: string;
+  threatContentVersion?: number;
   threatId: string;
   controlId?: string;
   reason: string;
@@ -220,6 +238,7 @@ export interface ThreatModelException {
 }
 
 export interface SecurityReleaseGateResult {
+  securityGate: 'PASS' | 'CONDITIONAL' | 'BLOCK';
   allowed: boolean;
   blockers: string[];
   warnings: string[];

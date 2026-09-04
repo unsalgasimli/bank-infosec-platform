@@ -1,0 +1,46 @@
+import React, { useState } from 'react';
+import type { ThreatModelDetail } from './ThreatModelDetailPanel.js';
+type Kind='component'|'boundary'|'flow';
+type Props={detail:ThreatModelDetail;mutable:boolean;fetchWithAuth:(url:string,options?:RequestInit)=>Promise<Response>;onRefresh:()=>Promise<void>};
+const inputClass='jira-input mt-1 w-full';
+const componentTypes=['PROCESS','SERVICE','API','DATABASE','DATASTORE','QUEUE','EXTERNAL_SYSTEM','USER','ADMIN','THIRD_PARTY','NETWORK_ZONE','CLOUD_SERVICE','DEVICE','OTHER'];
+const empty=()=>({name:'',description:'',type:'SERVICE',securityZone:'',boundaryType:'NETWORK',authenticationRequired:true,encryptionRequired:true,encryptionInTransit:null,dataClassification:'INTERNAL',dataTypes:[],dataTypesText:'',direction:'ONE_WAY'});
+
+export function ThreatArchitectureEditor({detail,mutable,fetchWithAuth,onRefresh}:Props){
+  const [kind,setKind]=useState<Kind>('component');const [draft,setDraft]=useState<any>(empty);
+  const [reason,setReason]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');const [confirmRemove,setConfirmRemove]=useState(false);
+  const entities=kind==='component'?detail.components:kind==='boundary'?detail.trustBoundaries:detail.dataFlows;
+  const current=entities.find(item=>item.id===draft.id);const stale=Boolean(draft.id&&(!current||current.contentVersion!==draft.contentVersion));
+  const choose=(id:string)=>{const entity=entities.find(item=>item.id===id);setDraft(entity?{...entity,dataTypesText:(entity.dataTypes||[]).join(', ')}:empty());setReason('');setError('');setNotice('');setConfirmRemove(false);};
+  const field=(name:string,label:string,required=false,multiline=false)=><label>{label}{multiline?<textarea className={inputClass} required={required} value={draft[name]||''} onChange={event=>setDraft({...draft,[name]:event.target.value})}/>:<input className={inputClass} required={required} value={draft[name]||''} onChange={event=>setDraft({...draft,[name]:event.target.value})}/>}</label>;
+  const select=(name:string,label:string,items:{id:string;name?:string}[],optional=false)=><label>{label}<select className={inputClass} required={!optional} value={draft[name]||''} onChange={event=>setDraft({...draft,[name]:event.target.value})}><option value="">{optional?'Not specified':'Select…'}</option>{items.map(item=><option key={item.id} value={item.id}>{item.name||item.id}</option>)}</select></label>;
+  const options=(values:string[])=>values.map(id=>({id}));
+  const save=async(action:'UPDATE'|'DELETE')=>{
+    if(draft.id&&!reason.trim()){setError('A reason is required.');return;}setBusy(true);setError('');setNotice('');
+    try{
+      const endpoint=draft.id?`/architecture/${kind}/${draft.id}`:kind==='component'?'/components':kind==='boundary'?'/trust-boundaries':'/data-flows';
+      const response=await fetchWithAuth(`/api/threat-models/${detail.model.id}${endpoint}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...draft,action,reason,dataTypes:String(draft.dataTypesText||'').split(',').map(value=>value.trim()).filter(Boolean)})});
+      const result=await response.json();if(!response.ok||!result.success)throw new Error(result.error||'Architecture operation failed.');
+      const entity=result.entity||result.component||result.trustBoundary||result.dataFlow;
+      setDraft(entity?{...entity,dataTypesText:(entity.dataTypes||[]).join(', ')}:empty());setReason('');setConfirmRemove(false);
+      setNotice(result.deleted?'Unreferenced draft record removed; its previous content remains in audit.':result.changed===false?'No content change.':'Saved to the server. Security changes require re-screening and control verification.');await onRefresh();
+    }catch(cause){setError(cause instanceof Error?cause.message:'Operation failed.');}finally{setBusy(false);}
+  };
+  return <section className="space-y-4">
+    <p>Architecture v{detail.revisions?.[0]?.architectureVersion??'—'}. Names/descriptions are documentation only. Other changes invalidate revision-wide evidence scope and risk acceptances.</p>
+    <div className="grid md:grid-cols-2 gap-3"><label>Record type<select className={inputClass} value={kind} disabled={busy} onChange={event=>{setKind(event.target.value as Kind);setDraft(empty());setReason('');setConfirmRemove(false);setError('');setNotice('');}}>{['component','boundary','flow'].map(value=><option key={value}>{value}</option>)}</select></label><label>Existing record<select className={inputClass} value={draft.id||''} disabled={busy} onChange={event=>choose(event.target.value)}><option value="">Create new</option>{entities.map(item=><option key={item.id} value={item.id}>{item.name} · v{item.contentVersion}</option>)}</select></label></div>
+    {error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
+    {stale&&<p role="alert">Server content changed; unsaved edits are preserved. <button type="button" className="jira-btn-subtle" onClick={()=>choose(draft.id)}>Discard edits and reload</button></p>}
+    <form onSubmit={event=>{event.preventDefault();void save('UPDATE');}}><fieldset disabled={!mutable||busy||stale} className="grid md:grid-cols-2 gap-3">
+      {field('name','Name',true)}{field('description','Description',false,true)}
+      {kind==='component'&&<>{select('type','Component type',options(componentTypes))}{field('securityZone','Security zone',true)}{field('technology','Technology')}{field('assetId','Canonical asset ID')}{field('ownerId','Canonical owner ID')}{select('criticality','Criticality',options(['LOW','MEDIUM','HIGH','CRITICAL']),true)}<p>Before moving a component across zones, link the affected flows to a boundary. The server rejects unguarded crossings.</p></>}
+      {kind==='boundary'&&<>{field('boundaryType','Boundary type',true)}{field('trustLevelFrom','Trust level from')}{field('trustLevelTo','Trust level to')}{['authenticationRequired','encryptionRequired'].map(name=><label key={name}><input type="checkbox" checked={draft[name]??true} onChange={event=>setDraft({...draft,[name]:event.target.checked})}/> {name==='authenticationRequired'?'Authentication required':'Encryption required'}</label>)}{field('notes','Boundary security assumptions',false,true)}</>}
+      {kind==='flow'&&<>{select('sourceComponentId','Source',detail.components)}{select('destinationComponentId','Destination',detail.components)}{select('trustBoundaryId','Trust boundary',detail.trustBoundaries,true)}{field('protocol','Protocol')}<label>Port<input className={inputClass} type="number" min={1} max={65535} value={draft.port??''} onChange={event=>setDraft({...draft,port:event.target.value})}/></label>{field('authenticationMethod','Authentication method')}<label>Encryption in transit<select className={inputClass} value={draft.encryptionInTransit===null||draft.encryptionInTransit===undefined?'':String(draft.encryptionInTransit)} onChange={event=>setDraft({...draft,encryptionInTransit:event.target.value===''?null:event.target.value==='true'})}><option value="">Unknown / not assessed</option><option value="true">Yes</option><option value="false">No</option></select></label>{select('dataClassification','Data classification',options(['PUBLIC','INTERNAL','RESTRICTED','CONFIDENTIAL_SECURITY_ONLY','HIGHLY_RESTRICTED_HR_LEGAL']))}{field('dataTypesText','Data types (comma-separated)')}{select('direction','Direction',options(['ONE_WAY','BIDIRECTIONAL']))}{field('notes','Flow security assumptions',false,true)}<p>Crossing is derived from persisted component zones. Information assets are linked in the Data tab. Classification can raise, but never automatically lower, the model's confidentiality label.</p></>}
+      {draft.id&&<label>Reason for change<textarea className={inputClass} required maxLength={4000} value={reason} onChange={event=>setReason(event.target.value)}/></label>}
+      <button type="submit" className="jira-btn-primary">{draft.id?'Save architecture changes':'Create architecture record'}</button>
+      {draft.id&&<button type="button" className="jira-btn-subtle" onClick={()=>setConfirmRemove(true)}>Remove unreferenced draft record…</button>}
+    </fieldset></form>
+    {confirmRemove&&<div role="alert" className="border border-semantic-jira-border rounded p-3"><p>Remove “{draft.name}”? Linked records cannot be removed. Security assumptions will require reassessment. Enter a reason in the form first.</p><button type="button" className="jira-btn-primary" disabled={!mutable||busy||stale||!reason.trim()} onClick={()=>void save('DELETE')}>Confirm removal</button><button type="button" className="jira-btn-subtle" disabled={busy} onClick={()=>setConfirmRemove(false)}>Cancel</button></div>}
+    <details><summary>Persisted flow relationships</summary><ul>{detail.dataFlows.map(flow=><li key={flow.id}>{detail.components.find(item=>item.id===flow.sourceComponentId)?.name||flow.sourceComponentId} → {detail.components.find(item=>item.id===flow.destinationComponentId)?.name||flow.destinationComponentId} · {flow.name} · {flow.crossesTrustBoundary?`Boundary: ${detail.trustBoundaries.find(item=>item.id===flow.trustBoundaryId)?.name||'MISSING'}`:'Same zone'}</li>)}</ul></details>
+  </section>;
+}

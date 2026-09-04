@@ -2,10 +2,10 @@ import { v4 as uuidv4 } from 'uuid';
 import type { BankUser } from '../../../shared/types/auth.js';
 import type { RiskRegisterItem } from '../../../shared/types/risk.js';
 import { pgClient } from './client.js';
+import { riskRating as rating } from '../../../shared/risk-matrix.js';
 
 type Row = Record<string, any>;
 const securityReaders = (actor: BankUser) => actor.roles.some((role) => ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER', 'APPSEC_ANALYST', 'GRC_ANALYST', 'AUDITOR'].includes(role));
-const rating = (score: number) => score >= 16 ? 'CRITICAL' : score >= 10 ? 'HIGH' : score >= 5 ? 'MEDIUM' : 'LOW';
 const scoreByRating: Record<string, number> = { LOW: 1, MEDIUM: 6, HIGH: 12, CRITICAL: 20 };
 const parse = (value: unknown) => {
   if (!value) return {};

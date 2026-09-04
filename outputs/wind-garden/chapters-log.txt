@@ -1,0 +1,11 @@
+{
+  "checks": [
+    "First puzzle automatically reveals chapter two",
+    "Second chapter moves the next dial as well",
+    "Second puzzle completes in six moves and reveals the secret garden",
+    "Puzzle progression preserves login input",
+    "Replay resets both chapters and the reward",
+    "Compact mobile world renders without horizontal overflow"
+  ],
+  "errors": []
+}

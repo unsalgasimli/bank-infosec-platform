@@ -508,29 +508,29 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
 
       {/* Transition Comment Modal */}
       {selectedTransition && (
-        <div className="fixed inset-0 z-dsDialog flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-semantic-panel border border-semantic-border-strong text-semantic-primary rounded-xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-semantic-border pb-3">
+              <h3 className="text-sm font-bold text-semantic-primary uppercase tracking-wider">
                 {t('Transition to:')} {t(selectedTransition.name)}
               </h3>
               <button
                 onClick={() => setSelectedTransition(null)}
-                className="w-6 h-6 rounded-md hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors"
+                className="w-6 h-6 rounded-md hover:bg-semantic-subtle flex items-center justify-center text-semantic-muted hover:text-semantic-primary transition-colors"
               >
                 ✕
               </button>
             </div>
 
             {selectedTransition.requireEvidence && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center gap-2">
-                <Shield className="w-4 h-4 text-amber-600 shrink-0" />
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-400 flex items-center gap-2">
+                <Shield className="w-4 h-4 text-amber-400 shrink-0" />
                 <span>{t('Notice: Evidence attachments are required before submitting for retest.')}</span>
               </div>
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-800">
+              <label className="text-xs font-semibold text-semantic-strong">
                 {t('Transition Justification Comment')} {selectedTransition.requireComment && <span className="text-rose-500">({t('Mandatory')})</span>}
               </label>
               <textarea
@@ -545,7 +545,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
 
             {selectedTransition.requiredFields?.includes('resolutionCode') && (
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-800">{t('Resolution Code')}</label>
+                <label className="text-xs font-semibold text-semantic-strong">{t('Resolution Code')}</label>
                 <select value={resolutionCode} onChange={(event) => setResolutionCode(event.target.value)} className="jira-input">
                   {['FIXED', 'WORKAROUND', 'DUPLICATE', 'FALSE_POSITIVE', 'USER_ERROR', 'KNOWN_ISSUE', 'REJECTED', 'CANCELLED', 'NO_ACTION_REQUIRED', 'MITIGATED', 'RISK_ACCEPTED'].map((code) => (
                     <option key={code} value={code}>{code.replaceAll('_', ' ')}</option>
@@ -556,7 +556,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
 
             {selectedTransition.requiredFields?.includes('resolutionSummary') && (
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-800">{t('Resolution Summary')}</label>
+                <label className="text-xs font-semibold text-semantic-strong">{t('Resolution Summary')}</label>
                 <textarea
                   rows={3}
                   value={resolutionSummary}
@@ -567,7 +567,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-semantic-border">
               <button
                 onClick={() => setSelectedTransition(null)}
                 className="jira-btn-subtle"

@@ -606,8 +606,8 @@ export class WorkflowRuntimeService {
       const productionDeployment = String(instance.context.environment || '').toUpperCase() === 'PRODUCTION';
       if (productionDeployment || instance.context.threatModelRequired === true || threatModelId) {
         if (!threatModelId) throw new OrchestrationError('Production deployment is blocked: the deployment context does not identify an approved Threat Model.', 409);
-        const authorization = verifyReleaseAuthorization(instance.context.securityReleaseAuthorization, { modelId: threatModelId, releaseId });
-        return { actionKey, connectorId: node.action?.connectorId, logicalExecution: 'SUCCEEDED', securityReleaseGate: 'ALLOWED', threatModelId, revisionId: authorization.revisionId, releaseId, externalMutationId: `external-${crypto.createHash('sha256').update(`${instance.id}:${node.id}`).digest('hex').slice(0, 16)}` };
+        verifyReleaseAuthorization(instance.context.securityReleaseAuthorization, { modelId: threatModelId, releaseId });
+        throw new OrchestrationError('Production deployment requires an execution-time security authorization check and a real deployment adapter. A signed token alone is not deployment evidence.', 409);
       }
     }
     if (actionKey === 'CALCULATE_CHANGE_RISK') {

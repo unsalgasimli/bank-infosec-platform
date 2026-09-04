@@ -49,6 +49,9 @@ import {
   parseCurrentUrl,
   pushNavigationState,
 } from './utils/urlRouter.js';
+import { useUIExperience } from './context/UIExperienceContext.js';
+import { AliveAppShell } from './components/alive/layout/AliveAppShell.js';
+import { NAVIGATION_MODULES } from '../shared/types/navigation.js';
 
 const apiErrorMessage = (data: any, fallback: string): string => {
   const message = data?.error || data?.detail || data?.message || data?.title;
@@ -58,6 +61,8 @@ const apiErrorMessage = (data: any, fallback: string): string => {
 export const App: React.FC = () => {
   const { currentUser, isLoading, fetchWithAuth } = useAuth();
   const { t } = useI18n();
+  const { experience } = useUIExperience();
+  const [loginPresentationActive, setLoginPresentationActive] = useState(false);
 
   // Initialize navigation and view mode state from the current browser URL
   const initialRoute = parseCurrentUrl();
@@ -129,16 +134,50 @@ export const App: React.FC = () => {
       .catch(() => {});
 
     // Load Applications & Assets
-    fetchWithAuth('/api/applications')
+    fetchWithAuth('/api/cmdb/applications')
       .then((res) => res.json())
       .then((data) => {
-        if (data.success) setApplications(data.applications);
+        if (data.success && Array.isArray(data.applications) && data.applications.length > 0) {
+          setApplications(data.applications);
+        } else {
+          fetchWithAuth('/api/applications')
+            .then((res) => res.json())
+            .then((legacyData) => {
+              if (legacyData.success && Array.isArray(legacyData.applications)) setApplications(legacyData.applications);
+            })
+            .catch(() => {});
+        }
+      })
+      .catch(() => {
+        fetchWithAuth('/api/applications')
+          .then((res) => res.json())
+          .then((legacyData) => {
+            if (legacyData.success && Array.isArray(legacyData.applications)) setApplications(legacyData.applications);
+          })
+          .catch(() => {});
       });
 
-    fetchWithAuth('/api/assets')
+    fetchWithAuth('/api/cmdb/assets?pageSize=100')
       .then((res) => res.json())
       .then((data) => {
-        if (data.success) setAssets(data.assets);
+        if (data.success && Array.isArray(data.assets) && data.assets.length > 0) {
+          setAssets(data.assets);
+        } else {
+          fetchWithAuth('/api/assets')
+            .then((res) => res.json())
+            .then((legacyData) => {
+              if (legacyData.success && Array.isArray(legacyData.assets)) setAssets(legacyData.assets);
+            })
+            .catch(() => {});
+        }
+      })
+      .catch(() => {
+        fetchWithAuth('/api/assets')
+          .then((res) => res.json())
+          .then((legacyData) => {
+            if (legacyData.success && Array.isArray(legacyData.assets)) setAssets(legacyData.assets);
+          })
+          .catch(() => {});
       });
 
     // Load Risks
@@ -346,52 +385,33 @@ export const App: React.FC = () => {
     );
   }
 
-  if (!currentUser) {
-    return <BankAuthPortal onLoginSuccess={loadData} />;
+  if (!currentUser || loginPresentationActive) {
+    return <BankAuthPortal
+      onAuthenticationStart={() => setLoginPresentationActive(true)}
+      onAuthenticationFailure={() => setLoginPresentationActive(false)}
+      onLoginSuccess={() => { setLoginPresentationActive(false); loadData(); }}
+    />;
   }
 
-  return (
-    <AppLayout
-      activeView={activeDestination}
-      onSelectView={(v) => {
-        handleNavigate(v);
-      }}
-      activeDepartmentId={activeDepartmentId}
-      onSelectDepartment={(dId) => {
-        setActiveDepartmentId(dId);
-        if (dId) {
-          setSelectedAdminDeptId(dId);
-        }
-      }}
-      tickets={scopedTickets}
-      applications={applications}
-      assets={assets}
-      risks={risks}
-      kbArticles={kbArticles}
-      pendingApprovalsCount={pendingApprovalsCount}
-      departmentsCount={departments.length}
-      searchQuery={searchQuery}
-      onSearchChange={setSearchQuery}
-      onTicketCreated={(t) => {
-        loadData();
-        if (t && t.id) {
-          handleSelectTicket(t);
-        }
-      }}
-      onNavigate={handleNavigate}
-      isCreateOpen={isCreateModalOpen}
-      onOpenCreate={() => setIsCreateModalOpen(true)}
-      onCloseCreate={() => setIsCreateModalOpen(false)}
+  const activeNavModule = NAVIGATION_MODULES.flatMap((m) => m.items).find((i) => i.id === activeDestination);
+  const activeParentModule = NAVIGATION_MODULES.find((m) => m.items.some((i) => i.id === activeDestination));
+  const activeViewTitle = activeNavModule
+    ? t(activeNavModule.label)
+    : String(activeDestination).replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const activeParentModuleTitle = activeParentModule ? t(activeParentModule.label) : undefined;
+
+
+
+  const workspaceContent = (
+    <React.Suspense
+      fallback={(
+        <div className="flex min-h-[320px] items-center justify-center text-sm text-semantic-muted">
+          {t('Loading secure workspace…')}
+        </div>
+      )}
     >
-      <React.Suspense
-        fallback={(
-          <div className="flex min-h-[320px] items-center justify-center text-sm text-semantic-muted">
-            {t('Loading secure workspace…')}
-          </div>
-        )}
-      >
-        {/* If a ticket is open, show split detail */}
-        {selectedTicketId && ticketDetailData?.ticket ? (
+      {/* If a ticket is open, show split detail */}
+      {selectedTicketId && ticketDetailData?.ticket ? (
         <TicketSplitDetail
           ticket={ticketDetailData.ticket}
           transitions={ticketDetailData.transitions || []}
@@ -767,9 +787,9 @@ export const App: React.FC = () => {
             />
           )}
         </>
-        )}
+      )}
 
-        {/* Document Proofing Modal */}
+      {/* Document Proofing Modal */}
         {isProofingOpen && (
           <DocumentProofingModal
             isOpen={isProofingOpen}
@@ -777,6 +797,66 @@ export const App: React.FC = () => {
           />
         )}
       </React.Suspense>
+  );
+
+  if (experience === 'alive') {
+    return (
+      <AliveAppShell
+        activeView={activeDestination}
+        activeViewTitle={activeViewTitle}
+        activeParentModuleTitle={activeParentModuleTitle}
+        onSelectView={(v) => handleNavigate(v)}
+        tickets={scopedTickets}
+        applications={applications}
+        assets={assets}
+        risks={risks}
+        kbArticles={kbArticles}
+        pendingApprovalsCount={pendingApprovalsCount}
+        departmentsCount={departments.length}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        onTicketCreated={(t) => {
+          loadData();
+          if (t && t.id) handleSelectTicket(t);
+        }}
+        onNavigate={handleNavigate}
+        isCreateOpen={isCreateModalOpen}
+        onOpenCreate={() => setIsCreateModalOpen(true)}
+        onCloseCreate={() => setIsCreateModalOpen(false)}
+      >
+        {workspaceContent}
+      </AliveAppShell>
+    );
+  }
+
+  return (
+    <AppLayout
+      activeView={activeDestination}
+      onSelectView={(v) => handleNavigate(v)}
+      activeDepartmentId={activeDepartmentId}
+      onSelectDepartment={(dId) => {
+        setActiveDepartmentId(dId);
+        if (dId) setSelectedAdminDeptId(dId);
+      }}
+      tickets={scopedTickets}
+      applications={applications}
+      assets={assets}
+      risks={risks}
+      kbArticles={kbArticles}
+      pendingApprovalsCount={pendingApprovalsCount}
+      departmentsCount={departments.length}
+      searchQuery={searchQuery}
+      onSearchChange={setSearchQuery}
+      onTicketCreated={(t) => {
+        loadData();
+        if (t && t.id) handleSelectTicket(t);
+      }}
+      onNavigate={handleNavigate}
+      isCreateOpen={isCreateModalOpen}
+      onOpenCreate={() => setIsCreateModalOpen(true)}
+      onCloseCreate={() => setIsCreateModalOpen(false)}
+    >
+      {workspaceContent}
     </AppLayout>
   );
 };
