@@ -18,6 +18,7 @@ import { runMigrations } from './db/postgres/migrate.js';
 import { shutdownTelemetry, startTelemetry } from './services/telemetry.service.js';
 import { LocalOutboxWorkerService } from './services/local-outbox-worker.service.js';
 import { WorkerEventService } from './services/worker-event.service.js';
+import { HealthService } from './services/health.service.js';
 
 import { TicketsController } from './controllers/tickets.controller.js';
 import { ApprovalsController, FindingsController } from './controllers/approvals.controller.js';
@@ -395,6 +396,7 @@ app.use(errorHandlerMiddleware);
 // 17. Server Startup & Graceful Shutdown
 let server: ReturnType<typeof app.listen> | null = null;
 let discoveryRecoveryTimer: NodeJS.Timeout | undefined;
+let shutdownPromise: Promise<void> | undefined;
 
 async function startServer(): Promise<void> {
   await startTelemetry('api');
@@ -417,11 +419,16 @@ async function startServer(): Promise<void> {
   }
 
   server = app.listen(config.PORT, config.HOST, () => {
+    server!.requestTimeout = config.HTTP_REQUEST_TIMEOUT_MS;
+    server!.headersTimeout = config.HTTP_HEADERS_TIMEOUT_MS;
+    server!.keepAliveTimeout = config.HTTP_KEEP_ALIVE_TIMEOUT_MS;
+    server!.maxRequestsPerSocket = config.HTTP_MAX_REQUESTS_PER_SOCKET;
     logger.info(
       {
         port: config.PORT,
         host: config.HOST,
-        env: config.NODE_ENV,
+        version: config.APP_VERSION,
+        environment: config.NODE_ENV,
         dbType: config.DB_TYPE,
         storageProvider: config.STORAGE_PROVIDER,
         redisEnabled: config.REDIS_ENABLED,
@@ -441,7 +448,10 @@ void startServer().catch((err) => {
 
 // Graceful Shutdown
 async function handleGracefulShutdown(signal: string) {
+  if (shutdownPromise) return shutdownPromise;
+  shutdownPromise = (async () => {
   logger.info({ signal }, 'Received shutdown signal, terminating server gracefully...');
+  HealthService.setDraining(true);
 
   if (discoveryRecoveryTimer) clearInterval(discoveryRecoveryTimer);
   discoveryRecoveryTimer = undefined;
@@ -472,11 +482,13 @@ async function handleGracefulShutdown(signal: string) {
     }
   });
 
-  // Force shutdown after 10s if hanging
+  // Force shutdown if an in-flight request or dependency refuses to drain.
   setTimeout(() => {
     logger.fatal('Forced shutdown due to timeout');
     process.exit(1);
-  }, 10000);
+  }, config.SHUTDOWN_GRACE_MS).unref();
+  })();
+  return shutdownPromise;
 }
 
 process.on('SIGTERM', () => handleGracefulShutdown('SIGTERM'));

@@ -19,6 +19,7 @@ services:
       # Keep production as the safe default, while allowing the local .env to
       # select the development-only authentication behavior explicitly.
       - NODE_ENV=${NODE_ENV:-production}
+      - RUN_MIGRATIONS=${RUN_MIGRATIONS:-true}
       - PORT=4000
       - HOST=0.0.0.0
       - DB_TYPE=postgres
@@ -107,6 +108,7 @@ services:
       disable: true
     environment:
       - NODE_ENV=${NODE_ENV:-production}
+      - RUN_MIGRATIONS=false
       - DB_TYPE=postgres
       - DB_HOST=pgbouncer
       - DB_PORT=5432
@@ -149,6 +151,8 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-aegissec-platform}
     depends_on:
+      app:
+        condition: service_healthy
       pgbouncer:
         condition: service_healthy
       redis:
@@ -180,6 +184,7 @@ services:
       disable: true
     environment:
       - NODE_ENV=${NODE_ENV:-production}
+      - RUN_MIGRATIONS=false
       - DB_TYPE=postgres
       - DB_HOST=pgbouncer
       - DB_PORT=5432
@@ -205,6 +210,8 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-aegissec-platform}
     depends_on:
+      app:
+        condition: service_healthy
       pgbouncer:
         condition: service_healthy
     networks:

@@ -1,4 +1,5 @@
-import test from 'node:test';
+import test, { before, after } from 'node:test';
+import { assertDisposableDatabase } from './fixtures/disposable-database.js';
 import assert from 'node:assert/strict';
 import { db } from '../server/db/database.js';
 import { pgClient } from '../server/db/postgres/client.js';
@@ -12,6 +13,9 @@ const disposableDatabaseName = /(?:test|e2e|integration)/i.test(config.DB_NAME);
 const enabled = process.env.RUN_THREAT_MODEL_POSTGRES_INTEGRATION === '1'
   && process.env.THREAT_MODEL_DISPOSABLE_DATABASE === '1'
   && disposableDatabaseName;
+
+before(async () => { if (enabled) await assertDisposableDatabase(pgClient, config.DB_NAME); });
+after(() => pgClient.close());
 
 test('Threat Model creation persists the root and current revision in FK-safe order', { skip: !enabled }, async () => {
   await db.initialize();

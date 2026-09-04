@@ -162,7 +162,8 @@ export class ActiveDirectoryInventorySyncService {
         return { objectType: item.objectType, objectId: item.objectId, entry: { ...item.entry, __cmdbPrivilegedGroup: item.objectType === 'Group' && privileged, __cmdbPrivilegedIdentity: item.objectType === 'User' && privileged }, relationships };
       });
       const observedAt = new Date().toISOString(); const batch = await DiscoveryIngestionService.ingestBatch(raw.map((rawPayload) => ({ connectorId: run.connector_id, syncRunId: runId, sourceObjectType: rawPayload.objectType, sourceObjectId: rawPayload.objectId, observedAt, rawPayload })), activeDirectoryInventoryPayloadMapper);
-      await DiscoveryIngestionService.reconcileAndCompleteRun(runId);
+      if (batch.failed.length) await DiscoveryIngestionService.completePartialRun(runId, { reason: 'INVALID_RECORDS', failedRecords: batch.failed.length });
+      else await DiscoveryIngestionService.reconcileAndCompleteRun(runId);
       return { runId, discovered: batch.succeeded.length, failed: batch.failed.length, state: batch.failed.length ? 'PARTIAL' : 'SUCCEEDED' };
     } catch (error) { await DiscoveryIngestionService.failRun(runId, error); throw error; } finally { await client?.unbind().catch(() => undefined); }
   }

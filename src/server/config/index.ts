@@ -26,9 +26,17 @@ for (const key of fileBackedSecrets) {
 
 const configSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
+  APP_VERSION: z.string().min(1).max(128).default('1.0.0'),
   PORT: z.coerce.number().default(4000),
   HOST: z.string().default('0.0.0.0'),
   API_PREFIX: z.string().default('/api'),
+  RUN_MIGRATIONS: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(true),
+  HTTP_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(120000),
+  HTTP_HEADERS_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(15000),
+  HTTP_KEEP_ALIVE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(5000),
+  HTTP_MAX_REQUESTS_PER_SOCKET: z.coerce.number().int().min(0).max(100000).default(1000),
+  SHUTDOWN_GRACE_MS: z.coerce.number().int().min(1000).max(60000).default(10000),
+  HEALTHCHECK_TIMEOUT_MS: z.coerce.number().int().min(250).max(30000).default(4000),
   
   // Database Configuration
   DATABASE_URL: z.string().optional(),
@@ -52,6 +60,8 @@ const configSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   REDIS_KEY_PREFIX: z.string().default('aegissec:'),
   REDIS_TTL_SECONDS: z.coerce.number().default(300),
+  REDIS_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(250).max(30000).default(3000),
+  REDIS_HEALTH_TIMEOUT_MS: z.coerce.number().int().min(250).max(30000).default(1500),
 
   // Durable asynchronous processing. PostgreSQL remains authoritative; the
   // broker only distributes events written through the transactional outbox.

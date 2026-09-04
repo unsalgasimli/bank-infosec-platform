@@ -58,6 +58,12 @@ To deploy the modular-monolith topology (API + worker + scheduler + PostgreSQL +
 
 ## 2. Database Migrations & Seeding
 
+In the Compose topology, the API role owns schema migrations (`RUN_MIGRATIONS=true`).
+The worker and scheduler wait for the API health check and run with migrations disabled,
+which avoids repeated startup scans and migration-lock contention. For a standalone
+worker/scheduler deployment, run `npm run db:migrate` as the release job first, then
+start the role with `RUN_MIGRATIONS=false`.
+
 The PostgreSQL container automatically runs the schema DDL on initial startup via `/docker-entrypoint-initdb.d/01_schema.sql`.
 
 To manually migrate or seed a standalone PostgreSQL instance:

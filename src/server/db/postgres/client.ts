@@ -75,10 +75,13 @@ export class PostgresClient {
         this.isConnected = false;
       });
 
+      // DATABASE_URL takes precedence over the individual DB_* settings. Log
+      // only its effective host/database, never credentials or the full URL.
+      const effectiveUrl = config.DATABASE_URL ? new URL(config.DATABASE_URL) : undefined;
       logger.info(
         {
-          host: config.DB_HOST,
-          database: config.DB_NAME,
+          host: effectiveUrl?.hostname || config.DB_HOST,
+          database: effectiveUrl ? decodeURIComponent(effectiveUrl.pathname.replace(/^\//, '')) : config.DB_NAME,
           poolMin: config.DB_POOL_MIN,
           poolMax: config.DB_POOL_MAX,
         },
@@ -120,18 +123,29 @@ export class PostgresClient {
     }
 
     const client = await this.pool.connect();
+    let connectionError: Error | undefined;
+    let discard = false;
+    const onConnectionError = (error: Error) => { connectionError = error; discard = true; };
+    client.on('error', onConnectionError);
     try {
       await client.query('BEGIN ISOLATION LEVEL READ COMMITTED');
       await client.query(`SET LOCAL statement_timeout = ${Math.trunc(config.DB_STATEMENT_TIMEOUT_MS)}`);
       await client.query(`SET LOCAL lock_timeout = ${Math.trunc(config.DB_LOCK_TIMEOUT_MS)}`);
       const result = await callback(client);
+      if (connectionError) throw connectionError;
       await client.query('COMMIT');
       return result;
     } catch (error) {
-      await client.query('ROLLBACK');
+      // A lost connection must not create an unhandled client error or hide the
+      // original failure behind a second "connection closed" rollback error.
+      if (!connectionError) {
+        try { await client.query('ROLLBACK'); }
+        catch { discard = true; }
+      }
       throw error;
     } finally {
-      client.release();
+      client.removeListener('error', onConnectionError);
+      client.release(discard);
     }
   }
 

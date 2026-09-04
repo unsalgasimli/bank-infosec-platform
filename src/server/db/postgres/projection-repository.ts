@@ -1,4 +1,6 @@
-import { pgClient } from './client.js';
+import { pgClient, pgClient as defaultPgClient } from './client.js';
+import type pg from 'pg';
+import { persistManagerLinks } from './projection-manager-links.js';
 import { directoryUserColumns, rowToUser } from './departments-repository.js';
 import type { DatabaseSchema } from '../database.js';
 import { normalizeDirectoryKey, normalizeDirectoryText } from '../../services/ldap-directory.data.js';
@@ -103,7 +105,15 @@ export class PostgresProjectionRepository {
     return result;
   }
 
-  public static async hydrate(): Promise<DatabaseSchema> {
+  public static async hydrate(options: { client?: pg.PoolClient; trackHashes?: boolean } = {}): Promise<DatabaseSchema> {
+    // Pool hydration may fan out; a caller-owned client must execute serially.
+    let clientQueue: Promise<unknown> = Promise.resolve();
+    const pgClient = { query: (sql: string, values?: any[]): Promise<pg.QueryResult> => {
+      if (!options.client) return defaultPgClient.query(sql, values);
+      const pending = clientQueue.then(() => options.client!.query(sql, values));
+      clientQueue = pending;
+      return pending;
+    } };
     const base = await import('../seed.js').then(({ initialSeedData }) => JSON.parse(JSON.stringify(initialSeedData)) as DatabaseSchema);
     for (const key of Object.keys(base)) {
       if (Array.isArray((base as any)[key])) (base as any)[key] = [];
@@ -445,7 +455,7 @@ export class PostgresProjectionRepository {
       if (payload?.id && collection.some((record: RecordValue) => record?.id === payload.id)) continue;
       collection.push(payload);
     }
-    this.persistedHashes = this.buildHashes(base);
+    if (options.trackHashes !== false) this.persistedHashes = this.buildHashes(base);
     return base;
   }
 
@@ -551,14 +561,15 @@ export class PostgresProjectionRepository {
     this.persistedHashes.get('auditEvents')?.set(event.id, this.hash(event));
   }
 
-  public static async persist(data: DatabaseSchema, outboxEvents: OutboxEvent[] = []): Promise<void> {
+  public static async persist(data: DatabaseSchema, outboxEvents: OutboxEvent[] = [], options: { client?: pg.PoolClient; baseline?: DatabaseSchema } = {}): Promise<void> {
     const nextHashes = this.buildHashes(data);
+    const previousHashes = options.baseline ? this.buildHashes(options.baseline) : this.persistedHashes;
     const changed = (collection: string, record: RecordValue, index: number) => {
       const id = recordId(record, index);
-      return this.persistedHashes.get(collection)?.get(id) !== nextHashes.get(collection)?.get(id);
+      return previousHashes.get(collection)?.get(id) !== nextHashes.get(collection)?.get(id);
     };
 
-    await pgClient.transaction(async (client) => {
+    const write = async (client: pg.PoolClient) => {
       const divisions = data.divisions || [];
       const departments = data.departments || [];
       const departmentSections = data.departmentSections || [];
@@ -680,22 +691,9 @@ export class PostgresProjectionRepository {
         );
       }
 
-      // Resolve user manager foreign keys only after all users exist.
-      // Reset the complete snapshot first so a manager removed from AD cannot
-      // survive in PostgreSQL merely because the incoming user has no manager.
-      await client.query('UPDATE bank_users SET manager_id = NULL, updated_at = NOW() WHERE id = ANY($1::text[])', [[...userIds]]);
-      for (const user of data.users || []) {
-        if (user.managerId && userIds.has(user.managerId) && user.managerId !== user.id) {
-          await client.query('UPDATE bank_users SET manager_id=$2, updated_at=NOW() WHERE id=$1', [user.id, user.managerId]);
-        }
-      }
-
-      // Resolve department manager foreign keys only after all users exist.
-      for (const department of departments) {
-        const rawManagerId = department.managerId || (department as any).source_payload?.managerId || (department as any).sourcePayload?.managerId;
-        const managerId = rawManagerId && userIds.has(rawManagerId) ? rawManagerId : null;
-        await client.query('UPDATE bank_departments SET manager_id=$2, updated_at=NOW() WHERE id=$1', [department.id, managerId]);
-      }
+      // Resolve foreign keys only after all users exist, including null removals.
+      // Repeated persistence must not rewrite the entire directory's manager edges.
+      await persistManagerLinks(client, data.users || [], departments);
 
       // CMDB is persisted in its own normalized relational model. source_payload
       // preserves full typed metadata while columns/indexes serve operational queries.
@@ -997,8 +995,16 @@ export class PostgresProjectionRepository {
           [event.id, event.topic, event.aggregateType, event.aggregateId, json(event.payload), event.correlationId || null, iso(event.occurredAt)]
         );
       }
-    });
+    };
+    if (options.client) await write(options.client);
+    else {
+      await pgClient.transaction(write);
+      this.persistedHashes = nextHashes;
+    }
+  }
 
-    this.persistedHashes = nextHashes;
+  /** Called only after an externally owned projection transaction commits. */
+  public static acceptCommittedSnapshot(data: DatabaseSchema): void {
+    this.persistedHashes = this.buildHashes(data);
   }
 }

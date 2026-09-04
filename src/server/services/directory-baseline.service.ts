@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { unzipSync } from 'fflate';
 import { pgClient } from '../db/postgres/client.js';
+import type pg from 'pg';
 import { config } from '../config/index.js';
 import {
   mapDepartment,
@@ -224,9 +225,10 @@ export function readDirectoryBaselineWorkbook(filePath: string): DirectoryBaseli
 }
 
 export class DirectoryBaselineService {
-  public static async loadCurrent(): Promise<DirectoryBaselineRecord[]> {
+  public static async loadCurrent(client?: pg.PoolClient): Promise<DirectoryBaselineRecord[]> {
     if (config.DB_TYPE !== 'postgres') return [];
-    const result = await pgClient.query('SELECT employee_id, full_name, title, structure_name, hire_date, normalized_full_name, department_id, section_id, section_name, unit_id, unit_name FROM directory_baseline_entries WHERE is_current = TRUE ORDER BY employee_id');
+    const sql = 'SELECT employee_id, full_name, title, structure_name, hire_date, normalized_full_name, department_id, section_id, section_name, unit_id, unit_name FROM directory_baseline_entries WHERE is_current = TRUE ORDER BY employee_id';
+    const result = await (client ? client.query(sql) : pgClient.query(sql));
     return result.rows.map((row: any) => ({
       employeeId: row.employee_id,
       fullName: row.full_name,

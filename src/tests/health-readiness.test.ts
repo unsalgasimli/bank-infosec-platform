@@ -33,3 +33,15 @@ test('readiness is DOWN when Redis is unavailable', async () => {
     (MalwareScanService as any).checkHealth = originals.scanner;
   }
 });
+
+test('readiness is DOWN while the API is draining but liveness stays UP', async () => {
+  try {
+    HealthService.setDraining(true);
+    const report = await HealthService.getReadiness();
+    assert.equal(report.status, 'DOWN');
+    assert.equal(report.draining, true);
+    assert.equal(HealthService.getLiveness().status, 'UP');
+  } finally {
+    HealthService.setDraining(false);
+  }
+});

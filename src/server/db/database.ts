@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { BankDivision, BankDepartment, BankDepartmentSection, BankTeam, BankUser } from '../../shared/types/auth.js';
 import { Ticket } from '../../shared/types/ticket.js';
 import { Workflow } from '../../shared/types/workflow.js';
@@ -140,10 +141,17 @@ export class Database {
   private postgresWriteQueue: Promise<void> = Promise.resolve();
   private postgresLastWriteError: Error | null = null;
   private postgresQueuedSnapshotChecksum: string | null = null;
-  public data: DatabaseSchema;
+  private currentData: DatabaseSchema;
+  private readonly isolatedProjection = new AsyncLocalStorage<{ data: DatabaseSchema }>();
+  public get data(): DatabaseSchema { return this.isolatedProjection.getStore()?.data ?? this.currentData; }
+  public set data(data: DatabaseSchema) {
+    const isolated = this.isolatedProjection.getStore();
+    if (isolated) isolated.data = data;
+    else this.currentData = data;
+  }
 
   private constructor() {
-    this.data = this.loadOrInit();
+    this.currentData = this.loadOrInit();
   }
 
   public static getInstance(): Database {
@@ -172,6 +180,9 @@ export class Database {
   }
 
   public persist(): void {
+    // A caller-owned transaction explicitly persists this staged snapshot.
+    // Never enqueue it on the process-wide compatibility write queue.
+    if (this.isolatedProjection.getStore()) return;
     if (config.DB_TYPE === 'postgres') {
       if (isUnitTestProcess()) return;
       const serialized = JSON.stringify(this.data);
@@ -217,6 +228,7 @@ export class Database {
   }
 
   public async flush(): Promise<void> {
+    if (this.isolatedProjection.getStore()) return;
     if (config.DB_TYPE !== 'postgres') return;
     await this.postgresWriteQueue;
     if (this.postgresLastWriteError) throw this.postgresLastWriteError;
@@ -225,6 +237,35 @@ export class Database {
   public async persistAsync(): Promise<void> {
     this.persist();
     await this.flush();
+  }
+
+  /** Keep async projection work private until its database transaction commits. */
+  public async stageProjection<T>(data: DatabaseSchema, operation: () => Promise<T>): Promise<{ value: T; data: DatabaseSchema }> {
+    if (this.isolatedProjection.getStore()) throw new Error('Nested staged projections are not supported.');
+    const scope = { data: structuredClone(data) };
+    return this.isolatedProjection.run(scope, async () => ({ value: await operation(), data: scope.data }));
+  }
+
+  /** Publish committed data without reverting process-local concurrent edits. */
+  public publishCommittedProjection(before: DatabaseSchema, committed: DatabaseSchema): void {
+    for (const [collection, committedItems] of Object.entries(committed)) {
+      if (!Array.isArray(committedItems)) continue;
+      const oldItems = (before as any)[collection] as Array<{ id?: string }>;
+      const currentItems = (this.currentData as any)[collection] as Array<{ id?: string }>;
+      if (!Array.isArray(oldItems) || !Array.isArray(currentItems)) continue;
+      const old = new Map(oldItems.map((item) => [item.id, item]));
+      const next = new Map(committedItems.map((item: any) => [item.id, item]));
+      const retained = currentItems.flatMap((item) => {
+        if (!item.id || JSON.stringify(item) !== JSON.stringify(old.get(item.id))) return [item];
+        const replacement = next.get(item.id);
+        return replacement ? [structuredClone(replacement)] : [];
+      });
+      const present = new Set(currentItems.map((item) => item.id));
+      for (const item of committedItems) if (item.id && !present.has(item.id) && !old.has(item.id)) retained.push(structuredClone(item));
+      (this.currentData as any)[collection] = retained;
+    }
+    PostgresProjectionRepository.acceptCommittedSnapshot(committed);
+    this.postgresQueuedSnapshotChecksum = null;
   }
 
   public reload(): DatabaseSchema {

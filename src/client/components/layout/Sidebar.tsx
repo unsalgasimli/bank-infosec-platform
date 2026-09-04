@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   UserCheck,
   Briefcase,
@@ -41,6 +41,10 @@ import {
   Tag,
   Share2,
   Sliders,
+  ShieldCheck,
+  Boxes,
+  PlugZap,
+  RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
 import { useI18n } from '../../context/I18nContext.js';
@@ -109,6 +113,10 @@ const ICON_COMPONENTS: Record<string, React.ComponentType<{ className?: string }
   Tag,
   Share2,
   Sliders,
+  ShieldCheck,
+  Boxes,
+  PlugZap,
+  RefreshCw,
 };
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -136,6 +144,61 @@ export const Sidebar: React.FC<SidebarProps> = ({
       return {} as Record<NavigationModuleId, boolean>;
     }
   });
+  const navigationRef = useRef<HTMLDivElement>(null);
+  const activeItemRef = useRef<HTMLButtonElement>(null);
+  const previousActiveModuleRef = useRef<NavigationModuleId | undefined>(undefined);
+  const [scrollEdges, setScrollEdges] = useState({ top: false, bottom: false });
+
+  const activeModuleId = useMemo(() => {
+    const activeItem = NAVIGATION_MODULES.flatMap((module) => module.items).find((item) =>
+      activeDestination === item.id ||
+      (item.id === 'admin-departments' && activeDestination === 'dept-admin') ||
+      (item.id === 'projects-tasks' && ['table', 'board', 'workload'].includes(activeDestination)),
+    );
+    return activeItem?.moduleId;
+  }, [activeDestination]);
+
+  // Open the newly active section once when navigation moves between modules,
+  // while still allowing the user to collapse that section afterwards.
+  useEffect(() => {
+    if (activeModuleId && previousActiveModuleRef.current !== activeModuleId) {
+      setCollapsedModules((prev) => {
+        if (!prev[activeModuleId]) return prev;
+        const next = { ...prev, [activeModuleId]: false };
+        try {
+          localStorage.setItem('aegis_collapsed_sidebar_modules', JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+    }
+    previousActiveModuleRef.current = activeModuleId;
+  }, [activeModuleId]);
+
+  useEffect(() => {
+    const navigation = navigationRef.current;
+    if (!navigation) return;
+
+    const updateScrollEdges = () => {
+      const maxScrollTop = navigation.scrollHeight - navigation.clientHeight;
+      setScrollEdges({
+        top: navigation.scrollTop > 2,
+        bottom: maxScrollTop > 2 && navigation.scrollTop < maxScrollTop - 2,
+      });
+    };
+
+    updateScrollEdges();
+    navigation.addEventListener('scroll', updateScrollEdges, { passive: true });
+    const resizeObserver = new ResizeObserver(updateScrollEdges);
+    resizeObserver.observe(navigation);
+    return () => {
+      navigation.removeEventListener('scroll', updateScrollEdges);
+      resizeObserver.disconnect();
+    };
+  }, [activeDestination]);
+
+  useEffect(() => {
+    activeItemRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [activeDestination]);
 
   const toggleModule = (modId: NavigationModuleId) => {
     setCollapsedModules((prev) => {
@@ -189,9 +252,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <aside className={`app-sidebar fixed left-0 top-14 bottom-0 z-dsModal w-68 bg-semantic-panel border-r border-semantic-border flex flex-col justify-between shrink-0 select-none shadow-xs transition-transform duration-200 lg:static lg:translate-x-0 ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+    <aside aria-label="Primary navigation" className={`app-sidebar fixed left-0 top-14 z-dsModal h-[calc(100dvh-3.5rem)] w-68 min-h-0 bg-semantic-panel border-r border-semantic-border flex flex-col shrink-0 select-none shadow-xs transition-transform duration-200 lg:static lg:translate-x-0 ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
       {/* Scrollable Navigation Modules Container */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-4">
+      <div className="relative min-h-0 flex-1">
+        <div ref={navigationRef} className="sidebar-navigation h-full overflow-y-auto overscroll-contain p-3 space-y-2.5" tabIndex={0}>
         {NAVIGATION_MODULES.filter((module) => module.id !== 'analytics').map((module) => {
           // Check module-level RBAC
           if (!canUserAccessModule(currentUser, module.id)) {
@@ -211,26 +275,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
           const ModuleIcon = ICON_COMPONENTS[module.iconName] || Briefcase;
 
           return (
-            <div key={module.id} className="space-y-1">
+            <section key={module.id} className="sidebar-module">
               {/* Collapsible Module Section Header */}
               <button
                 onClick={() => toggleModule(module.id)}
-                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider text-semantic-muted hover:text-semantic-strongest hover:bg-semantic-subtle transition-colors group"
+                aria-expanded={!isCollapsed}
+                aria-controls={`sidebar-module-${module.id}`}
+                className="sidebar-module-header group"
               >
-                <div className="flex items-center gap-2">
-                  <ModuleIcon className="w-3.5 h-3.5 text-semantic-placeholder group-hover:text-semantic-muted transition-colors" />
+                <div className="flex min-w-0 items-center gap-2">
+                  <ModuleIcon className="h-[15px] w-[15px] shrink-0 text-semantic-placeholder transition-colors group-hover:text-semantic-muted" />
                   <span>{t(module.label)}</span>
                 </div>
-                {isCollapsed ? (
-                  <ChevronRight className="w-3.5 h-3.5 text-semantic-placeholder" />
-                ) : (
-                  <ChevronDown className="w-3.5 h-3.5 text-semantic-placeholder" />
-                )}
+                <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-semantic-placeholder transition-transform duration-180 ease-out ${isCollapsed ? '-rotate-90' : 'rotate-0'}`} />
               </button>
 
               {/* Module Destinations List */}
-              {!isCollapsed && (
-                <div className="space-y-0.5 pl-1">
+              <div id={`sidebar-module-${module.id}`} className={`sidebar-module-content grid transition-[grid-template-rows,opacity] duration-180 ease-out ${isCollapsed ? 'grid-rows-[0fr] opacity-0 invisible pointer-events-none' : 'grid-rows-[1fr] opacity-100 visible'}`} aria-hidden={isCollapsed}>
+                <div className="min-h-0 space-y-0.5 pl-1 pt-0.5">
                   {visibleItems.map((item) => {
                     const ItemIcon = ICON_COMPONENTS[item.iconName] || FileText;
                     const isActive =
@@ -244,30 +306,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     return (
                       <button
                         key={item.id}
+                        ref={isActive ? activeItemRef : undefined}
+                        type="button"
                         onClick={() => {
                           onSelectDestination(item.id);
                           onCloseMobile?.();
                         }}
-                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all group ${
+                        aria-current={isActive ? 'page' : undefined}
+                        className={`sidebar-nav-item group ${
                           isActive
-                            ? 'bg-semantic-success-surface text-semantic-success font-bold border border-semantic-success-border'
-                            : 'text-semantic-strong hover:bg-semantic-subtle hover:text-semantic-strongest'
+                            ? 'sidebar-nav-item-active'
+                            : 'text-semantic-strong'
                         }`}
                         title={t(item.description || '')}
                       >
                         <div className="flex items-center gap-2.5 truncate">
                           <ItemIcon
-                            className={`w-4 h-4 shrink-0 ${
-                              isActive ? 'text-semantic-brand' : 'text-semantic-muted group-hover:text-semantic-strong'
+                            className={`h-[18px] w-[18px] shrink-0 transition-transform duration-150 ${
+                              isActive ? 'text-semantic-brand' : 'text-semantic-muted group-hover:scale-[1.01] group-hover:text-semantic-strong'
                             }`}
                           />
                           <span className="truncate">{t(item.label)}</span>
                         </div>
 
                         {/* Optional Numeric Badge */}
-                        {count !== undefined && count > 0 && (
+                        {count !== undefined && count > 0 && item.id !== 'configuration-items' && item.id !== 'asset-inventory' && (
                           <span
-                            className={`font-mono text-label px-2 py-0.2 rounded-full border shrink-0 font-bold ${
+                            className={`sidebar-badge ${
                               item.id === 'approvals'
                                 ? 'bg-semantic-warning-surface text-semantic-warning border-semantic-warning-border'
                                 : isActive
@@ -282,21 +347,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     );
                   })}
                 </div>
-              )}
-            </div>
+              </div>
+            </section>
           );
         })}
+        </div>
+        <div aria-hidden="true" className={`sidebar-edge-fade sidebar-edge-fade-top ${scrollEdges.top ? 'is-visible' : ''}`} />
+        <div aria-hidden="true" className={`sidebar-edge-fade sidebar-edge-fade-bottom ${scrollEdges.bottom ? 'is-visible' : ''}`} />
       </div>
 
       {/* Sidebar Footer: Space Settings Shortcut & Version */}
-      <div className="p-3 border-t border-semantic-border bg-semantic-subtle flex items-center justify-between text-xs text-semantic-muted">
+      <div className="sidebar-footer shrink-0 p-3 flex items-center justify-between text-xs text-semantic-muted">
         {canUserAccessDestination(currentUser, 'admin-settings') ? (
           <button
             onClick={() => {
               onSelectDestination('admin-settings');
               onCloseMobile?.();
             }}
-            className="flex items-center gap-2 text-semantic-secondary hover:text-semantic-strongest font-bold text-xs transition-colors"
+            className="sidebar-footer-action flex items-center gap-2 text-semantic-secondary hover:text-semantic-strongest font-bold text-xs transition-colors"
           >
             <Settings className="w-4 h-4 text-semantic-brand" />
             <span>{t('Space Settings')}</span>
@@ -307,7 +375,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span>{t('Apex Bank GRC')}</span>
           </div>
         )}
-        <span className="text-xs font-mono font-bold text-semantic-success">v2026.4</span>
+        <span className="font-mono text-[11px] font-semibold tracking-wide text-semantic-placeholder">v2026.4</span>
       </div>
     </aside>
   );

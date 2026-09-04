@@ -152,16 +152,25 @@ export class DiscoveryIngestionService {
   public static async reconcileAndCompleteRun(runId: string): Promise<{ staleCandidates: number; lifecycleChanges: number }> {
     const connectorResult = await pgClient.query<{ connector_id: string }>('SELECT connector_id FROM cmdb_discovery_sync_runs WHERE id=$1', [runId]);
     if (!connectorResult.rows[0]) throw new DiscoveryIngestionError('Discovery run not found.', 'RUN_NOT_FOUND');
-    const locked = await ConnectorScopedLockService.withLock(connectorResult.rows[0].connector_id, 'sync', () => pgClient.transaction(async (client) => {
+    const locked = await ConnectorScopedLockService.withLock(connectorResult.rows[0].connector_id, 'sync', async (client) => {
       const runResult = await client.query<any>('SELECT * FROM cmdb_discovery_sync_runs WHERE id=$1 FOR UPDATE', [runId]);
       const run = runResult.rows[0];
       if (!run) throw new DiscoveryIngestionError('Discovery run not found.', 'RUN_NOT_FOUND');
       if (['SUCCEEDED', 'PARTIAL', 'FAILED', 'CANCELLED'].includes(run.state)) {
         return { staleCandidates: Number(run.stale_candidate_count || 0), lifecycleChanges: 0 };
       }
+      // Admission, processing and completion take the run row before raw/source
+      // rows. No new raw row can pass admission while this snapshot is checked.
+      const pending = await client.query(`SELECT 1 FROM cmdb_raw_observations
+        WHERE sync_run_id=$1 AND processing_status IN ('RECEIVED','VALIDATED','NORMALIZED') LIMIT 1`, [runId]);
+      if (pending.rowCount) throw new DiscoveryIngestionError(
+        'Discovery observations are still awaiting processing; completion must be retried.', 'RUN_OBSERVATIONS_PENDING', true,
+      );
       let staleCandidates = 0;
       let lifecycleChanges = 0;
-      if (['FULL', 'RECONCILIATION'].includes(run.run_type)) {
+      // A failed observation is not evidence that its previously known object
+      // disappeared. Only a fully successful authoritative snapshot can age it.
+      if (['FULL', 'RECONCILIATION'].includes(run.run_type) && Number(run.failed_count || 0) === 0) {
         const policy = await client.query<any>(`
           SELECT * FROM cmdb_discovery_lifecycle_policies
           WHERE connector_id=$1 OR scope_key='GLOBAL'
@@ -229,13 +238,13 @@ export class DiscoveryIngestionService {
             health_status=CASE WHEN $4=0 THEN 'HEALTHY' ELSE 'DEGRADED' END,
             operational_state=CASE WHEN enabled THEN CASE WHEN $4=0 THEN 'READY' ELSE 'DEGRADED' END ELSE 'DISABLED' END,
             consecutive_failures=CASE WHEN $4=0 THEN 0 ELSE consecutive_failures+1 END,
-            checkpoint=COALESCE($3, checkpoint), updated_at=NOW()
+            checkpoint=CASE WHEN $4=0 THEN COALESCE($3, checkpoint) ELSE checkpoint END, updated_at=NOW()
         WHERE id=$1 AND deleted_at IS NULL`, [run.connector_id, run.run_type, run.checkpoint || null, Number(run.failed_count || 0)]);
       await this.insertOutbox(client, 'discovery.run.completed', 'DISCOVERY_RUN', runId, {
         runId, connectorId: run.connector_id, staleCandidates, lifecycleChanges,
       }, `discovery.run.completed:${runId}`);
       return { staleCandidates, lifecycleChanges };
-    }));
+    });
     if (!locked.acquired) throw new DiscoveryIngestionError('Another sync operation is already running for this connector.', 'CONNECTOR_SYNC_LOCKED');
     return locked.value;
   }
@@ -268,24 +277,26 @@ export class DiscoveryIngestionService {
   public static async completePartialRun(runId: string, checkpoint: Record<string, unknown> = {}, error?: unknown): Promise<void> {
     const connectorResult = await pgClient.query<{ connector_id: string }>('SELECT connector_id FROM cmdb_discovery_sync_runs WHERE id=$1', [runId]);
     if (!connectorResult.rows[0]) throw new DiscoveryIngestionError('Discovery run not found.', 'RUN_NOT_FOUND');
-    const locked = await ConnectorScopedLockService.withLock(connectorResult.rows[0].connector_id, 'sync', () => pgClient.transaction(async (client) => {
+    const locked = await ConnectorScopedLockService.withLock(connectorResult.rows[0].connector_id, 'sync', async (client) => {
       const message = error ? (error instanceof Error ? error.message : String(error)).slice(0, 4000) : undefined;
       const code = error ? String((error as { code?: unknown })?.code || 'DISCOVERY_PARTIAL_FAILURE').slice(0, 128) : undefined;
+      const failedRecords = typeof checkpoint.failedRecords === 'number' && Number.isSafeInteger(checkpoint.failedRecords)
+        ? Math.min(2147483646, Math.max(0, checkpoint.failedRecords)) : 0;
       const run = await client.query<{ connector_id: string }>(`UPDATE cmdb_discovery_sync_runs
         SET state='PARTIAL',started_at=COALESCE(started_at,NOW()),completed_at=NOW(),checkpoint=$2,
             error_summary=CASE WHEN $3::text IS NULL THEN error_summary ELSE error_summary || jsonb_build_array(jsonb_build_object('message',$3,'at',NOW(),'partial',true)) END,
-            failed_count=failed_count+CASE WHEN $3::text IS NULL THEN 0 ELSE 1 END,
+            failed_count=GREATEST(failed_count,$4::int)+CASE WHEN $3::text IS NULL THEN 0 ELSE 1 END,
             discovered_count=(SELECT count(DISTINCT (source_object_type,source_object_id)) FROM cmdb_raw_observations WHERE sync_run_id=$1 AND accounted_at IS NOT NULL),
             processed_count=(SELECT count(*) FROM cmdb_raw_observations WHERE sync_run_id=$1 AND accounted_at IS NOT NULL),
             updated_at=NOW()
-        WHERE id=$1 AND state NOT IN ('SUCCEEDED','PARTIAL','FAILED','CANCELLED') RETURNING connector_id`, [runId, JSON.stringify(checkpoint), message || null]);
+        WHERE id=$1 AND state NOT IN ('SUCCEEDED','PARTIAL','FAILED','CANCELLED') RETURNING connector_id`, [runId, JSON.stringify(checkpoint), message || null, failedRecords]);
       if (!run.rows[0]) return;
       await client.query(`UPDATE cmdb_discovery_connectors SET last_sync_at=NOW(),health_status=CASE WHEN enabled THEN 'DEGRADED' ELSE 'DISABLED' END,
-        operational_state=CASE WHEN enabled THEN 'DEGRADED' ELSE 'DISABLED' END,consecutive_failures=consecutive_failures+1,checkpoint=$2,
-        last_failure_at=CASE WHEN $3::text IS NULL THEN last_failure_at ELSE NOW() END,
-        last_failure_code=COALESCE($4,last_failure_code),last_failure_message=COALESCE($3,last_failure_message),updated_at=NOW() WHERE id=$1`, [run.rows[0].connector_id, JSON.stringify(checkpoint), message || null, code || null]);
+        operational_state=CASE WHEN enabled THEN 'DEGRADED' ELSE 'DISABLED' END,consecutive_failures=consecutive_failures+1,
+        last_failure_at=CASE WHEN $2::text IS NULL THEN last_failure_at ELSE NOW() END,
+        last_failure_code=COALESCE($3,last_failure_code),last_failure_message=COALESCE($2,last_failure_message),updated_at=NOW() WHERE id=$1`, [run.rows[0].connector_id, message || null, code || null]);
       await this.insertOutbox(client, 'discovery.run.completed', 'DISCOVERY_RUN', runId, { runId, connectorId: run.rows[0].connector_id, partial: true, absenceReconciliation: false }, `discovery.run.completed:${runId}`);
-    }));
+    });
     if (!locked.acquired) throw new DiscoveryIngestionError('Another sync operation is already running for this connector.', 'CONNECTOR_SYNC_LOCKED');
   }
 
@@ -341,6 +352,18 @@ export class DiscoveryIngestionService {
   ): Promise<DiscoveryIngestionResult> {
     const normalizedHash = sha256(dto);
     return pgClient.transaction(async (client) => {
+      // Fence terminal runs and keep the same run -> raw -> source lock order as
+      // admission/failure/completion. Mapper/network work remains outside this
+      // short transaction; the run row was already updated during accounting.
+      const run = await client.query<{ connector_id: string; state: string }>(
+        'SELECT connector_id,state FROM cmdb_discovery_sync_runs WHERE id=$1 FOR UPDATE', [envelope.syncRunId],
+      );
+      if (!run.rows[0] || run.rows[0].connector_id !== envelope.connectorId) {
+        throw new DiscoveryIngestionError('Observation connector does not match a real discovery run.', 'RUN_CONNECTOR_MISMATCH');
+      }
+      if (!['QUEUED', 'RUNNING'].includes(run.rows[0].state)) {
+        throw new DiscoveryIngestionError(`Discovery run is not ingestible in state ${run.rows[0].state}.`, 'RUN_NOT_ACTIVE');
+      }
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
         `cmdb:source:${envelope.connectorId}:${envelope.sourceObjectType}:${envelope.sourceObjectId}`,
       ]);
@@ -352,6 +375,31 @@ export class DiscoveryIngestionService {
         const existing = await this.loadProcessedResultWithClient(client, observationId);
         if (existing) return existing;
       }
+      // A recovered failed observation must replace its failure accounting,
+      // rather than remain both failed and successfully processed. Rollback
+      // restores the old accounting if this retry fails again.
+      if (raw.rows[0]?.processing_status === 'FAILED') {
+        const recovered = await client.query(`UPDATE cmdb_raw_observations SET accounted_at=NULL,
+          processing_error_code=NULL,processing_error=NULL,processed_at=NULL
+          WHERE id=$1 AND accounted_at IS NOT NULL RETURNING id`, [observationId]);
+        if (recovered.rowCount) await client.query(`UPDATE cmdb_discovery_sync_runs
+          SET failed_count=GREATEST(0,failed_count-1),updated_at=NOW() WHERE id=$1`, [envelope.syncRunId]);
+      }
+
+      // Source-level serialization must also enforce observation ordering. An
+      // old retry must not overwrite current identity/components or resurrect a
+      // missing source. Preserve its raw evidence as an explicit failed record;
+      // the failed run cannot publish a successful checkpoint or infer absence.
+      const obsolete = await client.query<{ older: boolean }>(`SELECT last_seen_at>$4::timestamptz AS older
+        FROM cmdb_source_records
+        WHERE connector_id=$1 AND external_object_type=$2 AND external_object_id=$3
+          AND (last_seen_at>$4::timestamptz OR (last_seen_at=$4::timestamptz
+            AND normalized_schema_version=$6 AND normalized_payload_hash IS DISTINCT FROM $5))
+        FOR UPDATE`, [envelope.connectorId, envelope.sourceObjectType, envelope.sourceObjectId, envelope.observedAt, normalizedHash, dto.schemaVersion]);
+      if (obsolete.rows[0]) throw new DiscoveryIngestionError(
+        obsolete.rows[0].older ? 'Observation predates the latest accepted source observation.' : 'Conflicting payloads have the same source observation timestamp.',
+        obsolete.rows[0].older ? 'STALE_OBSERVATION' : 'CONFLICTING_OBSERVATION_VERSION',
+      );
 
       const sourceRecord = await this.upsertSourceRecord(client, envelope, dto, rawHash, normalizedHash);
       await client.query(`UPDATE cmdb_raw_observations
@@ -424,7 +472,8 @@ export class DiscoveryIngestionService {
       });
       await client.query("UPDATE cmdb_raw_observations SET processing_status='PROCESSED',processed_at=NOW() WHERE id=$1", [observationId]);
       await client.query(`UPDATE configuration_items
-        SET last_seen_at=GREATEST(COALESCE(last_seen_at,$2),$2),last_discovered_at=$2,last_sync_at=$2,
+        SET last_seen_at=GREATEST(COALESCE(last_seen_at,$2),$2),
+            last_discovered_at=GREATEST(COALESCE(last_discovered_at,$2),$2),last_sync_at=GREATEST(COALESCE(last_sync_at,$2),$2),
             discovery_status='SYNCED',sync_status='SYNCED',updated_at=NOW()
         WHERE id=$1`, [assetId, envelope.observedAt]);
 
@@ -467,6 +516,20 @@ export class DiscoveryIngestionService {
     normalizedHash: string,
   ): Promise<SourceRecordRow> {
     const sourceId = deterministicId('src', `${envelope.connectorId}\u0000${envelope.sourceObjectType}\u0000${envelope.sourceObjectId}`);
+    // The source identity advisory transaction lock is already held. Avoid
+    // assigning/detoasting the wide normalized JSON on an unchanged observation;
+    // raw evidence, correlation, authority and relationship evaluation still run.
+    const unchanged = await client.query<SourceRecordRow>(`UPDATE cmdb_source_records
+      SET last_seen_at=GREATEST(last_seen_at,$5),last_sync_run_id=$6,current_observation_hash=$7,
+          status=CASE WHEN asset_id IS NULL THEN 'UNMATCHED' ELSE 'ACTIVE' END,
+          miss_count=0,missing_since=NULL,updated_at=NOW()
+      WHERE connector_id=$1 AND external_object_type=$2 AND external_object_id=$3
+        AND normalized_payload_hash=$4 AND normalized_schema_version=$8
+      RETURNING id,asset_id,revision,normalized_payload_hash`, [
+      envelope.connectorId, envelope.sourceObjectType, envelope.sourceObjectId,
+      normalizedHash, envelope.observedAt, envelope.syncRunId, rawHash, dto.schemaVersion,
+    ]);
+    if (unchanged.rows[0]) return unchanged.rows[0];
     const result = await client.query<SourceRecordRow>(`
       INSERT INTO cmdb_source_records(
         id,connector_id,external_object_type,external_object_id,native_uuid,source_name,
@@ -1056,17 +1119,18 @@ export class DiscoveryIngestionService {
     const code = error instanceof DiscoveryIngestionError ? error.code : 'NORMALIZATION_OR_PROCESSING_FAILED';
     try {
       await pgClient.transaction(async (client) => {
+        await client.query('SELECT id FROM cmdb_discovery_sync_runs WHERE id=$1 FOR UPDATE', [runId]);
         const newlyAccounted = await client.query(`UPDATE cmdb_raw_observations
           SET processing_status='FAILED',processing_error_code=$2,processing_error=$3,
               processing_attempts=processing_attempts+1,processed_at=NOW(),
               accounted_at=NOW()
-          WHERE id=$1 AND accounted_at IS NULL RETURNING id`,
+          WHERE id=$1 AND processing_status<>'PROCESSED' AND accounted_at IS NULL RETURNING id`,
         [observationId, code, message.slice(0, 4000)]);
         if (!newlyAccounted.rowCount) {
           await client.query(`UPDATE cmdb_raw_observations
             SET processing_status='FAILED',processing_error_code=$2,processing_error=$3,
                 processing_attempts=processing_attempts+1,processed_at=NOW()
-            WHERE id=$1`, [observationId, code, message.slice(0, 4000)]);
+            WHERE id=$1 AND processing_status<>'PROCESSED'`, [observationId, code, message.slice(0, 4000)]);
         } else {
           await client.query('UPDATE cmdb_discovery_sync_runs SET failed_count=failed_count+1,updated_at=NOW() WHERE id=$1', [runId]);
         }

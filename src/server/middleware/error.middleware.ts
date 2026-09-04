@@ -27,7 +27,7 @@ export function errorHandlerMiddleware(
         code: err.code,
       },
       method: req.method,
-      url: req.originalUrl,
+      url: req.originalUrl?.split('?')[0],
     },
     `Unhandled Exception: ${err.message}`
   );
@@ -44,7 +44,7 @@ export function errorHandlerMiddleware(
     status: statusCode,
     detail: safeDetail,
     error: safeDetail,
-    instance: req.originalUrl,
+    instance: req.originalUrl?.split('?')[0],
     requestId,
     timestamp: new Date().toISOString(),
     details: err.details,

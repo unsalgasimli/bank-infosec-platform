@@ -15,7 +15,8 @@ async function startWorker(): Promise<void> {
   if (config.DB_TYPE !== 'postgres') throw new Error('The worker requires DB_TYPE=postgres.');
   if (!QueueService.enabled()) throw new Error('The worker requires RABBITMQ_ENABLED=true.');
   await startTelemetry('worker');
-  await runMigrations();
+  if (config.RUN_MIGRATIONS) await runMigrations();
+  else logger.info('Database migrations are owned by the API role; worker startup will not contend for the migration lock.');
   await db.initialize();
   await QueueService.connect();
   // Keep the service context intact: process() delegates to another static

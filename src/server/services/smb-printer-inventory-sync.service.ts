@@ -87,7 +87,8 @@ export class SmbPrinterInventorySyncService {
       const batch = await DiscoveryIngestionService.ingestBatch(printers.map((printer) => ({ connectorId: run.connector_id, syncRunId: runId, sourceObjectType: 'SmbPrinterShare', sourceObjectId: printer.shareName, observedAt, rawPayload: { ...printer, host } })), smbPrinterPayloadMapper);
       if (batch.failed.length) await pgClient.query(`UPDATE cmdb_discovery_sync_runs
         SET failed_count=$2,error_summary=error_summary || $3::jsonb,updated_at=NOW() WHERE id=$1`, [runId, batch.failed.length, JSON.stringify(batch.failed.slice(0, 25).map((failure) => ({ objectId: failure.sourceObjectId, message: failure.error.slice(0, 1000) })))]);
-      await DiscoveryIngestionService.reconcileAndCompleteRun(runId);
+      if (batch.failed.length) await DiscoveryIngestionService.completePartialRun(runId, { reason: 'INVALID_RECORDS', failedRecords: batch.failed.length });
+      else await DiscoveryIngestionService.reconcileAndCompleteRun(runId);
       return { runId, discovered: batch.succeeded.length, failed: batch.failed.length, state: batch.failed.length ? 'PARTIAL' : 'SUCCEEDED' };
     } catch (error) { await DiscoveryIngestionService.failRun(runId, error); throw error; }
   }

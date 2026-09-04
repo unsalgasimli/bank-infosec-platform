@@ -18,11 +18,17 @@ import { CortexInventorySyncService } from './cortex-inventory-sync.service.js';
 import { SmbPrinterInventorySyncService } from './smb-printer-inventory-sync.service.js';
 import { validateCortexTransport } from '../integrations/cortex/cortex-endpoint-policy.js';
 import { config } from '../config/index.js';
+import { assetSearchPredicate, assetOwnerPredicate, assetOsPredicate } from './cmdb-search-query.js';
+import { assetCursorScope, assetCursorBoundary, decodeAssetCursor, encodeAssetCursor, type AssetCursor } from './cmdb-cursor.js';
 
 const pageSchema = z.object({
   page: z.coerce.number().int().min(1).max(100000).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  pagination: z.enum(['offset', 'cursor']).default('offset'),
+  cursor: z.string().max(8192).optional(),
+  includeTotal: z.enum(['true', 'false']).default('true'),
   search: z.string().trim().max(255).optional(),
+  searchMode: z.enum(['auto', 'exact', 'contains']).default('auto'),
   operatingSystem: z.string().trim().max(255).optional(),
   operatingSystems: z.preprocess((value) => Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : value, z.array(z.string().trim().min(1).max(255)).max(100).optional()),
   sortBy: z.enum(['name', 'ciNumber', 'environment', 'lifecycleState', 'criticality', 'lastSeenAt', 'updatedAt']).default('updatedAt'),
@@ -93,6 +99,15 @@ const sortableColumns: Record<string, string> = {
   name: 'a.name', ciNumber: 'a.ci_number', environment: 'a.environment', lifecycleState: 'a.lifecycle_state',
   criticality: 'a.criticality', lastSeenAt: 'a.last_seen_at', updatedAt: 'a.updated_at',
 };
+const assetListColumns = [
+  'id','ci_number','asset_key','name','display_name','type_id','asset_subtype','status','lifecycle_state',
+  'lifecycle_status','technical_status','environment','criticality','business_criticality','description',
+  'owner_user_id','technical_owner_user_id','business_owner_user_id','support_group_id','department_id',
+  'location_id','vendor','manufacturer','model','serial_number','asset_tag','hostname','fqdn','ip_address',
+  'mac_address','operating_system','os_version','cpu_count','memory_bytes','source','source_system',
+  'source_record_id','discovery_status','last_discovered_at','last_verified_at','last_seen_at','last_sync_at',
+  'sync_status','details','version','created_at','updated_at','archived_at',
+].map((column) => `a.${column}`).join(',');
 
 const customFieldTypeSchema = z.enum(['TEXT', 'NUMBER', 'BOOLEAN', 'DATE', 'SELECT', 'MULTI_SELECT', 'USER']);
 const customFieldKeySchema = z.string().trim().min(2).max(64).regex(/^[a-z][a-z0-9_]*$/, 'Field key must start with a lowercase letter and contain only lowercase letters, numbers and underscores.');
@@ -115,6 +130,16 @@ const effectiveIpSql = `(SELECT host(ip.ip_address) FROM cmdb_ip_addresses ip WH
 const customEnvironmentSql = `(SELECT val.value #>> '{}' FROM cmdb_custom_field_values val JOIN cmdb_custom_field_definitions def ON def.id=val.field_id WHERE val.asset_id=a.id AND def.field_key='environment' AND def.is_active AND def.deleted_at IS NULL LIMIT 1)`;
 const effectiveEnvironmentSql = `COALESCE(NULLIF(${customEnvironmentSql}, ''), NULLIF(a.environment, 'UNKNOWN'), NULLIF(a.source_payload #>> '{environment}', 'UNKNOWN'), NULLIF((SELECT COALESCE(sr.normalized_payload #>> '{classification,environment}', sr.normalized_payload #>> '{sourceSpecificMetadata,environment}', sr.normalized_payload #>> '{sourceSpecificMetadata,environmentName}') FROM cmdb_source_records sr WHERE sr.asset_id=a.id AND sr.status='ACTIVE' ORDER BY sr.last_seen_at DESC, sr.id LIMIT 1), 'UNKNOWN'), 'UNKNOWN')`;
 const customFieldsSql = `(SELECT COALESCE(jsonb_object_agg(def.field_key, val.value ORDER BY def.display_order, def.label), '{}'::jsonb) FROM cmdb_custom_field_values val JOIN cmdb_custom_field_definitions def ON def.id=val.field_id WHERE val.asset_id=a.id AND def.is_active AND def.deleted_at IS NULL)`;
+// Preserve candidate-score precedence over decision confidence without multiplying
+// every source's cases by its entire decision history for each inventory row.
+const correlationConfidenceSql = `COALESCE(
+  (SELECT max(cc.score) FROM cmdb_correlation_candidates cc
+   JOIN cmdb_correlation_cases c ON c.id=cc.case_id
+   JOIN cmdb_source_records sr ON sr.id=c.source_record_id
+   WHERE cc.asset_id=a.id AND (sr.asset_id=a.id OR EXISTS (
+     SELECT 1 FROM cmdb_correlation_decisions cd WHERE cd.source_record_id=sr.id AND cd.selected_asset_id=a.id))),
+  (SELECT max(cd.confidence) FROM cmdb_correlation_decisions cd WHERE cd.selected_asset_id=a.id)
+)`;
 
 function requirePermission(actor: BankUser | undefined, permission: CmdbPermission): asserts actor is BankUser {
   AuthService.assertCmdbPermission(actor, permission);
@@ -245,66 +270,36 @@ async function verifyVCenterBeforeCreation(configuration: VCenterConnectorConfig
 }
 
 export class CmdbApiService {
-  public static async listAssets(actor: BankUser | undefined, rawQuery: unknown): Promise<{ items: any[]; total: number; page: number; pageSize: number }> {
+  public static async listAssets(actor: BankUser | undefined, rawQuery: unknown): Promise<{ items: any[]; total: number | null; page: number; pageSize: number; hasNext?: boolean; nextCursor?: string; currentCursor?: string; snapshotAt?: string }> {
     requirePermission(actor, 'assets.read');
     const query = pageSchema.parse(rawQuery || {});
+    if (query.cursor && query.pagination !== 'cursor') throw Object.assign(new Error('cursor requires pagination=cursor.'), { statusCode: 400 });
+    const scope = assetCursorScope(actor.id, query);
+    let cursorState: AssetCursor | undefined;
+    if (query.pagination === 'cursor') {
+      if (query.cursor) cursorState = decodeAssetCursor(query.cursor, scope, config.JWT_SECRET);
+      else {
+        const snapshot = (await pgClient.query<{ snapshot: string; insertion_snapshot: string }>(
+          'SELECT CURRENT_TIMESTAMP::text AS snapshot,pg_current_snapshot()::text AS insertion_snapshot',
+        )).rows[0];
+        cursorState = { version: 2, scope, expiresAt: Date.now() + 30 * 60_000, boundary: null,
+          snapshotAt: snapshot.snapshot, insertionSnapshot: snapshot.insertion_snapshot };
+      }
+    }
     const where: string[] = [query.includeArchived === 'true' ? 'TRUE' : 'a.archived_at IS NULL'];
     const params: unknown[] = [];
-    const add = (sql: string, value: unknown) => { params.push(value); where.push(sql.replace('?', `$${params.length}`)); };
+    const add = (sql: string, value: unknown) => { params.push(value); where.push(sql.replaceAll('?', `$${params.length}`)); };
     if (query.typeId) add('a.type_id = ?', query.typeId);
     if (query.typeIds?.length) add('a.type_id = ANY(?::text[])', query.typeIds);
     if (query.environment) { params.push(query.environment); where.push(`${effectiveEnvironmentSql} = $${params.length}`); }
-    if (query.operatingSystem) {
-      params.push(`%${query.operatingSystem.toLowerCase()}%`);
-      const p = `$${params.length}`;
-      where.push(`(
-        lower(COALESCE(a.operating_system,'')) LIKE ${p}
-        OR lower(COALESCE(a.os_version,'')) LIKE ${p}
-        OR EXISTS (SELECT 1 FROM cmdb_source_records os_source WHERE os_source.asset_id=a.id AND lower(COALESCE(os_source.normalized_payload #>> '{operatingSystem,reported}', os_source.normalized_payload #>> '{operatingSystem,configured}', os_source.normalized_payload #>> '{operatingSystem,name}', os_source.normalized_payload #>> '{operatingSystem,version}', '')) LIKE ${p})
-      )`);
-    }
-    if (query.operatingSystems?.length) {
-      params.push(query.operatingSystems.map((value) => value.trim().toLowerCase().replace(/\s+/g, ' ')));
-      const p = `$${params.length}`;
-      where.push(`(
-        lower(regexp_replace(btrim(COALESCE(a.operating_system,'')), '\\s+', ' ', 'g')) = ANY(${p}::text[])
-        OR lower(regexp_replace(btrim(COALESCE(a.os_version,'')), '\\s+', ' ', 'g')) = ANY(${p}::text[])
-        OR EXISTS (
-          SELECT 1
-            FROM (VALUES
-              (a.source_payload #>> '{operatingSystem,reported}'),
-              (a.source_payload #>> '{operatingSystem,configured}'),
-              (a.source_payload #>> '{operatingSystem,name}')
-            ) AS asset_os(value)
-           WHERE lower(regexp_replace(btrim(COALESCE(asset_os.value,'')), '\\s+', ' ', 'g')) = ANY(${p}::text[])
-        )
-        OR EXISTS (
-          SELECT 1
-            FROM cmdb_source_records os_source
-            CROSS JOIN LATERAL (VALUES
-              (os_source.normalized_payload #>> '{operatingSystem,reported}'),
-              (os_source.normalized_payload #>> '{operatingSystem,configured}'),
-              (os_source.normalized_payload #>> '{operatingSystem,name}')
-            ) AS source_os(value)
-           WHERE os_source.asset_id=a.id
-             AND lower(regexp_replace(btrim(COALESCE(source_os.value,'')), '\\s+', ' ', 'g')) = ANY(${p}::text[])
-        )
-      )`);
-    }
+    if (query.operatingSystem) where.push(assetOsPredicate(query.operatingSystem, params));
+    if (query.operatingSystems?.length) where.push(assetOsPredicate(query.operatingSystems, params));
     if (query.lifecycleState || query.lifecycleStatus) add('a.lifecycle_state = ?', query.lifecycleState || query.lifecycleStatus);
     if (query.quality) add('a.discovery_status = ?', query.quality);
     if (query.status) add('a.status = ?', query.status);
     if (query.criticality) add('a.criticality = ?', query.criticality);
     if (query.ownerUserId) add('(a.owner_user_id = ? OR a.technical_owner_user_id = ? OR a.business_owner_user_id = ?)', query.ownerUserId);
-    if (query.owner) {
-      params.push(`%${query.owner.toLowerCase()}%`);
-      const p = `$${params.length}`;
-      where.push(`(
-        EXISTS (SELECT 1 FROM bank_users owner_filter WHERE owner_filter.id IN (a.owner_user_id,a.technical_owner_user_id,a.business_owner_user_id) AND lower(owner_filter.full_name) LIKE ${p})
-        OR (a.type_id='directory_user' AND (lower(a.name) LIKE ${p} OR lower(COALESCE(a.display_name,'')) LIKE ${p}))
-        OR EXISTS (SELECT 1 FROM cmdb_source_records owner_source WHERE owner_source.asset_id=a.id AND lower(COALESCE(owner_source.normalized_payload::text,'')) LIKE ${p})
-      )`);
-    }
+    if (query.owner) where.push(assetOwnerPredicate(query.owner, params));
     if (query.departmentId) add('a.department_id = ?', query.departmentId);
     if (query.supportGroupId) add('a.support_group_id = ?', query.supportGroupId);
     if (query.sourceConnectorId) add('EXISTS (SELECT 1 FROM cmdb_source_records sr_filter WHERE sr_filter.asset_id=a.id AND sr_filter.connector_id = ?)', query.sourceConnectorId);
@@ -322,18 +317,31 @@ export class CmdbApiService {
     if (query.posture === 'cortex-only') where.push("EXISTS (SELECT 1 FROM cmdb_security_findings f WHERE f.asset_id=a.id AND f.state='OPEN' AND f.finding_type='CORTEX_ONLY')");
     if (query.posture === 'identity-conflict') where.push("EXISTS (SELECT 1 FROM cmdb_security_findings f WHERE f.asset_id=a.id AND f.state='OPEN' AND f.finding_type='IDENTITY_CONFLICT')");
     if (query.posture === 'stale-assets') where.push("(a.lifecycle_state IN ('STALE','DECOMMISSION_CANDIDATE') OR EXISTS (SELECT 1 FROM cmdb_source_records sr WHERE sr.asset_id=a.id AND sr.status IN ('MISSING','STALE')))");
-    if (query.search) {
-      params.push(`%${query.search.toLowerCase()}%`);
-      const p = `$${params.length}`;
-      where.push(`(lower(a.name) LIKE ${p} OR lower(COALESCE(a.display_name,'')) LIKE ${p} OR lower(COALESCE(a.hostname,'')) LIKE ${p} OR lower(COALESCE(a.fqdn,'')) LIKE ${p} OR lower(COALESCE(a.serial_number,'')) LIKE ${p} OR lower(COALESCE(a.asset_tag,'')) LIKE ${p} OR lower(COALESCE(a.ip_address,'')) LIKE ${p} OR lower(COALESCE(a.mac_address,'')) LIKE ${p} OR lower(COALESCE(a.operating_system,'')) LIKE ${p} OR lower(COALESCE(a.os_version,'')) LIKE ${p} OR lower(COALESCE(a.vendor,'')) LIKE ${p} OR lower(COALESCE(a.manufacturer,'')) LIKE ${p} OR lower(COALESCE(a.model,'')) LIKE ${p} OR lower(COALESCE(a.description,'')) LIKE ${p} OR lower(COALESCE(a.details::text,'')) LIKE ${p} OR lower(a.ci_number) LIKE ${p} OR EXISTS (SELECT 1 FROM bank_users owner_search WHERE owner_search.id IN (a.owner_user_id,a.technical_owner_user_id,a.business_owner_user_id) AND lower(owner_search.full_name) LIKE ${p}) OR EXISTS (SELECT 1 FROM cmdb_asset_identifiers ai_s WHERE ai_s.asset_id=a.id AND ai_s.retired_at IS NULL AND lower(ai_s.normalized_value) LIKE ${p}) OR EXISTS (SELECT 1 FROM cmdb_source_records sr_s WHERE sr_s.asset_id=a.id AND (lower(sr_s.external_object_id) LIKE ${p} OR lower(COALESCE(sr_s.source_name,'')) LIKE ${p} OR lower(COALESCE(sr_s.normalized_payload::text,'')) LIKE ${p})) OR EXISTS (SELECT 1 FROM cmdb_network_interfaces ni_s JOIN cmdb_mac_addresses ma_s ON ma_s.interface_id=ni_s.id WHERE ni_s.asset_id=a.id AND ma_s.retired_at IS NULL AND lower(ma_s.normalized_mac) LIKE ${p}) OR EXISTS (SELECT 1 FROM cmdb_ip_addresses ip_s WHERE ip_s.asset_id=a.id AND ip_s.retired_at IS NULL AND host(ip_s.ip_address) LIKE ${p}))`);
-    }
-    const base = `FROM configuration_items a WHERE ${where.join(' AND ')}`;
-    const count = await pgClient.query<{ count: string }>(`SELECT count(*) AS count ${base}`, params as any[]);
+    if (query.search) where.push(assetSearchPredicate(query.search, query.searchMode, params));
+    // Freeze insertion membership using the original top-level transaction,
+    // not source-derived created_at or mutable row xmin. In-flight commits and
+    // backdated observations cannot enter a traversal. Mutable state remains live.
+    if (cursorState) add('pg_visible_in_snapshot(a.inventory_insert_xid, ?::pg_snapshot)', cursorState.insertionSnapshot);
+    const count = query.pagination === 'offset' || query.includeTotal === 'true'
+      ? await pgClient.query<{ count: string }>(`SELECT count(*) AS count FROM configuration_items a WHERE ${where.join(' AND ')}`, params as any[])
+      : undefined;
+    const total = count ? Number(count.rows[0]?.count || 0) : null;
+    const cursorMetadata = cursorState ? { currentCursor: encodeAssetCursor(cursorState, config.JWT_SECRET), snapshotAt: cursorState.snapshotAt } : {};
+    if (total === 0) return { items: [], total, page: query.page, pageSize: query.pageSize, ...(cursorState ? { ...cursorMetadata, hasNext: false } : {}) };
     const sort = sortableColumns[query.sortBy] || sortableColumns.updatedAt;
     const direction = query.sortDirection === 'asc' ? 'ASC' : 'DESC';
+    const tieDirection = cursorState ? direction : 'ASC';
+    if (cursorState?.boundary) where.push(assetCursorBoundary(sort, direction, cursorState.boundary, params));
+    const base = `FROM configuration_items a WHERE ${where.join(' AND ')}`;
     const offset = (query.page - 1) * query.pageSize;
-    const dataParams = [...params, query.pageSize, offset];
-    const result = await pgClient.query(`SELECT a.*, ${effectiveIpSql} AS effective_ip_address, ${effectiveEnvironmentSql} AS effective_environment, ${customFieldsSql} AS custom_fields,
+    const dataParams = cursorState ? [...params, query.pageSize + 1] : [...params, query.pageSize, offset];
+    const pageLimit = cursorState ? `LIMIT $${dataParams.length}` : `LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`;
+    // Limit the identity set before evaluating correlated enrichment. In particular,
+    // OFFSET must not execute history/source/relationship subplans for skipped rows.
+    const result = await pgClient.query(`WITH page_assets AS MATERIALIZED (
+      SELECT a.id ${base} ORDER BY ${sort} ${direction}, a.id ${tieDirection}
+      ${pageLimit}
+    ) SELECT ${assetListColumns}, ${cursorState ? `${sort}::text AS cursor_sort_value,` : ''} ${effectiveIpSql} AS effective_ip_address, ${effectiveEnvironmentSql} AS effective_environment, ${customFieldsSql} AS custom_fields,
       (SELECT count(*) FROM cmdb_source_records sr WHERE sr.asset_id=a.id) AS source_count,
       ARRAY(SELECT DISTINCT c.connector_type_id FROM cmdb_source_records sr JOIN cmdb_discovery_connectors c ON c.id=sr.connector_id WHERE sr.asset_id=a.id ORDER BY c.connector_type_id) AS source_coverage,
       (SELECT to_jsonb(p)-'asset_id' FROM cmdb_cortex_security_posture p WHERE p.asset_id=a.id) AS cortex_security,
@@ -346,11 +354,7 @@ export class CmdbApiService {
         WHEN EXISTS (SELECT 1 FROM cmdb_source_records sr WHERE sr.asset_id=a.id) THEN 'VERIFIED'
         ELSE 'MANUAL'
       END) AS correlation_state,
-      (SELECT COALESCE(MAX(cc.score), MAX(cd.confidence)) FROM cmdb_source_records sr
-        LEFT JOIN cmdb_correlation_cases c ON c.source_record_id=sr.id
-        LEFT JOIN cmdb_correlation_candidates cc ON cc.case_id=c.id AND cc.asset_id=a.id
-        LEFT JOIN cmdb_correlation_decisions cd ON cd.source_record_id=sr.id AND cd.selected_asset_id=a.id
-        WHERE sr.asset_id=a.id OR cd.selected_asset_id=a.id) AS correlation_confidence,
+      ${correlationConfidenceSql} AS correlation_confidence,
       (SELECT count(DISTINCT c.id) FROM cmdb_correlation_cases c JOIN cmdb_correlation_candidates cc ON cc.case_id=c.id WHERE cc.asset_id=a.id AND c.status='OPEN' AND c.outcome='IDENTITY_CONFLICT') AS conflict_count,
       (SELECT full_name FROM bank_users u WHERE u.id=a.owner_user_id) AS owner_name,
       (SELECT full_name FROM bank_users u WHERE u.id=a.technical_owner_user_id) AS technical_owner_name,
@@ -359,8 +363,15 @@ export class CmdbApiService {
         SELECT NULLIF(COALESCE(sr.normalized_payload #>> '{sourceSpecificMetadata,cortex,ownerName}', sr.normalized_payload #>> '{sourceSpecificMetadata,cortex,owner}', sr.normalized_payload #>> '{sourceSpecificMetadata,cortex,securityTelemetry,user_name}', sr.normalized_payload #>> '{sourceSpecificMetadata,cortex,securityTelemetry,username}', sr.normalized_payload #>> '{sourceSpecificMetadata,cortex,ownerCandidates,0}'), '') AS owner_name
         FROM cmdb_source_records sr WHERE sr.asset_id=a.id
       ) discovered_owners WHERE owner_name IS NOT NULL ORDER BY owner_name) AS discovered_owner_names,
-      (SELECT count(*) FROM ci_relationships rr WHERE (rr.source_ci_id=a.id OR rr.target_ci_id=a.id) AND rr.status='ACTIVE' AND rr.archived_at IS NULL) AS relationship_count ${base} ORDER BY ${sort} ${direction}, a.id LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`, dataParams as any[]);
-    return { items: result.rows.map(mapAsset), total: Number(count.rows[0]?.count || 0), page: query.page, pageSize: query.pageSize };
+      (SELECT count(*) FROM ci_relationships rr WHERE (rr.source_ci_id=a.id OR rr.target_ci_id=a.id) AND rr.status='ACTIVE' AND rr.archived_at IS NULL) AS relationship_count
+      FROM page_assets page JOIN configuration_items a ON a.id=page.id ORDER BY ${sort} ${direction}, a.id ${tieDirection}`, dataParams as any[]);
+    const rows = cursorState ? result.rows.slice(0, query.pageSize) : result.rows;
+    const hasNext = Boolean(cursorState && result.rows.length > query.pageSize);
+    const last = rows.at(-1);
+    const nextCursor = cursorState && hasNext && last
+      ? encodeAssetCursor({ ...cursorState, boundary: { id: last.id, value: last.cursor_sort_value } }, config.JWT_SECRET) : undefined;
+    return { items: rows.map(mapAsset), total, page: query.page, pageSize: query.pageSize,
+      ...(cursorState ? { ...cursorMetadata, hasNext, nextCursor } : {}) };
   }
 
   public static async getAsset(actor: BankUser | undefined, id: string): Promise<any> {
@@ -378,11 +389,7 @@ export class CmdbApiService {
         WHEN EXISTS (SELECT 1 FROM cmdb_source_records sr WHERE sr.asset_id=a.id) THEN 'VERIFIED'
         ELSE 'MANUAL'
       END) AS correlation_state,
-      (SELECT COALESCE(MAX(cc.score), MAX(cd.confidence)) FROM cmdb_source_records sr
-        LEFT JOIN cmdb_correlation_cases c ON c.source_record_id=sr.id
-        LEFT JOIN cmdb_correlation_candidates cc ON cc.case_id=c.id AND cc.asset_id=a.id
-        LEFT JOIN cmdb_correlation_decisions cd ON cd.source_record_id=sr.id AND cd.selected_asset_id=a.id
-        WHERE sr.asset_id=a.id OR cd.selected_asset_id=a.id) AS correlation_confidence,
+      ${correlationConfidenceSql} AS correlation_confidence,
       (SELECT count(DISTINCT c.id) FROM cmdb_correlation_cases c JOIN cmdb_correlation_candidates cc ON cc.case_id=c.id WHERE cc.asset_id=a.id AND c.status='OPEN' AND c.outcome='IDENTITY_CONFLICT') AS conflict_count,
       (SELECT full_name FROM bank_users u WHERE u.id=a.owner_user_id) AS owner_name,
       (SELECT full_name FROM bank_users u WHERE u.id=a.technical_owner_user_id) AS technical_owner_name,
@@ -946,11 +953,16 @@ export class CmdbApiService {
     const params = [parsedSize, (parsedPage - 1) * parsedSize];
     const result = await pgClient.query(`SELECT c.*,sr.external_object_type,sr.external_object_id,sr.connector_id FROM cmdb_correlation_cases c JOIN cmdb_source_records sr ON sr.id=c.source_record_id WHERE c.status='OPEN' ORDER BY c.opened_at ASC,c.id LIMIT $1 OFFSET $2`, params);
     const count = await pgClient.query("SELECT count(*) AS count FROM cmdb_correlation_cases WHERE status='OPEN'");
-    const cases = [];
-    for (const row of result.rows) {
-      const candidates = await pgClient.query('SELECT cc.*,a.ci_number,a.name,a.hostname FROM cmdb_correlation_candidates cc JOIN configuration_items a ON a.id=cc.asset_id WHERE cc.case_id=$1 ORDER BY cc.score DESC,cc.asset_id', [row.id]);
-      cases.push({ id: row.id, sourceRecordId: row.source_record_id, outcome: row.outcome, status: row.status, summary: row.summary, openedAt: row.opened_at, sourceObjectType: row.external_object_type, sourceObjectId: row.external_object_id, connectorId: row.connector_id, candidates: candidates.rows.map((candidate) => ({ assetId: candidate.asset_id, ciNumber: candidate.ci_number, name: candidate.name, hostname: candidate.hostname, score: Number(candidate.score), evidence: candidate.evidence })) });
+    const candidates = result.rows.length ? await pgClient.query(`SELECT cc.case_id,cc.asset_id,cc.score,cc.evidence,a.ci_number,a.name,a.hostname
+      FROM cmdb_correlation_candidates cc JOIN configuration_items a ON a.id=cc.asset_id
+      WHERE cc.case_id=ANY($1::text[]) ORDER BY cc.case_id,cc.score DESC,cc.asset_id`, [result.rows.map((row) => row.id)]) : { rows: [] };
+    const byCase = new Map<string, any[]>();
+    for (const candidate of candidates.rows) {
+      const group = byCase.get(candidate.case_id) || [];
+      group.push({ assetId: candidate.asset_id, ciNumber: candidate.ci_number, name: candidate.name, hostname: candidate.hostname, score: Number(candidate.score), evidence: candidate.evidence });
+      byCase.set(candidate.case_id, group);
     }
+    const cases = result.rows.map((row) => ({ id: row.id, sourceRecordId: row.source_record_id, outcome: row.outcome, status: row.status, summary: row.summary, openedAt: row.opened_at, sourceObjectType: row.external_object_type, sourceObjectId: row.external_object_id, connectorId: row.connector_id, candidates: byCase.get(row.id) || [] }));
     return { items: cases, total: Number(count.rows[0]?.count || 0), page: parsedPage, pageSize: parsedSize };
   }
 

@@ -10,7 +10,8 @@ import { shutdownTelemetry, startTelemetry } from './services/telemetry.service.
 async function startScheduler(): Promise<void> {
   if (config.DB_TYPE !== 'postgres') throw new Error('The scheduler requires DB_TYPE=postgres.');
   await startTelemetry('scheduler');
-  await runMigrations();
+  if (config.RUN_MIGRATIONS) await runMigrations();
+  else logger.info('Database migrations are owned by the API role; scheduler startup will not contend for the migration lock.');
   await db.initialize();
   if (config.LDAP_SYNC_AUTO_ENABLED) LDAPSchedulerService.startScheduler();
   PlatformSchedulerService.start();

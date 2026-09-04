@@ -1,36 +1,36 @@
-import React, { useState, useEffect } from 'react';
+import React, { lazy, useState, useEffect } from 'react';
 import { useAuth } from './context/AuthContext.js';
 import { useI18n } from './context/I18nContext.js';
 import { AppLayout } from './components/layout/AppLayout.js';
-import { WorkManagementContainer } from './components/views/WorkManagementContainer.js';
-import { ProjectOperationsWorkspace } from './components/projects/ProjectOperationsWorkspace.js';
-import { MyWorkOverviewView } from './components/views/MyWorkOverviewView.js';
-import { ServiceCatalogView } from './components/views/ServiceCatalogView.js';
-import { CMDBRelationshipMapView } from './components/assets/CMDBRelationshipMapView.js';
-import { CMDBExplorerView } from './components/assets/CMDBExplorerView.js';
-import { CMDBAssetInventoryView } from './components/assets/CMDBAssetInventoryView.js';
-import { DiscoveryAdminView } from './components/assets/DiscoveryAdminView.js';
-import { AuditComplianceView } from './components/governance/AuditComplianceView.js';
-import { IdeateCanvasView } from './components/ideate/IdeateCanvasView.js';
-import { WrikeRequestFormsView } from './components/views/WrikeRequestFormsView.js';
-import { WrikeAutomationsView } from './components/views/WrikeAutomationsView.js';
-import { DocumentProofingModal } from './components/proofing/DocumentProofingModal.js';
-import { TicketSplitDetail } from './components/tickets/TicketSplitDetail.js';
-import { CISODashboard } from './components/dashboards/CISODashboard.js';
-import { LeadDashboard } from './components/dashboards/LeadDashboard.js';
-import { AnalystDashboard } from './components/dashboards/AnalystDashboard.js';
-import { IncidentCaseView } from './components/operations/IncidentCaseView.js';
-import { VulnerabilityManagementView } from './components/operations/VulnerabilityManagementView.js';
-import { DLPView } from './components/operations/DLPView.js';
-import { RiskRegisterView } from './components/governance/RiskRegisterView.js';
-import { ThreatModelWorkspace } from './components/governance/ThreatModelWorkspace.js';
-import { SecurityExceptionsView } from './components/governance/SecurityExceptionsView.js';
-import { ApprovalsView } from './components/governance/ApprovalsView.js';
-import { KnowledgeBaseView } from './components/kb/KnowledgeBaseView.js';
-import { AdminCenterView } from './components/admin/AdminCenterView.js';
-import { DepartmentHubView } from './components/departments/DepartmentHubView.js';
-import { DepartmentAdminPortal } from './components/departments/DepartmentAdminPortal.js';
-import { UniversalWorkflowWorkspace } from './components/workflows/UniversalWorkflowWorkspace.js';
+const WorkManagementContainer = lazy(() => import('./components/views/WorkManagementContainer.js').then((m) => ({ default: m.WorkManagementContainer })));
+const ProjectOperationsWorkspace = lazy(() => import('./components/projects/ProjectOperationsWorkspace.js').then((m) => ({ default: m.ProjectOperationsWorkspace })));
+const MyWorkOverviewView = lazy(() => import('./components/views/MyWorkOverviewView.js').then((m) => ({ default: m.MyWorkOverviewView })));
+const ServiceCatalogView = lazy(() => import('./components/views/ServiceCatalogView.js').then((m) => ({ default: m.ServiceCatalogView })));
+const CMDBRelationshipMapView = lazy(() => import('./components/assets/CMDBRelationshipMapView.js').then((m) => ({ default: m.CMDBRelationshipMapView })));
+const CMDBExplorerView = lazy(() => import('./components/assets/CMDBExplorerView.js').then((m) => ({ default: m.CMDBExplorerView })));
+const CMDBAssetInventoryView = lazy(() => import('./components/assets/CMDBAssetInventoryView.js').then((m) => ({ default: m.CMDBAssetInventoryView })));
+const DiscoveryAdminView = lazy(() => import('./components/assets/DiscoveryAdminView.js').then((m) => ({ default: m.DiscoveryAdminView })));
+const AuditComplianceView = lazy(() => import('./components/governance/AuditComplianceView.js').then((m) => ({ default: m.AuditComplianceView })));
+const IdeateCanvasView = lazy(() => import('./components/ideate/IdeateCanvasView.js').then((m) => ({ default: m.IdeateCanvasView })));
+const WrikeRequestFormsView = lazy(() => import('./components/views/WrikeRequestFormsView.js').then((m) => ({ default: m.WrikeRequestFormsView })));
+const WrikeAutomationsView = lazy(() => import('./components/views/WrikeAutomationsView.js').then((m) => ({ default: m.WrikeAutomationsView })));
+const DocumentProofingModal = lazy(() => import('./components/proofing/DocumentProofingModal.js').then((m) => ({ default: m.DocumentProofingModal })));
+const TicketSplitDetail = lazy(() => import('./components/tickets/TicketSplitDetail.js').then((m) => ({ default: m.TicketSplitDetail })));
+const CISODashboard = lazy(() => import('./components/dashboards/CISODashboard.js').then((m) => ({ default: m.CISODashboard })));
+const LeadDashboard = lazy(() => import('./components/dashboards/LeadDashboard.js').then((m) => ({ default: m.LeadDashboard })));
+const AnalystDashboard = lazy(() => import('./components/dashboards/AnalystDashboard.js').then((m) => ({ default: m.AnalystDashboard })));
+const IncidentCaseView = lazy(() => import('./components/operations/IncidentCaseView.js').then((m) => ({ default: m.IncidentCaseView })));
+const VulnerabilityManagementView = lazy(() => import('./components/operations/VulnerabilityManagementView.js').then((m) => ({ default: m.VulnerabilityManagementView })));
+const DLPView = lazy(() => import('./components/operations/DLPView.js').then((m) => ({ default: m.DLPView })));
+const RiskRegisterView = lazy(() => import('./components/governance/RiskRegisterView.js').then((m) => ({ default: m.RiskRegisterView })));
+const ThreatModelWorkspace = lazy(() => import('./components/governance/ThreatModelWorkspace.js').then((m) => ({ default: m.ThreatModelWorkspace })));
+const SecurityExceptionsView = lazy(() => import('./components/governance/SecurityExceptionsView.js').then((m) => ({ default: m.SecurityExceptionsView })));
+const ApprovalsView = lazy(() => import('./components/governance/ApprovalsView.js').then((m) => ({ default: m.ApprovalsView })));
+const KnowledgeBaseView = lazy(() => import('./components/kb/KnowledgeBaseView.js').then((m) => ({ default: m.KnowledgeBaseView })));
+const AdminCenterView = lazy(() => import('./components/admin/AdminCenterView.js').then((m) => ({ default: m.AdminCenterView })));
+const DepartmentHubView = lazy(() => import('./components/departments/DepartmentHubView.js').then((m) => ({ default: m.DepartmentHubView })));
+const DepartmentAdminPortal = lazy(() => import('./components/departments/DepartmentAdminPortal.js').then((m) => ({ default: m.DepartmentAdminPortal })));
+const UniversalWorkflowWorkspace = lazy(() => import('./components/workflows/UniversalWorkflowWorkspace.js').then((m) => ({ default: m.UniversalWorkflowWorkspace })));
 import { AccessDeniedView } from './components/common/AccessDeniedView.js';
 import { LDAPSignInModal } from './components/auth/LDAPSignInModal.js';
 import { BankAuthPortal } from './components/auth/BankAuthPortal.js';
@@ -383,8 +383,15 @@ export const App: React.FC = () => {
       onOpenCreate={() => setIsCreateModalOpen(true)}
       onCloseCreate={() => setIsCreateModalOpen(false)}
     >
-      {/* If a ticket is open, show split detail */}
-      {selectedTicketId && ticketDetailData?.ticket ? (
+      <React.Suspense
+        fallback={(
+          <div className="flex min-h-[320px] items-center justify-center text-sm text-semantic-muted">
+            {t('Loading secure workspace…')}
+          </div>
+        )}
+      >
+        {/* If a ticket is open, show split detail */}
+        {selectedTicketId && ticketDetailData?.ticket ? (
         <TicketSplitDetail
           ticket={ticketDetailData.ticket}
           transitions={ticketDetailData.transitions || []}
@@ -760,15 +767,16 @@ export const App: React.FC = () => {
             />
           )}
         </>
-      )}
+        )}
 
-      {/* Document Proofing Modal */}
-      {isProofingOpen && (
-        <DocumentProofingModal
-          isOpen={isProofingOpen}
-          onClose={() => setIsProofingOpen(false)}
-        />
-      )}
+        {/* Document Proofing Modal */}
+        {isProofingOpen && (
+          <DocumentProofingModal
+            isOpen={isProofingOpen}
+            onClose={() => setIsProofingOpen(false)}
+          />
+        )}
+      </React.Suspense>
     </AppLayout>
   );
 };

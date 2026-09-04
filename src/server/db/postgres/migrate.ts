@@ -66,7 +66,7 @@ export async function runMigrations(): Promise<void> {
         );
         logger.info({ version: migration.version }, 'PostgreSQL schema migration applied successfully.');
       }
-      logger.info({ versions: migrations.map((migration) => migration.version) }, 'PostgreSQL schema is up to date.');
+      logger.info({ migrationCount: migrations.length, latestVersion: migrations.at(-1)?.version }, 'PostgreSQL schema is up to date.');
     });
   } catch (error) {
     logger.error({ error }, '❌ Database migration failed.');

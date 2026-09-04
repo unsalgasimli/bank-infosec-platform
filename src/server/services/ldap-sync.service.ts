@@ -11,6 +11,8 @@ import {
 } from '../../shared/types/auth.js';
 import { db } from '../db/database.js';
 import { pgClient } from '../db/postgres/client.js';
+import type pg from 'pg';
+import { PostgresProjectionRepository } from '../db/postgres/projection-repository.js';
 import { config } from '../config/index.js';
 import { logger } from './logger.service.js';
 import { AuditService } from './audit.service.js';
@@ -97,7 +99,7 @@ export class LDAPSyncService {
   private static lastSyncReport: LDAPSyncReport | null = null;
   private static syncInFlight: Promise<LDAPSyncReport> | null = null;
 
-  private static async persistSyncRun(report: LDAPSyncReport): Promise<void> {
+  private static async persistSyncRun(report: LDAPSyncReport, client?: pg.PoolClient): Promise<void> {
     if (config.DB_TYPE !== 'postgres') return;
     const status = report.snapshotAccepted === false
       ? 'REJECTED'
@@ -105,7 +107,8 @@ export class LDAPSyncService {
         ? 'FAILED'
         : 'SUCCEEDED';
     try {
-      await pgClient.query(
+      const query = (sql: string, values: unknown[]) => client ? client.query(sql, values) : pgClient.query(sql, values);
+      await query(
         `INSERT INTO directory_sync_runs(
          id, started_at, completed_at, status, trigger, snapshot_hash,
          total_ldap_users, active_users, disabled_users, added_users,
@@ -137,32 +140,24 @@ export class LDAPSyncService {
         ],
       );
     } catch (error: any) {
+      if (client) throw error;
       logger.warn({ err: error?.message || String(error), trigger: report.trigger }, 'Directory sync report could not be persisted; sync result remains authoritative');
     }
   }
 
-  private static async withDatabaseSyncLock<T>(operation: () => Promise<T>): Promise<T> {
-    const pool = config.DB_TYPE === 'postgres' ? pgClient.getPool() : null;
-    if (!pool) return operation();
-
-    const client = await pool.connect();
+  private static async withDatabaseSyncLock<T>(operation: (client: pg.PoolClient) => Promise<T>): Promise<T> {
     const lockKey = 'aegissec:active-directory-sync';
-    try {
+    return pgClient.transaction(async (client) => {
+      await client.query('SET TRANSACTION ISOLATION LEVEL SERIALIZABLE');
       const lockResult = await client.query<{ locked: boolean }>(
-        'SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked',
+        'SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS locked',
         [lockKey],
       );
       if (!lockResult.rows[0]?.locked) {
-        throw new Error('Another Active Directory synchronization is already running.');
+        throw Object.assign(new Error('Another Active Directory synchronization is already committing.'), { code: 'LDAP_SYNC_LOCKED', retryable: true });
       }
-      return await operation();
-    } finally {
-      try {
-        await client.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [lockKey]);
-      } finally {
-        client.release();
-      }
-    }
+      return operation(client);
+    });
   }
 
   public static getLastSyncReport(): LDAPSyncReport | null {
@@ -625,11 +620,17 @@ export class LDAPSyncService {
     dryRun?: boolean;
   } = {}): Promise<LDAPSyncReport> {
     if (this.syncInFlight) return this.syncInFlight;
-    const operation = this.withDatabaseSyncLock(() => this.performSync(options));
+    const operation = this.performSync(options).then((report) => {
+      this.lastSyncReport = report;
+      logger.info({ trigger: report.trigger, snapshotAccepted: report.snapshotAccepted, dryRun: report.dryRun, totalLdapUsers: report.totalLdapUsers }, 'Directory synchronization result committed');
+      return report;
+    });
     this.syncInFlight = operation.finally(() => {
       this.syncInFlight = null;
     });
-    return operation;
+    // Return the tracked promise, not its parent: otherwise finally() creates
+    // an orphan rejection when the caller handles a failed lock/sync attempt.
+    return this.syncInFlight;
   }
 
   /**
@@ -644,6 +645,9 @@ export class LDAPSyncService {
     dryRun?: boolean;
   } = {}): Promise<LDAPSyncReport> {
     const startTime = Date.now();
+    if (config.DB_TYPE === 'postgres' && !pgClient.getPool()) {
+      throw new Error('PostgreSQL is unavailable; Active Directory synchronization cannot acquire its database lock.');
+    }
     const trigger = options.trigger || 'SCHEDULED_DAILY_CHECK';
     logger.info({ trigger, time: new Date().toISOString() }, '🚀 Starting Daily Active Directory / LDAP User Synchronization Check...');
 
@@ -652,13 +656,41 @@ export class LDAPSyncService {
     const queryResult = options.mockEntries
       ? { users: options.mockEntries, isLiveLdap: true }
       : await this.queryLdapDirectory(options.ldapOptions);
+    if (config.DB_TYPE !== 'postgres') return this.applySnapshot(options, queryResult, startTime);
+    await db.flush();
+    const before = structuredClone(db.data);
+    const staged = await this.withDatabaseSyncLock(async (client) => {
+      const newer = await client.query(`SELECT 1 FROM directory_sync_runs
+        WHERE started_at >= $1 AND dry_run=FALSE AND metadata->>'snapshotAccepted'='true' LIMIT 1`, [new Date(startTime).toISOString()]);
+      if (newer.rowCount && !options.dryRun) throw Object.assign(new Error('A newer directory snapshot has already committed; fetch a fresh snapshot.'), { code: 'STALE_DIRECTORY_SNAPSHOT', retryable: true });
+      const baseline = await PostgresProjectionRepository.hydrate({ client, trackHashes: false });
+      const prepared = await db.stageProjection(baseline, () => this.applySnapshot(options, queryResult, startTime, client));
+      if (!options.dryRun && prepared.value.snapshotAccepted) {
+        await PostgresProjectionRepository.persist(prepared.data, [], { client, baseline });
+      }
+      prepared.value.executionDurationMs = Date.now() - startTime;
+      await this.persistSyncRun(prepared.value, client);
+      return prepared;
+    });
+    if (!options.dryRun && staged.value.snapshotAccepted) db.publishCommittedProjection(before, staged.data);
+    return staged.value;
+  }
+
+  private static async applySnapshot(
+    options: Parameters<typeof LDAPSyncService.syncAllUsers>[0],
+    queryResult: Awaited<ReturnType<typeof LDAPSyncService.queryLdapDirectory>>,
+    startTime: number,
+    client?: pg.PoolClient,
+  ): Promise<LDAPSyncReport> {
+    options ??= {};
+    const trigger = options.trigger || 'SCHEDULED_DAILY_CHECK';
     const ldapEntries = queryResult.users;
 
     const domain = config.LDAP_DOMAIN.toLowerCase();
     const baseDn = config.LDAP_BASE_DN;
 
     const report: LDAPSyncReport = {
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(startTime).toISOString(),
       executionDurationMs: 0,
       trigger,
       totalLdapUsers: ldapEntries.length,
@@ -682,8 +714,7 @@ export class LDAPSyncService {
 
     if (!queryResult.isLiveLdap) {
       report.executionDurationMs = Date.now() - startTime;
-      this.lastSyncReport = report;
-      await this.persistSyncRun(report);
+      if (!client) await this.persistSyncRun(report);
       logger.warn(
         { trigger, reason: queryResult.error || 'No live directory result' },
         'Active Directory sync skipped; existing directory data was left unchanged'
@@ -721,8 +752,7 @@ export class LDAPSyncService {
       report.snapshotRejectedReason = snapshotQuality.reason;
       report.errors.push(snapshotQuality.reason || 'LDAP snapshot quality validation failed.');
       report.executionDurationMs = Date.now() - startTime;
-      this.lastSyncReport = report;
-      await this.persistSyncRun(report);
+      if (!client) await this.persistSyncRun(report);
       logger.warn({ trigger, reason: snapshotQuality.reason, snapshotHash: snapshotQuality.snapshotHash }, 'Active Directory sync skipped; snapshot quality gate rejected the result');
       return report;
     }
@@ -736,7 +766,7 @@ export class LDAPSyncService {
     let baselineByBranch = new Map<string, DirectoryBaselineRecord>();
     if (config.DB_TYPE === 'postgres') {
       try {
-        const baseline = await DirectoryBaselineService.loadCurrent();
+        const baseline = await DirectoryBaselineService.loadCurrent(client);
         const baselineNameCandidates = new Map<string, DirectoryBaselineRecord[]>();
         for (const record of baseline) {
           const nameKey = makeDirectoryNameMatchKey(record.fullName);
@@ -757,6 +787,7 @@ export class LDAPSyncService {
           if (branchKey && !baselineByBranch.has(branchKey)) baselineByBranch.set(branchKey, record);
         }
       } catch (error: any) {
+        if (client) throw error;
         logger.warn({ err: error?.message || String(error) }, 'Directory baseline unavailable; continuing with live AD attributes');
       }
     }
@@ -1369,8 +1400,7 @@ export class LDAPSyncService {
     }
 
     report.executionDurationMs = Date.now() - startTime;
-    this.lastSyncReport = report;
-    await this.persistSyncRun(report);
+    if (!client) await this.persistSyncRun(report);
 
     // 10. Log Audit Event
     if (!options.dryRun) AuditService.log({
@@ -1403,7 +1433,7 @@ export class LDAPSyncService {
         duplicatesRemoved: report.duplicatesRemovedCount,
         durationMs: report.executionDurationMs,
       },
-      '✅ Active Directory / LDAP Daily User Synchronization Check Complete!'
+      'Active Directory snapshot processing finished; durable commit still required in PostgreSQL mode'
     );
 
     return report;

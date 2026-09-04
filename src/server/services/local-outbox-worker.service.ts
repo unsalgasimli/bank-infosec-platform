@@ -3,7 +3,7 @@ import { config } from '../config/index.js';
 import { pgClient } from '../db/postgres/client.js';
 import type { OutboxEvent } from './outbox.service.js';
 import { WorkerEventService } from './worker-event.service.js';
-import { logger } from './logger.service.js';
+import { errorLogFields, logger } from './logger.service.js';
 
 type OutboxRow = QueryResultRow & {
   id: string;
@@ -26,7 +26,7 @@ export class LocalOutboxWorkerService {
 
   public static start(): void {
     if (config.NODE_ENV === 'production' || config.RABBITMQ_ENABLED || this.timer) return;
-    const poll = () => void this.processOnce().catch((error) => logger.error({ error }, 'Local outbox worker cycle failed'));
+    const poll = () => void this.processOnce().catch((error) => logger.error({ ...errorLogFields(error) }, 'Local outbox worker cycle failed'));
     poll();
     this.timer = setInterval(poll, config.OUTBOX_RELAY_INTERVAL_MS);
     this.timer.unref?.();
@@ -80,7 +80,7 @@ export class LocalOutboxWorkerService {
             "UPDATE outbox_events SET status='PENDING', locked_at=NULL, available_at=NOW() + INTERVAL '30 seconds', last_error=$2 WHERE id=$1",
             [row.id, String(error?.message || error).slice(0, 2000)]
           );
-          logger.error({ error, eventId: row.id, topic: row.topic }, 'Local outbox worker event failed; deferred for retry');
+          logger.error({ ...errorLogFields(error), eventId: row.id, topic: row.topic }, 'Local outbox worker event failed; deferred for retry');
         }
       }
       return rows.length;

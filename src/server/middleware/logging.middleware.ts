@@ -9,9 +9,22 @@ export interface TraceableRequest extends Request {
   startTime?: number;
 }
 
+function safeRequestId(value: string | undefined): string {
+  return value && /^[A-Za-z0-9._:-]{1,128}$/.test(value)
+    ? value
+    : `req-${crypto.randomUUID()}`;
+}
+
+function safeRequestPath(value: string): string {
+  // Query strings frequently contain storage keys, search terms, or identifiers
+  // that do not belong in centralized logs. Keep the route path for correlation.
+  try { return new URL(value, 'http://aegissec.invalid').pathname; }
+  catch { return value.split('?')[0] || '/'; }
+}
+
 export function requestTracingMiddleware(req: TraceableRequest, res: Response, next: NextFunction): void {
   const incomingId = req.header('x-request-id') || req.header('x-correlation-id');
-  const requestId = incomingId || `req-${crypto.randomUUID()}`;
+  const requestId = safeRequestId(incomingId);
   const span = startHttpSpan(`HTTP ${req.method}`, req.headers, {
     'http.request.method': req.method,
     'url.path': req.path,
@@ -40,7 +53,7 @@ export function requestTracingMiddleware(req: TraceableRequest, res: Response, n
       requestId,
       traceId: finishHttpSpan(span, statusCode),
       method: req.method,
-      url: req.originalUrl || req.url,
+      url: safeRequestPath(req.originalUrl || req.url),
       statusCode,
       durationMs,
       ip: req.ip || req.socket.remoteAddress,
@@ -52,7 +65,9 @@ export function requestTracingMiddleware(req: TraceableRequest, res: Response, n
     } else if (statusCode >= 400) {
       logger.warn(logData, `HTTP ${req.method} ${req.originalUrl} - ${statusCode} (${durationMs}ms)`);
     } else {
-      logger.info(logData, `HTTP ${req.method} ${req.originalUrl} - ${statusCode} (${durationMs}ms)`);
+      // Successful request logs are debug-level to keep production logs useful
+      // at scale; warnings/errors remain visible without sampling.
+      logger.debug(logData, `HTTP ${req.method} ${logData.url} - ${statusCode} (${durationMs}ms)`);
     }
   });
 

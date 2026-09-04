@@ -1,7 +1,7 @@
 import type { QueryResultRow } from 'pg';
 import { config } from '../config/index.js';
 import { pgClient } from '../db/postgres/client.js';
-import { logger } from './logger.service.js';
+import { errorLogFields, logger } from './logger.service.js';
 import { QueueService } from './queue.service.js';
 import type { OutboxEvent } from './outbox.service.js';
 
@@ -13,7 +13,7 @@ export class OutboxRelayService {
 
   public static start(): void {
     if (!QueueService.enabled() || this.timer) return;
-    const poll = () => void this.relayOnce().catch((error) => logger.error({ error }, 'Outbox relay cycle failed'));
+    const poll = () => void this.relayOnce().catch((error) => logger.error({ ...errorLogFields(error) }, 'Outbox relay cycle failed'));
     poll();
     this.timer = setInterval(poll, config.OUTBOX_RELAY_INTERVAL_MS);
     this.timer.unref?.();

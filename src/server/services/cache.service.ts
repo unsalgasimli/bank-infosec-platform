@@ -31,6 +31,12 @@ export class CacheService {
           password: config.REDIS_PASSWORD,
           keyPrefix: config.REDIS_KEY_PREFIX,
           lazyConnect: true,
+          connectTimeout: config.REDIS_CONNECT_TIMEOUT_MS,
+          // A cache outage must not pin request handlers behind ioredis's
+          // default retry queue. The in-process cache remains the safe local
+          // fallback for reads and writes while Redis reconnects.
+          enableOfflineQueue: false,
+          maxRetriesPerRequest: 1,
           retryStrategy(times) {
             const delay = Math.min(times * 200, 2000);
             return delay;
@@ -119,7 +125,10 @@ export class CacheService {
     if (config.REDIS_ENABLED && this.redisClient) {
       const start = Date.now();
       try {
-        await this.redisClient.ping();
+        await Promise.race([
+          this.redisClient.ping(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Redis health check timed out.')), config.REDIS_HEALTH_TIMEOUT_MS)),
+        ]);
         const latencyMs = Date.now() - start;
         return { status: 'UP', mode: 'redis', latencyMs };
       } catch (error: any) {
@@ -131,7 +140,16 @@ export class CacheService {
 
   public async close(): Promise<void> {
     if (this.redisClient) {
-      await this.redisClient.quit();
+      const client = this.redisClient;
+      this.redisClient = null;
+      try {
+        await Promise.race([
+          client.quit(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Redis shutdown timed out.')), config.REDIS_HEALTH_TIMEOUT_MS)),
+        ]);
+      } catch {
+        client.disconnect();
+      }
       this.isRedisConnected = false;
       logger.info('Redis client disconnected');
     }

@@ -3,12 +3,12 @@ import test from 'node:test';
 import { cortexAuthenticationHeaders, CortexClient, CortexConnectorError, type CortexTransport } from '../server/integrations/cortex/cortex-client.js';
 import { cortexEndpointPayloadMapper, cortexUnifiedAssetPayloadMapper } from '../server/services/cortex-inventory-sync.service.js';
 
-const envelope = { connectorId: 'cortex-a', syncRunId: 'run-a', sourceObjectType: 'CORTEX_ENDPOINT', sourceObjectId: 'ep-1', observedAt: '2026-09-01T00:00:00.000Z', rawPayload: {} } as const;
+const envelope = { schemaVersion: 1, connectorId: 'cortex-a', syncRunId: 'run-a', sourceObjectType: 'CORTEX_ENDPOINT', sourceObjectId: 'ep-1', observedAt: '2026-09-01T00:00:00.000Z', rawPayload: {} } as const;
 const configuration = { endpointUrl: 'https://localhost', endpointAllowPrivateNetwork: true, tlsVerifyCertificates: true, requestTimeoutMs: 1000, responseSizeLimitBytes: 65536, apiKeyId: '42', apiKey: 'not-a-real-secret', maxRetries: 1 };
 
-test('Cortex endpoint normalizes through the generic observation DTO with scoped persistent identity', () => {
+test('Cortex endpoint normalizes through the generic observation DTO with scoped persistent identity', async () => {
   const raw = cortexEndpointPayloadMapper.validateRaw({ endpoint_id: 'ep-1', endpoint_name: 'ws-01', fqdn: 'ws-01.bank.example', domain: 'bank.example', ip_addresses: ['10.0.0.5', 'not-an-ip'], mac_address: 'AA:BB:CC:DD:EE:FF', os_type: 'Windows', agent_version: '8.1', is_isolated: true, unknown_future_field: { preserved: true } });
-  const dto = cortexEndpointPayloadMapper.normalize(raw, envelope);
+  const dto = await cortexEndpointPayloadMapper.normalize(raw, envelope);
   assert.equal(dto.source.objectId, 'ep-1');
   assert.deepEqual(dto.identity.identifiers[0], { type: 'EDR_DEVICE_ID', namespace: 'cortex-a', value: 'ep-1', confidence: 100, primary: true });
   assert.equal(dto.network.interfaces[0]?.ipAddresses.length, 1);
@@ -16,7 +16,7 @@ test('Cortex endpoint normalizes through the generic observation DTO with scoped
   assert.throws(() => cortexEndpointPayloadMapper.validateRaw({ endpoint_name: 'missing-id' }), /endpoint_id/);
 });
 
-test('Cortex Unified Asset Inventory preserves native classification and emits strong cross-source identifiers', () => {
+test('Cortex Unified Asset Inventory preserves native classification and emits strong cross-source identifiers', async () => {
   const raw = cortexUnifiedAssetPayloadMapper.validateRaw({
     'xdm.asset.id': 'cortex-native-77', 'xdm.asset.strong_id': 'asset-77', 'xdm.asset.name': 'srv-01.bank.example',
     'xdm.asset.type.class': 'Compute', 'xdm.asset.type.category': 'Virtual Machine', 'xdm.asset.type.name': 'VMware VM',
@@ -25,7 +25,7 @@ test('Cortex Unified Asset Inventory preserves native classification and emits s
     'xdm.host.ipv4_addresses': ['10.20.30.40'], endpoint_id: 'endpoint-77', agent_version: '8.7.1',
     operational_status: 'PROTECTED', content_status: 'up_to_date', unknown_asset_field: { preserved: true },
   });
-  const dto = cortexUnifiedAssetPayloadMapper.normalize(raw, { ...envelope, sourceObjectType: 'CORTEX_ASSET', sourceObjectId: 'cortex-native-77' });
+  const dto = await cortexUnifiedAssetPayloadMapper.normalize(raw, { ...envelope, sourceObjectType: 'CORTEX_ASSET', sourceObjectId: 'cortex-native-77' });
   assert.equal(dto.classification.type, 'virtual_machine');
   assert.equal((dto.sourceSpecificMetadata.cortex as any).assetClass, 'Compute');
   assert.ok(dto.identity.identifiers.some((item) => item.type === 'CORTEX_ASSET_ID' && item.value === 'cortex-native-77'));
@@ -34,11 +34,11 @@ test('Cortex Unified Asset Inventory preserves native classification and emits s
   assert.equal(((dto.sourceSpecificMetadata.cortex as any).securityTelemetry as any).unknown_asset_field.preserved, true);
 });
 
-test('Cortex Unified Asset Inventory maps identity and cloud-runtime taxonomy to canonical CMDB CI types', () => {
-  const group = cortexUnifiedAssetPayloadMapper.normalize(cortexUnifiedAssetPayloadMapper.validateRaw({
+test('Cortex Unified Asset Inventory maps identity and cloud-runtime taxonomy to canonical CMDB CI types', async () => {
+  const group = await cortexUnifiedAssetPayloadMapper.normalize(cortexUnifiedAssetPayloadMapper.validateRaw({
     'xdm.asset.id': 'group-1', 'xdm.asset.type.class': 'Identity', 'xdm.asset.type.category': 'IAM Group', 'xdm.asset.type.name': 'AD Group', 'xdm.identity.group.dn': 'CN=SG-Admins,DC=bank,DC=example', 'xdm.asset.tags': ['privileged'],
   }), { ...envelope, sourceObjectType: 'CORTEX_ASSET', sourceObjectId: 'group-1' });
-  const runtime = cortexUnifiedAssetPayloadMapper.normalize(cortexUnifiedAssetPayloadMapper.validateRaw({
+  const runtime = await cortexUnifiedAssetPayloadMapper.normalize(cortexUnifiedAssetPayloadMapper.validateRaw({
     'xdm.asset.id': 'image-1', 'xdm.asset.type.class': 'Compute', 'xdm.asset.type.category': 'Container Image', 'xdm.asset.type.name': 'Runtime Image', 'xdm.business_application.names': ['payments'],
   }), { ...envelope, sourceObjectType: 'CORTEX_ASSET', sourceObjectId: 'image-1' });
   assert.equal(group.classification.type, 'directory_group');
@@ -86,7 +86,7 @@ test('Cortex page windows use the documented exclusive upper bound and preserve 
 });
 
 test('Cortex Asset Inventory retries the same native page without optional fields only after an upstream 5xx', async () => {
-  const payloads: Array<Record<string, unknown>> = [];
+  const payloads: Array<{ request_data: Record<string, unknown> }> = [];
   let attempts = 0;
   const transport: CortexTransport = async (request) => {
     attempts += 1; payloads.push(JSON.parse(request.body || '{}'));
@@ -103,7 +103,7 @@ test('Cortex Asset Inventory retries the same native page without optional field
   assert.equal(payloads[1].request_data.search_to, 1000);
 });
 
-test('Cortex Advanced API keys send a fresh nonce, timestamp, and SHA-256 proof instead of the raw secret', () => {
+test('Cortex Advanced API keys send a fresh nonce, timestamp, and SHA-256 proof instead of the raw secret', async () => {
   const headers = cortexAuthenticationHeaders({ ...configuration, apiKeySecurityLevel: 'ADVANCED' }, 'a'.repeat(64), '1725148800000');
   assert.equal(headers.authorization, '82a4a109074d577af275a60a46ae1d657ba9d477e3332a5c1e95c45cb6626ee4');
   assert.equal(headers['x-xdr-auth-id'], '42');

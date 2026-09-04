@@ -1,4 +1,5 @@
-import test from 'node:test';
+import { assertDisposableDatabase } from './fixtures/disposable-database.js';
+import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { z } from 'zod';
 import { config } from '../server/config/index.js';
@@ -9,6 +10,9 @@ import { normalizedDiscoveryDtoSchema, type NormalizedDiscoveryDto } from '../sh
 const enabled = process.env.RUN_CMDB_DISCOVERY_INTEGRATION === '1'
   && process.env.CMDB_DISCOVERY_DISPOSABLE_DATABASE === '1'
   && /(?:test|e2e|integration)/i.test(config.DB_NAME);
+
+before(async () => { if (enabled) await assertDisposableDatabase(pgClient, config.DB_NAME); });
+after(() => pgClient.close());
 
 const rawFixtureSchema = z.object({ record: normalizedDiscoveryDtoSchema }).strict();
 const fixtureMapper: DiscoveryPayloadMapper<z.infer<typeof rawFixtureSchema>> = {
@@ -156,8 +160,35 @@ test('generic CMDB discovery engine is deterministic, concurrent-safe and lifecy
 
     await DiscoveryIngestionService.reconcileAndCompleteRun(run1);
 
+    // A new run must preserve material payload/revision/normalization time when
+    // unchanged, while retaining fresh immutable evidence and last-seen metadata.
+    const beforeReplay = (await pgClient.query('SELECT normalized_at,revision FROM cmdb_source_records WHERE asset_id=$1', [vmAssetId])).rows[0];
+    const replayHistory = Number((await pgClient.query('SELECT count(*) count FROM cmdb_asset_changes WHERE asset_id=$1', [vmAssetId])).rows[0].count);
+    const replayRun = await createRun();
+    const replay = await ingest(replayRun, vmMoved, 9);
+    assert.equal(replay.unchanged, true);
+    assert.deepEqual((await pgClient.query('SELECT normalized_at,revision FROM cmdb_source_records WHERE asset_id=$1', [vmAssetId])).rows[0], beforeReplay);
+    assert.equal(Number((await pgClient.query('SELECT count(*) count FROM cmdb_asset_changes WHERE asset_id=$1', [vmAssetId])).rows[0].count), replayHistory);
+    assert.equal(Number((await pgClient.query('SELECT count(*) count FROM cmdb_raw_observations WHERE sync_run_id=$1', [replayRun])).rows[0].count), 1);
+    await DiscoveryIngestionService.reconcileAndCompleteRun(replayRun);
+
+    // Incomplete snapshots never infer absence or advance the last successful cursor.
+    const successfulCheckpoint = JSON.stringify({ cursor: 'last-confirmed' });
+    await pgClient.query('UPDATE cmdb_discovery_connectors SET checkpoint=$2 WHERE id=$1', ['dconn-test-primary', successfulCheckpoint]);
+    const beforeIncomplete = (await pgClient.query('SELECT id,status,miss_count FROM cmdb_source_records ORDER BY id')).rows;
+    const failedFullRun = await createRun('dconn-test-primary', 'FULL');
+    await pgClient.query('UPDATE cmdb_discovery_sync_runs SET failed_count=1,checkpoint=$2 WHERE id=$1', [failedFullRun, JSON.stringify({ cursor: 'not-safe' })]);
+    assert.deepEqual(await DiscoveryIngestionService.reconcileAndCompleteRun(failedFullRun), { staleCandidates: 0, lifecycleChanges: 0 });
+    assert.deepEqual((await pgClient.query('SELECT id,status,miss_count FROM cmdb_source_records ORDER BY id')).rows, beforeIncomplete);
+    assert.equal((await pgClient.query('SELECT checkpoint FROM cmdb_discovery_connectors WHERE id=$1', ['dconn-test-primary'])).rows[0].checkpoint, successfulCheckpoint);
+    const partialRun = await createRun('dconn-test-primary', 'FULL');
+    await DiscoveryIngestionService.completePartialRun(partialRun, { cursor: 'also-not-safe' }, new Error('fixture incomplete read'));
+    assert.equal((await pgClient.query('SELECT checkpoint FROM cmdb_discovery_connectors WHERE id=$1', ['dconn-test-primary'])).rows[0].checkpoint, successfulCheckpoint);
+    assert.deepEqual((await pgClient.query('SELECT id,status,miss_count FROM cmdb_source_records ORDER BY id')).rows, beforeIncomplete);
+
     // F: one missed full scan marks stale under test policy, never deletes.
-    await pgClient.query("UPDATE cmdb_discovery_lifecycle_policies SET stale_after_missed_runs=1,decommission_after_missed_runs=2 WHERE scope_key='GLOBAL'");
+    await pgClient.query(`INSERT INTO cmdb_discovery_lifecycle_policies(scope_key,connector_id,stale_after_missed_runs,decommission_after_missed_runs)
+      VALUES('dconn-test-primary','dconn-test-primary',1,2)`);
     const missingRun = await createRun('dconn-test-primary', 'FULL');
     await DiscoveryIngestionService.reconcileAndCompleteRun(missingRun);
     assert.equal((await pgClient.query('SELECT lifecycle_state FROM configuration_items WHERE id=$1', [vmAssetId])).rows[0].lifecycle_state, 'STALE');

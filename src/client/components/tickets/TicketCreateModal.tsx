@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertCircle,
   ArrowRight,
@@ -709,7 +710,7 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({ isOpen, on
     }
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-semantic-modal-tint/60 p-3 backdrop-blur-sm sm:p-5">
       <section role="dialog" aria-modal="true" aria-labelledby="new-work-title" className="flex h-[min(780px,calc(100vh-24px))] w-[min(1120px,100%)] flex-col overflow-hidden rounded-[26px] bg-white shadow-[0_28px_80px_rgba(15,29,50,0.24)] sm:h-[min(780px,calc(100vh-40px))]">
         <header className="flex shrink-0 items-center justify-between border-b border-semantic-border px-5 py-4 sm:px-8 sm:py-5">
@@ -743,6 +744,7 @@ export const TicketCreateModal: React.FC<TicketCreateModalProps> = ({ isOpen, on
 
         <footer className="flex shrink-0 flex-col gap-3 border-t border-semantic-border bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8"><span className="flex items-center gap-2 text-xs font-semibold text-semantic-success"><CheckCircle2 className="h-4 w-4 shrink-0" /> {t('Priority and SLA will be automatically calculated.')}</span><div className="flex justify-end gap-2"><button type="button" onClick={requestClose} className="rounded-xl border border-semantic-border-strong px-4 py-2.5 text-sm font-bold text-semantic-strong transition hover:bg-semantic-subtle focus:outline-none focus:ring-4 focus:ring-semantic-brand/10">{createdTicketKey ? t('Close') : t('Cancel')}</button><button type="button" disabled={loading || submitting || Boolean(createdTicketKey)} onClick={() => void submit()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-semantic-success px-4 py-2.5 text-sm font-bold text-white transition hover:bg-semantic-success-hover disabled:cursor-not-allowed disabled:opacity-50">{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{submitting ? t('Creating...') : createdTicketKey ? t('Created') : t('Create Ticket')}</button></div></footer>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 };

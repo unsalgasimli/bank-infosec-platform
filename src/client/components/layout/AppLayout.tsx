@@ -97,7 +97,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       />
 
       {/* Main App Container */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex min-h-0 overflow-hidden">
         {/* Left Enterprise Navigation Sidebar */}
         <Sidebar
           activeDestination={activeView}
@@ -123,8 +123,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         )}
 
         {/* Spacious Main Content Area */}
-        <main className="min-w-0 flex-1 flex flex-col overflow-hidden bg-semantic-page">
-          <div className="flex-1 flex overflow-hidden">
+        <main className="min-w-0 min-h-0 flex-1 flex flex-col overflow-hidden bg-semantic-page">
+          <div className="flex-1 min-h-0 flex overflow-hidden">
             {children}
           </div>
         </main>

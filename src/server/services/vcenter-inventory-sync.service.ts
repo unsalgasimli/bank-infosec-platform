@@ -167,7 +167,8 @@ export class VCenterInventorySyncService {
       // reconcileAndCompleteRun explicitly performs absence handling only for
       // FULL/RECONCILIATION runs. Incremental runs complete and update their
       // checkpoint/health without inferring that unseen assets disappeared.
-      await DiscoveryIngestionService.reconcileAndCompleteRun(runId);
+      if (batch.failed.length) await DiscoveryIngestionService.completePartialRun(runId, { reason: 'INVALID_RECORDS', failedRecords: batch.failed.length });
+      else await DiscoveryIngestionService.reconcileAndCompleteRun(runId);
       return { runId, discovered: batch.succeeded.length, failed: batch.failed.length, state: batch.failed.length ? 'PARTIAL' : 'SUCCEEDED' };
     } catch (error: any) {
       // Preserve the authoritative run for bounded broker retry. A transient

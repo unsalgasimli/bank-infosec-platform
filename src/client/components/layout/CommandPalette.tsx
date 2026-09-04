@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, Shield, AlertCircle, FileText, CheckCircle2, Layers, ArrowRight } from 'lucide-react';
 import { Ticket } from '../../../shared/types/ticket.js';
 
@@ -48,7 +49,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     { label: 'Space Settings & Configuration', view: 'admin-settings', icon: FileText },
   ].filter((v) => v.label.toLowerCase().includes(query.toLowerCase()));
 
-  return (
+  return createPortal(
       <div className="fixed inset-0 z-dsDialog flex items-start justify-center pt-20 p-4">
       <div className="fixed inset-0 bg-black/65 backdrop-blur-[2px]" onClick={onClose} />
       <div className="relative w-full max-w-xl bg-semantic-panel border border-semantic-jira-border rounded-md shadow-2xl overflow-hidden z-dsContent">
@@ -127,6 +128,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };

@@ -9,7 +9,7 @@ import { sourceIdentityKey, type VCenterConnectorConfiguration } from '../shared
 
 const configuration = (connectorId: string): VCenterConnectorConfiguration => ({ connectorId, endpointFqdn: `${connectorId}.example.test`, port: 443, soapEndpointPath: '/sdk', automationApiBasePath: '/api', tlsVerifyCertificates: true, requestTimeoutMs: 30_000, responseSizeLimitBytes: 4_194_304, endpointAllowPrivateNetwork: true, accessMode: 'READ_ONLY' });
 
-test('vCenter source identity and runtime sessions remain connector-scoped', () => {
+test('vCenter source identity and runtime sessions remain connector-scoped', async () => {
   assert.notEqual(sourceIdentityKey('vc-a', 'VirtualMachine', 'vm-123'), sourceIdentityKey('vc-b', 'VirtualMachine', 'vm-123'));
   assert.throws(() => sourceIdentityKey('vc-a', 'VirtualMachine', ''));
   assert.notEqual(ConnectorScopedLockService.key('vc-a', 'sync'), ConnectorScopedLockService.key('vc-b', 'sync'));
@@ -28,7 +28,7 @@ test('vCenter endpoint policy is HTTPS-only, REST-path fixed and fail-closed for
   assert.deepEqual(vCenterRequestPolicy(configuration('vc-a')), { timeoutMs: 30_000, maxResponseBytes: 4_194_304, redirect: 'error' });
 });
 
-test('retry policy only retries transient errors with bounded jitter', () => {
+test('retry policy only retries transient errors with bounded jitter', async () => {
   assert.equal(VCenterRetryPolicy.isRetryable('VCENTER_SESSION_EXPIRED'), true);
   assert.equal(VCenterRetryPolicy.isRetryable('VCENTER_AUTH_FAILED'), false);
   assert.equal(VCenterRetryPolicy.delayMs(1, () => 0), 500);
@@ -36,12 +36,12 @@ test('retry policy only retries transient errors with bounded jitter', () => {
   assert.equal(VCenterRetryPolicy.delayMs(99, () => 1) <= 300000, true);
 });
 
-test('the REST connector never exposes a token through its public runtime state', () => {
+test('the REST connector never exposes a token through its public runtime state', async () => {
   const connector = new VCenterConnector(configuration('vc-a'), new VCenterRestClient());
   assert.deepEqual(connector.getRuntimeState(), { connectorId: 'vc-a', retryAttempt: 0 });
 });
 
-test('vCenter discovery maps every supported inventory object to a canonical CMDB type', () => {
+test('vCenter discovery maps every supported inventory object to a canonical CMDB type', async () => {
   const cases = [
     ['VirtualMachine', 'virtual_machine'],
     ['HostSystem', 'hypervisor'],
@@ -55,8 +55,8 @@ test('vCenter discovery maps every supported inventory object to a canonical CMD
 
   for (const [objectType, expectedType] of cases) {
     const raw = { objectType, objectId: `${objectType}-1`, name: `${objectType} 1`, payload: {} };
-    const normalized = vCenterInventoryPayloadMapper.normalize(raw, {
-      connectorId: 'vc-a', syncRunId: 'run-1', sourceObjectType: objectType,
+    const normalized = await vCenterInventoryPayloadMapper.normalize(raw, {
+      schemaVersion: 1, connectorId: 'vc-a', syncRunId: 'run-1', sourceObjectType: objectType,
       sourceObjectId: raw.objectId, observedAt: '2026-08-31T00:00:00.000Z', rawPayload: raw,
     });
     assert.equal(normalized.classification.type, expectedType);
@@ -65,28 +65,28 @@ test('vCenter discovery maps every supported inventory object to a canonical CMD
   }
 });
 
-test('vCenter discovery preserves high-confidence VM and host identity evidence', () => {
-  const vm = vCenterInventoryPayloadMapper.normalize({ objectType: 'VirtualMachine', objectId: 'vm-1', name: 'payments-01', payload: { instance_uuid: 'instance-uuid', bios_uuid: 'bios-uuid' } }, {
-    connectorId: 'vc-a', syncRunId: 'run-1', sourceObjectType: 'VirtualMachine', sourceObjectId: 'vm-1', observedAt: '2026-08-31T00:00:00.000Z', rawPayload: {},
+test('vCenter discovery preserves high-confidence VM and host identity evidence', async () => {
+  const vm = await vCenterInventoryPayloadMapper.normalize({ objectType: 'VirtualMachine', objectId: 'vm-1', name: 'payments-01', payload: { instance_uuid: 'instance-uuid', bios_uuid: 'bios-uuid' } }, {
+    schemaVersion: 1, connectorId: 'vc-a', syncRunId: 'run-1', sourceObjectType: 'VirtualMachine', sourceObjectId: 'vm-1', observedAt: '2026-08-31T00:00:00.000Z', rawPayload: {},
   });
   assert.deepEqual(vm.identity.identifiers.map((item) => [item.type, item.value]), [['VMWARE_INSTANCE_UUID', 'instance-uuid'], ['BIOS_UUID', 'bios-uuid']]);
 
-  const host = vCenterInventoryPayloadMapper.normalize({ objectType: 'HostSystem', objectId: 'host-1', name: 'esx-01', payload: { serial_number: 'host-serial' } }, {
-    connectorId: 'vc-a', syncRunId: 'run-1', sourceObjectType: 'HostSystem', sourceObjectId: 'host-1', observedAt: '2026-08-31T00:00:00.000Z', rawPayload: {},
+  const host = await vCenterInventoryPayloadMapper.normalize({ objectType: 'HostSystem', objectId: 'host-1', name: 'esx-01', payload: { serial_number: 'host-serial' } }, {
+    schemaVersion: 1, connectorId: 'vc-a', syncRunId: 'run-1', sourceObjectType: 'HostSystem', sourceObjectId: 'host-1', observedAt: '2026-08-31T00:00:00.000Z', rawPayload: {},
   });
   assert.deepEqual(host.identity.identifiers.map((item) => [item.type, item.value]), [['SERIAL_NUMBER', 'host-serial']]);
 });
 
-test('vCenter discovery emits source-scoped placement evidence for graph resolution', () => {
-  const vm = vCenterInventoryPayloadMapper.normalize({ objectType: 'VirtualMachine', objectId: 'vm-1', name: 'payments-01', payload: { host: 'host-1', datacenter: 'dc-1' } }, {
-    connectorId: 'vc-a', syncRunId: 'run-1', sourceObjectType: 'VirtualMachine', sourceObjectId: 'vm-1', observedAt: '2026-08-31T00:00:00.000Z', rawPayload: {},
+test('vCenter discovery emits source-scoped placement evidence for graph resolution', async () => {
+  const vm = await vCenterInventoryPayloadMapper.normalize({ objectType: 'VirtualMachine', objectId: 'vm-1', name: 'payments-01', payload: { host: 'host-1', datacenter: 'dc-1' } }, {
+    schemaVersion: 1, connectorId: 'vc-a', syncRunId: 'run-1', sourceObjectType: 'VirtualMachine', sourceObjectId: 'vm-1', observedAt: '2026-08-31T00:00:00.000Z', rawPayload: {},
   });
   assert.deepEqual(vm.placement.relationships, [
     { type: 'RUNS_ON', target: { objectType: 'HostSystem', objectId: 'host-1', identifiers: [] }, confidence: 100 },
     { type: 'LOCATED_IN', target: { objectType: 'Datacenter', objectId: 'dc-1', identifiers: [] }, confidence: 100 },
   ]);
-  const host = vCenterInventoryPayloadMapper.normalize({ objectType: 'HostSystem', objectId: 'host-1', name: 'esx-01', payload: { cluster: 'cluster-1', datacenter: 'dc-1' } }, {
-    connectorId: 'vc-a', syncRunId: 'run-1', sourceObjectType: 'HostSystem', sourceObjectId: 'host-1', observedAt: '2026-08-31T00:00:00.000Z', rawPayload: {},
+  const host = await vCenterInventoryPayloadMapper.normalize({ objectType: 'HostSystem', objectId: 'host-1', name: 'esx-01', payload: { cluster: 'cluster-1', datacenter: 'dc-1' } }, {
+    schemaVersion: 1, connectorId: 'vc-a', syncRunId: 'run-1', sourceObjectType: 'HostSystem', sourceObjectId: 'host-1', observedAt: '2026-08-31T00:00:00.000Z', rawPayload: {},
   });
   assert.deepEqual(host.placement.relationships, [
     { type: 'MEMBER_OF', target: { objectType: 'ClusterComputeResource', objectId: 'cluster-1', identifiers: [] }, confidence: 100 },
@@ -94,14 +94,14 @@ test('vCenter discovery emits source-scoped placement evidence for graph resolut
   ]);
 });
 
-test('vCenter VM detail maps guest identity, NICs, disks and stable backing relationships', () => {
-  const vm = vCenterInventoryPayloadMapper.normalize({ objectType: 'VirtualMachine', objectId: 'vm-1', name: 'payments-01', payload: {
+test('vCenter VM detail maps guest identity, NICs, disks and stable backing relationships', async () => {
+  const vm = await vCenterInventoryPayloadMapper.normalize({ objectType: 'VirtualMachine', objectId: 'vm-1', name: 'payments-01', payload: {
     instance_uuid: 'instance-uuid', guest_os: 'RHEL_8_64', cpu: { count: 4 }, memory: { size_MiB: 8192 },
     guest: { host_name: 'payments-01.bank.local', name: 'RHEL_8_64', ip_address: '10.10.10.15' },
     nics: [{ nic: '4000', label: 'Network adapter 1', type: 'VMXNET3', mac_address: '00:50:56:aa:bb:cc', state: 'CONNECTED', backing: { network: 'network-1' } }],
     disks: [{ disk: '2000', label: 'Hard disk 1', type: 'SCSI', capacity: 10737418240, backing: { vmdk_file: '[ds-1] payments/payments.vmdk', datastore: 'datastore-1' } }],
   } }, {
-    connectorId: 'vc-a', syncRunId: 'run-1', sourceObjectType: 'VirtualMachine', sourceObjectId: 'vm-1', observedAt: '2026-08-31T00:00:00.000Z', rawPayload: {},
+    schemaVersion: 1, connectorId: 'vc-a', syncRunId: 'run-1', sourceObjectType: 'VirtualMachine', sourceObjectId: 'vm-1', observedAt: '2026-08-31T00:00:00.000Z', rawPayload: {},
   });
   assert.equal(vm.identity.hostname, 'payments-01.bank.local');
   assert.deepEqual(vm.compute, { cpuCount: 4, memoryBytes: 8589934592 });

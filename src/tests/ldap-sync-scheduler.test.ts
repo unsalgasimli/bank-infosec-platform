@@ -5,15 +5,30 @@ import type { LDAPRawEntry } from '../server/services/ldap-directory.data.js';
 import { LDAPSchedulerService } from '../server/services/ldap-scheduler.service.js';
 import { db } from '../server/db/database.js';
 import { BankUser } from '../shared/types/auth.js';
+import { config } from '../server/config/index.js';
+import { pgClient } from '../server/db/postgres/client.js';
 
 describe('🛡️ Active Directory / LDAP Daily Synchronization Engine (13:30 GMT+4)', () => {
+  const originalDbType = config.DB_TYPE;
+  const originalDirectoryQuery = LDAPSyncService.queryLdapDirectory;
   before(() => {
-    // Ensure clean state before tests
+    // This suite exercises mapping/scheduling against a mocked LDAP result.
+    // It must not depend on the bootstrap pool (which setup closes), acquire a
+    // live sync lock, load a real HR baseline, or write a directory sync report.
+    config.DB_TYPE = 'memory';
+    LDAPSyncService.queryLdapDirectory = async () => ({ isLiveLdap: true, users: [{
+      sAMAccountName: 'u.gasimli', displayName: 'Unsal Gasimli',
+      mail: 'u.gasimli@expressbank.az', title: 'Chief Information Security Officer',
+      department: 'Information Security', userAccountControl: 512,
+    }] });
     LDAPSyncService.deduplicateUsers();
   });
 
-  after(() => {
+  after(async () => {
     LDAPSchedulerService.stopScheduler();
+    LDAPSyncService.queryLdapDirectory = originalDirectoryQuery;
+    config.DB_TYPE = originalDbType;
+    await pgClient.close();
   });
 
   // 1. Timezone & Timing Calculations (13:30 GMT+4)

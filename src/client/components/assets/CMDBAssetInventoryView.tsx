@@ -24,10 +24,35 @@ const displayValue = (field: CustomField, value: unknown, users: any[]) => {
   return Array.isArray(value) ? value.join(', ') : String(value);
 };
 
-const OperatingSystemMultiSelect: React.FC<{ value: string[]; options: Array<{ id: string; name: string }>; onChange: (value: string[]) => void }> = ({ value, options, onChange }) => {
+type OperatingSystemOption = { id: string; name: string };
+
+const operatingSystemGroup = (name: string) => {
+  const normalized = name.trim().toLowerCase();
+  if (/windows|^\d+\.\d+\.\d+(?:\.\d+)?$/.test(normalized)) return normalized.includes('server') ? 'Windows Server' : 'Windows';
+  if (/ubuntu|debian|rhel|red hat|centos|fedora|suse|linux|amazon linux|oracle linux|alpine/.test(normalized)) return 'Linux';
+  if (/macos|mac os|os x|darwin/.test(normalized)) return 'macOS';
+  if (/android/.test(normalized)) return 'Android';
+  if (/ios|ipados/.test(normalized)) return 'iOS / iPadOS';
+  if (/vmware esxi|esxi/.test(normalized)) return 'VMware ESXi';
+  return 'Other operating systems';
+};
+
+const OperatingSystemMultiSelect: React.FC<{ value: string[]; options: OperatingSystemOption[]; onChange: (value: string[]) => void }> = ({ value, options, onChange }) => {
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState('');
-  const visible = options.filter((option) => option.name.toLowerCase().includes(term.toLowerCase()));
+  const visible = options.filter((option) => option.name.toLowerCase().includes(term.trim().toLowerCase()));
+  const groupedOptions = useMemo(() => {
+    const groups = new Map<string, OperatingSystemOption[]>();
+    visible.forEach((option) => {
+      const group = operatingSystemGroup(option.name);
+      groups.set(group, [...(groups.get(group) || []), option]);
+    });
+    return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
+  }, [visible]);
+  const setGroupSelection = (groupOptions: OperatingSystemOption[], checked: boolean) => {
+    const groupNames = new Set(groupOptions.map((option) => option.name));
+    onChange(checked ? [...new Set([...value, ...groupNames])] : value.filter((item) => !groupNames.has(item)));
+  };
   return <div className="relative mt-1">
     <button type="button" aria-haspopup="listbox" aria-expanded={open} className="jira-input flex min-h-9 w-full items-center justify-between gap-2 text-left" onClick={() => setOpen((current) => !current)}>
       <span className={value.length ? 'truncate font-semibold text-semantic-primary' : 'text-semantic-muted'}>{value.length ? `Operating system · ${value.length}` : 'All operating systems'}</span>
@@ -35,7 +60,17 @@ const OperatingSystemMultiSelect: React.FC<{ value: string[]; options: Array<{ i
     </button>
     {open && <div className="absolute left-0 top-[calc(100%+4px)] z-30 w-full min-w-[260px] rounded-md border border-semantic-border bg-white p-2 shadow-xl" role="listbox">
       <input autoFocus className="jira-input mb-2 w-full" value={term} onChange={(event) => setTerm(event.currentTarget.value)} placeholder="Search operating systems" />
-      <div className="max-h-56 overflow-y-auto custom-scrollbar">{visible.length ? visible.map((option) => <label key={option.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-semantic-subtle"><input type="checkbox" checked={value.includes(option.name)} onChange={(event) => onChange(event.currentTarget.checked ? [...value, option.name] : value.filter((item) => item !== option.name))} /><span className="truncate">{option.name}</span></label>) : <p className="px-2 py-3 text-xs text-semantic-muted">No operating systems found.</p>}</div>
+      <div className="max-h-56 space-y-2 overflow-y-auto custom-scrollbar">{groupedOptions.length ? groupedOptions.map(([group, groupOptions]) => {
+        const selectedCount = groupOptions.filter((option) => value.includes(option.name)).length;
+        const allSelected = selectedCount === groupOptions.length;
+        return <section key={group} aria-label={`${group} operating systems`} className="rounded border border-semantic-border/70 bg-semantic-subtle/40 px-1 py-1">
+          <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[11px] font-bold uppercase tracking-wide text-semantic-muted hover:bg-semantic-subtle">
+            <input type="checkbox" checked={allSelected} ref={(input) => { if (input) input.indeterminate = selectedCount > 0 && !allSelected; }} onChange={(event) => setGroupSelection(groupOptions, event.currentTarget.checked)} />
+            <span className="truncate">{group}</span><span className="ml-auto font-normal normal-case">{selectedCount ? `${selectedCount}/` : ''}{groupOptions.length}</span>
+          </label>
+          <div className="border-t border-semantic-border/60 pt-1">{groupOptions.map((option) => <label key={option.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-white"><input type="checkbox" checked={value.includes(option.name)} onChange={(event) => onChange(event.currentTarget.checked ? [...new Set([...value, option.name])] : value.filter((item) => item !== option.name))} /><span className="truncate">{option.name}</span></label>)}</div>
+        </section>;
+      }) : <p className="px-2 py-3 text-xs text-semantic-muted">No operating systems found.</p>}</div>
       {value.length > 0 && <button type="button" className="mt-2 border-t border-semantic-border pt-2 text-xs font-semibold text-semantic-info" onClick={() => onChange([])}>Clear operating systems</button>}
     </div>}
   </div>;

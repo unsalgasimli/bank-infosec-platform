@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { useI18n } from '../../context/I18nContext.js';
 
@@ -55,7 +56,7 @@ export const Modal: React.FC<ModalProps> = ({
     '5xl': 'max-w-5xl',
   }[maxWidth];
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-dsDialog flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
       {/* Backdrop with modern blur */}
       <div
@@ -111,6 +112,7 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };

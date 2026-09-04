@@ -38,7 +38,12 @@ function stopWindowsProcesses() {
   const targets = processes.filter(isRepositoryDevProcess);
   if (!targets.length) return;
 
-  for (const target of targets) {
+  // Kill only top-level matching trees. Issuing taskkill for every matching
+  // child races with concurrently/tsx and can leave orphaned grandchildren.
+  const targetPids = new Set(targets.map((item) => item.pid));
+  const roots = targets.filter((item) => !targetPids.has(item.parentPid));
+
+  for (const target of roots) {
     try {
       execFileSync('taskkill.exe', ['/PID', String(target.pid), '/T', '/F'], {
         stdio: ['ignore', 'ignore', 'ignore'],

@@ -8,6 +8,7 @@ import { MalwareScanService } from './malware-scan.service.js';
 
 export interface ReadinessReport {
   status: 'UP' | 'DOWN';
+  draining: boolean;
   timestamp: string;
   uptimeSeconds: number;
   environment: string;
@@ -28,27 +29,54 @@ export interface ReadinessReport {
 }
 
 export class HealthService {
+  private static draining = false;
+
+  private static async boundedCheck<T extends { status: 'UP' | 'DOWN' }>(
+    name: string,
+    operation: () => Promise<T>,
+    unavailable: (error: string) => T,
+  ): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        operation(),
+        new Promise<T>((resolve) => {
+          timer = setTimeout(() => resolve(unavailable(`${name} health check timed out.`)), config.HEALTHCHECK_TIMEOUT_MS);
+          timer.unref?.();
+        }),
+      ]);
+    } catch (error) {
+      return unavailable(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  public static setDraining(draining: boolean): void {
+    HealthService.draining = draining;
+  }
+
   public static getLiveness() {
     return {
       status: 'UP',
       timestamp: new Date().toISOString(),
       service: 'aegissec-banking-platform',
-      version: '1.0.0',
+      version: config.APP_VERSION,
       uptimeSeconds: Math.floor(process.uptime()),
     };
   }
 
   public static async getReadiness(): Promise<ReadinessReport> {
     const [dbHealth, cacheHealth, storageHealth, queueHealth, malwareScannerHealth] = await Promise.all([
-      pgClient.checkHealth(),
-      cacheService.checkHealth(),
-      storageService.checkHealth(),
-      QueueService.checkHealth(),
-      MalwareScanService.checkHealth(),
+      HealthService.boundedCheck('PostgreSQL', () => pgClient.checkHealth(), (error) => ({ status: 'DOWN', error })),
+      HealthService.boundedCheck('Cache', () => cacheService.checkHealth(), (error) => ({ status: 'DOWN', mode: config.REDIS_ENABLED ? ('redis' as const) : ('memory' as const), error })),
+      HealthService.boundedCheck('Storage', () => storageService.checkHealth(), (error) => ({ status: 'DOWN', provider: config.STORAGE_PROVIDER, error })),
+      HealthService.boundedCheck('Queue', () => QueueService.checkHealth(), (error) => ({ status: 'DOWN', error })),
+      HealthService.boundedCheck('Malware scanner', () => MalwareScanService.checkHealth(), (error) => ({ status: 'DOWN', error })),
     ]);
 
     const memory = process.memoryUsage();
-    const isReady =
+    const isReady = !HealthService.draining &&
       dbHealth.status !== 'DOWN' &&
       cacheHealth.status !== 'DOWN' &&
       storageHealth.status !== 'DOWN' &&
@@ -57,11 +85,12 @@ export class HealthService {
 
     return {
       status: isReady ? 'UP' : 'DOWN',
+      draining: HealthService.draining,
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.floor(process.uptime()),
       environment: config.NODE_ENV,
       institution: 'Apex Bank International (Tier-1 Regulated)',
-      version: '1.0.0',
+      version: config.APP_VERSION,
       checks: {
         database: dbHealth,
         cache: cacheHealth,

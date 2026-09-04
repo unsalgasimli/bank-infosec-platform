@@ -139,7 +139,7 @@ export class WorkerEventService {
     // the legacy in-memory projection. Flushing it here can fail on unrelated
     // compatibility records after the discovery run has already succeeded,
     // leaving the durable outbox event stuck in retry forever.
-    if (event.topic !== 'cmdb.discovery.sync.requested' && event.topic !== 'discovery.run.completed') {
+    if (event.topic !== 'cmdb.discovery.sync.requested' && event.topic !== 'discovery.run.completed' && event.topic !== 'ldap.sync.requested') {
       await db.persistAsync();
     }
     await pgClient.query(
