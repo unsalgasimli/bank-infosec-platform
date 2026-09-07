@@ -1,10 +1,11 @@
 import type { ConfidentialityTier } from './auth.js';
 import type { RiskRating } from './ticket.js';
+import type { architectureComponentTypes, architectureExposures, architecturePrivileges, architectureHosting, architectureEnvironments, architectureIntegrity, architectureLogging } from '../threat-architecture.js';
 
 export type ThreatModelStatus = 'DRAFT' | 'IN_REVIEW' | 'CHANGES_REQUIRED' | 'APPROVED' | 'REVIEW_REQUIRED' | 'SUPERSEDED' | 'ARCHIVED';
 export type ThreatModelRevisionStatus = 'DRAFT' | 'IN_REVIEW' | 'CHANGES_REQUIRED' | 'APPROVED' | 'SUPERSEDED';
 export type ThreatModelApplicabilityDecision = 'REQUIRED' | 'NOT_REQUIRED' | 'SECURITY_REVIEW_REQUIRED';
-export type ThreatModelComponentType = 'PROCESS' | 'SERVICE' | 'API' | 'DATABASE' | 'DATASTORE' | 'QUEUE' | 'EXTERNAL_SYSTEM' | 'USER' | 'ADMIN' | 'THIRD_PARTY' | 'NETWORK_ZONE' | 'CLOUD_SERVICE' | 'DEVICE' | 'OTHER';
+export type ThreatModelComponentType = typeof architectureComponentTypes[number];
 export type ThreatCategory = 'SPOOFING' | 'TAMPERING' | 'REPUDIATION' | 'INFORMATION_DISCLOSURE' | 'DENIAL_OF_SERVICE' | 'ELEVATION_OF_PRIVILEGE' | 'BUSINESS_ABUSE' | 'FRAUD' | 'PRIVILEGE_ABUSE' | 'WORKFLOW_BYPASS' | 'SEGREGATION_OF_DUTIES_BYPASS' | 'TRANSACTION_MANIPULATION' | 'REPLAY' | 'ACCOUNT_TAKEOVER' | 'API_ABUSE' | 'AUTOMATION_ABUSE' | 'DATA_EXFILTRATION' | 'INSIDER_THREAT' | 'THIRD_PARTY_COMPROMISE';
 export type ThreatStatus = 'OPEN' | 'MITIGATING' | 'MITIGATED' | 'ACCEPTED' | 'CLOSED';
 export type ThreatControlStatus = 'PROPOSED' | 'PLANNED' | 'IN_IMPLEMENTATION' | 'IMPLEMENTED' | 'VERIFICATION_REQUIRED' | 'VERIFIED' | 'FAILED' | 'ACCEPTED_RISK' | 'NOT_APPLICABLE';
@@ -83,6 +84,11 @@ export interface ThreatModelApplicabilityAssessment {
 }
 
 export interface ThreatModelComponent {
+  exposure?: typeof architectureExposures[number];
+  authenticationMethod?: string;
+  privileges?: typeof architecturePrivileges[number];
+  hosting?: typeof architectureHosting[number];
+  environment?: typeof architectureEnvironments[number];
   contentVersion?: number;
   securityZone?: string;
   id: string;
@@ -97,6 +103,14 @@ export interface ThreatModelComponent {
 }
 
 export interface ThreatModelDataFlow {
+  authorizationContext?: string;
+  encryptionMechanism?: string;
+  encryptionVersion?: string;
+  integrityProtection?: typeof architectureIntegrity[number];
+  internetExposure?: boolean | null;
+  thirdPartyInvolvement?: boolean | null;
+  logging?: typeof architectureLogging[number];
+  purpose?: string;
   contentVersion?: number;
   id: string;
   revisionId: string;
@@ -107,7 +121,7 @@ export interface ThreatModelDataFlow {
   protocol?: string;
   port?: number;
   authenticationMethod?: string;
-  encryptionInTransit?: boolean;
+  encryptionInTransit?: boolean | null;
   dataClassification: ConfidentialityTier;
   dataTypes: string[];
   crossesTrustBoundary: boolean;

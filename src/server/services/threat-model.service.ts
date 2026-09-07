@@ -238,7 +238,7 @@ export class ThreatModelService {
       const answers = z.record(z.boolean()).parse(input.answers);
       // Canonical high-impact context is a floor, not an editable questionnaire answer.
       if (model.criticality === 'CRITICAL') answers.criticalInfrastructure = true;
-      const canonical = (await client.query<Input>('SELECT criticality,business_criticality FROM configuration_items WHERE id=ANY($1::varchar[])',[ [model.assetId,model.serviceId].filter(Boolean) ])).rows;
+      const canonical = (await client.query<Input>('SELECT criticality,business_criticality FROM configuration_items WHERE id=ANY($1::varchar[]) OR id IN(SELECT asset_id FROM threat_model_components WHERE revision_id=$2)',[ [model.assetId,model.serviceId].filter(Boolean),revision.id ])).rows;
       if (canonical.some(ci=>ci.criticality === 'CRITICAL' || ci.business_criticality === 'CRITICAL')) answers.criticalInfrastructure = true;
       if (canonical.some(ci=>ci.criticality === 'HIGH' || ci.business_criticality === 'HIGH')) answers.highCriticalAsset = true;
       if (['CONFIDENTIAL_SECURITY_ONLY','HIGHLY_RESTRICTED_HR_LEGAL','RESTRICTED'].includes(model.dataClassification)) answers.confidentialData = true;
@@ -251,11 +251,23 @@ export class ThreatModelService {
         EXISTS(SELECT 1 FROM threat_model_components WHERE revision_id=$1 AND criticality='CRITICAL') AS critical,
         EXISTS(SELECT 1 FROM threat_model_components WHERE revision_id=$1 AND criticality='HIGH') AS high,
         EXISTS(SELECT 1 FROM threat_model_data_flows WHERE revision_id=$1 AND crosses_trust_boundary) AS boundary,
-        EXISTS(SELECT 1 FROM threat_model_data_flows WHERE revision_id=$1 AND data_classification IN ('RESTRICTED','CONFIDENTIAL_SECURITY_ONLY','HIGHLY_RESTRICTED_HR_LEGAL')) AS confidential`,[revision.id])).rows[0];
+        EXISTS(SELECT 1 FROM threat_model_data_flows WHERE revision_id=$1 AND data_classification IN ('RESTRICTED','CONFIDENTIAL_SECURITY_ONLY','HIGHLY_RESTRICTED_HR_LEGAL')) AS confidential,
+        (EXISTS(SELECT 1 FROM threat_model_components WHERE revision_id=$1 AND exposure='INTERNET') OR EXISTS(SELECT 1 FROM threat_model_data_flows WHERE revision_id=$1 AND internet_exposure)) AS internet,
+        (EXISTS(SELECT 1 FROM threat_model_components WHERE revision_id=$1 AND (exposure='THIRD_PARTY' OR hosting='THIRD_PARTY' OR type='THIRD_PARTY')) OR EXISTS(SELECT 1 FROM threat_model_data_flows WHERE revision_id=$1 AND third_party_involvement)) AS third_party,
+        EXISTS(SELECT 1 FROM threat_model_components WHERE revision_id=$1 AND (privileges='PRIVILEGED' OR type='ADMIN')) AS privileged,
+        EXISTS(SELECT 1 FROM threat_model_components WHERE revision_id=$1 AND (hosting IN ('PRIVATE_CLOUD','PUBLIC_CLOUD','HYBRID') OR type='CLOUD_SERVICE')) AS cloud,
+        EXISTS(SELECT 1 FROM threat_model_components WHERE revision_id=$1 AND type='IDENTITY_PROVIDER') AS identity_provider,
+        EXISTS(SELECT 1 FROM threat_model_components WHERE revision_id=$1 AND type='HSM_KMS') AS key_management`,[revision.id])).rows[0];
       if(architecture.critical)answers.criticalInfrastructure=true;
       if(architecture.high)answers.highCriticalAsset=true;
       if(architecture.boundary)answers.trustBoundary=true;
       if(architecture.confidential)answers.confidentialData=true;
+      if(architecture.internet)answers.internetExposed=true;
+      if(architecture.third_party)answers.thirdPartyIntegration=true;
+      if(architecture.privileged)answers.privilegedCapability=true;
+      if(architecture.cloud)answers.cloudDeployment=true;
+      if(architecture.identity_provider)answers.iamPamRelated=true;
+      if(architecture.key_management){answers.cryptography=true;answers.secretsHandling=true;}
       const evaluated = evaluateScreening(answers, policy.rules, policy.config.scoreThresholds);
       if (input.tier !== undefined && Number(input.tier) !== evaluated.tier) throw new Error('Invalid tier override: tier is derived by policy.');
       if (input.decision === 'NOT_REQUIRED' && evaluated.tier > 0) throw new Error('Mandatory Threat Modeling cannot be exempted.');
