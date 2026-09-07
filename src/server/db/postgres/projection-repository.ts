@@ -317,8 +317,8 @@ export class PostgresProjectionRepository {
       mimeType: row.mime_type,
       evidenceType: 'AUDIT_WORKPAPER',
       sha256Checksum: row.sha256_hash,
-      isEncrypted: true,
-      virusScanStatus: 'CLEAN',
+      isEncrypted: false,
+      virusScanStatus: 'PENDING',
       confidentiality: 'INTERNAL',
       uploaderId: row.uploaded_by_user_id,
       uploaderName: row.uploaded_by_user_id,
@@ -859,7 +859,8 @@ export class PostgresProjectionRepository {
         const attachment = data.attachments![index] as any;
         if (!changed('attachments', attachment, index)) continue;
         if (!ticketIds.has(attachment.ticketId) || !userIds.has(attachment.uploaderId)) continue;
-        const checksum = attachment.sha256Checksum || crypto.createHash('sha256').update(`${attachment.id}:${attachment.fileName}`).digest('hex');
+        // Missing content checksums remain explicitly unknown; never hash a filename as evidence.
+        const checksum = /^[a-f0-9]{64}$/i.test(attachment.sha256Checksum || '') ? attachment.sha256Checksum : '';
         await client.query(
           `INSERT INTO ticket_attachments(id,ticket_id,file_name,file_size_bytes,mime_type,storage_provider,storage_key,sha256_hash,uploaded_by_user_id,uploaded_at,is_forensic_artifact,source_payload)
            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)

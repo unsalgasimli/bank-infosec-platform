@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { buildGarden } from "./GardenObjects.js";
+import { createGardenLighting } from "./GardenLighting.js";
 import { gardenSolved, type GardenPresentation } from "./garden-state.js";
 
 interface Props extends GardenPresentation {
@@ -44,6 +46,14 @@ export default function GardenScene(props: Props) {
     renderer.domElement.setAttribute("aria-hidden", "true");
     container.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
+    // Locally generated softbox reflections reveal glaze and brushed metal.
+    // The solar lights still determine the direction and color of direct light.
+    const studio = new RoomEnvironment();
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const environment = pmrem.fromScene(studio, 0.06, 0.1, 100, { size: compact ? 64 : 128 });
+    scene.environment = environment.texture;
+    studio.dispose();
+    pmrem.dispose();
     scene.fog = new THREE.Fog("#ede9df", 17, 33);
     const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 65);
     const ambient = new THREE.HemisphereLight("#f6f4ec", "#7b9586", 2);
@@ -51,19 +61,19 @@ export default function GardenScene(props: Props) {
     const sun = new THREE.DirectionalLight("#fff4e7", 3.3);
     sun.position.set(-5, 9, 5);
     sun.castShadow = !compact;
-    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.left = -7;
     sun.shadow.camera.right = 7;
     sun.shadow.camera.top = 7;
     sun.shadow.camera.bottom = -7;
-    sun.shadow.normalBias = 0.025;
+    sun.shadow.normalBias = 0.018;
     sun.shadow.bias = -0.0002;
     scene.add(sun);
     const fill = new THREE.DirectionalLight("#e0eeeb", 1.4);
     fill.position.set(5, 3, -4);
     scene.add(fill);
     const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(200, 200),
+      new THREE.CircleGeometry(5.2, compact ? 64 : 96),
       new THREE.ShadowMaterial({ opacity: 0.09 }),
     );
     floor.rotation.x = -Math.PI / 2;
@@ -98,12 +108,20 @@ export default function GardenScene(props: Props) {
         .replace(
           "#include <color_fragment>",
           `#include <color_fragment>
-        float a = sin(gardenPosition.x * 4.0 + gardenPosition.y * 13.0 + sin(gardenPosition.x * 3.0 + gardenTime * .25));
-        float light = pow(max(0.0, a), 20.0) * .027;
+        float a = sin(gardenPosition.x * 8.0 + gardenPosition.y * 5.0 + gardenTime * .28);
+        float b = sin(gardenPosition.y * 11.0 - gardenPosition.x * 3.0 - gardenTime * .21);
+        float light = pow(max(0.0, a * b), 8.0) * .018;
         float age = gardenTime - gardenRipple.z;
         float dist = length(gardenPosition.xy - gardenRipple.xy);
         float ripple = sin(dist * 24.0 - age * 6.0) * exp(-abs(dist-age*.65)*5.0) * max(0.0,1.0-age/4.0) * .08;
         diffuseColor.rgb += light + ripple;`,
+        )
+        .replace(
+          "#include <normal_fragment_maps>",
+          `#include <normal_fragment_maps>
+          float waveX = cos(gardenPosition.x * 8.0 + gardenPosition.y * 5.0 + gardenTime * .28);
+          float waveY = cos(gardenPosition.y * 11.0 - gardenPosition.x * 3.0 - gardenTime * .21);
+          normal = normalize(normal + vec3(waveX * .026, waveY * .018, 0.0));`,
         );
     };
     const water = new THREE.Mesh(
@@ -120,6 +138,23 @@ export default function GardenScene(props: Props) {
     );
     shore.position.y = -0.12;
     scene.add(shore);
+    const waterLip = new THREE.Mesh(
+      new THREE.TorusGeometry(4.67, 0.025, 8, compact ? 64 : 128),
+      new THREE.MeshStandardMaterial({ color: "#aca58a", metalness: 0.24, roughness: 0.5 }),
+    );
+    waterLip.rotation.x = Math.PI / 2;
+    waterLip.position.y = -0.065;
+    scene.add(waterLip);
+    const lighting = createGardenLighting(
+      scene,
+      world.root,
+      sun,
+      ambient,
+      fill,
+      waterMaterial,
+      renderer,
+      compact,
+    );
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     let dragging = false,
@@ -271,7 +306,7 @@ export default function GardenScene(props: Props) {
         (wing, i) =>
           (wing.rotation.z =
             (i ? 1 : -1) *
-            (0.8 +
+            (0.25 +
               (birdFlight
                 ? Math.sin(celebrationAge * 19) * 0.75
                 : moving && hop < 1.3
@@ -292,6 +327,11 @@ export default function GardenScene(props: Props) {
       );
       world.glider.rotation.set(0.12, -Math.PI / 2, Math.sin(flight) * 0.13);
       timeUniform.value = elapsed;
+      lighting.update(p.daylight, elapsed, moving, now);
+      if (scene.fog instanceof THREE.Fog)
+        scene.fog.color.set(p.daylight.daylight > 0.5 ? "#ede9df" : "#182737");
+      // The bird rests more quietly after dark; the puzzle remains available.
+      world.bird.rotation.x = p.daylight.night * 0.08;
       // A subdued local response; errors never flash the viewport.
       world.clay.color.lerp(
         clayColor.set(p.phase === "error" ? "#a46450" : "#bd7355"),
@@ -450,18 +490,26 @@ export default function GardenScene(props: Props) {
       renderer.domElement.removeEventListener("webglcontextlost", lost);
       const geometries = new Set<THREE.BufferGeometry>();
       const materials = new Set<THREE.Material>();
+      const textures = new Set<THREE.Texture>();
       scene.traverse((object) => {
         if (object instanceof THREE.Mesh) {
           geometries.add(object.geometry);
           (Array.isArray(object.material)
             ? object.material
             : [object.material]
-          ).forEach((material) => materials.add(material));
+          ).forEach((material) => {
+            materials.add(material);
+            for (const value of Object.values(material)) {
+              if (value instanceof THREE.Texture) textures.add(value);
+            }
+          });
           if (object instanceof THREE.InstancedMesh) object.dispose();
         }
       });
       geometries.forEach((geometry) => geometry.dispose());
       materials.forEach((material) => material.dispose());
+      textures.forEach((texture) => texture.dispose());
+      environment.dispose();
       sun.shadow.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
@@ -477,6 +525,7 @@ export default function GardenScene(props: Props) {
     props.reducedMotion,
     props.gust,
     props.resetView,
+    props.daylight,
   ]);
   return <div ref={host} className="garden-scene" />;
 }

@@ -21,6 +21,8 @@ export interface TicketAttachment {
   evidenceType: EvidenceType;
   sha256Checksum: string;
   isEncrypted: boolean;
+  storageProvider?: 's3' | 'local';
+  encryptionAlgorithm?: 'AES256' | 'aws:kms';
   virusScanStatus: 'PENDING' | 'CLEAN' | 'QUARANTINED';
   confidentiality: ConfidentialityTier;
   uploaderId: string;

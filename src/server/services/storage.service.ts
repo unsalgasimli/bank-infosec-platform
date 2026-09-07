@@ -19,6 +19,7 @@ export interface StorageUploadResult {
   sha256Hash: string;
   fileSizeBytes: number;
   mimeType: string;
+  encryption?: 'AES256' | 'aws:kms';
   url?: string;
 }
 
@@ -56,6 +57,7 @@ export class StorageService {
   }
 
   private initStorage(): void {
+    if(config.S3_KMS_KEY_ID&&config.S3_ENCRYPTION!=='aws:kms')throw new Error('S3_KMS_KEY_ID requires S3_ENCRYPTION=aws:kms.');
     if (config.STORAGE_PROVIDER === 's3') {
       const s3Config: any = {
         region: config.S3_REGION,
@@ -127,6 +129,8 @@ export class StorageService {
         Key: quarantineStorageKey,
         Body: fileBuffer,
         ContentType: mimeType,
+        ServerSideEncryption: config.S3_ENCRYPTION,
+        ...(config.S3_KMS_KEY_ID ? {SSEKMSKeyId:config.S3_KMS_KEY_ID}:{}),
         ChecksumSHA256: Buffer.from(sha256Hash, 'hex').toString('base64'),
         Metadata: {
           originalName: fileName,
@@ -135,19 +139,21 @@ export class StorageService {
         },
       });
 
-      await this.s3Client.send(command);
+      const stored=await this.s3Client.send(command);
+      if(stored.ServerSideEncryption!==config.S3_ENCRYPTION)throw new Error('Object storage did not confirm required server-side encryption.');
       logger.info({ quarantineStorageKey, bucket: config.S3_BUCKET, sha256Hash }, 'File staged in object-storage quarantine');
 
       return {
         storageKey,
         quarantineStorageKey,
         storageProvider: 's3',
+        encryption: config.S3_ENCRYPTION,
         sha256Hash,
         fileSizeBytes: fileBuffer.length,
         mimeType,
       };
     } else {
-      // Store to local encrypted/secured filesystem
+      // Development-only local storage does not claim encryption at rest.
       const targetFilePath = this.localPathFor(quarantineStorageKey);
       const targetDir = path.dirname(targetFilePath);
 
@@ -176,18 +182,21 @@ export class StorageService {
   public async upload(fileName: string, fileBuffer: Buffer, mimeType: string): Promise<StorageUploadResult> {
     const staged = await this.stageUpload(fileName, fileBuffer, mimeType);
     await this.promoteQuarantinedObject(staged.quarantineStorageKey, staged.storageKey);
-    return { storageKey: staged.storageKey, storageProvider: staged.storageProvider, sha256Hash: staged.sha256Hash, fileSizeBytes: staged.fileSizeBytes, mimeType: staged.mimeType };
+    return { storageKey: staged.storageKey, storageProvider: staged.storageProvider, sha256Hash: staged.sha256Hash, fileSizeBytes: staged.fileSizeBytes, mimeType: staged.mimeType, encryption:staged.encryption };
   }
 
   /** Promotes only a scanner-approved quarantined object into final storage. */
   public async promoteQuarantinedObject(quarantineStorageKey: string, storageKey: string): Promise<void> {
     if (config.STORAGE_PROVIDER === 's3' && this.s3Client) {
-      await this.s3Client.send(new CopyObjectCommand({
+      const promoted=await this.s3Client.send(new CopyObjectCommand({
         Bucket: config.S3_BUCKET,
         Key: storageKey,
         CopySource: `${config.S3_BUCKET}/${encodeURIComponent(quarantineStorageKey).replace(/%2F/g, '/')}`,
         MetadataDirective: 'COPY',
+        ServerSideEncryption:config.S3_ENCRYPTION,
+        ...(config.S3_KMS_KEY_ID ? {SSEKMSKeyId:config.S3_KMS_KEY_ID}:{}),
       }));
+      if(promoted.ServerSideEncryption!==config.S3_ENCRYPTION)throw new Error('Object storage did not confirm encryption of the promoted object.');
       await this.s3Client.send(new DeleteObjectCommand({ Bucket: config.S3_BUCKET, Key: quarantineStorageKey }));
       return;
     }

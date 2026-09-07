@@ -4,6 +4,8 @@ import { canonicalJson } from '../../shared/canonical-json.js';
 import { emergencyDeadline, emergencySlaState } from './threat-emergency-policy.js';
 import type { BusinessCalendar } from '../../shared/types/orchestration.js';
 import { z } from 'zod';
+import { ThreatReportingService } from './threat-reporting.service.js';
+import { storageService } from './storage.service.js';
 import { threatAuthoringSchema, threatEditSchema } from './threat-authoring.schema.js';
 import { architectureSchemas, architectureStorage, architectureEditSchema, type ArchitectureKind } from './threat-architecture.schema.js';
 import { riskRating as risk } from '../../shared/risk-matrix.js';
@@ -14,6 +16,7 @@ import { ThreatModelRepository } from '../db/postgres/threat-model-repository.js
 import { pgClient } from '../db/postgres/client.js';
 import { db } from '../db/database.js';
 import { AuthService, CONFIDENTIALITY_LEVELS } from './auth.service.js';
+import { AuditService } from './audit.service.js';
 import { evaluateSecurityReleaseGate, issueReleaseAuthorization, verifyReleaseAuthorization } from './security-release-gate.service.js';
 
 type Input = Record<string, any>;
@@ -45,7 +48,7 @@ const defaultPolicy: ThreatModelPolicy = {
   verificationExpirationDays: { DEFAULT: 90, SAST: 30, SCA: 30, DAST: 30, PENETRATION_TEST: 180 },
   remediationSlaDays: { CRITICAL: 1, HIGH: 14, MEDIUM: 30, LOW: 90 },
 };
-const enqueueOutbox = async (client: PoolClient, topic: string, aggregateType: string, aggregateId: string, payload: Record<string, unknown>, correlationId?: string) => {
+export const enqueueOutbox = async (client: PoolClient, topic: string, aggregateType: string, aggregateId: string, payload: Record<string, unknown>, correlationId?: string) => {
   await client.query(`INSERT INTO outbox_events(id,topic,aggregate_type,aggregate_id,payload,correlation_id,occurred_at) VALUES($1,$2,$3,$4,$5::jsonb,$6,NOW())`, [id('out'), topic, aggregateType, aggregateId, JSON.stringify(payload), correlationId || null]);
 };
 
@@ -118,52 +121,57 @@ export class ThreatModelService {
 
   static async list(actor: BankUser, input: Input = {}) {
     const paging = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50), offset: z.coerce.number().int().min(0).default(0) }).parse(input);
+    const identifier = z.string().trim().min(1).max(64).optional();
+    const filters = z.object({
+      q: z.string().trim().min(1).max(200).optional(),
+      status: z.enum(['DRAFT','IN_REVIEW','CHANGES_REQUIRED','APPROVED','REVIEW_REQUIRED','SUPERSEDED','RETIRED','ARCHIVED']).optional(),
+      ownerId: identifier, serviceId: identifier, assetId: identifier,
+      threatId: identifier, controlId: identifier, complianceId: identifier,
+      tier: z.coerce.number().int().min(0).max(3).optional(),
+      risk: z.enum(['CRITICAL','HIGH','MEDIUM','LOW']).optional(),
+      classification: z.enum(['PUBLIC','INTERNAL','RESTRICTED','CONFIDENTIAL_SECURITY_ONLY','HIGHLY_RESTRICTED_HR_LEGAL']).optional(),
+      reviewDueBefore: z.string().datetime().optional(),
+      threatDueBefore: z.string().date().optional(),
+      exceptionExpiresBefore: z.string().datetime().optional(),
+    }).parse(input);
     if (!actor.isActive) throw new Error('Inactive user access is restricted.');
     const classifications = Object.entries(CONFIDENTIALITY_LEVELS).filter(([,level]) => level <= (CONFIDENTIALITY_LEVELS[actor.securityClearance] || 0)).map(([classification])=>classification);
-    return ThreatModelRepository.list({ userId: actor.id, elevated: appSec(actor) || actor.roles.includes('AUDITOR'), classifications, ...paging });
+    return ThreatModelRepository.list({ userId: actor.id, elevated: appSec(actor) || actor.roles.includes('AUDITOR'), classifications, filters, ...paging });
   }
 
-  static async governanceReport(actor: BankUser) {
-    if (!(privileged(actor) || appSec(actor) || actor.roles.includes('GRC_ANALYST') || actor.roles.includes('AUDITOR'))) throw new Error('Threat Model governance reporting requires AppSec, GRC, audit, or security authority.');
-    const [models, threats, controls, exceptions, timing, migrationBacklog] = await Promise.all([
-      pgClient.query<Input>(`SELECT criticality, count(*)::int AS total, count(*) FILTER (WHERE status='APPROVED')::int AS approved, count(*) FILTER (WHERE status='REVIEW_REQUIRED')::int AS review_required, count(*) FILTER (WHERE next_review_at < NOW())::int AS overdue FROM threat_models GROUP BY criticality`),
-      pgClient.query<Input>(`SELECT count(*) FILTER (WHERE t.status NOT IN ('MITIGATED','CLOSED'))::int AS open_total, count(*) FILTER (WHERE t.status NOT IN ('MITIGATED','CLOSED') AND t.inherent_score >= 16)::int AS critical_open, count(*) FILTER (WHERE t.status NOT IN ('MITIGATED','CLOSED') AND t.inherent_score BETWEEN 10 AND 15)::int AS high_open, count(*) FILTER (WHERE t.status NOT IN ('MITIGATED','CLOSED') AND t.inherent_score BETWEEN 5 AND 9)::int AS medium_open, count(*) FILTER (WHERE t.status NOT IN ('MITIGATED','CLOSED') AND t.inherent_score < 5)::int AS low_open FROM threats t JOIN threat_model_revisions r ON r.id=t.revision_id JOIN threat_models tm ON tm.current_revision_id=r.id`),
-      pgClient.query<Input>(`SELECT count(*) FILTER (WHERE c.status='VERIFIED')::int AS verified, count(*) FILTER (WHERE c.status='FAILED')::int AS failed, count(*) FILTER (WHERE c.status NOT IN ('VERIFIED','NOT_APPLICABLE','ACCEPTED_RISK'))::int AS unverified, count(*) FILTER (WHERE v.expires_at IS NOT NULL AND v.expires_at < NOW())::int AS expired_verifications FROM threat_controls c JOIN threats t ON t.id=c.threat_id JOIN threat_model_revisions r ON r.id=t.revision_id JOIN threat_models tm ON tm.current_revision_id=r.id LEFT JOIN LATERAL (SELECT expires_at FROM control_verifications WHERE control_id=c.id ORDER BY executed_at DESC LIMIT 1) v ON TRUE`),
-      pgClient.query<Input>(`SELECT count(*) FILTER (WHERE e.status='APPROVED' AND e.threat_content_version=t.content_version AND e.architecture_version=r.architecture_version AND e.expires_at > NOW())::int AS active, count(*) FILTER (WHERE e.status='APPROVED' AND e.threat_content_version=t.content_version AND e.architecture_version=r.architecture_version AND e.expires_at > NOW() AND e.expires_at <= NOW() + INTERVAL '30 days')::int AS expiring, count(*) FILTER (WHERE e.status='APPROVED' AND e.threat_content_version=t.content_version AND e.architecture_version=r.architecture_version AND e.expires_at <= NOW())::int AS expired, count(*) FILTER (WHERE e.status='APPROVED' AND (e.threat_content_version<>t.content_version OR e.architecture_version<>r.architecture_version))::int AS stale FROM threat_model_exceptions e JOIN threats t ON t.id=e.threat_id JOIN threat_model_revisions r ON r.id=t.revision_id JOIN threat_models tm ON tm.current_revision_id=r.id`),
-      pgClient.query<Input>(`SELECT COALESCE(round(avg(extract(epoch FROM (approved_at-created_at))/3600)::numeric, 1),0) AS average_approval_hours FROM threat_model_revisions WHERE approved_at IS NOT NULL`),
-      pgClient.query<Input>(`SELECT tier,count(*)::int AS total,count(*) FILTER (WHERE status='APPROVED')::int AS approved,count(*) FILTER (WHERE status='OVERDUE')::int AS overdue FROM threat_model_migration_backlog GROUP BY tier`),
-    ]);
-    const coverage = Object.fromEntries(models.rows.map((row) => [row.criticality, { total: Number(row.total), approved: Number(row.approved), reviewRequired: Number(row.review_required), overdue: Number(row.overdue), percent: Number(row.total) ? Math.round(Number(row.approved) / Number(row.total) * 100) : 0 }]));
-    const migrationCoverage = Object.fromEntries(['TIER_1', 'TIER_2', 'TIER_3'].map((tier) => {
-      const row = migrationBacklog.rows.find((item) => item.tier === tier); const total = Number(row?.total || 0); const approved = Number(row?.approved || 0);
-      return [tier, { total, approved, overdue: Number(row?.overdue || 0), percent: total ? Math.round(approved / total * 100) : 0 }];
-    }));
-    return { coverage, migrationCoverage, threats: threats.rows[0] || {}, controls: controls.rows[0] || {}, exceptions: exceptions.rows[0] || {}, averageApprovalHours: Number(timing.rows[0]?.average_approval_hours || 0), generatedAt: new Date().toISOString() };
-  }
+  static async governanceReport(actor: BankUser) { return ThreatReportingService.report(actor); }
+
 
   static async listMigrationBacklog(actor: BankUser, organizationId = 'org-bank') {
-    if (!(privileged(actor) || appSec(actor) || actor.roles.includes('GRC_ANALYST') || actor.roles.includes('AUDITOR'))) throw new Error('Threat Model migration backlog access requires security, GRC, or audit authority.');
-    const result = await pgClient.query<Input>(`SELECT b.*,tm.key AS threat_model_key FROM threat_model_migration_backlog b LEFT JOIN threat_models tm ON tm.id=b.current_threat_model_id WHERE b.organization_id=$1 ORDER BY b.tier,b.target_date NULLS LAST,b.system_name`, [organizationId]);
+    if (!actor.isActive || !(appSec(actor) || actor.roles.includes('GRC_ANALYST') || actor.roles.includes('AUDITOR'))) throw new Error('Threat Model migration backlog access requires security, GRC, or audit authority.');
+    const classifications=Object.entries(CONFIDENTIALITY_LEVELS).filter(([,level])=>level<=(CONFIDENTIALITY_LEVELS[actor.securityClearance]||0)).map(([name])=>name);
+    const result = await pgClient.query<Input>(`SELECT b.*,tm.key AS threat_model_key FROM threat_model_migration_backlog b LEFT JOIN threat_models tm ON tm.id=b.current_threat_model_id WHERE b.organization_id=$1 AND ((tm.id IS NOT NULL AND tm.data_classification=ANY($4::varchar[]) AND ($2 OR $3 IN(tm.business_owner_id,tm.technical_owner_id,tm.security_owner_id) OR EXISTS(SELECT 1 FROM threat_model_active_grants g WHERE g.threat_model_id=tm.id AND g.user_id=$3))) OR (b.current_threat_model_id IS NULL AND 'CONFIDENTIAL_SECURITY_ONLY'=ANY($4::varchar[]) AND ($2 OR b.owner_id=$3))) ORDER BY b.tier,b.target_date NULLS LAST,b.system_name LIMIT 200`, [organizationId,appSec(actor)||actor.roles.includes('AUDITOR'),actor.id,classifications]);
     return result.rows.map((row) => ({ id: row.id, organizationId: row.organization_id, systemName: row.system_name, serviceId: row.service_id || undefined, assetId: row.asset_id || undefined, projectId: row.project_id || undefined, tier: row.tier, status: row.status, criticality: row.criticality, ownerId: row.owner_id || undefined, targetDate: row.target_date?.toISOString?.().slice(0, 10) || row.target_date, currentThreatModelId: row.current_threat_model_id || undefined, currentThreatModelKey: row.threat_model_key || undefined, notes: row.notes || undefined }));
   }
 
   static async upsertMigrationBacklog(input: Input, actor: BankUser) {
     if (actor.roles.includes('AUDITOR')) throw new Error('Auditor access is read-only.');
-    if (!(privileged(actor) || appSec(actor) || actor.roles.includes('GRC_ANALYST'))) throw new Error('Threat Model migration backlog changes require AppSec, GRC, or security authority.');
+    if (!actor.isActive || !(appSec(actor) || actor.roles.includes('GRC_ANALYST'))) throw new Error('Threat Model migration backlog changes require AppSec, GRC, or security authority.');
+    if((CONFIDENTIALITY_LEVELS[actor.securityClearance]||0)<CONFIDENTIALITY_LEVELS.CONFIDENTIAL_SECURITY_ONLY)throw new Error('Security backlog access is restricted by clearance.');
     const organizationId = text(input.organizationId || 'org-bank', 'Organization'); const systemName = text(input.systemName, 'System name');
     const tier = text(input.tier, 'Tier'); const status = text(input.status, 'Migration status'); const criticality = text(input.criticality || 'HIGH', 'Criticality');
     if (!['TIER_1', 'TIER_2', 'TIER_3'].includes(tier) || !['NOT_STARTED', 'PLANNED', 'IN_PROGRESS', 'APPROVED', 'OVERDUE'].includes(status) || !['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(criticality)) throw new Error('Invalid migration backlog tier, status, or criticality.');
     return pgClient.transaction(async (client) => {
       const currentModelId = text(input.currentThreatModelId, '', false) || null;
       if (currentModelId) {
-        const model = await client.query('SELECT 1 FROM threat_models WHERE id=$1', [currentModelId]);
-        if (!model.rowCount) throw new Error('The linked Threat Model does not exist.');
+        const model = await ThreatModelRepository.findById(currentModelId,client);
+        if (!model) throw new Error('The linked Threat Model does not exist.');this.assertRead(model,actor);
+        if(status==='APPROVED'&&model.status!=='APPROVED')throw new Error('Migration approval must reflect an actually approved Threat Model.');
       }
-      const existing = await client.query<Input>('SELECT id FROM threat_model_migration_backlog WHERE organization_id=$1 AND system_name=$2 FOR UPDATE', [organizationId, systemName]);
+      if(status==='APPROVED'&&!currentModelId)throw new Error('Migration approval requires an approved Threat Model.');
+      await this.assertScopeReferences(input,actor,client);
+      const existing = await client.query<Input>('SELECT * FROM threat_model_migration_backlog WHERE organization_id=$1 AND system_name=$2 FOR UPDATE', [organizationId, systemName]);
+      if(!appSec(actor)&&(input.ownerId!==actor.id||existing.rows[0]&&existing.rows[0].owner_id!==actor.id))throw new Error('Migration backlog ownership is restricted.');
       const backlogId = existing.rows[0]?.id || id('tmbl');
       await client.query(`INSERT INTO threat_model_migration_backlog(id,organization_id,system_name,service_id,asset_id,project_id,tier,status,criticality,owner_id,target_date,current_threat_model_id,notes,created_by_user_id)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         ON CONFLICT(organization_id,system_name) DO UPDATE SET service_id=EXCLUDED.service_id,asset_id=EXCLUDED.asset_id,project_id=EXCLUDED.project_id,tier=EXCLUDED.tier,status=EXCLUDED.status,criticality=EXCLUDED.criticality,owner_id=EXCLUDED.owner_id,target_date=EXCLUDED.target_date,current_threat_model_id=EXCLUDED.current_threat_model_id,notes=EXCLUDED.notes,updated_at=NOW()`, [backlogId, organizationId, systemName, text(input.serviceId, '', false) || null, text(input.assetId, '', false) || null, text(input.projectId, '', false) || null, tier, status, criticality, text(input.ownerId, '', false) || null, text(input.targetDate, '', false) || null, currentModelId, text(input.notes, '', false) || null, actor.id]);
+      await AuditService.logPostgres(client,{actor,action:'THREAT_MODEL_BACKLOG_UPDATED',entityType:'THREAT_MODEL_BACKLOG',entityId:backlogId,before:existing.rows[0],after:{...input,id:backlogId}});
       return { id: backlogId, systemName, tier, status, criticality, currentThreatModelId: currentModelId };
     });
   }
@@ -201,7 +209,7 @@ export class ThreatModelService {
     const scope = ['serviceId', 'assetId', 'projectId', 'changeId', 'releaseId'].some((field) => text(input[field], '', false));
     if (!scope) throw new Error('Link the Threat Model to a service, asset, project, change, or release.');
     const criticality = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(input.criticality) ? input.criticality : 'HIGH';
-    this.assertScopeReferences(input, actor);
+    await this.assertScopeReferences(input, actor);
     return pgClient.transaction(async (client) => {
       await client.query("SELECT pg_advisory_xact_lock(hashtext('threat-model-key'))");
       const now = new Date();
@@ -314,7 +322,7 @@ export class ThreatModelService {
       pgClient.query(`SELECT r.id, ARRAY(SELECT threat_id FROM threat_requirement_threats WHERE requirement_id=r.id) AS threat_ids, ARRAY(SELECT control_id FROM threat_requirement_controls WHERE requirement_id=r.id) AS control_ids, ARRAY(SELECT compliance_id FROM threat_requirement_compliance WHERE requirement_id=r.id) AS compliance_ids FROM threat_security_requirements r WHERE revision_id=$1`, [revisionId]),
       pgClient.query('SELECT * FROM threat_data_objects WHERE threat_model_id=$1 ORDER BY name', [modelId]),
       pgClient.query('SELECT * FROM threat_data_object_links WHERE revision_id=$1', [revisionId]),
-      pgClient.query('SELECT * FROM threat_compliance_requirements ORDER BY framework,code LIMIT 500'),
+      pgClient.query('SELECT * FROM threat_compliance_details ORDER BY framework,code LIMIT 500'),
       pgClient.query('SELECT id,tier,policy_version_id,review_cycle,version,architecture_version FROM threat_model_revisions WHERE id=$1', [revisionId]),
       pgClient.query('SELECT * FROM threat_emergency_changes WHERE threat_model_id=$1 ORDER BY requested_at DESC LIMIT 100', [modelId]),
     ]);
@@ -334,18 +342,24 @@ export class ThreatModelService {
       await client.query(`INSERT INTO threat_security_requirements(id,revision_id,title,description,mandatory,owner_id,verification_method,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [requirementId, revision.id, text(input.title, 'Requirement title'), text(input.description, 'Requirement description'), input.mandatory !== false, text(input.ownerId, 'Implementation owner'), text(input.verificationMethod, 'Verification method'), actor.id]);
       for (const threatId of threatIds) await client.query('INSERT INTO threat_requirement_threats VALUES($1,$2)', [requirementId, threatId]);
       for (const controlId of controlIds) await client.query('INSERT INTO threat_requirement_controls VALUES($1,$2)', [requirementId, controlId]);
-      for (const complianceId of complianceIds) await client.query('INSERT INTO threat_requirement_compliance VALUES($1,$2)', [requirementId, complianceId]);
+      for (const complianceId of complianceIds){
+        if(!(await client.query("SELECT 1 FROM threat_compliance_details WHERE id=$1 AND current_validation_status<>'RETIRED'",[complianceId])).rowCount)throw new Error('Compliance mapping requires a non-retired catalog definition.');
+        await client.query('INSERT INTO threat_requirement_compliance VALUES($1,$2)', [requirementId, complianceId]);
+      }
       await ThreatModelRepository.audit(client, { id: id('tmae'), modelId, revisionId: revision.id, actorId: actor.id, action: 'REQUIREMENT_CREATED', entityType: 'SECURITY_REQUIREMENT', entityId: requirementId, newValue: { ...input, threatIds, controlIds, complianceIds } });
       return { id: requirementId };
     });
   }
 
   static async addComplianceRequirement(input: Input, actor: BankUser) {
-    if (!appSec(actor)) throw new Error('Security catalog management authority is required.');
+    if (!actor.isActive || actor.roles.includes('AUDITOR') || !(appSec(actor)||actor.roles.includes('GRC_ANALYST'))) throw new Error('Security catalog management authority is required.');
     const parsed = z.object({ framework: z.string().trim().min(1).max(128), frameworkVersion: z.string().trim().min(1).max(64), code: z.string().trim().min(1).max(128), title: z.string().trim().min(1).max(2000), requirementKind: z.enum(['REGULATORY_MINIMUM','BANK_POLICY','APPLICATION_REQUIREMENT']), sourceUrl: z.string().url().optional() }).parse(input);
     // Creation is a proposal, not an assertion of legal applicability/compliance.
-    const created = await pgClient.query(`INSERT INTO threat_compliance_requirements(id,framework,framework_version,code,title,requirement_kind,source_url,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`, [id('tmcmp'), parsed.framework, parsed.frameworkVersion, parsed.code, parsed.title, parsed.requirementKind, parsed.sourceUrl || null, actor.id]);
-    return created.rows[0];
+    return pgClient.transaction(async client=>{
+      const created = await client.query(`INSERT INTO threat_compliance_requirements(id,framework,framework_version,code,title,requirement_kind,source_url,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`, [id('tmcmp'), parsed.framework, parsed.frameworkVersion, parsed.code, parsed.title, parsed.requirementKind, parsed.sourceUrl || null, actor.id]);
+      await AuditService.logPostgres(client,{actor,action:'THREAT_COMPLIANCE_PROPOSED',entityType:'THREAT_COMPLIANCE_REQUIREMENT',entityId:created.rows[0].id,after:created.rows[0]});
+      return created.rows[0];
+    });
   }
 
   static async linkRequirementControl(modelId: string, input: Input, actor: BankUser) {
@@ -412,13 +426,14 @@ export class ThreatModelService {
     const snapshot: Input = { formatVersion: 1, modelId, revisionId };
     const queries: Record<string, string> = {
       revision: 'SELECT * FROM threat_model_revisions WHERE id=$1',
+      scopeReferences: 'SELECT s.* FROM threat_model_scope_references s JOIN threat_model_revisions r ON r.threat_model_id=s.threat_model_id WHERE r.id=$1 ORDER BY s.scope_kind,s.source_id',
       components: 'SELECT * FROM threat_model_components WHERE revision_id=$1 ORDER BY id',
       boundaries: 'SELECT * FROM threat_model_trust_boundaries WHERE revision_id=$1 ORDER BY id',
       flows: 'SELECT * FROM threat_model_data_flows WHERE revision_id=$1 ORDER BY id',
       threats: 'SELECT * FROM threat_details WHERE revision_id=$1 ORDER BY id',
       controls: 'SELECT c.*,tk.status_category AS implementation_ticket_status FROM threat_control_details c JOIN threats t ON t.id=c.threat_id LEFT JOIN tickets tk ON tk.id=c.implementation_ticket_id WHERE t.revision_id=$1 ORDER BY c.id',
       verifications: 'SELECT v.* FROM control_verifications v JOIN threat_controls c ON c.id=v.control_id JOIN threats t ON t.id=c.threat_id WHERE t.revision_id=$1 ORDER BY v.id',
-      evidence: 'SELECT e.*,a.sha256_hash FROM threat_model_evidence e JOIN ticket_attachments a ON a.id=e.attachment_id WHERE e.revision_id=$1 ORDER BY e.id',
+      evidence: "SELECT e.*,a.sha256_hash,a.source_payload->>'virusScanStatus' AS scan_status FROM threat_model_evidence e JOIN ticket_attachments a ON a.id=e.attachment_id WHERE e.revision_id=$1 ORDER BY e.id",
       exceptions: 'SELECT e.* FROM threat_model_exceptions e JOIN threats t ON t.id=e.threat_id WHERE t.revision_id=$1 ORDER BY e.id',
       approvals: 'SELECT * FROM threat_model_approvals WHERE revision_id=$1 ORDER BY id',
       requirements: 'SELECT * FROM threat_security_requirements WHERE revision_id=$1 ORDER BY id',
@@ -426,9 +441,16 @@ export class ThreatModelService {
       controlDefinitions: 'SELECT DISTINCT cv.* FROM threat_control_catalog_versions cv JOIN threat_controls c ON c.catalog_version_id=cv.id JOIN threats t ON t.id=c.threat_id WHERE t.revision_id=$1 ORDER BY cv.id',
       requirementControls: 'SELECT m.* FROM threat_requirement_controls m JOIN threat_security_requirements r ON r.id=m.requirement_id WHERE r.revision_id=$1 ORDER BY m.requirement_id,m.control_id',
       requirementThreats: 'SELECT m.* FROM threat_requirement_threats m JOIN threat_security_requirements r ON r.id=m.requirement_id WHERE r.revision_id=$1 ORDER BY m.requirement_id,m.threat_id',
-      compliance: 'SELECT m.requirement_id,c.* FROM threat_requirement_compliance m JOIN threat_security_requirements r ON r.id=m.requirement_id JOIN threat_compliance_requirements c ON c.id=m.compliance_id WHERE r.revision_id=$1 ORDER BY m.requirement_id,c.id',
+      compliance: 'SELECT m.requirement_id,c.* FROM threat_requirement_compliance m JOIN threat_security_requirements r ON r.id=m.requirement_id JOIN threat_compliance_details c ON c.id=m.compliance_id WHERE r.revision_id=$1 ORDER BY m.requirement_id,c.id',
       data: 'SELECT l.*,d.name,d.classification,d.personal_data,d.sensitive_personal_data,d.bank_secrecy,d.retention,d.allowed_locations,d.encryption_requirements FROM threat_data_object_links l JOIN threat_data_objects d ON d.id=l.data_object_id WHERE l.revision_id=$1 ORDER BY l.id',
       emergencyChanges: 'SELECT e.* FROM threat_emergency_changes e WHERE e.threat_model_id=(SELECT threat_model_id FROM threat_model_revisions WHERE id=$1) ORDER BY e.requested_at,e.id',
+      analysisSuggestions: 'SELECT * FROM threat_analysis_suggestions WHERE revision_id=$1 ORDER BY id',
+      analysisDispositions: 'SELECT d.* FROM threat_suggestion_dispositions d JOIN threat_analysis_suggestions s ON s.id=d.suggestion_id WHERE s.revision_id=$1 ORDER BY d.id',
+      attackCases: 'SELECT * FROM threat_attack_cases WHERE revision_id=$1 ORDER BY id',
+      attackNodes: 'SELECT n.* FROM threat_attack_nodes n JOIN threat_attack_cases c ON c.id=n.case_id WHERE c.revision_id=$1 ORDER BY n.case_id,n.ordinal',
+      findingLinks: 'SELECT * FROM threat_finding_link_state WHERE revision_id=$1 ORDER BY id',
+      findingAssessments: 'SELECT a.* FROM threat_finding_assessments a JOIN threat_finding_links l ON l.id=a.link_id WHERE l.revision_id=$1 ORDER BY a.id',
+      exceptionEscalations: 'SELECT x.* FROM threat_exception_escalation_reviews x JOIN threat_model_exceptions e ON e.id=x.exception_id JOIN threats t ON t.id=e.threat_id WHERE t.revision_id=$1 ORDER BY x.exception_id',
     };
     for (const [key, query] of Object.entries(queries)) snapshot[key] = (await client.query(query, [revisionId])).rows;
     snapshot.model = (await client.query('SELECT * FROM threat_models WHERE id=$1', [modelId])).rows[0];
@@ -436,17 +458,20 @@ export class ThreatModelService {
   }
 
   static async exportSnapshot(modelId: string, revisionId: string, actor: BankUser) {
-    const model = await ThreatModelRepository.findById(modelId); if (!model) throw new Error('Threat Model not found.'); this.assertRead(model, actor);
-    const snapshot = (await pgClient.query(`SELECT s.* FROM threat_model_approval_snapshots s JOIN threat_model_revisions r ON r.id=s.revision_id WHERE r.threat_model_id=$1 AND s.revision_id=$2`, [modelId, revisionId])).rows[0];
-    if (!snapshot) throw new Error('Approved snapshot not found; legacy records require a new reviewed revision.');
-    return snapshot;
+    return pgClient.transaction(async client=>{
+      const model = await this.lockModel(modelId,client);this.assertRead(model, actor);
+      const snapshot = (await client.query(`SELECT s.* FROM threat_model_approval_snapshots s JOIN threat_model_revisions r ON r.id=s.revision_id WHERE r.threat_model_id=$1 AND s.revision_id=$2`, [modelId, revisionId])).rows[0];
+      if (!snapshot) throw new Error('Approved snapshot not found; legacy records require a new reviewed revision.');
+      await ThreatModelRepository.audit(client,{id:id('tmae'),modelId,revisionId,actorId:actor.id,action:'APPROVED_SNAPSHOT_EXPORTED',entityType:'THREAT_MODEL_REVISION',entityId:revisionId,newValue:{sha256:snapshot.sha256}});
+      return snapshot;
+    });
   }
 
-  static async addThreat(modelId: string, input: Input, actor: BankUser) {
+  static async addThreat(modelId: string, input: Input, actor: BankUser, transactionClient?: PoolClient) {
     input = threatAuthoringSchema.parse(input);
-    return pgClient.transaction(async (client) => {
+    const createRecord=async (client:PoolClient) => {
       const model = await this.lockModel(modelId, client); this.assertWrite(model, actor); const revision = await ThreatModelRepository.requireMutableRevision(model.currentRevisionId, client);
-      this.assertScopeReferences({ assetId: input.affectedAssetId }, actor);
+      await this.assertScopeReferences({ assetId: input.affectedAssetId }, actor,client);
       if (input.ownerId && !(await client.query('SELECT 1 FROM bank_users WHERE id=$1 AND is_active', [input.ownerId])).rowCount) throw new Error('An active threat owner is required.');
       const references: Array<[string, string, string]> = [['affectedComponentId', 'threat_model_components', 'component'], ['affectedDataFlowId', 'threat_model_data_flows', 'data flow'], ['affectedTrustBoundaryId', 'threat_model_trust_boundaries', 'trust boundary']];
       for (const [field, table, label] of references) {
@@ -458,11 +483,33 @@ export class ThreatModelService {
       const count = await client.query<{ count: number }>('SELECT count(*)::int AS count FROM threats WHERE revision_id=$1', [revision.id]);
       const categories = list(input.categories); if (!categories.length) throw new Error('At least one STRIDE or abuse-case category is required.');
       const key = `${model.key}-R${revision.revisionNumber}-T${String(count.rows[0].count + 1).padStart(3, '0')}`;
-      await client.query(`INSERT INTO threats(id,revision_id,key,title,description,categories,attack_scenario,attacker_type,attacker_capability,preconditions,attack_path,affected_component_id,affected_data_flow_id,affected_trust_boundary_id,affected_asset_id,cwe_ids,capec_ids,inherent_likelihood,inherent_impact,inherent_score,status,owner_id,due_date,created_by_user_id) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb,$18,$19,$20,'OPEN',$21,$22,$23)`, [threatId, revision.id, key, text(input.title, 'Threat title'), text(input.description, 'Threat description'), JSON.stringify(categories), text(input.attackScenario, 'Attack scenario'), text(input.attackerType, '', false) || null, text(input.attackerCapability, '', false) || null, text(input.preconditions, '', false) || null, text(input.attackPath, '', false) || null, text(input.affectedComponentId, '', false) || null, text(input.affectedDataFlowId, '', false) || null, text(input.affectedTrustBoundaryId, '', false) || null, text(input.affectedAssetId, '', false) || null, JSON.stringify(list(input.cweIds)), JSON.stringify(list(input.capecIds)), likelihood, impact, likelihood * impact, text(input.ownerId, '', false) || null, text(input.dueDate, '', false) || null, actor.id]);
+      await client.query(`INSERT INTO threats(id,revision_id,key,title,description,categories,attack_scenario,attacker_type,attacker_capability,preconditions,attack_path,affected_component_id,affected_data_flow_id,affected_trust_boundary_id,affected_asset_id,cwe_ids,capec_ids,inherent_likelihood,inherent_impact,inherent_score,status,owner_id,due_date,created_by_user_id,methodology,source,assumptions,confidentiality_impact,integrity_impact,availability_impact,security_properties) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb,$18,$19,$20,'OPEN',$21,$22,$23,$24,$25,$26,$27,$28,$29,$30::jsonb)`, [threatId, revision.id, key, text(input.title, 'Threat title'), text(input.description, 'Threat description'), JSON.stringify(categories), text(input.attackScenario, 'Attack scenario'), text(input.attackerType, '', false) || null, text(input.attackerCapability, '', false) || null, text(input.preconditions, '', false) || null, text(input.attackPath, '', false) || null, text(input.affectedComponentId, '', false) || null, text(input.affectedDataFlowId, '', false) || null, text(input.affectedTrustBoundaryId, '', false) || null, text(input.affectedAssetId, '', false) || null, JSON.stringify(list(input.cweIds)), JSON.stringify(list(input.capecIds)), likelihood, impact, likelihood * impact, text(input.ownerId, '', false) || null, text(input.dueDate, '', false) || null, actor.id,input.methodology,input.source,input.assumptions||null,input.confidentialityImpact,input.integrityImpact,input.availabilityImpact,JSON.stringify(input.securityProperties)]);
       await ThreatModelRepository.audit(client, { id: id('tmae'), modelId, revisionId: revision.id, actorId: actor.id, action: 'THREAT_CREATED', entityType: 'THREAT', entityId: threatId, newValue: { key, inherentRisk: risk(likelihood * impact) } });
       if (likelihood * impact >= 10) await enqueueOutbox(client, 'threat-model.high-risk-threat.created', 'THREAT', threatId, { threatModelId: modelId, threatId, severity: risk(likelihood * impact) });
       return (await client.query<Input>('SELECT * FROM threat_details WHERE id=$1', [threatId])).rows.map(ThreatModelRepository.threat)[0];
+    };
+    return transactionClient?createRecord(transactionClient):pgClient.transaction(createRecord);
+  }
+
+  /** Shared transactional authorization boundary for supplemental first-class analysis. */
+  static async withAnalysisModel<T>(modelId:string,actor:BankUser,operation:(client:PoolClient,model:Input)=>Promise<T>) {
+    return pgClient.transaction(async client=>{
+      const model=await this.lockModel(modelId,client);this.assertWrite(model,actor);
+      await ThreatModelRepository.requireMutableRevision(model.currentRevisionId,client);
+      return operation(client,model);
     });
+  }
+
+  static async withGovernanceModel<T>(modelId:string,actor:BankUser,operation:(client:PoolClient,model:Input)=>Promise<T>){
+    return pgClient.transaction(async client=>{const model=await this.lockModel(modelId,client);this.assertRead(model,actor);return operation(client,model);});
+  }
+
+  static async validateGovernanceEvidence(client:PoolClient,model:Input,attachmentId:string,changeId:string,actor:BankUser){
+    await this.assertEmergencyAttachment(client,attachmentId,changeId,actor);
+    const ticket=(await client.query('SELECT category,confidentiality FROM tickets WHERE id=$1',[changeId])).rows[0];
+    if(ticket.category!=='CHANGE_REQUEST')throw new Error('Decommission evidence requires a Change Request.');
+    const classification=ticket.confidentiality as keyof typeof CONFIDENTIALITY_LEVELS;
+    if((CONFIDENTIALITY_LEVELS[classification]??Infinity)>(CONFIDENTIALITY_LEVELS[model.dataClassification as keyof typeof CONFIDENTIALITY_LEVELS]??0))throw new Error('Evidence classification exceeds this model; raise model classification before linking.');
   }
 
   /** Replace authored content only. Risk disposition, identity and verification remain server-managed. */
@@ -477,14 +524,14 @@ export class ThreatModelService {
       if (before.revision_id !== model.currentRevisionId) throw new Error('Threat revision is no longer current.');
       await ThreatModelRepository.requireMutableRevision(before.revision_id, client);
       if (Number(before.content_version) !== parsed.contentVersion) throw new Error('Threat changed by another editor. Reload before saving.');
-      this.assertScopeReferences({ assetId: parsed.affectedAssetId }, actor);
+      await this.assertScopeReferences({ assetId: parsed.affectedAssetId }, actor,client);
       if (parsed.ownerId && !(await client.query('SELECT 1 FROM bank_users WHERE id=$1 AND is_active', [parsed.ownerId])).rowCount) throw new Error('An active threat owner is required.');
       await client.query(`UPDATE threats SET title=$1,description=$2,categories=$3::jsonb,attack_scenario=$4,attacker_type=$5,attacker_capability=$6,
         preconditions=$7,attack_path=$8,affected_component_id=$9,affected_data_flow_id=$10,affected_trust_boundary_id=$11,affected_asset_id=$12,
-        cwe_ids=$13::jsonb,capec_ids=$14::jsonb,inherent_likelihood=$15,inherent_impact=$16,inherent_score=$15::smallint*$16::smallint,owner_id=$17,due_date=$18 WHERE id=$19`,
+        cwe_ids=$13::jsonb,capec_ids=$14::jsonb,inherent_likelihood=$15,inherent_impact=$16,inherent_score=$15::smallint*$16::smallint,owner_id=$17,due_date=$18 ,methodology=$20,source=$21,assumptions=$22,confidentiality_impact=$23,integrity_impact=$24,availability_impact=$25,security_properties=$26::jsonb WHERE id=$19`,
         [parsed.title,parsed.description,JSON.stringify(parsed.categories),parsed.attackScenario,parsed.attackerType||null,parsed.attackerCapability||null,
           parsed.preconditions||null,parsed.attackPath||null,parsed.affectedComponentId||null,parsed.affectedDataFlowId||null,parsed.affectedTrustBoundaryId||null,
-          parsed.affectedAssetId||null,JSON.stringify(parsed.cweIds),JSON.stringify(parsed.capecIds),parsed.inherentLikelihood,parsed.inherentImpact,parsed.ownerId||null,parsed.dueDate||null,threatId]);
+          parsed.affectedAssetId||null,JSON.stringify(parsed.cweIds),JSON.stringify(parsed.capecIds),parsed.inherentLikelihood,parsed.inherentImpact,parsed.ownerId||null,parsed.dueDate||null,threatId,parsed.methodology,parsed.source,parsed.assumptions||null,parsed.confidentialityImpact,parsed.integrityImpact,parsed.availabilityImpact,JSON.stringify(parsed.securityProperties)]);
       const after = (await client.query<Input>('SELECT * FROM threat_details WHERE id=$1', [threatId])).rows[0];
       if (after.content_version !== before.content_version) {
         const controls = (await client.query<Input>('SELECT c.id,c.scope_version FROM threat_controls c JOIN threat_control_threats m ON m.control_id=c.id WHERE m.threat_id=$1 ORDER BY c.id', [threatId])).rows;
@@ -563,15 +610,16 @@ export class ThreatModelService {
       const scopeVersion=Number((await client.query('SELECT scope_version FROM threat_controls WHERE id=$1',[controlId])).rows[0].scope_version);
       if(Number(input.controlScopeVersion ?? 1)!==scopeVersion) throw new Error('Verification control scope is no longer current; reload and reassess every mapped threat.');
       if (!['NOT_RUN', 'PASS', 'FAIL', 'PARTIAL', 'EXPIRED'].includes(result)) throw new Error('Invalid verification result.');
+      if(result==='PASS'&&(await client.query("SELECT 1 FROM threat_finding_link_state WHERE control_id=$1 AND (current_state IS DISTINCT FROM 'RESOLVED' OR current_fingerprint IS DISTINCT FROM COALESCE(assessed_fingerprint,source_fingerprint)) LIMIT 1",[controlId])).rowCount)throw new Error('Linked finding contradicts the control assumption; reassess its current source state before verification.');
       const evidenceIds = list(input.evidenceIds);
       if (result === 'PASS' && !evidenceIds.length) throw new Error('A passing control verification must reference linked evidence.');
       if (evidenceIds.length) {
-        const evidence = await client.query<Input>(`SELECT e.id,e.attachment_id,a.ticket_id,a.sha256_hash FROM threat_model_evidence e JOIN ticket_attachments a ON a.id=e.attachment_id WHERE e.control_id=$1 AND e.id = ANY($2::varchar[])`, [controlId, evidenceIds]);
+        const evidence = await client.query<Input>(`SELECT e.id,e.attachment_id,a.ticket_id,a.sha256_hash,a.source_payload FROM threat_model_evidence e JOIN ticket_attachments a ON a.id=e.attachment_id WHERE e.control_id=$1 AND e.id = ANY($2::varchar[])`, [controlId, evidenceIds]);
         if (evidence.rows.length !== evidenceIds.length) throw new Error('Verification evidence must already be linked to this control and Threat Model.');
         for(const item of evidence.rows){
-          const ticket=db.data.tickets.find(ticket=>ticket.id===item.ticket_id);
-          if(!/^[a-f0-9]{64}$/i.test(item.sha256_hash) || !db.data.attachments.some(attachment=>attachment.id===item.attachment_id && attachment.virusScanStatus==='CLEAN')) throw new Error('Current clean retained evidence is required for verification.');
-          if(!ticket || !AuthService.canAccessResource({user:actor,action:'READ',resourceType:'TICKET',resource:ticket}).allowed) throw new Error('Verification evidence access is restricted.');
+          const ticket=(await client.query('SELECT * FROM tickets WHERE id=$1',[item.ticket_id])).rows[0];
+          if(!/^[a-f0-9]{64}$/i.test(item.sha256_hash) || item.source_payload?.virusScanStatus!=='CLEAN') throw new Error('Current clean retained evidence is required for verification.');
+          if(!ticket || !AuthService.canAccessResource({user:actor,action:'READ',resourceType:'TICKET',resource:this.ticketAuthorizationRecord(ticket)}).allowed) throw new Error('Verification evidence access is restricted.');
         }
       }
       const verificationType = text(input.verificationType, 'Verification type'); const policy = await this.loadPolicy(context.model.organizationId, client);
@@ -636,6 +684,7 @@ export class ThreatModelService {
       const threats = await client.query('SELECT 1 FROM threats WHERE revision_id=$1 LIMIT 1', [revision.id]);
       const screening = (await client.query<Input>('SELECT tier,policy_version_id FROM threat_model_revisions WHERE id=$1', [revision.id])).rows[0];
       if (screening.tier === null || !screening.policy_version_id) throw new Error('Security impact screening is required before submission.');
+      if((await client.query('SELECT 1 FROM threat_analysis_suggestions s LEFT JOIN threat_suggestion_dispositions d ON d.suggestion_id=s.id WHERE s.revision_id=$1 AND d.id IS NULL LIMIT 1',[revision.id])).rowCount)throw new Error('Analyst disposition is required for every pending threat suggestion before submission.');
       if (screening.tier > 0 && (!components.rowCount || !threats.rowCount)) throw new Error('Architecture and at least one structured threat are required before submission.');
       if (screening.tier >= 2) {
         const completeness = (await client.query<Input>(`SELECT EXISTS(SELECT 1 FROM threat_model_data_flows WHERE revision_id=$1) AS flows, EXISTS(SELECT 1 FROM threat_model_trust_boundaries WHERE revision_id=$1) AS boundaries, EXISTS(SELECT 1 FROM threat_security_requirements WHERE revision_id=$1) AS requirements, EXISTS(SELECT 1 FROM threat_data_object_links WHERE revision_id=$1) AS data`, [revision.id])).rows[0];
@@ -664,7 +713,7 @@ export class ThreatModelService {
       this.assertRead(model, actor);
       if (!revision || revision.status !== 'IN_REVIEW') throw new Error('Only an in-review revision may be approved.');
       if ([revision.created_by_user_id, revision.submitted_by_user_id, model.businessOwnerId, model.technicalOwnerId, model.securityOwnerId].includes(actor.id)) throw new Error('Author or owner cannot approve the Threat Model.');
-      if (decision === 'APPROVED' && (await client.query(`SELECT 1 FROM threat_model_audit_events WHERE revision_id=$1 AND actor_id=$2 AND action=ANY($3::varchar[]) LIMIT 1`, [revision.id,actor.id,['SCOPE_UPDATED','THREAT_CREATED','THREAT_UPDATED','CONTROL_CREATED','REQUIREMENT_CREATED','DATA_OBJECT_LINKED','COMPONENT_CREATED','BOUNDARY_CREATED','FLOW_CREATED','COMPONENT_UPDATED','BOUNDARY_UPDATED','FLOW_UPDATED','COMPONENT_REMOVED','BOUNDARY_REMOVED','FLOW_REMOVED','MODEL_CLASSIFICATION_RAISED','CONTROL_THREAT_LINKED','CONTROL_THREAT_UNLINKED']])).rowCount) throw new Error('A contributing author cannot approve the Threat Model.');
+if (decision === 'APPROVED' && (await client.query(`SELECT 1 FROM threat_model_audit_events WHERE revision_id=$1 AND actor_id=$2 AND action=ANY($3::varchar[]) LIMIT 1`, [revision.id,actor.id,['REQUIREMENT_COMPLIANCE_REPLACED','FINDING_ASSUMPTION_LINKED','FINDING_ASSUMPTION_ASSESSED','THREAT_ATTACK_CASE_CREATED','THREAT_SUGGESTION_DISPOSITION','SCOPE_UPDATED','THREAT_CREATED','THREAT_UPDATED','CONTROL_CREATED','REQUIREMENT_CREATED','DATA_OBJECT_LINKED','COMPONENT_CREATED','BOUNDARY_CREATED','FLOW_CREATED','COMPONENT_UPDATED','BOUNDARY_UPDATED','FLOW_UPDATED','COMPONENT_REMOVED','BOUNDARY_REMOVED','FLOW_REMOVED','MODEL_CLASSIFICATION_RAISED','CONTROL_THREAT_LINKED','CONTROL_THREAT_UNLINKED']])).rowCount) throw new Error('A contributing author cannot approve the Threat Model.');
       if (decision === 'APPROVED') {
         const otherStageBySameReviewer = await client.query(`SELECT 1 FROM threat_model_approvals WHERE revision_id=$1 AND decided_by_user_id=$2 AND stage<>$3 AND decision='APPROVED' AND review_cycle=$4 LIMIT 1`, [revision.id, actor.id, stage, revision.review_cycle]);
         if (otherStageBySameReviewer.rowCount) throw new Error('AppSec and Security Architecture approvals require separate authorized reviewers.');
@@ -715,6 +764,8 @@ export class ThreatModelService {
     if (revision.tier === 3 && !policy.requiredApprovalStages.includes('SECURITY_ARCHITECTURE')) policy.requiredApprovalStages.push('SECURITY_ARCHITECTURE');
     const approvedSnapshot = await client.query('SELECT 1 FROM threat_model_approval_snapshots WHERE revision_id=$1', [revision.id]);
     const requirementBlockers: string[] = [];
+    for(const [scopeKind,sourceId] of [['SERVICE',model.serviceId],['ASSET',model.assetId],['PROJECT',model.projectId],['CHANGE',model.changeId],['RELEASE',model.releaseId]])if(sourceId&&!(snapshot.scopeReferences as Input[]).some(reference=>reference.scope_kind===scopeKind&&reference.source_id===sourceId))requirementBlockers.push(`${scopeKind}: unresolved legacy canonical reference; reconcile before release.`);
+    for(const link of snapshot.findingLinks as Input[])if(link.current_state!=='RESOLVED'||link.current_fingerprint!==(link.assessed_fingerprint||link.source_fingerprint))requirementBlockers.push(`${link.id}: linked finding is open or its security state changed; reassessment is required.`);
     for(const component of snapshot.components as Input[]) if(!component.security_zone?.trim()) requirementBlockers.push(`${component.name}: security zone is unknown; architecture revalidation is required.`);
     for(const flow of snapshot.flows as Input[]) {
       const source=(snapshot.components as Input[]).find(item=>item.id===flow.source_component_id);
@@ -725,6 +776,7 @@ export class ThreatModelService {
     for (const emergency of pendingEmergencies) requirementBlockers.push(`${emergency.id}: ${emergency.status === 'REQUESTED' ? 'emergency security assessment awaits independent authorization' : 'post-emergency security obligations are overdue'}.`);
     for (const requirement of snapshot.requirements as Input[]) {
       if (!requirement.mandatory) continue;
+      for(const mapping of (snapshot.compliance as Input[]).filter(item=>item.requirement_id===requirement.id))if(mapping.current_validation_status!=='VALIDATED')requirementBlockers.push(`${requirement.title}: compliance reference ${mapping.framework}/${mapping.code} requires independent validation or replacement.`);
       const mappings = (snapshot.requirementControls as Input[]).filter(mapping => mapping.requirement_id === requirement.id);
       if (!mappings.length) requirementBlockers.push(`${requirement.title}: mandatory requirement has no control mapping.`);
       for (const mapping of mappings) if (!(snapshot.controls as Input[]).some(control => control.id === mapping.control_id && control.required_before_release)) requirementBlockers.push(`${requirement.title}: mandatory requirement must map to release-required controls.`);
@@ -734,7 +786,7 @@ export class ThreatModelService {
     const evidenceIds = latestVerifications.filter(v=>(snapshot.controls as Input[]).some(c=>c.id===v.control_id && c.required_before_release)).flatMap(v => list(v.evidence_ids));
     const invalidEvidenceIds = evidenceIds.filter(evidenceId => {
       const evidence = (snapshot.evidence as Input[]).find(e => e.id === evidenceId);
-      return !evidence || !/^[a-f0-9]{64}$/i.test(evidence.sha256_hash) || !db.data.attachments.some(a => a.id === evidence.attachment_id && a.virusScanStatus === 'CLEAN');
+      return !evidence || !/^[a-f0-9]{64}$/i.test(evidence.sha256_hash) || evidence.scan_status!=='CLEAN';
     });
     return evaluateSecurityReleaseGate({ applicable: true,
       threatModel: { status: model.status, currentRevisionId: revision.id, approvedRevisionId: revision.status === 'APPROVED' ? revision.id : undefined, nextReviewAt: model.nextReviewAt, screeningComplete: revision.tier !== null && Boolean(revision.policy_version_id), snapshotPresent: Boolean(approvedSnapshot.rowCount), architectureVersion: revision.architecture_version },
@@ -790,6 +842,7 @@ export class ThreatModelService {
   }
 
   static async requestRiskAcceptance(threatId: string, input: Input, actor: BankUser) {
+    const renewal=z.object({rationale:z.string().trim().min(1).max(4000),remediationStatus:z.string().trim().min(1).max(4000),evidenceId:z.string().min(1).max(64)}).optional().parse(input.renewalAssessment);
     return pgClient.transaction(async (client) => {
       const context = await this.lockThreatContext(threatId, client); this.assertWrite(context.model, actor);
       await ThreatModelRepository.requireMutableRevision(context.revisionId, client);
@@ -797,6 +850,11 @@ export class ThreatModelService {
       if (controlId) { const control = await client.query('SELECT 1 FROM threat_control_threats WHERE control_id=$1 AND threat_id=$2', [controlId, threatId]); if (!control.rowCount) throw new Error('Risk acceptance control must mitigate the selected threat.'); }
       const expiresAt = new Date(text(input.expiresAt, 'Exception expiry')); if (Number.isNaN(expiresAt.getTime()) || expiresAt <= new Date()) throw new Error('Exception expiry must be a future date.');
       const exceptionId = id('tmx'); const riskLevel = risk(context.inherentScore);
+      if(renewal){
+        const evidence=(await client.query('SELECT e.*,a.ticket_id FROM threat_model_evidence e JOIN ticket_attachments a ON a.id=e.attachment_id WHERE e.id=$1 AND e.threat_model_id=$2 AND e.revision_id=$3',[renewal.evidenceId,context.model.id,context.revisionId])).rows[0];
+        if(!evidence)throw new Error('Renewal evidence must belong to the current model revision.');
+        await this.assertEmergencyAttachment(client,evidence.attachment_id,evidence.ticket_id,actor);
+      }
       if (input.riskLevel && input.riskLevel !== riskLevel) throw new Error('Invalid risk level override; exception severity is server-calculated.');
       if (riskLevel === 'CRITICAL' && input.emergency !== true) throw new Error('Critical risk acceptance requires an emergency exception; normal release remains prohibited.');
       const remediationOwner = text(input.remediationOwnerId, 'Remediation owner');
@@ -807,7 +865,7 @@ export class ThreatModelService {
       const policy = await this.loadPolicy(context.model.organizationId, client);
       const activePolicy = await this.governancePolicy(context.model.organizationId, client);
       if ((expiresAt.getTime() - Date.now()) / 86400000 > Math.min(activePolicy.config.exceptionDays[riskLevel], policy.maxExceptionDays[riskLevel])) throw new Error(`Exception duration exceeds the configured ${riskLevel} maximum.`);
-      await client.query(`INSERT INTO threat_model_exceptions(id,threat_id,control_id,reason,business_justification,risk_level,compensating_controls,requested_by_user_id,expires_at,review_date,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'REQUESTED')`, [exceptionId, threatId, controlId, text(input.reason, 'Reason'), text(input.businessJustification, 'Business justification'), riskLevel, text(input.compensatingControls, '', false) || null, actor.id, expiresAt.toISOString(), text(input.reviewDate, '', false) || null]);
+await client.query(`INSERT INTO threat_model_exceptions(id,threat_id,control_id,reason,business_justification,risk_level,compensating_controls,requested_by_user_id,expires_at,review_date,status,renewal_rationale,remediation_status,assessment_evidence_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'REQUESTED',$11,$12,$13)`, [exceptionId, threatId, controlId, text(input.reason, 'Reason'), text(input.businessJustification, 'Business justification'), riskLevel, text(input.compensatingControls, '', false) || null, actor.id, expiresAt.toISOString(), text(input.reviewDate, '', false) || null,renewal?.rationale||null,renewal?.remediationStatus||null,renewal?.evidenceId||null]);
       const governance = await this.governancePolicy(context.model.organizationId, client);
       await client.query('UPDATE threat_model_exceptions SET remediation_owner_id=$1,remediation_plan=$2,remediation_deadline=$3,emergency=$4,policy_version_id=$5 WHERE id=$6', [remediationOwner, remediationPlan, deadline.toISOString(), input.emergency === true, governance.id, exceptionId]);
       await ThreatModelRepository.audit(client, { id: id('tmae'), modelId: context.model.id, revisionId: context.revisionId, actorId: actor.id, action: 'RISK_ACCEPTANCE_REQUESTED', entityType: 'THREAT_MODEL_EXCEPTION', entityId: exceptionId, newValue: { threatId, riskLevel, expiresAt: expiresAt.toISOString() } });
@@ -820,9 +878,9 @@ export class ThreatModelService {
     return pgClient.transaction(async (client) => {
       const found=(await client.query<Input>('SELECT r.threat_model_id FROM threat_model_exceptions e JOIN threats t ON t.id=e.threat_id JOIN threat_model_revisions r ON r.id=t.revision_id WHERE e.id=$1',[exceptionId])).rows[0];
       if(!found)throw new Error('Threat Model exception not found.');
-      await this.lockModel(found.threat_model_id,client);
+      const model=await this.lockModel(found.threat_model_id,client);
       const result = await client.query<Input>(`SELECT e.*,tm.id AS threat_model_id,tm.business_owner_id,tm.technical_owner_id,tm.security_owner_id,tm.department_id,t.revision_id,t.content_version AS current_threat_content_version,r.architecture_version AS current_architecture_version FROM threat_model_exceptions e JOIN threats t ON t.id=e.threat_id JOIN threat_model_revisions r ON r.id=t.revision_id JOIN threat_models tm ON tm.id=r.threat_model_id WHERE e.id=$1 FOR UPDATE`, [exceptionId]); const exception = result.rows[0]; if (!exception) throw new Error('Threat Model exception not found.');
-      const model = ThreatModelRepository.model({ id: exception.threat_model_id, business_owner_id: exception.business_owner_id, technical_owner_id: exception.technical_owner_id, security_owner_id: exception.security_owner_id, department_id: exception.department_id }); this.assertRead(model, actor); if (exception.requested_by_user_id === actor.id) throw new Error('Risk requester cannot approve their own exception.');
+      this.assertRead(model, actor); if (exception.requested_by_user_id === actor.id) throw new Error('Risk requester cannot approve their own exception.');
       const decision = text(input.decision, 'Decision'); if (!['APPROVED', 'REJECTED', 'REVOKED'].includes(decision)) throw new Error('Invalid exception decision.');
       assertExceptionDecision(exception.status, decision, exception.expires_at?.toISOString?.() || exception.expires_at);
       if (decision === 'APPROVED') {
@@ -844,13 +902,12 @@ export class ThreatModelService {
     return pgClient.transaction(async (client) => {
       const model = await this.lockModel(modelId, client); this.assertWrite(model, actor); const attachmentId = text(input.attachmentId, 'Attachment');
       await ThreatModelRepository.requireMutableRevision(model.currentRevisionId, client);
-      const attachment = await client.query<Input>('SELECT id,ticket_id,sha256_hash FROM ticket_attachments WHERE id=$1', [attachmentId]); if (!attachment.rows[0]) throw new Error('Evidence attachment not found.');
-      const sourceTicket = db.data.tickets.find((ticket) => ticket.id === attachment.rows[0].ticket_id);
+      const attachment = await client.query<Input>('SELECT id,ticket_id,sha256_hash,source_payload FROM ticket_attachments WHERE id=$1', [attachmentId]); if (!attachment.rows[0]) throw new Error('Evidence attachment not found.');
+      const sourceTicket = (await client.query('SELECT * FROM tickets WHERE id=$1',[attachment.rows[0].ticket_id])).rows[0];
       if (!sourceTicket) throw new Error('Evidence attachment source ticket is unavailable for authorization.');
-      const attachmentAccess = AuthService.canAccessResource({ user: actor, action: 'READ', resourceType: 'TICKET', resource: sourceTicket });
+      const attachmentAccess = AuthService.canAccessResource({ user: actor, action: 'READ', resourceType: 'TICKET', resource: this.ticketAuthorizationRecord(sourceTicket) });
       if (!attachmentAccess.allowed) throw new Error(attachmentAccess.reason || 'Not authorized to link this attachment as Threat Model evidence.');
-      const storedAttachment = db.data.attachments.find((candidate) => candidate.id === attachmentId);
-      if (!storedAttachment || storedAttachment.virusScanStatus !== 'CLEAN') throw new Error('Only a clean, retained attachment can be linked as security evidence.');
+      if (attachment.rows[0].source_payload?.virusScanStatus !== 'CLEAN') throw new Error('Only a clean, retained attachment can be linked as security evidence.');
       const evidenceId = id('tme'); const linkedEntityType = text(input.linkedEntityType || 'THREAT_MODEL', 'Linked entity type'); const linkedEntityId = text(input.linkedEntityId || modelId, 'Linked entity ID');
       const revisionId = text(input.revisionId || model.currentRevisionId, '', false) || null;
       if (revisionId !== model.currentRevisionId) throw new Error('Evidence must belong to the current mutable revision.');
@@ -868,9 +925,29 @@ export class ThreatModelService {
       }
       if (input.verificationId) throw new Error('Link evidence to a control before recording its verification.');
       if(input.controlId && input.threatId && !(await client.query('SELECT 1 FROM threat_control_threats WHERE control_id=$1 AND threat_id=$2',[input.controlId,input.threatId])).rowCount) throw new Error('Evidence control must mitigate its linked threat.');
-      await client.query(`INSERT INTO threat_model_evidence(id,threat_model_id,revision_id,threat_id,control_id,verification_id,attachment_id,classification,linked_entity_type,linked_entity_id,uploaded_by_user_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [evidenceId, modelId, revisionId, text(input.threatId, '', false) || null, text(input.controlId, '', false) || null, null, attachmentId, model.dataClassification, linkedEntityType, linkedEntityId, actor.id]);
+      if((await client.query('SELECT 1 FROM threat_model_evidence WHERE attachment_id=$1 AND revision_id=$2 AND control_id IS NOT DISTINCT FROM $3::varchar AND threat_id IS NOT DISTINCT FROM $4::varchar',[attachmentId,revisionId,input.controlId||null,input.threatId||null])).rowCount)throw new Error('Duplicate evidence link is invalid; reuse the existing revision-scoped reference.');
+      await client.query(`INSERT INTO threat_model_evidence(id,threat_model_id,revision_id,threat_id,control_id,verification_id,attachment_id,classification,linked_entity_type,linked_entity_id,uploaded_by_user_id,link_contract_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,2)`, [evidenceId, modelId, revisionId, text(input.threatId, '', false) || null, text(input.controlId, '', false) || null, null, attachmentId, model.dataClassification, linkedEntityType, linkedEntityId, actor.id]);
       await ThreatModelRepository.audit(client, { id: id('tmae'), modelId, revisionId: text(input.revisionId || model.currentRevisionId, '', false) || undefined, actorId: actor.id, action: 'EVIDENCE_LINKED', entityType: 'THREAT_MODEL_EVIDENCE', entityId: evidenceId, newValue: { attachmentId, sha256: attachment.rows[0].sha256_hash } });
       return { id: evidenceId, attachmentId };
+    });
+  }
+
+  static async downloadEvidence(modelId:string,evidenceId:string,actor:BankUser){
+    const read=async(client:PoolClient)=>{
+      const evidence=(await client.query('SELECT e.revision_id,a.* FROM threat_model_evidence e JOIN ticket_attachments a ON a.id=e.attachment_id WHERE e.id=$1 AND e.threat_model_id=$2',[evidenceId,modelId])).rows[0];
+      if(!evidence)throw new Error('Evidence not found in this model.');
+      await this.assertEmergencyAttachment(client,evidence.id,evidence.ticket_id,actor);
+      if(!evidence.storage_key||String(evidence.storage_key).startsWith('quarantine/'))throw new Error('Evidence storage is not ready.');
+      return evidence;
+    };
+    const initial=await this.withGovernanceModel(modelId,actor,read);
+    const stored=await storageService.getFileBuffer(initial.storage_key);
+    const digest=createHash('sha256').update(stored.buffer).digest('hex');
+    return this.withGovernanceModel(modelId,actor,async client=>{
+      const current=await read(client);
+      if(current.storage_key!==initial.storage_key||digest!==String(current.sha256_hash).toLowerCase())throw new Error('Evidence content integrity check failed; download blocked.');
+      await ThreatModelRepository.audit(client,{id:id('tmae'),modelId,revisionId:current.revision_id,actorId:actor.id,action:'THREAT_EVIDENCE_DOWNLOADED',entityType:'THREAT_MODEL_EVIDENCE',entityId:evidenceId,newValue:{attachmentId:current.id,sha256:digest}});
+      return {buffer:stored.buffer,fileName:String(current.file_name),sha256:digest};
     });
   }
 
@@ -1012,9 +1089,9 @@ export class ThreatModelService {
 
   private static async assertEmergencyAttachment(client: PoolClient, attachmentId: string, changeId: string, actor: BankUser) {
     const attachment = (await client.query<Input>('SELECT * FROM ticket_attachments WHERE id=$1 AND ticket_id=$2',[attachmentId,changeId])).rows[0];
-    const ticket = db.data.tickets.find(item=>item.id===changeId);
-    if (!attachment || !/^[a-f0-9]{64}$/i.test(attachment.sha256_hash) || !db.data.attachments.some(item=>item.id===attachmentId && item.virusScanStatus==='CLEAN')) throw new Error('Clean retained evidence from the emergency change is required.');
-    if (!ticket || !AuthService.canAccessResource({user:actor,action:'READ',resourceType:'TICKET',resource:ticket}).allowed) throw new Error('Emergency evidence access is restricted.');
+    const ticket = (await client.query('SELECT * FROM tickets WHERE id=$1',[changeId])).rows[0];
+    if (!attachment || !/^[a-f0-9]{64}$/i.test(attachment.sha256_hash) || attachment.source_payload?.virusScanStatus!=='CLEAN') throw new Error('Clean retained evidence from the emergency change is required.');
+    if (!ticket || !AuthService.canAccessResource({user:actor,action:'READ',resourceType:'TICKET',resource:this.ticketAuthorizationRecord(ticket)}).allowed) throw new Error('Emergency evidence access is restricted.');
     return attachment;
   }
 
@@ -1030,6 +1107,8 @@ export class ThreatModelService {
   /** Bounded scheduled maintenance; replay sees already-transitioned rows and does no new work. */
   static async maintainGovernance(actor: BankUser) {
     if (!actor?.id) throw new Error('A persisted automation actor is required.');
+    await this.reconcileFindingChanges(actor);
+    await this.reconcileComplianceChanges(actor);
     const emergencyCandidates = (await pgClient.query<Input>(`SELECT id,threat_model_id FROM threat_emergency_changes WHERE status='DEPLOYED' AND ((review_breached_at IS NULL AND review_due_at<NOW() AND (reviewed_at IS NULL OR reviewed_at>review_due_at)) OR (model_update_breached_at IS NULL AND model_update_due_at<NOW() AND (model_updated_at IS NULL OR model_updated_at>model_update_due_at))) ORDER BY review_due_at,id LIMIT 100`)).rows;
     let emergencyBreaches = 0;
     for (const candidate of emergencyCandidates) emergencyBreaches += await pgClient.transaction(async client => {
@@ -1040,21 +1119,23 @@ export class ThreatModelService {
       if (emergency.status !== 'DEPLOYED' || !((state.reviewBreached && !emergency.review_breached_at) || (state.modelUpdateBreached && !emergency.model_update_breached_at))) return 0;
       await this.recordEmergencyBreaches(client,emergency,actor); return 1;
     });
-    return pgClient.transaction(async client => {
-      const expired = (await client.query<Input>(`SELECT e.id,t.revision_id,r.threat_model_id FROM threat_model_exceptions e JOIN threats t ON t.id=e.threat_id JOIN threat_model_revisions r ON r.id=t.revision_id WHERE e.status='APPROVED' AND e.expires_at<=NOW() ORDER BY e.expires_at LIMIT 100 FOR UPDATE OF e SKIP LOCKED`)).rows;
-      for (const exception of expired) {
-        await client.query("UPDATE threat_model_exceptions SET status='EXPIRED' WHERE id=$1",[exception.id]);
-        await ThreatModelRepository.audit(client, { id:id('tmae'),modelId:exception.threat_model_id,revisionId:exception.revision_id,actorId:actor.id,action:'RISK_ACCEPTANCE_EXPIRED',entityType:'THREAT_MODEL_EXCEPTION',entityId:exception.id,newValue:{source:'GOVERNANCE_SCHEDULER'} });
-      }
-      const overdue = (await client.query<Input>(`SELECT * FROM threat_models WHERE status='APPROVED' AND next_review_at<=NOW() ORDER BY next_review_at LIMIT 50 FOR UPDATE SKIP LOCKED`)).rows;
-      for (const model of overdue) {
-        const revisionId = await this.createMaterialChangeRevision(client,model.id,actor,{reason:'Periodic security review is due'});
-        if (!revisionId) continue;
-        await client.query("UPDATE threat_models SET current_revision_id=$1,status='REVIEW_REQUIRED',stale_reason='Periodic security review is due',updated_at=NOW(),version=version+1 WHERE id=$2",[revisionId,model.id]);
-        await ThreatModelRepository.audit(client, { id:id('tmae'),modelId:model.id,revisionId,actorId:actor.id,action:'PERIODIC_REVIEW_REQUIRED',entityType:'THREAT_MODEL',entityId:model.id,newValue:{source:'GOVERNANCE_SCHEDULER',previousRevisionId:model.current_revision_id} });
-      }
-      return {expired:expired.length,overdue:overdue.length,emergencyBreaches};
+    const expiredCandidates=(await pgClient.query<Input>(`SELECT e.id,t.revision_id,r.threat_model_id FROM threat_model_exceptions e JOIN threats t ON t.id=e.threat_id JOIN threat_model_revisions r ON r.id=t.revision_id WHERE e.status='APPROVED' AND e.expires_at<=NOW() ORDER BY e.expires_at,e.id LIMIT 100`)).rows;
+    let expired=0;
+    for(const exception of expiredCandidates)expired+=await pgClient.transaction(async client=>{
+      await this.lockModel(exception.threat_model_id,client);
+      const changed=await client.query("UPDATE threat_model_exceptions SET status='EXPIRED' WHERE id=$1 AND status='APPROVED' AND expires_at<=now() RETURNING id",[exception.id]);
+      if(!changed.rowCount)return 0;
+      await ThreatModelRepository.audit(client,{id:id('tmae'),modelId:exception.threat_model_id,revisionId:exception.revision_id,actorId:actor.id,action:'RISK_ACCEPTANCE_EXPIRED',entityType:'THREAT_MODEL_EXCEPTION',entityId:exception.id,newValue:{source:'GOVERNANCE_SCHEDULER'}});return 1;
     });
+    const overdueCandidates=(await pgClient.query<Input>("SELECT id FROM threat_models WHERE status='APPROVED' AND next_review_at<=now() ORDER BY next_review_at,id LIMIT 50")).rows;
+    let overdue=0;
+    for(const candidate of overdueCandidates)overdue+=await pgClient.transaction(async client=>{
+      const model=await this.lockModel(candidate.id,client);if(model.status!=='APPROVED'||!model.nextReviewAt||new Date(model.nextReviewAt)>new Date())return 0;
+      const revisionId=await this.createMaterialChangeRevision(client,model.id,actor,{reason:'Periodic security review is due'});if(!revisionId)return 0;
+      await client.query("UPDATE threat_models SET current_revision_id=$1,status='REVIEW_REQUIRED',stale_reason='Periodic security review is due',updated_at=now(),version=version+1 WHERE id=$2",[revisionId,model.id]);
+      await ThreatModelRepository.audit(client,{id:id('tmae'),modelId:model.id,revisionId,actorId:actor.id,action:'PERIODIC_REVIEW_REQUIRED',entityType:'THREAT_MODEL',entityId:model.id,newValue:{source:'GOVERNANCE_SCHEDULER',previousRevisionId:model.currentRevisionId}});return 1;
+    });
+    return {expired,overdue,emergencyBreaches};
   }
 
   /** Ticket completion signals implementation only; verification remains a separate AppSec action. */
@@ -1068,6 +1149,79 @@ export class ThreatModelService {
         await ThreatModelRepository.audit(client, { id: id('tmae'), modelId: control.threat_model_id, revisionId: control.revision_id, actorId: actor.id, action: 'REMEDIATION_TICKET_SYNCHRONIZED', entityType: 'THREAT_CONTROL', entityId: control.id, newValue: { ticketId, status, statusCategory } });
         if (status === 'VERIFICATION_REQUIRED') await enqueueOutbox(client, 'threat-control.verification.required', 'THREAT_CONTROL', control.id, { threatModelId: control.threat_model_id, revisionId: control.revision_id, controlId: control.id, implementationTicketId: ticketId, completedBy: actor.id });
       }
+    });
+  }
+
+  static async reconcileComplianceChanges(actor:BankUser){
+    const invalid=`SELECT DISTINCT c.id,c.framework,c.code,c.current_validation_status FROM threat_security_requirements s JOIN threat_requirement_compliance l ON l.requirement_id=s.id JOIN threat_compliance_details c ON c.id=l.compliance_id WHERE s.revision_id=$1 AND s.mandatory AND c.current_validation_status='RETIRED'`;
+    const candidates=(await pgClient.query("SELECT m.id FROM threat_models m WHERE m.status='APPROVED' AND EXISTS(SELECT 1 FROM threat_security_requirements s JOIN threat_requirement_compliance l ON l.requirement_id=s.id JOIN threat_compliance_details c ON c.id=l.compliance_id WHERE s.revision_id=m.current_revision_id AND s.mandatory AND c.current_validation_status='RETIRED') ORDER BY m.id LIMIT 50")).rows;
+    for(const candidate of candidates)await pgClient.transaction(async client=>{
+      const model=await this.lockModel(candidate.id,client);if(model.status!=='APPROVED')return;
+      const changes=(await client.query(invalid,[model.currentRevisionId])).rows;if(!changes.length)return;
+      const reason='A mandatory compliance interpretation was retired; independent revalidation is required';
+      const revisionId=await this.createMaterialChangeRevision(client,model.id,actor,{reason});if(!revisionId)return;
+      await client.query("UPDATE threat_models SET current_revision_id=$1,status='REVIEW_REQUIRED',stale_reason=$2,updated_at=now(),version=version+1 WHERE id=$3",[revisionId,reason,model.id]);
+      await ThreatModelRepository.audit(client,{id:id('tmae'),modelId:model.id,revisionId,actorId:actor.id,action:'COMPLIANCE_REVALIDATION_REQUIRED',entityType:'THREAT_MODEL',entityId:model.id,newValue:{changes,previousRevisionId:model.currentRevisionId}});
+      await enqueueOutbox(client,'threat-model.review.submitted','THREAT_MODEL',model.id,{threatModelId:model.id,revisionId,reason},`compliance-revalidation:${revisionId}`);
+    });return {models:candidates.length};
+  }
+
+  static async findingLinks(modelId:string,actor:BankUser){
+    const model=await ThreatModelRepository.findById(modelId);if(!model)throw new Error('Threat Model not found.');this.assertRead(model,actor);
+    return (await pgClient.query('SELECT * FROM threat_finding_link_state WHERE revision_id=$1 ORDER BY created_at DESC,id LIMIT 500',[model.currentRevisionId])).rows;
+  }
+
+  static async linkFinding(modelId:string,input:Input,actor:BankUser){
+    const parsed=z.object({threatId:z.string().min(1).max(64),controlId:z.string().min(1).max(64),cmdbFindingId:z.string().max(64).optional(),findingTicketId:z.string().max(64).optional(),assumption:z.string().trim().min(1).max(4000)}).refine(value=>Boolean(value.cmdbFindingId)!==Boolean(value.findingTicketId),'Exactly one canonical finding reference is required').parse(input);
+    return this.withAnalysisModel(modelId,actor,async(client,model)=>{
+      if(parsed.findingTicketId){
+        const row=(await client.query('SELECT * FROM tickets WHERE id=$1',[parsed.findingTicketId])).rows[0];
+        if(!row||!AuthService.canAccessResource({user:actor,action:'READ',resourceType:'TICKET',resource:this.ticketAuthorizationRecord(row)}).allowed)throw new Error('Finding ticket access is restricted.');
+        await this.validateArchitectureOwner({dataClassification:row.confidentiality},model,actor,client);
+      }else{
+        const finding=(await client.query('SELECT asset_id FROM cmdb_security_findings WHERE id=$1',[parsed.cmdbFindingId])).rows[0];
+        if(!finding)throw new Error('Canonical finding not found.');
+        await this.assertScopeReferences({assetId:finding.asset_id},actor,client);
+      }
+      const linkId=id('tfl');await client.query('INSERT INTO threat_finding_links(id,revision_id,threat_id,control_id,cmdb_finding_id,finding_ticket_id,assumption,source_fingerprint,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,\'\',$8)',[linkId,model.currentRevisionId,parsed.threatId,parsed.controlId,parsed.cmdbFindingId||null,parsed.findingTicketId||null,parsed.assumption,actor.id]);
+      await ThreatModelRepository.audit(client,{id:id('tmae'),modelId,revisionId:model.currentRevisionId,actorId:actor.id,action:'FINDING_ASSUMPTION_LINKED',entityType:'THREAT_FINDING_LINK',entityId:linkId,newValue:parsed});
+      await enqueueOutbox(client,'threat-control.verification.required','THREAT_CONTROL',parsed.controlId,{threatModelId:modelId,controlId:parsed.controlId,reason:'FINDING_ASSUMPTION_LINKED'},`finding-link:${linkId}`);
+      return {id:linkId};
+    });
+  }
+
+  /** Live gate reads source state too: scheduler delivery is not a release-safety dependency. */
+  static async reconcileFindingChanges(actor:BankUser){
+    const candidates=(await pgClient.query<Input>(`SELECT DISTINCT m.id FROM threat_models m JOIN threat_finding_link_state l ON l.revision_id=m.current_revision_id WHERE m.status='APPROVED' AND (l.current_state IS DISTINCT FROM 'RESOLVED' OR l.current_fingerprint IS DISTINCT FROM COALESCE(l.assessed_fingerprint,l.source_fingerprint)) ORDER BY m.id LIMIT 50`)).rows;
+    for(const candidate of candidates)await pgClient.transaction(async client=>{
+      const model=await this.lockModel(candidate.id,client);if(model.status!=='APPROVED')return;
+      const changes=(await client.query<Input>("SELECT * FROM threat_finding_link_state WHERE revision_id=$1 AND (current_state IS DISTINCT FROM 'RESOLVED' OR current_fingerprint IS DISTINCT FROM COALESCE(assessed_fingerprint,source_fingerprint)) ORDER BY id",[model.currentRevisionId])).rows;
+      if(!changes.length)return;
+      const reason='Linked security finding changed or contradicts a control assumption';
+      const revisionId=await this.createMaterialChangeRevision(client,model.id,actor,{reason});if(!revisionId)return;
+      await client.query("UPDATE threat_models SET current_revision_id=$1,status='REVIEW_REQUIRED',stale_reason=$2,updated_at=NOW(),version=version+1 WHERE id=$3",[revisionId,reason,model.id]);
+      await ThreatModelRepository.audit(client,{id:id('tmae'),modelId:model.id,revisionId,actorId:actor.id,action:'FINDING_REVALIDATION_REQUIRED',entityType:'THREAT_MODEL',entityId:model.id,newValue:{reason,previousRevisionId:model.currentRevisionId,changes}});
+      await enqueueOutbox(client,'threat-model.review.submitted','THREAT_MODEL',model.id,{threatModelId:model.id,revisionId,reason},`finding-revalidation:${revisionId}`);
+    });
+    return {models:candidates.length};
+  }
+
+  private static ticketAuthorizationRecord(row:Input):any {
+    const mapped=Object.fromEntries(Object.entries(row).map(([key,value])=>[key.replace(/_([a-z])/g,(_,letter:string)=>letter.toUpperCase()),value]));
+    return {...(row.source_payload||{}),...mapped,restrictedUserIds:row.restricted_user_ids||[],restrictedTeamIds:row.restricted_team_ids||[]};
+  }
+
+  static async assessFinding(modelId:string,linkId:string,input:Input,actor:BankUser){
+    if(!securityReviewer(actor))throw new Error('Security authority required for finding assessment.');
+    const parsed=z.object({fingerprint:z.string().regex(/^[a-f0-9]{64}$/),reason:z.string().trim().min(1).max(4000)}).parse(input);
+    return this.withAnalysisModel(modelId,actor,async(client,model)=>{
+      const link=(await client.query('SELECT * FROM threat_finding_link_state WHERE id=$1 AND revision_id=$2',[linkId,model.currentRevisionId])).rows[0];
+      if(!link)throw new Error('Finding link not found in the current revision.');
+      if(link.current_fingerprint!==parsed.fingerprint)throw new Error('Finding changed; fresh assessment is required.');
+      const assessmentId=id('tfa');await client.query('INSERT INTO threat_finding_assessments(id,link_id,assessed_fingerprint,reason,assessed_by) VALUES($1,$2,$3,$4,$5)',[assessmentId,linkId,parsed.fingerprint,parsed.reason,actor.id]);
+      await ThreatModelRepository.audit(client,{id:id('tmae'),modelId,revisionId:model.currentRevisionId,actorId:actor.id,action:'FINDING_ASSUMPTION_ASSESSED',entityType:'THREAT_FINDING_LINK',entityId:linkId,newValue:parsed});
+      await enqueueOutbox(client,'threat-control.verification.required','THREAT_CONTROL',link.control_id,{threatModelId:modelId,controlId:link.control_id,reason:'FINDING_ASSUMPTION_ASSESSED'},`finding-assessment:${assessmentId}`);
+      return {id:assessmentId};
     });
   }
 
@@ -1087,26 +1241,39 @@ export class ThreatModelService {
     const flowIds = new Map<string, string>();
     const threatIds = new Map<string, string>();
     const controlIds = new Map<string, string>();
+    // Use the same fixed persisted-field allowlist as authoring, including unknown values.
+    // Identity, content counters and derived crossing flags are generated for the new revision.
+    const copyArchitecture=async(kind:ArchitectureKind,newId:string,row:Input)=>{
+      const storage=architectureStorage[kind];const columns=Object.values(storage.fields);
+      await client.query(`INSERT INTO ${storage.table}(id,revision_id,${columns.join(',')}) VALUES($1,$2,${columns.map((column,index)=>`$${index+3}${column==='data_types'?'::jsonb':''}`).join(',')})`,[newId,revisionId,...columns.map(column=>column==='data_types'?JSON.stringify(row[column]||[]):row[column]??null)]);
+    };
     const components = await client.query<Input>('SELECT * FROM threat_model_components WHERE revision_id=$1 ORDER BY name', [previous.id]);
     for (const component of components.rows) {
       const newId = id('cmp'); componentIds.set(component.id, newId);
-      await client.query(`INSERT INTO threat_model_components(id,revision_id,name,type,description,technology,asset_id,owner_id,criticality) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [newId, revisionId, component.name, component.type, component.description, component.technology, component.asset_id, component.owner_id, component.criticality]);
-      await client.query('UPDATE threat_model_components SET security_zone=$1 WHERE id=$2', [component.security_zone, newId]);
+      await copyArchitecture('component',newId,component);
     }
     const boundaries = await client.query<Input>('SELECT * FROM threat_model_trust_boundaries WHERE revision_id=$1 ORDER BY name', [previous.id]);
     for (const boundary of boundaries.rows) {
       const newId = id('bnd'); boundaryIds.set(boundary.id, newId);
-      await client.query(`INSERT INTO threat_model_trust_boundaries(id,revision_id,name,description,boundary_type,trust_level_from,trust_level_to,authentication_required,encryption_required,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, [newId, revisionId, boundary.name, boundary.description, boundary.boundary_type, boundary.trust_level_from, boundary.trust_level_to, boundary.authentication_required, boundary.encryption_required, boundary.notes]);
+      await copyArchitecture('boundary',newId,boundary);
     }
     const flows = await client.query<Input>('SELECT * FROM threat_model_data_flows WHERE revision_id=$1 ORDER BY name', [previous.id]);
     for (const flow of flows.rows) {
       const newId = id('flow'); flowIds.set(flow.id, newId);
-      await client.query(`INSERT INTO threat_model_data_flows(id,revision_id,source_component_id,destination_component_id,trust_boundary_id,name,description,protocol,port,authentication_method,encryption_in_transit,data_classification,data_types,crosses_trust_boundary,direction,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16)`, [newId, revisionId, componentIds.get(flow.source_component_id), componentIds.get(flow.destination_component_id), flow.trust_boundary_id ? boundaryIds.get(flow.trust_boundary_id) || null : null, flow.name, flow.description, flow.protocol, flow.port, flow.authentication_method, flow.encryption_in_transit, flow.data_classification, JSON.stringify(flow.data_types || []), flow.crosses_trust_boundary, flow.direction, flow.notes]);
+      await copyArchitecture('flow',newId,{...flow,source_component_id:componentIds.get(flow.source_component_id),destination_component_id:componentIds.get(flow.destination_component_id),trust_boundary_id:flow.trust_boundary_id?boundaryIds.get(flow.trust_boundary_id):null});
     }
     const threats = await client.query<Input>('SELECT * FROM threats WHERE revision_id=$1 ORDER BY created_at,id', [previous.id]);
     for (let index = 0; index < threats.rows.length; index += 1) {
       const threat = threats.rows[index]; const newId = id('th'); threatIds.set(threat.id, newId);
-      await client.query(`INSERT INTO threats(id,revision_id,key,title,description,categories,attack_scenario,attacker_type,attacker_capability,preconditions,attack_path,affected_component_id,affected_data_flow_id,affected_trust_boundary_id,affected_asset_id,cwe_ids,capec_ids,inherent_likelihood,inherent_impact,inherent_score,status,owner_id,due_date,created_by_user_id,previous_threat_id) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb,$18,$19,$20,'OPEN',$21,$22,$23,$24)`, [newId, revisionId, `${model.key}-R${revisionNumber}-T${String(index + 1).padStart(3, '0')}`, threat.title, threat.description, JSON.stringify(threat.categories || []), threat.attack_scenario, threat.attacker_type, threat.attacker_capability, threat.preconditions, threat.attack_path, threat.affected_component_id ? componentIds.get(threat.affected_component_id) || null : null, threat.affected_data_flow_id ? flowIds.get(threat.affected_data_flow_id) || null : null, threat.affected_trust_boundary_id ? boundaryIds.get(threat.affected_trust_boundary_id) || null : null, threat.affected_asset_id, JSON.stringify(threat.cwe_ids || []), JSON.stringify(threat.capec_ids || []), threat.inherent_likelihood, threat.inherent_impact, threat.inherent_score, threat.owner_id, threat.due_date, actor.id, threat.id]);
+      await client.query(`INSERT INTO threats(id,revision_id,key,title,description,categories,attack_scenario,attacker_type,attacker_capability,preconditions,attack_path,affected_component_id,affected_data_flow_id,affected_trust_boundary_id,affected_asset_id,cwe_ids,capec_ids,inherent_likelihood,inherent_impact,inherent_score,status,owner_id,due_date,created_by_user_id,previous_threat_id,methodology,source,assumptions,confidentiality_impact,integrity_impact,availability_impact,security_properties) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb,$18,$19,$20,'OPEN',$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31::jsonb)`, [newId, revisionId, `${model.key}-R${revisionNumber}-T${String(index + 1).padStart(3, '0')}`, threat.title, threat.description, JSON.stringify(threat.categories || []), threat.attack_scenario, threat.attacker_type, threat.attacker_capability, threat.preconditions, threat.attack_path, threat.affected_component_id ? componentIds.get(threat.affected_component_id) || null : null, threat.affected_data_flow_id ? flowIds.get(threat.affected_data_flow_id) || null : null, threat.affected_trust_boundary_id ? boundaryIds.get(threat.affected_trust_boundary_id) || null : null, threat.affected_asset_id, JSON.stringify(threat.cwe_ids || []), JSON.stringify(threat.capec_ids || []), threat.inherent_likelihood, threat.inherent_impact, threat.inherent_score, threat.owner_id, threat.due_date, actor.id, threat.id,threat.methodology,threat.source,threat.assumptions,threat.confidentiality_impact,threat.integrity_impact,threat.availability_impact,JSON.stringify(threat.security_properties)]);
+    }
+    const attackCases=(await client.query<Input>('SELECT * FROM threat_attack_cases WHERE revision_id=$1 ORDER BY created_at,id',[previous.id])).rows;
+    const attackNodes=(await client.query<Input>('SELECT n.* FROM threat_attack_nodes n JOIN threat_attack_cases c ON c.id=n.case_id WHERE c.revision_id=$1 ORDER BY n.ordinal',[previous.id])).rows;
+    for(const attackCase of attackCases){
+      const caseId=id('case');
+      await client.query('INSERT INTO threat_attack_cases(id,revision_id,threat_id,title,objective,assumptions,methodology,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[caseId,revisionId,threatIds.get(attackCase.threat_id),attackCase.title,attackCase.objective,attackCase.assumptions,attackCase.methodology,actor.id]);
+      const nodes=attackNodes.filter(node=>node.case_id===attackCase.id);const nodeIds=new Map(nodes.map(node=>[node.id,id('node')]));
+      for(const node of nodes)await client.query('INSERT INTO threat_attack_nodes(id,case_id,parent_id,node_kind,label,ordinal) VALUES($1,$2,$3,$4,$5,$6)',[nodeIds.get(node.id),caseId,node.parent_id?nodeIds.get(node.parent_id):null,node.node_kind,node.label,node.ordinal]);
     }
     const controls = await client.query<Input>('SELECT c.* FROM threat_control_details c JOIN threats t ON t.id=c.threat_id WHERE t.revision_id=$1 ORDER BY c.created_at,c.id', [previous.id]);
     for (const control of controls.rows) {
@@ -1114,6 +1281,9 @@ export class ThreatModelService {
       const controlId = id('ctl'); controlIds.set(control.id, controlId);
       await client.query(`INSERT INTO threat_controls(id,threat_id,title,description,control_type,implementation_owner_id,status,required_before_release,due_date,effectiveness_status,catalog_version_id,implementation_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [controlId, threatIds.get(control.threat_id), control.title, control.description, control.control_type, control.implementation_owner_id, carriedStatus, control.required_before_release, control.due_date, 'REASSESSMENT_REQUIRED',control.catalog_version_id,control.implementation_key]);
       for(const mappedThreatId of control.threat_ids || [control.threat_id]) if(mappedThreatId!==control.threat_id) await client.query('INSERT INTO threat_control_threats(control_id,threat_id) VALUES($1,$2)',[controlId,threatIds.get(mappedThreatId)]);
+    }
+    for(const link of (await client.query<Input>('SELECT * FROM threat_finding_links WHERE revision_id=$1 ORDER BY id',[previous.id])).rows){
+      await client.query('INSERT INTO threat_finding_links(id,revision_id,threat_id,control_id,cmdb_finding_id,finding_ticket_id,assumption,source_fingerprint,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,\'\',$8)',[id('tfl'),revisionId,threatIds.get(link.threat_id),controlIds.get(link.control_id),link.cmdb_finding_id,link.finding_ticket_id,link.assumption,actor.id]);
     }
     for (const link of (await client.query<Input>('SELECT * FROM threat_data_object_links WHERE revision_id=$1', [previous.id])).rows) {
       await client.query('INSERT INTO threat_data_object_links(id,data_object_id,revision_id,component_id,flow_id) VALUES($1,$2,$3,$4,$5)', [id('tmdl'), link.data_object_id, revisionId, componentIds.get(link.component_id) || null, flowIds.get(link.flow_id) || null]);
@@ -1134,7 +1304,7 @@ export class ThreatModelService {
   }
 
   private static async validateArchitectureOwner(input:Input,model:Input,actor:BankUser,client:QueryClient) {
-    this.assertScopeReferences({assetId:input.assetId},actor);
+    await this.assertScopeReferences({assetId:input.assetId},actor,client);
     if(input.ownerId && !(await client.query('SELECT 1 FROM bank_users WHERE id=$1 AND is_active',[input.ownerId])).rowCount) throw new Error('An active architecture owner is required.');
     if(input.dataClassification) {
       const level=CONFIDENTIALITY_LEVELS[input.dataClassification as keyof typeof CONFIDENTIALITY_LEVELS];
@@ -1220,7 +1390,7 @@ export class ThreatModelService {
     };
   }
 
-  private static async lockModel(modelId: string, client: PoolClient): Promise<Input> { const result = await client.query<Input>('SELECT * FROM threat_models WHERE id=$1 FOR UPDATE', [modelId]); if (!result.rows[0]) throw new Error('Threat Model not found.'); return ThreatModelRepository.model(result.rows[0]); }
+  private static async lockModel(modelId: string, client: PoolClient): Promise<Input> { const result = await client.query<Input>("SELECT tm.*,COALESCE((SELECT jsonb_agg(g) FROM threat_model_active_grants g WHERE g.threat_model_id=tm.id),'[]') AS access_grants FROM threat_models tm WHERE id=$1 FOR UPDATE OF tm", [modelId]); if (!result.rows[0]) throw new Error('Threat Model not found.'); return ThreatModelRepository.model(result.rows[0]); }
   private static async lockThreatContext(threatId: string, client: PoolClient): Promise<{ model: Input; revisionId: string; inherentScore: number }> {
     const found=(await client.query<Input>('SELECT r.threat_model_id FROM threats t JOIN threat_model_revisions r ON r.id=t.revision_id WHERE t.id=$1',[threatId])).rows[0];
     if(!found)throw new Error('Threat not found.');
@@ -1238,22 +1408,33 @@ export class ThreatModelService {
   private static assertRead(model: Input, actor: BankUser): void {
     const required = CONFIDENTIALITY_LEVELS[model.dataClassification as keyof typeof CONFIDENTIALITY_LEVELS] || CONFIDENTIALITY_LEVELS.CONFIDENTIAL_SECURITY_ONLY;
     if (!actor.isActive || (CONFIDENTIALITY_LEVELS[actor.securityClearance] || 0) < required) throw new Error('Threat Model access is restricted by security clearance.');
-    if (appSec(actor) || actor.roles.includes('AUDITOR') || [model.businessOwnerId, model.technicalOwnerId, model.securityOwnerId].includes(actor.id)) return;
+    if (appSec(actor) || actor.roles.includes('AUDITOR') || [model.businessOwnerId, model.technicalOwnerId, model.securityOwnerId].includes(actor.id) || (model.accessGrants||[]).some((grant:Input)=>grant.user_id===actor.id&&new Date(grant.valid_until)>new Date())) return;
     throw new Error('Threat Model access is restricted to its owners, security reviewers, and auditors.');
   }
-  private static assertWrite(model: Input, actor: BankUser): void { this.assertRead(model, actor); if (actor.roles.includes('AUDITOR')) throw new Error('Auditor access is read-only.'); if (appSec(actor) || [model.businessOwnerId, model.technicalOwnerId, model.securityOwnerId].includes(actor.id)) return; throw new Error('Only a Threat Model owner or authorized security team member may modify this model.'); }
+private static assertWrite(model: Input, actor: BankUser): void { this.assertRead(model, actor); if (['RETIRED','ARCHIVED'].includes(model.status)) throw new Error('Retired or archived models are read-only.'); if (actor.roles.includes('AUDITOR')) throw new Error('Auditor access is read-only.'); if (appSec(actor) || [model.businessOwnerId, model.technicalOwnerId, model.securityOwnerId].includes(actor.id) || (model.accessGrants||[]).some((grant:Input)=>grant.user_id===actor.id&&grant.permission==='CONTRIBUTE'&&new Date(grant.valid_until)>new Date())) return; throw new Error('Only a Threat Model owner or authorized security team member may modify this model.'); }
   /** IDs received from the browser must reference an existing, actor-visible operational record; opaque strings cannot create cross-scope models. */
-  private static assertScopeReferences(input: Input, actor: BankUser): void {
+  private static async assertScopeReferences(input: Input, actor: BankUser,client:QueryClient=pgClient): Promise<void> {
     const addRecord = (record: any, label: string) => {
       if (!record) throw new Error(`${label} does not exist or is no longer available.`);
       const owners = new Set<string>();
-      for (const owner of [record.ownerId, record.managerId, record.businessOwnerId, record.businessOwnerUserId, record.technicalOwnerId, record.technicalOwnerUserId, record.requesterId, record.reporterId]) if (owner) owners.add(String(owner));
+      for (const owner of [record.ownerId, record.ownerUserId, record.managerId, record.businessOwnerId, record.businessOwnerUserId, record.technicalOwnerId, record.technicalOwnerUserId, record.requesterId, record.reporterId]) if (owner) owners.add(String(owner));
       if (!appSec(actor) && !owners.has(actor.id) && (!actor.departmentId || record.departmentId !== actor.departmentId)) throw new Error(`${label} access is restricted; every linked scope record requires independent access.`);
     };
-    const serviceId = text(input.serviceId, '', false); if (serviceId) addRecord(db.data.configurationItems.find((item) => item.id === serviceId) || db.data.applications.find((item) => item.id === serviceId), 'Service');
-    const assetId = text(input.assetId, '', false); if (assetId) addRecord(db.data.configurationItems.find((item) => item.id === assetId) || db.data.assets.find((item) => item.id === assetId), 'Asset');
-    const projectId = text(input.projectId, '', false); if (projectId) addRecord(db.data.projects.find((item) => item.id === projectId), 'Project');
-    const changeId = text(input.changeId, '', false); if (changeId) addRecord(db.data.tickets.find((item) => item.id === changeId && item.category === 'CHANGE_REQUEST'), 'Change request');
-    const releaseId = text(input.releaseId, '', false); if (releaseId) addRecord(db.data.tickets.find((item) => item.id === releaseId), 'Release record');
+    const inventory=async(value:string,fallback:'bank_applications'|'bank_assets')=>{
+      const canonical=(await client.query('SELECT * FROM configuration_items WHERE id=$1',[value])).rows[0];
+      if(canonical?.archived_at)throw new Error('Canonical inventory record is no longer available.');
+      const row=canonical||(await client.query(`SELECT * FROM ${fallback} WHERE id=$1`,[value])).rows[0];
+      return row?this.ticketAuthorizationRecord(row):undefined;
+    };
+    const serviceId = text(input.serviceId, '', false); if (serviceId) addRecord(await inventory(serviceId,'bank_applications'),'Service');
+    const assetId = text(input.assetId, '', false); if (assetId) addRecord(await inventory(assetId,'bank_assets'),'Asset');
+    const projectId = text(input.projectId, '', false); if (projectId) addRecord((await client.query("SELECT payload FROM legacy_json_records WHERE collection='projects' AND record_id=$1",[projectId])).rows[0]?.payload,'Project');
+    for(const [field,label] of [['changeId','Change request'],['releaseId','Release record']] as const){
+      const value=text(input[field],'',false);if(!value)continue;
+      const row=(await client.query('SELECT * FROM tickets WHERE id=$1',[value])).rows[0];
+      const record=row?this.ticketAuthorizationRecord(row):undefined;
+      addRecord(field==='changeId'&&record?.category!=='CHANGE_REQUEST'?undefined:record,label);
+      if(!AuthService.canAccessResource({user:actor,action:'READ',resourceType:'TICKET',resource:record}).allowed)throw new Error(`${label} access is restricted.`);
+    }
   }
 }

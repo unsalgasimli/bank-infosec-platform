@@ -2,7 +2,7 @@ import type { ConfidentialityTier } from './auth.js';
 import type { RiskRating } from './ticket.js';
 import type { architectureComponentTypes, architectureExposures, architecturePrivileges, architectureHosting, architectureEnvironments, architectureIntegrity, architectureLogging } from '../threat-architecture.js';
 
-export type ThreatModelStatus = 'DRAFT' | 'IN_REVIEW' | 'CHANGES_REQUIRED' | 'APPROVED' | 'REVIEW_REQUIRED' | 'SUPERSEDED' | 'ARCHIVED';
+export type ThreatModelStatus = 'DRAFT' | 'IN_REVIEW' | 'CHANGES_REQUIRED' | 'APPROVED' | 'REVIEW_REQUIRED' | 'SUPERSEDED' | 'RETIRED' | 'ARCHIVED';
 export type ThreatModelRevisionStatus = 'DRAFT' | 'IN_REVIEW' | 'CHANGES_REQUIRED' | 'APPROVED' | 'SUPERSEDED';
 export type ThreatModelApplicabilityDecision = 'REQUIRED' | 'NOT_REQUIRED' | 'SECURITY_REVIEW_REQUIRED';
 export type ThreatModelComponentType = typeof architectureComponentTypes[number];
@@ -33,6 +33,12 @@ export interface ThreatModel {
   departmentId?: string;
   currentRevisionId?: string;
   status: ThreatModelStatus;
+  retiredAt?: string;
+  archivedAt?: string;
+  retentionPolicyVersionId?: string;
+  retentionClass?: string;
+  legalHold?: boolean;
+  retainUntil?: string;
   nextReviewAt?: string;
   lastApprovedAt?: string;
   createdAt: string;
@@ -145,6 +151,14 @@ export interface ThreatModelTrustBoundary {
 }
 
 export interface Threat {
+  methodology?: 'STRIDE' | 'ABUSE_CASE' | 'ATTACK_TREE' | 'OTHER';
+  source?: 'MANUAL' | 'AI_ASSISTED' | 'RULE' | 'IMPORT' | 'LEGACY_UNSPECIFIED';
+  assumptions?: string;
+  confidentialityImpact?: number | null;
+  integrityImpact?: number | null;
+  availabilityImpact?: number | null;
+  securityProperties?: string[];
+  analysisVersion?: number;
   id: string;
   contentVersion?: number;
   lineageId?: string;

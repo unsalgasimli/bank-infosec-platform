@@ -1,5 +1,112 @@
 # Threat Modeling governance audit — 2026-09-04
 
+## Current handoff and verification
+
+Direct GitLab integration is deliberately deferred by the user. The ready,
+fail-closed adapter contract is documented in
+[threat-delivery-integration-contract.md](threat-delivery-integration-contract.md).
+No provider is registered and no deployment endpoint pretends to execute production.
+
+This is a locally implemented and tested governance domain, **not full operational
+bank-grade acceptance or compliance certification**. Read the limitations below;
+the historical 039 baseline report later in this document is superseded by this section.
+
+### Concise implementation report
+
+1. **Architecture findings:** reused the first-class PostgreSQL Threat Model domain,
+   canonical CMDB/applications/tickets, central authentication/ABAC, central audit,
+   immutable approval snapshots, versioned policies and transactional outbox.
+2. **Major defects closed:** stale approval cycles, frontend-inferred trust crossings,
+   unverifiable risk reduction, scope/clearance disclosure through reporting,
+   stale attachment scan/encryption claims, unbounded exception renewal, missing
+   lifecycle authority and weak canonical-reference integrity.
+3. **Reuse:** existing risk-register links remain separate from threats; implementation
+   tickets remain separate from verified controls. Findings reference canonical
+   CMDB/Cortex findings or existing security tickets rather than a parallel inventory.
+4. **Redesign:** normalized requirements/catalog mappings, immutable threat lineage,
+   scoped shared-control verification, structured security architecture, analyst
+   dispositions/attack trees, live finding fingerprints and revision-bound evidence.
+5. **Migrations:** additive 032–050; latest 050, ledger count 51 in
+   `bank_threat_integration_20260904` only. No operational DB migration.
+   Applied migrations were never rewritten. 041 fixes attack-tree recursion;
+   048/049 correct the renewal lineage lookup against normalized membership.
+   050 backfills resolvable canonical FKs and retains unresolved legacy references
+   explicitly rather than fabricating or deleting records.
+6. **Backend/services:** authoring/analysis, scope authorization, review/approval,
+   findings/reassessment, compliance validation and replacement, granular grants,
+   retirement/holds/archive, renewal/escalation, scoped reporting/search, evidence
+   download integrity and an unconfigured delivery extension contract.
+7. **Workflows:** immutable approved revisions; material/periodic/finding/compliance
+   changes create a fresh review draft. Retirement requires retained change evidence
+   and a different CISO. Hold release requires an independent CISO. High/Critical
+   renewals need fresh assessment/evidence/remediation status plus separate security
+   escalation before final CISO approval. Scheduler expiry uses model-first locking.
+8. **Policy limits:** TM-0–3 hard floors; reviews 24/12/12/6 months;
+   exceptions Critical emergency 7, High 30, Medium 90, Low 180 days;
+   post-emergency review/update 2/5 bank business days; at least lifecycle plus
+   seven years after decommission (internal bank policy, not a claimed legal minimum).
+   Access grants expire within 366 days and never override clearance/approval roles.
+9. **UI:** real persisted architecture editor and selectable SVG DFD; threat context,
+   suggestions/dispositions and attack cases; findings; requirements/compliance;
+   grant/revocation and retirement/retention forms; progressively disclosed server-side
+   scope, exact threat/control/compliance and deadline filters; scoped
+   coverage/gap metrics; audited JSON and script-free printable HTML evidence packs.
+10. **Integrations:** canonical scope FKs, findings-to-control assumptions, CMDB
+    material-field paths, ticket implementation signals, risk links and release
+    gate consumption. GitLab has only a typed, disabled extension boundary by request.
+    Typed HTTPS/commit/pipeline/environment claims are not trusted provider evidence.
+11. **Security hardening:** model clearance and scope on lists/reports/downloads;
+    auditor read-only; author/approver separation; immutable grant/compliance/
+    retention/escalation history; live scan-state checks; SHA-256 byte verification
+    before audited TM evidence delivery; explicit S3 SSE-S3/SSE-KMS confirmation.
+    Local development files are correctly labelled not encrypted. The S3 request
+    behavior follows the [AWS S3 encryption contract](https://docs.aws.amazon.com/AmazonS3/latest/userguide/specifying-s3-encryption.html).
+12. **Performed verification:** 25 PostgreSQL integration tests (including the parent),
+    26 pure policy/authoring/adapter/report tests, 15 storage/gate/workflow/scheduler
+    tests: **66 passed** across those targeted runs. The byte/storage/delivery adapters
+    use stubs; persisted authorization/lifecycle tests use the isolated real database.
+    Full client/server build, scoped client TypeScript and diff whitespace checks passed.
+    The full repo test command additionally completed with **196 passed, 30 failed,
+    10 skipped (236 total)** in the isolated fixture profile; it is not a green
+    whole-platform acceptance run. Failures include directory-login fixture expectations,
+    LDAP sync database-lock prerequisites, undefined ticket keys in graph/workflow
+    launch, SLA fixture dates and routing/authorization expectations. Their baseline
+    status was not verified and unrelated production code was not rewritten to hide them.
+13. **Remaining limitations / acceptance work:** operational migration, authenticated
+    browser acceptance, live worker/provider delivery and production rollout have not
+    been performed. Compliance owners must validate actual applicable catalog content;
+    no legal certification was invented. Direct GitLab activation is user-deferred.
+    Retired/archive records and holds are implemented, but **controlled physical
+    destruction of retained database records/storage objects is not implemented**;
+    there is no hidden purge bypass or claim that archiving deletes data. Ambiguous
+    historical lineage remains explicit/unmerged. Search covers model/threat/control/
+    compliance text, exact threat ID/key, control/compliance IDs, owners, service/asset,
+    status, tier, risk, classification, threat/review due dates and approved/expired
+    exception expiry, scoped to current revisions. These filters are available in the UI;
+    exhaustive repository/derived-release-gate filtering is not shipped. Detail headers
+    now use the actual persisted current revision number and policy-derived tier.
+
+### Continuation migrations since the 039 baseline
+
+| Migration | Persisted capability |
+| --- | --- |
+| 040–041 | Structured threat analysis, provenance/disposition, validated abuse/attack trees |
+| 042 | Canonical finding assumptions, source fingerprints and reassessment history |
+| 043 | Revision-scoped evidence references without copying old PASS verification |
+| 044 | Expiring scoped grants and independent compliance decisions |
+| 045–046 | Evidenced retirement, holds/archive/retention and retired content guards |
+| 047–049 | Renewal assessment anchors and independent High/Critical escalation |
+| 050 | Canonical scope foreign keys; explicit unresolved legacy-reference ledger |
+
+### Rollout boundary
+
+No commit, push, operational migration, Docker refresh, service restart, remote
+GitLab call, S3/KMS operation or production deployment was performed by this task.
+Unrelated concurrent Wind Garden/Alive UI edits and staged changes were preserved.
+The broader failing tests and unperformed operational acceptance must not be
+collapsed into the targeted passing result. The complete 40-section brief remains
+the acceptance scope; the outstanding items above are not silently declared done.
+
 ## Architecture decision (before implementation)
 
 Extend the existing first-class domain and immutable numbered migrations. Do not
@@ -43,7 +150,7 @@ bank policy, not a claimed statutory minimum.
 Implementation and results are recorded here at handoff. No production deployment,
 external pipeline enforcement or compliance certification is implied by source tests.
 
-## Implementation report
+## Historical 039 baseline report (superseded by current handoff above)
 
 **Status: substantial implementation, NOT the complete 40-section definition of done.**
 
@@ -71,8 +178,9 @@ external pipeline enforcement or compliance certification is implied by source t
    cycles; immutable approval packages; and release authorization consumption.
 5. **DB migrations.** Additive `032_threat_model_governance.sql`,
    `033_threat_governance_execution.sql`, `034_threat_emergency_lifecycle.sql`,
-   `035_threat_control_catalog.sql`, `036_threat_control_catalog_guards.sql` and
-   `037_threat_lineage_and_editing.sql` and `038_threat_architecture_editing.sql`
+   `035_threat_control_catalog.sql`, `036_threat_control_catalog_guards.sql`,
+   `037_threat_lineage_and_editing.sql`, `038_threat_architecture_editing.sql` and
+   `039_threat_architecture_security_context.sql`
    were applied successfully to the separately
    created `bank_threat_integration_20260904` database. Existing migrations were not
    rewritten. These migrations were **not applied to the operational database**.
@@ -93,6 +201,12 @@ external pipeline enforcement or compliance certification is implied by source t
    validate endpoint/boundary scope, derive crossings, prevent removal of referenced
    draft objects and invalidate evidence scope on structural or data-context changes.
    Existing approved content and stored snapshots are not rewritten by this migration.
+   Migration 039 adds ten component kinds (24 total), node exposure/authentication/
+   privileges/hosting/environment, and flow authorization, encryption mechanism/version,
+   integrity, internet exposure, third-party involvement, logging and purpose. Unknown
+   defaults do not assert protection. Enums, bounded columns and contradictory unencrypted
+   transport claims are DB-constrained; the existing architecture guards cover every new
+   security field. Ledger latest: 039, migration count: 40, isolated database only.
 6. **Backend/services.** Screening, policy version creation, scope optimistic locking,
    requirement creation/control linkage, data-object linkage, compliance-reference
    proposals, threat transitions, bounded exceptions, snapshot export, authorization
@@ -139,6 +253,12 @@ external pipeline enforcement or compliance certification is implied by source t
    missing boundaries roll back the complete operation. Unknown legacy zones remain
    representable for revalidation but are release-blocking. Persisted node criticality,
    flow classification and boundary crossings supply screening floors.
+   Persisted internet exposure, third-party involvement, privileged nodes, cloud hosting,
+   identity-provider and HSM/KMS components also supply non-editable screening floors.
+   Canonical CI criticality includes component-linked assets, not just model-level links.
+   A flow's explicit non-public flag cannot negate a public component's screening signal.
+   Revision copying uses the same persisted-field allowlist as authoring, preserving all
+   security context while generating fresh identities/counters and requiring re-verification.
    Emergency records enforce REQUESTED -> APPROVED/REJECTED, APPROVED ->
    DEPLOYED/REVOKED, DEPLOYED -> CLOSED. Independent CISO authorization, a consumed
    matching release authorization, clean change-ticket evidence, an independent
@@ -177,6 +297,10 @@ external pipeline enforcement or compliance certification is implied by source t
    graph-constraint errors. Flow classifications are clearance-checked and may raise
    the model's confidentiality label, with audit and re-screening; lowering a flow's
    classification never automatically lowers the model's label.
+   Node and flow security-context controls use shared vocabularies, explicit unknown/yes/no
+   choices and server-side validation. These are recorded architecture assertions, not
+   verification results. No new blanket release gate for every unknown optional field is
+   claimed; actual assurance still requires scoped, independent evidence verification.
 10. **Integrations.** Existing clean ticket evidence, remediation tickets and risk
     links remain. CMDB/project material-change events carry source IDs/reasons and
     skip known non-security fields. The scheduler emits a durable governance tick.
@@ -209,8 +333,8 @@ external pipeline enforcement or compliance certification is implied by source t
     Threat/control mutations and exception decisions acquire the model lock first.
     Verification-required outbox keys distinguish each threat-content/control-scope
     transition; the original request correlation ID is retained in audit and payload.
-12. **Tests/results.** Eighteen architecture/authoring/policy tests and thirteen gate/workflow/scheduler
-    tests passed. Sixteen isolated PostgreSQL tests (including the parent lifecycle
+12. **Tests/results.** Twenty-two architecture/authoring/policy tests and thirteen gate/workflow/scheduler
+    tests passed. Seventeen isolated PostgreSQL tests (including the parent lifecycle
     test) passed:
     actual persistence, IDOR/admin denial, tier floors, duplicate rollback, review-cycle
     invalidation, evidence verification, residual risk, direct SQL immutability,
@@ -237,22 +361,26 @@ external pipeline enforcement or compliance certification is implied by source t
     removal denial, audited unreferenced draft removal, confidentiality escalation without
     automatic downgrade, data-context outbox invalidation, re-screening/reverification,
     independent approval, immutable export hashes and faithful structural revision copies.
-    Total: 47 targeted
+    Extended-context checks cover all shared component kinds, unknown versus false,
+    invalid enums/lengths, contradictory encryption, all 13 new field mutations advancing
+    architecture/content versions, historical PASS retention with invalidated scope,
+    database constraints, persisted screening floors, complete context copies and immutable
+    original approval exports. The final isolated suite passed on its first run in this
+    continuation, with no service restart or operational migration.
+    Total: 52 targeted
     tests, including the integration parent test.
     Server TypeScript and scoped Threat Modeling client TypeScript checks
-    passed. An attempted whole-project build failed in concurrently edited, unrelated
+    passed, along with `git diff --check`. In an earlier continuation, an attempted whole-project build failed in concurrently edited, unrelated
     `AliveTicketInspector.tsx`; that file was not changed here. Full suite, authenticated
     browser QA, live worker delivery and production deployment are not verified.
-    The default operational-profile test setup hit hydration/pool timeouts on this
-    continuation; the regression tests passed when hydrated from the isolated test DB.
+    In earlier continuations, the default operational-profile test setup hit hydration/pool
+    timeouts; the regression tests passed when hydrated from the isolated test DB.
     No operational configuration or running service was changed to make tests pass.
     A later isolated-test connection attempt timed out before the lifecycle suite started.
     PostgreSQL readiness was checked read-only; the standalone retry passed all 16 tests
     without restarting services or modifying connection configuration.
-13. **Outstanding implementation and rollout work.** These are not declared complete:
-    richer architecture component types/properties, typed encryption/authorization/
-    integrity/hosting details beyond the existing schema, and extended threat attributes/
-    analyst-disposition tooling;
+13. **Historical outstanding list at 039.** This records the old baseline, not current status; use item 13 in the current handoff above:
+    extended threat attributes and analyst-disposition tooling;
     explicit historical lineage reconciliation and merge/split workflows (legacy roots
     remain intentionally uncorrelated);
     fully authoritative inventory scope FK migration and comprehensive access grants;

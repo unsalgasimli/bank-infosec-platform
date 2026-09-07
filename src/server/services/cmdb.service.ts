@@ -5,6 +5,7 @@ import type { CIRecordLink, CIRelationship, CIType, ConfigurationItem, Relations
 import { db } from '../db/database.js';
 import { AuditService } from './audit.service.js';
 import { OutboxService } from './outbox.service.js';
+import { hasMaterialSecurityChange, threatMaterialChangeFields } from './threat-model-policy.js';
 
 const enterpriseCmdbRoles = ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'IT_ADMIN', 'CORE_BANK_ADMIN'];
 const scopedCmdbRoles = ['INFOSEC_MANAGER', 'DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD'];
@@ -115,7 +116,7 @@ export class CMDBService {
     const changes = Object.entries(input).filter(([key, value]) => key !== 'version' && JSON.stringify((ci as any)[key]) !== JSON.stringify(value)).map(([field, newValue]) => ({ field, oldValue: (ci as any)[field], newValue }));
     Object.assign(ci, candidate, { version: ci.version + 1, updatedAt: new Date().toISOString(), updatedBy: actor.id });
     if (ci.lifecycleStatus === 'RETIRED' || ci.lifecycleStatus === 'DISPOSED') ci.status = 'RETIRED';
-    this.audit(actor, ci.status === 'RETIRED' ? 'CMDB_CI_RETIRED' : 'CMDB_CI_UPDATED', 'CONFIGURATION_ITEM', ci.id, { changes }, changes); if (changes.some((change) => ['details', 'typeId', 'environment', 'criticality', 'businessCriticality', 'departmentId', 'technicalOwnerUserId', 'businessOwnerUserId'].includes(change.field))) OutboxService.enqueue({ topic: 'cmdb.ci.material-change', aggregateType: 'CONFIGURATION_ITEM', aggregateId: ci.id, payload: { ciId: ci.id, actorId: actor.id, changedFields: changes.map((change) => change.field) } }); db.persist(); return this.withQuality(ci);
+    this.audit(actor, ci.status === 'RETIRED' ? 'CMDB_CI_RETIRED' : 'CMDB_CI_UPDATED', 'CONFIGURATION_ITEM', ci.id, { changes }, changes); const changedFields=threatMaterialChangeFields(changes); if (hasMaterialSecurityChange(changedFields)) OutboxService.enqueue({ topic: 'cmdb.ci.material-change', aggregateType: 'CONFIGURATION_ITEM', aggregateId: ci.id, payload: { ciId: ci.id, actorId: actor.id, changedFields } }); db.persist(); return this.withQuality(ci);
   }
 
   static relationship(ciId: string, raw: unknown, actor: BankUser): CIRelationship {

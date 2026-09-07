@@ -23,3 +23,17 @@ The world idles with gentle sail motion and water highlights. Dragging orbits wi
 Mobile gets a compact fixed-camera exhibit after the form. Reduced motion and pause use event-driven still rendering. A local SVG illustration remains behind the lazily initialized WebGL scene and serves as the failure fallback. Hidden pages stop rendering; geometry, materials, listeners, observers and renderer are disposed on teardown. DPR is capped and can step down under sustained slow frames.
 
 The success transition passes through the garden arch in about 800 ms. Reduced motion skips it. Errors remain explicit inline messages and a quiet instrument-color change. No game or scene initialization can gate authentication.
+
+## Seasonal day cycle
+
+Live mode follows the current date at the garden's fixed Baku coordinates, using [NOAA's approximate solar equations](https://www.gml.noaa.gov/grad/solcalc/solareqns.PDF). Latitude, longitude, declination and equation of time determine elevation, azimuth, sunrise and sunset. This is a clear-sky artistic simulation, not a weather forecast or precision astronomical instrument; the moon and stars are illustrative scenery. There is no geolocation request or network dependency.
+
+Sun direction and atmospheric color drive the real scene lighting, shadow direction, water response and page palette. Lanterns fade on around sunset; diffuse blue moonlight and a small instanced firefly population appear after dark. The bird settles. A clock opens an accessible range control, dawn/noon/sunset/night presets, a two-minute day preview, pause and return to live. The preview pauses its progression in hidden tabs and is disabled for reduced motion. Manual time changes and a static night fallback remain available. Changes to time never alter game progress or authentication values.
+
+Palette foregrounds are chosen to retain at least 4.5:1 contrast against the page surface throughout the cycle. Scene resources still share the login teardown lifecycle; shadow refreshes are bounded, and the existing low-performance still mode remains available.
+
+## Model refinement
+
+The ceramic arch has bevelled edges, inset contours, radial joints and footings. The island has turned lips, a recessed band and radial paving joints. Sail instruments include raised hems, a centre seam, mounting bolts, axle collars and graduated brass rims. The bell has a hollow turned profile and a separate clapper. A glazed porcelain bird replaces the primitive folded body; overlapping feathers, a swept tail, eyes and articulated feet retain the existing flight and discovery interactions.
+
+Botanicals use curved, veined surfaces, stems, planted pockets and river stones. Cupped lily leaves have radial veins; the final flower has a detailed pollen centre, and butterflies have curved wings and bodies. Local deterministic clay and linen bump maps share two small textures. A generated studio environment supplies material reflections while solar lighting controls direct illumination. Static fittings are merged by material, foliage remains instanced, and environment targets and textures are disposed with the scene. The model geometry is approximately 134k triangles on desktop and 65k in compact mode; this is a geometry budget, not a claim of frame rate on user hardware.

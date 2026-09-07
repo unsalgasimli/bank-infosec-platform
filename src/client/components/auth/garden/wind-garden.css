@@ -1,4 +1,6 @@
 .garden-login {
+  position: relative;
+  isolation: isolate;
   --garden-paper: #ede9df;
   --garden-ink: #313d37;
   --garden-muted: #73776b;
@@ -8,8 +10,12 @@
   min-height: 100dvh;
   color: var(--garden-ink);
   background: var(--garden-paper);
+  transition: background-color .4s, color .4s;
   font-family: "Segoe UI", Arial, sans-serif;
-  overflow: clip;
+  height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .garden-login * {
   box-sizing: border-box;
@@ -41,6 +47,8 @@
   top: 15px;
 }
 .garden-header {
+  position: relative;
+  z-index: 1;
   height: 112px;
   padding: 0 clamp(28px, 4.4vw, 100px);
   display: flex;
@@ -130,7 +138,7 @@
   letter-spacing: 1.6px;
   padding-top: 24px;
   color: var(--garden-muted);
-  z-index: 1;
+  z-index: 5;
   pointer-events: none;
 }
 .garden-catalog__line {
@@ -288,6 +296,8 @@
 .garden-access__content {
   margin: auto 0;
   padding: 65px 0;
+  transform: translateY(-42px);
+  transition: transform 0.35s ease;
 }
 .garden-access h2 {
   font-family: Georgia, "Times New Roman", serif;
@@ -304,7 +314,7 @@
   color: var(--garden-muted);
   font-size: 12px;
   line-height: 1.7;
-  margin: 22px 0 35px;
+  margin: 22px 0 29px;
   max-width: 280px;
 }
 .garden-form {
@@ -318,25 +328,76 @@
   margin-bottom: 9px;
   font-weight: 600;
 }
+.garden-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 58px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--garden-rule) 92%, var(--garden-ink));
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--garden-field) 92%, white), var(--garden-field));
+  box-shadow:
+    0 8px 20px #313d370a,
+    inset 0 1px 0 #fff9;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+.garden-field::after {
+  content: "";
+  position: absolute;
+  left: 44px;
+  top: 13px;
+  bottom: 13px;
+  width: 1px;
+  background: var(--garden-rule);
+  pointer-events: none;
+}
+.garden-field:focus-within {
+  border-color: var(--garden-clay);
+  box-shadow:
+    0 10px 24px #994e3620,
+    0 0 0 3px #994e3614,
+    inset 0 1px 0 #fff9;
+  transform: translateY(-1px);
+}
+.garden-field__icon {
+  position: absolute;
+  left: 14px;
+  z-index: 1;
+  color: var(--garden-clay);
+  pointer-events: none;
+}
+.garden-field__meta {
+  position: absolute;
+  right: 14px;
+  color: var(--garden-muted);
+  font-family: Consolas, monospace;
+  font-size: 8px;
+  letter-spacing: 1px;
+  pointer-events: none;
+}
 .garden-form input {
   width: 100%;
   min-width: 0;
-  background: var(--garden-field);
-  border: 1px solid var(--garden-rule);
-  border-radius: 3px;
+  height: 56px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--garden-ink);
-  height: 50px;
-  padding: 0 14px;
+  padding: 0 92px 0 59px;
   font-size: 12px;
   box-shadow: none;
 }
 .garden-form input::placeholder {
-  color: #898b7d;
+  color: var(--garden-muted);
   font-weight: 400;
 }
 .garden-form input:focus {
-  outline: 2px solid var(--garden-clay);
-  outline-offset: 2px;
+  outline: none;
 }
 .garden-password-label {
   display: flex;
@@ -356,43 +417,61 @@
   position: relative;
 }
 .garden-password input {
-  padding-right: 46px;
+  padding-right: 92px;
+}
+.garden-password .garden-field__meta {
+  right: 59px;
 }
 .garden-password button {
   position: absolute;
-  right: 4px;
-  top: 4px;
+  right: 7px;
+  top: 7px;
   display: grid;
   place-items: center;
   border: 0;
   width: 42px;
   height: 42px;
-  background: transparent;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--garden-paper) 70%, transparent);
   color: var(--garden-muted);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.garden-password button:hover {
+  background: color-mix(in srgb, var(--garden-clay) 14%, var(--garden-field));
+  color: var(--garden-clay);
 }
 .garden-login .garden-submit {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 26px;
-  background: var(--garden-clay);
+  margin-top: 22px;
+  background: var(--garden-button, var(--garden-clay));
   border: 1px solid var(--garden-clay);
-  color: #fff7e9;
-  border-radius: 3px;
-  height: 52px;
-  padding: 0 18px;
+  color: var(--garden-button-ink, #fff7e9);
+  border-radius: 10px;
+  height: 58px;
+  padding: 0 11px 0 19px;
   font-size: 12px;
   font-weight: 600;
   transition:
     background 0.2s,
-    transform 0.2s;
+    transform 0.2s,
+    box-shadow 0.2s;
 }
 .garden-submit:hover:not(:disabled) {
-  background: #7f3e2b;
+  filter: brightness(.93);
   transform: translateY(-1px);
+  box-shadow: 0 10px 22px #994e3630;
 }
 .garden-submit:disabled {
   opacity: 0.8;
+}
+.garden-submit > svg {
+  width: 34px;
+  height: 34px;
+  padding: 8px;
+  border-radius: 50%;
+  background: #fff3df2c;
 }
 .garden-session-note {
   font-size: 9px;
@@ -447,7 +526,7 @@
   width: 320px;
   max-width: 100%;
   padding: 20px 22px;
-  background: #f7f3e9;
+  background: var(--garden-field);
   border: 1px solid var(--garden-rule);
   box-shadow: 0 15px 50px #383c3117;
 }
@@ -515,7 +594,7 @@
 }
 .garden-dial circle.is-target {
   fill: #647d60;
-  stroke: #f7f3e9;
+  stroke: var(--garden-field);
   stroke-width: 2;
 }
 .garden-dial path {
@@ -636,6 +715,7 @@
   }
   .garden-access__content {
     padding: 35px 0;
+    transform: translateY(-22px);
   }
   .garden-access h2 {
     font-size: 49px;
@@ -702,6 +782,7 @@
     margin: 0 auto;
     width: 100%;
     max-width: 440px;
+    transform: none;
   }
   .garden-access h2 {
     font-size: 52px;

@@ -1,0 +1,10 @@
+{
+  "checks": [
+    "Dawn, noon, sunset and night render without shader errors",
+    "Reduced motion disables automatic time-lapse and preserves manual controls",
+    "Accelerated cycle advances time; pause holds its selected time",
+    "Return to live works and preserves authentication input",
+    "Time controls fit 390px mobile"
+  ],
+  "errors": []
+}

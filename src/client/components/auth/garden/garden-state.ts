@@ -43,6 +43,7 @@ export function gardenSolved(state: GardenState): boolean {
   return state.turns.every((turn, i) => turn % 8 === state.targets[i]);
 }
 export interface GardenPresentation {
+  daylight: import("./day-cycle.js").Daylight;
   state: GardenState;
   phase: GardenPhase;
   paused: boolean;

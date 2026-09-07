@@ -75,6 +75,8 @@ const configSchema = z.object({
   // Object Storage Configuration (Cloud S3 / Local Disk - No MinIO)
   STORAGE_PROVIDER: z.enum(['s3', 'local']).default('local'),
   S3_BUCKET: z.string().default('apex-bank-infosec-artifacts'),
+  S3_ENCRYPTION: z.enum(['AES256','aws:kms']).default('AES256'),
+  S3_KMS_KEY_ID: z.string().optional(),
   S3_REGION: z.string().default('us-east-1'),
   S3_ENDPOINT: z.string().optional(), // For custom S3-compatible cloud endpoints
   S3_ACCESS_KEY_ID: z.string().optional(),

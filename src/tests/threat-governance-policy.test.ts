@@ -5,12 +5,17 @@ import { canonicalJson } from '../shared/canonical-json.js';
 import { riskRating } from '../shared/risk-matrix.js';
 import { evaluateSecurityReleaseGate } from '../server/services/security-release-gate.service.js';
 import type { BankUser } from '../shared/types/auth.js';
+import { threatMaterialChangeFields } from '../server/services/threat-model-policy.js';
 
 const answers = () => Object.fromEntries(screeningRules.map(rule => [rule.signal, false]));
 test('material changes are distinguished from harmless metadata refreshes', () => {
   assert.equal(hasMaterialSecurityChange(['name','tags','lastSeenAt','updatedAt','departmentId']),false);
   assert.equal(hasMaterialSecurityChange(['networkInterfaces']),true);
   assert.equal(hasMaterialSecurityChange(['authentication']),true);
+  assert.equal(hasMaterialSecurityChange(threatMaterialChangeFields([{field:'details',oldValue:{notes:'a',authentication:'SSO'},newValue:{notes:'b',authentication:'SSO'}}])),false);
+  assert.equal(hasMaterialSecurityChange(threatMaterialChangeFields([{field:'details',oldValue:{authentication:'SSO'},newValue:{authentication:'LOCAL'}}])),true);
+  assert.equal(hasMaterialSecurityChange(['details.unknownSecurityExtension']),true);
+  assert.equal(hasMaterialSecurityChange(['ipAddress']),true);
 });
 test('screening requires explicit answers; empty questionnaire cannot get TM-0', () => {
   assert.throws(() => evaluateScreening({}, screeningRules), /answer required/);

@@ -3,15 +3,21 @@ import {
   ArrowRight,
   Eye,
   EyeOff,
+  KeyRound,
   LockKeyhole,
   LoaderCircle,
   ShieldCheck,
+  UserRound,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.js";
 import { useI18n } from "../../context/I18nContext.js";
 import { WindGarden } from "./garden/WindGarden.js";
 import type { GardenPhase } from "./garden/garden-state.js";
 import "./garden/wind-garden.css";
+import "./garden/day-cycle.css";
+import { useDayCycle } from "./garden/useDayCycle.js";
+import { dayPalette } from "./garden/day-cycle.js";
+import { DaySky } from "./garden/DaySky.js";
 
 interface BankAuthPortalProps {
   onLoginSuccess?: () => void;
@@ -35,6 +41,7 @@ export const BankAuthPortal: React.FC<BankAuthPortalProps> = ({
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
   const mounted = useRef(true);
+  const dayCycle = useDayCycle(reducedMotion);
   const successCallback = useRef(onLoginSuccess);
   successCallback.current = onLoginSuccess;
   const copy = (en: string, az: string) => (language === "az" ? az : en);
@@ -109,7 +116,10 @@ export const BankAuthPortal: React.FC<BankAuthPortalProps> = ({
       className={`garden-login ${phase === "entering" ? "is-entering" : ""}`}
       data-i18n-skip
       data-motion={reducedMotion ? "reduced" : "full"}
+      data-day-period={dayCycle.daylight.period}
+      style={dayPalette(dayCycle.daylight) as React.CSSProperties}
     >
+      <DaySky day={dayCycle.daylight} />
       <a className="garden-skip" href="#garden-username">
         {copy("Skip to sign in", "Girişə keç")}
       </a>
@@ -156,6 +166,7 @@ export const BankAuthPortal: React.FC<BankAuthPortalProps> = ({
       </header>
       <div className="garden-layout">
         <WindGarden
+          dayCycle={dayCycle}
           language={language}
           phase={phase}
           reducedMotion={reducedMotion}
@@ -185,21 +196,25 @@ export const BankAuthPortal: React.FC<BankAuthPortalProps> = ({
               <label htmlFor="garden-username">
                 {t("Username or corporate email")}
               </label>
-              <input
-                id="garden-username"
-                name="username"
-                autoComplete="username"
-                autoCapitalize="none"
-                spellCheck={false}
-                required
-                value={usernameOrEmail}
-                onChange={(event) => setUsernameOrEmail(event.target.value)}
-                placeholder={copy("your.name@apex.az", "adınız@apex.az")}
-                readOnly={isLoading || !!currentUser}
-                aria-describedby={
-                  errorMessage ? "garden-auth-error" : undefined
-                }
-              />
+              <div className="garden-field">
+                <UserRound className="garden-field__icon" size={17} aria-hidden="true" />
+                <input
+                  id="garden-username"
+                  name="username"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  required
+                  value={usernameOrEmail}
+                  onChange={(event) => setUsernameOrEmail(event.target.value)}
+                  placeholder={copy("your.name@apex.az", "adınız@apex.az")}
+                  readOnly={isLoading || !!currentUser}
+                  aria-describedby={
+                    errorMessage ? "garden-auth-error" : undefined
+                  }
+                />
+                <span className="garden-field__meta">DIRECTORY</span>
+              </div>
               <label
                 className="garden-password-label"
                 htmlFor="garden-password"
@@ -207,7 +222,8 @@ export const BankAuthPortal: React.FC<BankAuthPortalProps> = ({
                 <span>{t("Password / Smart Card PIN")}</span>
                 {import.meta.env.DEV && <small>{t("Dev: optional")}</small>}
               </label>
-              <div className="garden-password">
+              <div className="garden-password garden-field">
+                <KeyRound className="garden-field__icon" size={17} aria-hidden="true" />
                 <input
                   id="garden-password"
                   name="password"
@@ -224,6 +240,7 @@ export const BankAuthPortal: React.FC<BankAuthPortalProps> = ({
                     errorMessage ? "garden-auth-error" : undefined
                   }
                 />
+                <span className="garden-field__meta">PIN</span>
                 <button
                   type="button"
                   onClick={() => setShowPassword((shown) => !shown)}

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { BankUser } from '../../shared/types/auth.js';
+import { canonicalJson } from '../../shared/canonical-json.js';
 
 export const exceptionLimits = { CRITICAL: 7, HIGH: 30, MEDIUM: 90, LOW: 180 } as const;
 export const reviewMonths = { 0: 24, 1: 12, 2: 12, 3: 6 } as const;
@@ -22,8 +23,19 @@ export const seniorRiskAuthority = (actor: BankUser): boolean => !actor.roles.in
 
 /** Descriptive changes and observation timestamps are not security architecture changes. */
 export function hasMaterialSecurityChange(fields: string[]): boolean {
-  const material = new Set(['scope','relatedAssetIds','businessCriticality','typeId','environment','criticality','details','network','networkInterfaces','storage','relationships','hosting','authentication','authorization','dataClassification','internetExposed','trustBoundary','cryptography','thirdPartyIntegration','operatingSystem','classification']);
-  return fields.some(field => material.has(field) || /^(network|security|identity|relationships|hosting)\./.test(field));
+  const material = new Set(['scope','relatedAssetIds','businessCriticality','typeId','environment','criticality','details','network','networkInterfaces','storage','relationships','hosting','authentication','authorization','dataClassification','internetExposed','trustBoundary','cryptography','thirdPartyIntegration','operatingSystem','osVersion','hostname','fqdn','ipAddress','classification']);
+  const harmlessDetails=new Set(['description','notes','displayName','tags','lastObservedAt','lastSeenAt','lastSyncAt','updatedAt']);
+  return fields.some(field => material.has(field) || /^(network|security|identity|relationships|hosting)\./.test(field) || field.startsWith('details.')&&!harmlessDetails.has(field.split('.')[1]));
+}
+
+/** Preserve exact changed metadata paths; unknown detail fields remain conservatively material. */
+export function threatMaterialChangeFields(changes:{field:string;oldValue:unknown;newValue:unknown}[]):string[]{
+  return changes.flatMap(change=>{
+    if(change.field!=='details')return [change.field];
+    const before=change.oldValue,after=change.newValue;
+    if(!before||!after||typeof before!=='object'||typeof after!=='object'||Array.isArray(before)||Array.isArray(after))return ['details'];
+    return [...new Set([...Object.keys(before),...Object.keys(after)])].sort().filter(key=>canonicalJson((before as Record<string,unknown>)[key]??null)!==canonicalJson((after as Record<string,unknown>)[key]??null)).map(key=>`details.${key}`);
+  });
 }
 
 export function evaluateScreening(answers: Record<string, unknown>, rules: ScreeningRule[], thresholds = { 1: 1, 2: 5, 3: 20 }) {

@@ -1,0 +1,258 @@
+.garden-day-sky {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    var(--garden-sky-top) 0%,
+    var(--garden-sky-horizon) 45%,
+    var(--garden-paper) 83%
+  );
+}
+.garden-day-sky > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.garden-sky-stars {
+  fill: #e6eef7;
+  opacity: var(--garden-night);
+}
+.garden-sky-haze {
+  fill: none;
+  stroke: var(--garden-sky-horizon);
+  stroke-width: 28;
+  opacity: 0.2;
+  filter: blur(20px);
+}
+.garden-sky-sun {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #fff0c8;
+  box-shadow:
+    0 0 55px 20px #fbd9a332,
+    0 0 100px 40px #ecc5a31c;
+  pointer-events: none;
+}
+.garden-sky-moon {
+  position: absolute;
+  width: 27px;
+  height: 27px;
+  top: 90px;
+  left: 48%;
+  border-radius: 50%;
+  background: #e6e5d6;
+  box-shadow:
+    0 0 32px 9px #d7e5f214,
+    inset -7px -3px 0 #8097ae;
+  transition: opacity 0.4s;
+}
+.garden-stage .garden-fallback {
+  filter: brightness(var(--garden-fallback-brightness, 1))
+    saturate(var(--garden-fallback-saturation, 1));
+}
+.garden-day-control {
+  margin-left: auto;
+  position: relative;
+  pointer-events: auto;
+  letter-spacing: normal;
+}
+.garden-day-trigger {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  border: 1px solid var(--garden-rule);
+  background: var(--garden-field);
+  color: var(--garden-ink);
+  border-radius: 20px;
+  padding: 8px 12px;
+  min-height: 36px;
+  font-size: 10px;
+}
+.garden-day-trigger > svg {
+  color: var(--garden-clay);
+}
+.garden-day-phase {
+  color: var(--garden-muted);
+  padding-left: 7px;
+  border-left: 1px solid var(--garden-rule);
+}
+.garden-day-mode {
+  font-size: 7px;
+  letter-spacing: 0.8px;
+  color: var(--garden-clay);
+}
+.garden-day-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 12px);
+  width: 310px;
+  max-width: calc(100vw - 50px);
+  padding: 17px 20px;
+  border: 1px solid var(--garden-rule);
+  background: var(--garden-field);
+  color: var(--garden-ink);
+  box-shadow: 0 15px 45px #0a16242b;
+  border-radius: 5px;
+}
+.garden-day-panel__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 8px;
+  letter-spacing: 1.3px;
+  color: var(--garden-muted);
+}
+.garden-day-panel button {
+  border: 0;
+  background: transparent;
+  color: var(--garden-ink);
+}
+.garden-day-panel__top button {
+  padding: 5px;
+}
+.garden-day-reading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 19px 0 24px;
+}
+.garden-day-reading strong {
+  font-family: Georgia, serif;
+  font-size: 37px;
+  font-weight: 400;
+  letter-spacing: -1px;
+}
+.garden-day-reading > span {
+  font-family: "Segoe UI", sans-serif;
+  font-size: 12px;
+}
+.garden-day-reading small {
+  display: block;
+  color: var(--garden-muted);
+  margin-top: 6px;
+  font-size: 9px;
+}
+.garden-day-panel label {
+  font-family: "Segoe UI", sans-serif;
+  display: block;
+  font-size: 10px;
+  margin-bottom: 10px;
+}
+.garden-day-panel input[type="range"] {
+  width: 100%;
+  display: block;
+  margin: 0;
+  height: 18px;
+  accent-color: var(--garden-clay);
+  cursor: ew-resize;
+}
+.garden-day-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  color: var(--garden-muted);
+  font-size: 8px;
+}
+.garden-day-events {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 18px;
+  color: var(--garden-muted);
+  font-size: 10px;
+}
+.garden-day-events > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.garden-day-events svg {
+  color: var(--garden-clay);
+}
+.garden-day-presets {
+  display: flex;
+  gap: 5px;
+  margin: 18px 0;
+}
+.garden-day-presets button {
+  flex: 1;
+  font-size: 9px;
+  padding: 9px 3px;
+  border: 1px solid var(--garden-rule);
+  border-radius: 3px;
+}
+.garden-day-presets button:hover {
+  background: var(--garden-paper);
+}
+.garden-day-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--garden-rule);
+}
+.garden-day-actions button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 0;
+  font-size: 9px;
+}
+.garden-day-actions button:last-child {
+  color: var(--garden-clay);
+}
+.garden-day-actions button:disabled {
+  opacity: 0.5;
+}
+.garden-day-panel > p {
+  font-family: "Segoe UI", sans-serif;
+  color: var(--garden-muted);
+  font-size: 9px;
+  line-height: 1.6;
+  margin: 13px 0 0;
+}
+@media (max-width: 1100px) {
+  .garden-day-phase {
+    display: none;
+  }
+  .garden-catalog {
+    gap: 9px;
+  }
+  .garden-catalog__line {
+    width: 18px;
+  }
+}
+@media (max-width: 420px) {
+  .garden-day-mode {
+    display: none;
+  }
+  .garden-day-trigger {
+    padding: 8px 9px;
+    gap: 6px;
+    font-size: 9px;
+  }
+  .garden-catalog {
+    font-size: 8px;
+    letter-spacing: 1px;
+  }
+  .garden-day-panel {
+    right: -2px;
+  }
+  .garden-sky-moon {
+    left: 68%;
+    top: 140px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .garden-login,
+  .garden-sky-moon {
+    transition: none;
+  }
+}

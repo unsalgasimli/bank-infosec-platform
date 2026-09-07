@@ -16,6 +16,8 @@ import {
   X,
 } from "lucide-react";
 import { GardenFallback } from "./GardenFallback.js";
+import { DayCycleControls } from "./DayCycleControls.js";
+import type { DayCycleController } from "./useDayCycle.js";
 import {
   createGarden,
   advanceGarden,
@@ -41,10 +43,12 @@ class GardenBoundary extends Component<
   }
 }
 export function WindGarden({
+  dayCycle,
   language,
   phase,
   reducedMotion,
 }: {
+  dayCycle: DayCycleController;
   language: "az" | "en";
   phase: GardenPhase;
   reducedMotion: boolean;
@@ -91,7 +95,11 @@ export function WindGarden({
       <div className="garden-catalog">
         <span className="garden-catalog__line" />
         <span>{copy("THE WIND GARDEN", "KÜLƏK BAĞI")}</span>
-        <span>VOL. 001</span>
+        <DayCycleControls
+          cycle={dayCycle}
+          language={language}
+          reducedMotion={reducedMotion}
+        />
       </div>
       <div className={`garden-stage ${ready ? "is-ready" : ""}`}>
         <GardenFallback
@@ -102,6 +110,7 @@ export function WindGarden({
           <GardenBoundary onError={onUnavailable}>
             <Suspense fallback={null}>
               <GardenScene
+                daylight={dayCycle.daylight}
                 state={state}
                 phase={phase}
                 paused={paused}

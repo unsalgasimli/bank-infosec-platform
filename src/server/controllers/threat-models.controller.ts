@@ -3,6 +3,8 @@ import { z } from 'zod';
 import type { AuthenticatedRequest } from '../middleware/auth.middleware.js';
 import { ThreatModelService } from '../services/threat-model.service.js';
 import { ThreatControlCatalogService } from '../services/threat-control-catalog.service.js';
+import { ThreatAnalysisService } from '../services/threat-analysis.service.js';
+import { ThreatGovernanceAdminService } from '../services/threat-governance-admin.service.js';
 
 const object = z.object({}).passthrough();
 const modelInput = object.extend({ title: z.string().trim().min(1).max(255), description: z.string().max(10000).optional(), organizationId: z.string().trim().min(1).optional(), serviceId: z.string().trim().optional(), assetId: z.string().trim().optional(), projectId: z.string().trim().optional(), changeId: z.string().trim().optional(), releaseId: z.string().trim().optional(), criticality: z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']).optional(), dataClassification: z.string().trim().optional(), businessOwnerId: z.string().trim().optional(), technicalOwnerId: z.string().trim().optional() });
@@ -30,6 +32,28 @@ export class ThreatModelsController {
   private static context(req: AuthenticatedRequest) { return { correlationId: req.correlationId, ipAddress: req.ip, userAgent: req.get('user-agent') }; }
 
   static list = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ threatModels: await ThreatModelService.list(req.user!, req.query) }));
+  static downloadEvidence = async(req:AuthenticatedRequest,res:Response):Promise<void>=>{
+    try{const evidence=await ThreatModelService.downloadEvidence(this.param(req.params.id),this.param(req.params.evidenceId),req.user!);res.set('Cache-Control','no-store');res.set('X-Content-Type-Options','nosniff');res.set('Content-Type','application/octet-stream');res.set('Content-Disposition',`attachment; filename*=UTF-8''${encodeURIComponent(evidence.fileName)}`);res.send(evidence.buffer);}
+    catch(error){res.status(403).json({success:false,error:error instanceof Error?error.message:'Evidence download denied.'});}
+  };
+  static replaceCompliance = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({mapping:await ThreatGovernanceAdminService.replaceComplianceMapping(this.param(req.params.id),req.body,req.user!)}));
+  static escalateException = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({review:await ThreatGovernanceAdminService.escalateException(this.param(req.params.id),this.param(req.params.exceptionId),req.body,req.user!)}),true);
+  static lifecycle = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({lifecycle:await ThreatGovernanceAdminService.lifecycle(this.param(req.params.id),req.user!)}));
+  static retire = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({request:await ThreatGovernanceAdminService.requestRetirement(this.param(req.params.id),req.body,req.user!)}),true);
+  static decideRetirement = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({decision:await ThreatGovernanceAdminService.decideRetirement(this.param(req.params.id),this.param(req.params.requestId),req.body,req.user!)}));
+  static retain = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({event:await ThreatGovernanceAdminService.retain(this.param(req.params.id),req.body,req.user!)}),true);
+  static grants = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>await ThreatGovernanceAdminService.grants(this.param(req.params.id),req.user!));
+  static grant = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({grant:await ThreatGovernanceAdminService.grant(this.param(req.params.id),req.body,req.user!)}),true);
+  static revokeGrant = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({grant:await ThreatGovernanceAdminService.revoke(this.param(req.params.id),this.param(req.params.grantId),req.body,req.user!)}));
+  static decideCompliance = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({decision:await ThreatGovernanceAdminService.decideCompliance(this.param(req.params.id),req.body,req.user!)}));
+  static analysis = (req:AuthenticatedRequest,res:Response):Promise<void> => {res.set('Cache-Control','no-store');return this.execute(req,res,async()=>({analysis:await ThreatAnalysisService.list(this.param(req.params.id),req.query,req.user!)}));};
+  static suggestThreats = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>await ThreatAnalysisService.suggest(this.param(req.params.id),req.body,req.user!));
+  static importSuggestion = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({suggestion:await ThreatAnalysisService.importSuggestion(this.param(req.params.id),req.body,req.user!)}),true);
+  static disposeSuggestion = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({disposition:await ThreatAnalysisService.decide(this.param(req.params.id),this.param(req.params.suggestionId),req.body,req.user!)}));
+  static attackCase = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({attackCase:await ThreatAnalysisService.addCase(this.param(req.params.id),req.body,req.user!)}),true);
+  static findingLinks = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({links:await ThreatModelService.findingLinks(this.param(req.params.id),req.user!)}));
+  static linkFinding = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({link:await ThreatModelService.linkFinding(this.param(req.params.id),req.body,req.user!)}),true);
+  static assessFinding = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({assessment:await ThreatModelService.assessFinding(this.param(req.params.id),this.param(req.params.linkId),req.body,req.user!)}),true);
   static controlCatalog = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({definitions:await ThreatControlCatalogService.list(req.query,req.user!)}));
   static createControlDefinition = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({definition:await ThreatControlCatalogService.create(object.parse(req.body),req.user!,this.context(req))}),true);
   static decideControlDefinition = (req:AuthenticatedRequest,res:Response):Promise<void> => this.execute(req,res,async()=>({decision:await ThreatControlCatalogService.decide(this.param(req.params.id),object.parse(req.body),req.user!,this.context(req))}));

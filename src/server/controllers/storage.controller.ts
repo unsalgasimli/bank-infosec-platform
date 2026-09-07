@@ -58,7 +58,9 @@ export class StorageController {
         mimeType: uploadResult.mimeType,
         evidenceType: (evidenceType as EvidenceType) || 'AUDIT_WORKPAPER',
         sha256Checksum: uploadResult.sha256Hash,
-        isEncrypted: true,
+        isEncrypted: Boolean(uploadResult.encryption),
+        storageProvider: uploadResult.storageProvider,
+        encryptionAlgorithm: uploadResult.encryption,
         virusScanStatus: 'PENDING',
         confidentiality: ticket.confidentiality,
         uploaderId: user.id,
@@ -119,6 +121,7 @@ export class StorageController {
     }
 
     const ticket = db.data.tickets.find((t) => t.id === attachment.ticketId);
+    if (!ticket) { res.status(404).json({success:false,error:'Attachment ticket not found.'}); return; }
     if (ticket) {
       const check = ticket.projectId
         ? StorageController.projectReadAccess(ticket.projectId, ticket.id, user)
