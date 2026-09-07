@@ -34,6 +34,7 @@ import { DepartmentsController } from './controllers/departments.controller.js';
 import { OrchestrationController } from './controllers/orchestration.controller.js';
 import { ProjectsController } from './controllers/projects.controller.js';
 import { ThreatModelsController } from './controllers/threat-models.controller.js';
+import { ThreatDeploymentsController } from './controllers/threat-deployments.controller.js';
 import { DirectoryController } from './controllers/directory.controller.js';
 
 
@@ -61,6 +62,8 @@ app.use(
 // ceiling aligned with the 25 MiB storage policy rather than rejecting valid uploads.
 app.use(express.json({ limit: '36mb' }));
 app.use(express.urlencoded({ extended: true, limit: '36mb' }));
+// Only these cookie-free machine endpoints use signed provider authentication.
+app.post('/api/threat-deployments/:mappingId/:action', generalRateLimiter, ThreatDeploymentsController.machine);
 app.use('/api', sameOriginMutationMiddleware);
 
 // The existing services expose a synchronous db.persist() compatibility API.
@@ -317,6 +320,15 @@ app.post('/api/risks', RisksController.createRisk);
 
 // Threat Modeling is a separate, server-authorized security-control domain.
 app.get('/api/threat-models', ThreatModelsController.list);
+app.post('/api/threat-delivery-mappings', ThreatDeploymentsController.configure);
+app.get('/api/threat-models/:id/deployment-receipts', ThreatDeploymentsController.receipts);
+app.get('/api/threat-models/:id/readiness', ThreatModelsController.readiness);
+app.post('/api/threat-compliance-profiles', ThreatModelsController.complianceProfile);
+app.post('/api/threat-compliance-profiles/review', ThreatModelsController.complianceProfileReview);
+app.post('/api/threat-models/:id/compliance-applicability', ThreatModelsController.complianceApplicability);
+app.post('/api/threat-models/:id/coverage/dispositions', ThreatModelsController.coverageDisposition);
+app.post('/api/threat-models/:id/coverage/reviews', ThreatModelsController.coverageReview);
+app.post('/api/threat-models/:id/business-capabilities', ThreatModelsController.businessCapability);
 app.get('/api/threat-control-catalog', ThreatModelsController.controlCatalog);
 app.post('/api/threat-control-catalog', ThreatModelsController.createControlDefinition);
 app.post('/api/threat-control-catalog/:id/decision', ThreatModelsController.decideControlDefinition);

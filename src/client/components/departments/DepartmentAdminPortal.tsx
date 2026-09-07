@@ -1267,6 +1267,8 @@ export const DepartmentAdminPortal: React.FC<DepartmentAdminPortalProps> = ({
                   <option value="SECURITY_ANALYST">Senior Specialist</option>
                   <option value="SOC_ANALYST">SOC / Incident Analyst</option>
                   <option value="APPSEC_ANALYST">AppSec / DevSecOps Engineer</option>
+                  <option value="SECURITY_ARCHITECT">Security Architect</option>
+                  <option value="RELEASE_AUTHORITY">Security Release Authority</option>
                   <option value="AUDITOR">Compliance Auditor</option>
                 </select>
               </div>

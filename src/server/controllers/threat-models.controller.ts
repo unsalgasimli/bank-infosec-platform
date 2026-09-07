@@ -5,6 +5,8 @@ import { ThreatModelService } from '../services/threat-model.service.js';
 import { ThreatControlCatalogService } from '../services/threat-control-catalog.service.js';
 import { ThreatAnalysisService } from '../services/threat-analysis.service.js';
 import { ThreatGovernanceAdminService } from '../services/threat-governance-admin.service.js';
+import { ThreatReadinessService } from '../services/threat-readiness.service.js';
+import { ThreatComplianceApplicabilityService } from '../services/threat-compliance-applicability.service.js';
 
 const object = z.object({}).passthrough();
 const modelInput = object.extend({ title: z.string().trim().min(1).max(255), description: z.string().max(10000).optional(), organizationId: z.string().trim().min(1).optional(), serviceId: z.string().trim().optional(), assetId: z.string().trim().optional(), projectId: z.string().trim().optional(), changeId: z.string().trim().optional(), releaseId: z.string().trim().optional(), criticality: z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']).optional(), dataClassification: z.string().trim().optional(), businessOwnerId: z.string().trim().optional(), technicalOwnerId: z.string().trim().optional() });
@@ -13,6 +15,13 @@ const controlInput = object.extend({ title: z.string().trim().min(1).max(255), d
 const verificationInput = object.extend({ verificationType: z.string().trim().min(1), testCase: z.string().trim().min(1), expectedResult: z.string().trim().min(1), result: z.enum(['NOT_RUN', 'PASS', 'FAIL', 'PARTIAL', 'EXPIRED']) });
 
 export class ThreatModelsController {
+  static complianceProfile=(req:AuthenticatedRequest,res:Response)=>this.execute(req,res,()=>ThreatComplianceApplicabilityService.profile(req.body,req.user!));
+  static complianceProfileReview=(req:AuthenticatedRequest,res:Response)=>this.execute(req,res,()=>ThreatComplianceApplicabilityService.reviewProfile(req.body,req.user!));
+  static complianceApplicability=(req:AuthenticatedRequest,res:Response)=>this.execute(req,res,()=>ThreatComplianceApplicabilityService.decide(this.param(req.params.id),req.body,req.user!));
+  static readiness=(req:AuthenticatedRequest,res:Response)=>this.execute(req,res,async()=>({readiness:await ThreatReadinessService.get(this.param(req.params.id),req.user!)}));
+  static coverageDisposition=(req:AuthenticatedRequest,res:Response)=>this.execute(req,res,()=>ThreatReadinessService.dispose(this.param(req.params.id),req.body,req.user!));
+  static coverageReview=(req:AuthenticatedRequest,res:Response)=>this.execute(req,res,()=>ThreatReadinessService.review(this.param(req.params.id),req.body,req.user!));
+  static businessCapability=(req:AuthenticatedRequest,res:Response)=>this.execute(req,res,()=>ThreatReadinessService.capability(this.param(req.params.id),req.body,req.user!));
   private static param(value: string | string[] | undefined): string { return Array.isArray(value) ? value[0] || '' : value || ''; }
   private static async execute(req: AuthenticatedRequest, res: Response, operation: () => Promise<unknown>, created = false): Promise<void> {
     try { res.status(created ? 201 : 200).json({ success: true, ...(await operation() as object) }); }

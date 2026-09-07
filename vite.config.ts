@@ -21,7 +21,7 @@ export default defineConfig({
           // Keep the source-watched API separate from Docker's published
           // loopback listener. Its dedicated 4001 port prevents Vite from
           // proxying to the immutable Docker service on 127.0.0.1:4000.
-          target: process.env.VITE_API_TARGET || 'http://127.0.0.1:4000',
+          target: process.env.VITE_API_TARGET || 'http://127.0.0.1:4001',
           changeOrigin: false,
           secure: false,
           xfwd: true,

@@ -3,6 +3,7 @@ import { db } from '../db/database.js';
 import { logger } from './logger.service.js';
 import { OutboxService } from './outbox.service.js';
 import { CortexInventorySchedulerService } from './cortex-inventory-scheduler.service.js';
+import { ThreatDeploymentService } from './threat-deployment.service.js';
 
 /** Emits durable schedule ticks; it never executes ticket work in-process. */
 export class PlatformSchedulerService {
@@ -48,6 +49,7 @@ export class PlatformSchedulerService {
       db.persist();
       await db.flush();
       await CortexInventorySchedulerService.enqueueDue(now);
+      await ThreatDeploymentService.reconcile();
     } finally {
       this.slaInFlight = false;
     }

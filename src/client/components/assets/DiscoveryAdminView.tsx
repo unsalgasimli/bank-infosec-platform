@@ -27,6 +27,7 @@ const runFailureReason = (run: any): string | undefined => {
   const messages = run.errors.map((entry: unknown) => typeof entry === 'string' ? entry : entry && typeof entry === 'object' && 'message' in entry ? String((entry as { message?: unknown }).message || '') : '').filter(Boolean);
   return messages.length ? messages.join(' ') : undefined;
 };
+const connectorHasActiveRun = (connector: any): boolean => ['QUEUED', 'RUNNING'].includes(String(connector?.latestRun?.state || ''));
 async function discoveryJson(response: Response): Promise<any> {
   const body = await response.text();
   try { return body ? JSON.parse(body) : {}; }
@@ -205,6 +206,12 @@ export const DiscoveryAdminView: React.FC<{ mode: AdminMode; onNavigateToRuns?: 
     }
   };
   const runSync = async (connector: any, syncType: 'FULL' | 'INCREMENTAL' = 'FULL', inventoryScope: 'ENDPOINTS' | 'ASSETS' = 'ENDPOINTS') => {
+    if (connectorHasActiveRun(connector)) {
+      setError('');
+      setNotice(t('A sync is already running for this connector. Live status refreshes automatically.'));
+      await load();
+      return;
+    }
     setActionId(`${connector.id}:sync:${syncType}:${inventoryScope}`); setError(''); setNotice('');
     try { const body: any = { syncType }; if (connector.connectorType === 'CORTEX') body.inventoryScope = inventoryScope; const { response, data } = await requestDiscovery(fetchWithAuth, `/api/cmdb/discovery/connectors/${encodeURIComponent(connector.id)}/sync`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); if (!response.ok || !data.success) throw new Error(data.error || t('Inventory sync could not be queued.')); const scopeLabel = connector.connectorType === 'CORTEX' ? (inventoryScope === 'ENDPOINTS' ? t('Cortex endpoints') : t('Cortex native assets')) : t('Inventory'); setNotice(`${scopeLabel}: ${syncType === 'FULL' ? t('full sync queued.') : t('incremental sync queued.')} ${data.runId || ''}`.trim()); await load(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : t('Inventory sync failed.')); } finally { setActionId(''); }

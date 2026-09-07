@@ -14,7 +14,8 @@
   font-family: "Segoe UI", Arial, sans-serif;
   height: 100dvh;
   overflow-x: hidden;
-  overflow-y: auto;
+  /* The desktop sign-in is a single viewport, not a scrollable document. */
+  overflow-y: hidden;
   overscroll-behavior: contain;
 }
 .garden-login * {
@@ -116,16 +117,18 @@
 .garden-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(360px, 29%);
-  min-height: calc(100dvh - 112px);
+  height: calc(100dvh - 112px);
+  min-height: 0;
   padding: 0 clamp(28px, 4.4vw, 100px) 28px;
   gap: clamp(24px, 4vw, 85px);
   max-width: 2400px;
   margin: auto;
+  overflow: hidden;
 }
 .wind-garden {
   position: relative;
   min-width: 0;
-  min-height: 710px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -283,6 +286,8 @@
   padding: 23px 0 0 clamp(28px, 3.2vw, 68px);
   position: relative;
   z-index: 3;
+  min-height: 0;
+  overflow: hidden;
 }
 .garden-access__rule {
   display: flex;
@@ -294,9 +299,10 @@
   color: var(--garden-muted);
 }
 .garden-access__content {
-  margin: auto 0;
-  padding: 65px 0;
-  transform: translateY(-42px);
+  /* Keep the credentials in the upper, immediately scannable part of the panel. */
+  margin: clamp(20px, 5vh, 56px) 0 auto;
+  padding: 0;
+  transform: none;
   transition: transform 0.35s ease;
 }
 .garden-access h2 {
@@ -697,7 +703,8 @@
     height: 85px;
   }
   .garden-layout {
-    min-height: calc(100dvh - 85px);
+    height: calc(100dvh - 85px);
+    min-height: 0;
   }
   .wind-garden {
     min-height: 595px;
@@ -714,8 +721,9 @@
     min-height: 470px;
   }
   .garden-access__content {
-    padding: 35px 0;
-    transform: translateY(-22px);
+    margin-top: 16px;
+    padding: 0;
+    transform: none;
   }
   .garden-access h2 {
     font-size: 49px;
@@ -751,6 +759,11 @@
   }
 }
 @media (max-width: 1000px) {
+  .garden-login {
+    height: auto;
+    min-height: 100dvh;
+    overflow-y: auto;
+  }
   .garden-header {
     height: 88px;
     padding: 0 25px;
@@ -768,6 +781,9 @@
   .garden-layout {
     display: flex;
     flex-direction: column;
+    height: auto;
+    min-height: auto;
+    overflow: visible;
     padding: 0 25px 24px;
     gap: 34px;
   }
@@ -776,6 +792,7 @@
     border-left: 0;
     border-top: 1px solid var(--garden-rule);
     padding: 17px 0 0;
+    overflow: visible;
   }
   .garden-access__content {
     padding: 29px 0 32px;

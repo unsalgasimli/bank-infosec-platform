@@ -685,6 +685,7 @@ export class LDAPSyncService {
     options ??= {};
     const trigger = options.trigger || 'SCHEDULED_DAILY_CHECK';
     const ldapEntries = queryResult.users;
+    const threatRoleMappings=config.DB_TYPE==='postgres'?(await (client||pgClient).query<{group_dn:string;role:BankRole}>('SELECT group_dn,role FROM threat_directory_role_mappings WHERE enabled')).rows:[];
 
     const domain = config.LDAP_DOMAIN.toLowerCase();
     const baseDn = config.LDAP_BASE_DN;
@@ -1051,7 +1052,11 @@ export class LDAPSyncService {
         'REQUESTER',
       ];
 
-      const userRoles: BankRole[] = isSuperAdminAccount ? superAdminRoles : deptMapping.roles;
+      const userRoles: BankRole[] = [...(isSuperAdminAccount ? superAdminRoles : deptMapping.roles)];
+      if(config.DB_TYPE==='postgres') {
+        const distinguishedGroups=(Array.isArray(entry.memberOf)?entry.memberOf:[entry.memberOf]).filter(value=>typeof value==='string').map(value=>String(value).toLowerCase());
+        userRoles.push(...threatRoleMappings.filter(mapping=>distinguishedGroups.includes(mapping.group_dn.toLowerCase())).map(mapping=>mapping.role));
+      }
       const userClearance = isSuperAdminAccount ? 'HIGHLY_RESTRICTED_HR_LEGAL' : deptMapping.securityClearance;
       const userDeptId = targetDeptId;
       const userSectionId = sectionRecord?.id;

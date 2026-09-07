@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev:server": "node scripts/start-dev-server.mjs",
-    "dev:client": "vite",
+    "dev:client": "node scripts/start-dev-client.mjs",
     "dev:cleanup": "node scripts/stop-dev-processes.mjs",
     "dev:docker:refresh": "node scripts/refresh-dev-docker.mjs",
     "dev": "pnpm run dev:cleanup && pnpm run dev:docker:refresh && concurrently --kill-others-on-fail -n \"API,UI\" -c \"blue,green\" \"pnpm run dev:server\" \"pnpm run dev:client\"",

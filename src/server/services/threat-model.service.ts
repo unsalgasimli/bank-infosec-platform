@@ -5,6 +5,8 @@ import { emergencyDeadline, emergencySlaState } from './threat-emergency-policy.
 import type { BusinessCalendar } from '../../shared/types/orchestration.js';
 import { z } from 'zod';
 import { ThreatReportingService } from './threat-reporting.service.js';
+import { ThreatReadinessService } from './threat-readiness.service.js';
+import { hasThreatCapability, canReadSecurityModel } from '../../shared/threat-permissions.js';
 import { storageService } from './storage.service.js';
 import { threatAuthoringSchema, threatEditSchema } from './threat-authoring.schema.js';
 import { architectureSchemas, architectureStorage, architectureEditSchema, type ArchitectureKind } from './threat-architecture.schema.js';
@@ -33,9 +35,9 @@ type ThreatModelPolicy = {
 const id = (prefix: string) => `${prefix}-${uuidv4().replace(/-/g, '').slice(0, 24)}`;
 const privileged = (user: BankUser) => user.roles.some((role) => ['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN', 'INFOSEC_MANAGER'].includes(role));
 const appSec = securityReviewer;
-const securityArchitecture = securityReviewer;
+const securityArchitecture = (actor:BankUser)=>hasThreatCapability(actor,'threat_model.architecture_review');
 const riskAuthority = seniorRiskAuthority;
-const releaseAuthority = securityReviewer;
+const releaseAuthority = (actor:BankUser)=>hasThreatCapability(actor,'threat_model.release_authorize');
 const score = (value: unknown, label: string) => { const n = Number(value); if (!Number.isInteger(n) || n < 1 || n > 5) throw new Error(`${label} must be an integer from 1 to 5.`); return n; };
 const text = (value: unknown, label: string, required = true) => { const result = String(value ?? '').trim(); if (required && !result) throw new Error(`${label} is required.`); return result; };
 const list = (value: unknown) => Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : [];
@@ -136,7 +138,7 @@ export class ThreatModelService {
     }).parse(input);
     if (!actor.isActive) throw new Error('Inactive user access is restricted.');
     const classifications = Object.entries(CONFIDENTIALITY_LEVELS).filter(([,level]) => level <= (CONFIDENTIALITY_LEVELS[actor.securityClearance] || 0)).map(([classification])=>classification);
-    return ThreatModelRepository.list({ userId: actor.id, elevated: appSec(actor) || actor.roles.includes('AUDITOR'), classifications, filters, ...paging });
+    return ThreatModelRepository.list({ userId: actor.id, elevated: canReadSecurityModel(actor), classifications, filters, ...paging });
   }
 
   static async governanceReport(actor: BankUser) { return ThreatReportingService.report(actor); }
@@ -680,6 +682,9 @@ export class ThreatModelService {
   static async submit(modelId: string, actor: BankUser) {
     return pgClient.transaction(async (client) => {
       const model = await this.lockModel(modelId, client); this.assertWrite(model, actor); const revision = await ThreatModelRepository.requireMutableRevision(model.currentRevisionId, client);
+      await ThreatReadinessService.refresh(client,revision.id);
+      const readiness=await ThreatReadinessService.evaluateThreatModelReadiness(client,revision.id);
+      if(!readiness.ready)throw new Error(`TM_COVERAGE_INCOMPLETE: ${readiness.blockers.map(b=>b.message).join(' ')}`);
       const components = await client.query('SELECT 1 FROM threat_model_components WHERE revision_id=$1 LIMIT 1', [revision.id]);
       const threats = await client.query('SELECT 1 FROM threats WHERE revision_id=$1 LIMIT 1', [revision.id]);
       const screening = (await client.query<Input>('SELECT tier,policy_version_id FROM threat_model_revisions WHERE id=$1', [revision.id])).rows[0];
@@ -715,6 +720,8 @@ export class ThreatModelService {
       if ([revision.created_by_user_id, revision.submitted_by_user_id, model.businessOwnerId, model.technicalOwnerId, model.securityOwnerId].includes(actor.id)) throw new Error('Author or owner cannot approve the Threat Model.');
 if (decision === 'APPROVED' && (await client.query(`SELECT 1 FROM threat_model_audit_events WHERE revision_id=$1 AND actor_id=$2 AND action=ANY($3::varchar[]) LIMIT 1`, [revision.id,actor.id,['REQUIREMENT_COMPLIANCE_REPLACED','FINDING_ASSUMPTION_LINKED','FINDING_ASSUMPTION_ASSESSED','THREAT_ATTACK_CASE_CREATED','THREAT_SUGGESTION_DISPOSITION','SCOPE_UPDATED','THREAT_CREATED','THREAT_UPDATED','CONTROL_CREATED','REQUIREMENT_CREATED','DATA_OBJECT_LINKED','COMPONENT_CREATED','BOUNDARY_CREATED','FLOW_CREATED','COMPONENT_UPDATED','BOUNDARY_UPDATED','FLOW_UPDATED','COMPONENT_REMOVED','BOUNDARY_REMOVED','FLOW_REMOVED','MODEL_CLASSIFICATION_RAISED','CONTROL_THREAT_LINKED','CONTROL_THREAT_UNLINKED']])).rowCount) throw new Error('A contributing author cannot approve the Threat Model.');
       if (decision === 'APPROVED') {
+        const readiness=await ThreatReadinessService.evaluateThreatModelReadiness(client,revision.id);
+        if(!readiness.ready)throw new Error(`TM_COVERAGE_INCOMPLETE: ${readiness.blockers.map(b=>b.message).join(' ')}`);
         const otherStageBySameReviewer = await client.query(`SELECT 1 FROM threat_model_approvals WHERE revision_id=$1 AND decided_by_user_id=$2 AND stage<>$3 AND decision='APPROVED' AND review_cycle=$4 LIMIT 1`, [revision.id, actor.id, stage, revision.review_cycle]);
         if (otherStageBySameReviewer.rowCount) throw new Error('AppSec and Security Architecture approvals require separate authorized reviewers.');
       }
@@ -731,6 +738,7 @@ if (decision === 'APPROVED' && (await client.query(`SELECT 1 FROM threat_model_a
           await client.query(`UPDATE threat_models SET status='APPROVED',stale_reason=NULL,last_approved_at=NOW(),next_review_at=$1,updated_at=NOW(),version=version+1 WHERE id=$2`, [nextReviewDate(revision.tier,new Date(),pinnedPolicy.config.reviewMonths[revision.tier]), modelId]);
           const snapshot = await this.approvalSnapshot(client, modelId, revision.id);
           snapshot.evaluatedPolicy = policy;
+          snapshot.readiness=await ThreatReadinessService.evaluateThreatModelReadiness(client,revision.id);
           snapshot.screeningPolicy = (await client.query('SELECT * FROM threat_governance_policy_versions WHERE id=$1', [revision.policy_version_id])).rows[0];
           await client.query(`INSERT INTO threat_model_approval_snapshots(revision_id,snapshot,sha256) VALUES($1,$2::jsonb,$3)`, [revision.id, canonicalJson(snapshot), createHash('sha256').update(canonicalJson(snapshot)).digest('hex')]);
           const emergencies = (await client.query<Input>("SELECT * FROM threat_emergency_changes WHERE threat_model_id=$1 AND status='DEPLOYED' AND model_updated_at IS NULL AND revision_id<>$2 AND deployed_at<=$3 FOR UPDATE",[modelId,revision.id,revision.created_at])).rows;
@@ -758,12 +766,16 @@ if (decision === 'APPROVED' && (await client.query(`SELECT 1 FROM threat_model_a
     });
   }
 
+  /** Machine callers must first verify a persisted provider mapping and signed identity. */
+  static async evaluateDeploymentGate(client:PoolClient,modelId:string){return this.evaluateGate(client,await this.lockModel(modelId,client));}
+
   private static async evaluateGate(client: QueryClient, model: Input) {
     const snapshot = await this.approvalSnapshot(client, model.id, model.currentRevisionId);
     const revision = snapshot.revision[0]; const policy = await this.loadPolicy(model.organizationId, client);
     if (revision.tier === 3 && !policy.requiredApprovalStages.includes('SECURITY_ARCHITECTURE')) policy.requiredApprovalStages.push('SECURITY_ARCHITECTURE');
     const approvedSnapshot = await client.query('SELECT 1 FROM threat_model_approval_snapshots WHERE revision_id=$1', [revision.id]);
-    const requirementBlockers: string[] = [];
+    const readiness=await ThreatReadinessService.evaluateThreatModelReadiness(client,revision.id);
+    const requirementBlockers: string[] = readiness.blockers.map(b=>`${b.code}: ${b.message}`);
     for(const [scopeKind,sourceId] of [['SERVICE',model.serviceId],['ASSET',model.assetId],['PROJECT',model.projectId],['CHANGE',model.changeId],['RELEASE',model.releaseId]])if(sourceId&&!(snapshot.scopeReferences as Input[]).some(reference=>reference.scope_kind===scopeKind&&reference.source_id===sourceId))requirementBlockers.push(`${scopeKind}: unresolved legacy canonical reference; reconcile before release.`);
     for(const link of snapshot.findingLinks as Input[])if(link.current_state!=='RESOLVED'||link.current_fingerprint!==(link.assessed_fingerprint||link.source_fingerprint))requirementBlockers.push(`${link.id}: linked finding is open or its security state changed; reassessment is required.`);
     for(const component of snapshot.components as Input[]) if(!component.security_zone?.trim()) requirementBlockers.push(`${component.name}: security zone is unknown; architecture revalidation is required.`);
@@ -1408,7 +1420,7 @@ await client.query(`INSERT INTO threat_model_exceptions(id,threat_id,control_id,
   private static assertRead(model: Input, actor: BankUser): void {
     const required = CONFIDENTIALITY_LEVELS[model.dataClassification as keyof typeof CONFIDENTIALITY_LEVELS] || CONFIDENTIALITY_LEVELS.CONFIDENTIAL_SECURITY_ONLY;
     if (!actor.isActive || (CONFIDENTIALITY_LEVELS[actor.securityClearance] || 0) < required) throw new Error('Threat Model access is restricted by security clearance.');
-    if (appSec(actor) || actor.roles.includes('AUDITOR') || [model.businessOwnerId, model.technicalOwnerId, model.securityOwnerId].includes(actor.id) || (model.accessGrants||[]).some((grant:Input)=>grant.user_id===actor.id&&new Date(grant.valid_until)>new Date())) return;
+    if (canReadSecurityModel(actor) || [model.businessOwnerId, model.technicalOwnerId, model.securityOwnerId].includes(actor.id) || (model.accessGrants||[]).some((grant:Input)=>grant.user_id===actor.id&&new Date(grant.valid_until)>new Date())) return;
     throw new Error('Threat Model access is restricted to its owners, security reviewers, and auditors.');
   }
 private static assertWrite(model: Input, actor: BankUser): void { this.assertRead(model, actor); if (['RETIRED','ARCHIVED'].includes(model.status)) throw new Error('Retired or archived models are read-only.'); if (actor.roles.includes('AUDITOR')) throw new Error('Auditor access is read-only.'); if (appSec(actor) || [model.businessOwnerId, model.technicalOwnerId, model.securityOwnerId].includes(actor.id) || (model.accessGrants||[]).some((grant:Input)=>grant.user_id===actor.id&&grant.permission==='CONTRIBUTE'&&new Date(grant.valid_until)>new Date())) return; throw new Error('Only a Threat Model owner or authorized security team member may modify this model.'); }

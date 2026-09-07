@@ -65,12 +65,19 @@ export class SmbPrinterInventorySyncService {
   }
   public static async enqueue(connectorId: string, actor: BankUser, runType: 'FULL' | 'INCREMENTAL' = 'FULL', context: { correlationId?: string } = {}) {
     const runId = `dsrun-${crypto.randomUUID()}`;
-    await pgClient.transaction(async (client) => {
-      const connector = await client.query("SELECT id FROM cmdb_discovery_connectors WHERE id=$1 AND connector_type_id='SMB_PRINTER' AND enabled AND deleted_at IS NULL FOR UPDATE", [connectorId]);
-      if (!connector.rows[0]) throw Object.assign(new Error('Enabled SMB printer connector was not found.'), { statusCode: 404, code: 'DISCOVERY_CONNECTOR_NOT_FOUND' });
-      await client.query("INSERT INTO cmdb_discovery_sync_runs(id,connector_id,run_type,state,requested_by_user_id,correlation_id,queued_at) VALUES($1,$2,$3,'QUEUED',$4,$5,NOW())", [runId, connectorId, runType, actor.id, context.correlationId || null]);
-      await client.query("INSERT INTO outbox_events(id,topic,aggregate_type,aggregate_id,payload,correlation_id,occurred_at) VALUES($1,'cmdb.discovery.sync.requested','DISCOVERY_SYNC_RUN',$2,$3::jsonb,$4,NOW())", [`out-${crypto.randomUUID()}`, runId, JSON.stringify({ runId, connectorId, connectorType: 'SMB_PRINTER', actorId: actor.id, runType }), context.correlationId || `cmdb.discovery.sync:${runId}`]);
-    });
+    try {
+      await pgClient.transaction(async (client) => {
+        const connector = await client.query("SELECT id FROM cmdb_discovery_connectors WHERE id=$1 AND connector_type_id='SMB_PRINTER' AND enabled AND deleted_at IS NULL FOR UPDATE", [connectorId]);
+        if (!connector.rows[0]) throw Object.assign(new Error('Enabled SMB printer connector was not found.'), { statusCode: 404, code: 'DISCOVERY_CONNECTOR_NOT_FOUND' });
+        await client.query("INSERT INTO cmdb_discovery_sync_runs(id,connector_id,run_type,state,requested_by_user_id,correlation_id,queued_at) VALUES($1,$2,$3,'QUEUED',$4,$5,NOW())", [runId, connectorId, runType, actor.id, context.correlationId || null]);
+        await client.query("INSERT INTO outbox_events(id,topic,aggregate_type,aggregate_id,payload,correlation_id,occurred_at) VALUES($1,'cmdb.discovery.sync.requested','DISCOVERY_SYNC_RUN',$2,$3::jsonb,$4,NOW())", [`out-${crypto.randomUUID()}`, runId, JSON.stringify({ runId, connectorId, connectorType: 'SMB_PRINTER', actorId: actor.id, runType }), context.correlationId || `cmdb.discovery.sync:${runId}`]);
+      });
+    } catch (error: any) {
+      if (error?.code === '23505' && error?.constraint === 'uq_cmdb_discovery_connector_active_run') {
+        throw Object.assign(new Error('Another inventory sync is already running for this SMB printer connector.'), { statusCode: 409, code: 'CONNECTOR_SYNC_LOCKED' });
+      }
+      throw error;
+    }
     return { runId, state: 'QUEUED' as const, runType };
   }
   public static async runQueued(runId: string): Promise<{ runId: string; discovered: number; failed: number; state: string }> {

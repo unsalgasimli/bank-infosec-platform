@@ -13,6 +13,8 @@ export type BankRole =
   | 'SOC_ANALYST'
   | 'GRC_ANALYST'
   | 'APPSEC_ANALYST'
+  | 'SECURITY_ARCHITECT'
+  | 'RELEASE_AUTHORITY'
   | 'DLP_ANALYST'
   | 'VULN_ANALYST'
   | 'AUDITOR'
