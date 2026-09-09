@@ -1,0 +1,59 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+Dlp Investigations
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+Data Loss Prevention (DLP) & Insider Threat Forensics
+
+Restricted investigation of customer PII leakage, unapproved cloud uploads, SWIFT data movements, and Shadow AI exfiltration.
+
+HIGHLY RESTRICTED HR LEGAL
+DLP işi yarat
+VEKTOR:
+All Vectors
+USB Devices
+Cloud Storage
+Email Outbound
+Shadow AI / LLM
+No DLP forensic investigations found.

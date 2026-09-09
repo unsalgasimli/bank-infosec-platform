@@ -12,5 +12,6 @@ export function hasThreatCapability(actor:BankUser,capability:ThreatCapability):
   return actor.isActive && !actor.roles.includes('AUDITOR') && (threatCapabilities[capability] as BankRole[]).some(role=>actor.roles.includes(role));
 }
 export function canReadSecurityModel(actor:BankUser):boolean {
-  return actor.isActive && (actor.roles.includes('AUDITOR') || Object.keys(threatCapabilities).some(key=>hasThreatCapability(actor,key as ThreatCapability)));
+  // Risk ownership alone never grants access to other applications' models.
+  return actor.isActive && (actor.roles.includes('AUDITOR') || (['threat_model.appsec_review','threat_model.architecture_review','threat_model.release_authorize','threat_model.compliance_review','threat_model.admin'] as ThreatCapability[]).some(key=>hasThreatCapability(actor,key)));
 }

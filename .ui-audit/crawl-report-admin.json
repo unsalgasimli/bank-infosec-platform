@@ -1,0 +1,57 @@
+[
+ {
+  "slug": "admin-request-forms",
+  "route": "/administration/request-forms",
+  "ok": true,
+  "chars": 1375,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "admin-workflow-templates",
+  "route": "/administration/workflow-templates",
+  "ok": true,
+  "chars": 1310,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "admin-automations",
+  "route": "/administration/automations",
+  "ok": true,
+  "chars": 977,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "admin-settings",
+  "route": "/administration/settings",
+  "ok": true,
+  "chars": 12106,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "dept-admin",
+  "route": "/administration/departments/manage",
+  "ok": true,
+  "chars": 1745,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ }
+]

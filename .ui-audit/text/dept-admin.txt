@@ -1,0 +1,96 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+Dept Admin
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+INFOSEC
+İnformasiya Təhlükəsizliyi Departamenti
+İnzibatçı
+
+Kibertəhlükəsizlik, SOC, insidentlərin idarə edilməsi, DLP və təhlükəsizlik arxitekturası
+
+Departament Rəhbəri / CISO: Unsal Gasimli
+
+Şöbələrarası tapşırıq
+Department Overview
+Staff & Roles (25)
+Internal Settings & SLAs
+Task Templates (0)
+System Connectors (0)
+Workflows & Flows (1)
+ŞÖBƏ ƏMƏKDAŞLARI
+25 Mütəxəssislər
+1 Scoped Admins
+İNTEQRASİYA OLUNMUŞ BAĞLAYICILAR
+0 Aktiv
+No verified health measurement
+İCRADAKI TAPŞIRIQLAR
+0 Açıq
+0 SLA pozuntuları
+SLA VƏZİYYƏTİ
+0 Breaches
+Canlı departament tapşırıqlarından hesablanıb
+Department Administrators & Leadership Roster
+
+Personnel authorized to manage internal İnformasiya Təhlükəsizliyi Departamenti operations, sections, and approvals.
+
+Əməkdaş əlavə et
+U
+Unsal Gasimli
+employee@expressbank.az
+Security Analyst
+DEPT HEAD
+Department Sections & Units (1)
+
+Active organizational şöbələr and child bölmələr synchronized from Active Directory.
+
+3-TİER HİERARCHY ACTİVE
+Ş
+İnformasiya təhlükəsizliyi
+ŞÖBƏ
+SEC_INFORMATION_SECURITY
+Şöbə Müdiri: Təyin olunmayıb
+1
+Mütəxəssislər
+Bax

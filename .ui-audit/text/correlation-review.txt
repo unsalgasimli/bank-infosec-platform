@@ -1,0 +1,370 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+AKTİVLƏR VƏ CMDB
+/
+Sübutlar və korrelyasiya
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+COMPUTE_INSTANCE: vm-ambiguous
+
+REVIEW_REQUIRED
+
+COMPUTE_INSTANCE: vm-ip-only
+
+REVIEW_REQUIRED
+
+COMPUTE_INSTANCE: vm-strong-conflict
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 56ae35882060a59745cc3e85aab576c4d379a9fea66cade1b19ce6eb6e19e79a
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 5619308b0bab7cd7735ddde6716b7e1bd938aab1b29b6e83081b093ae38f7c56
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 56e499774bb48c71f405018c002be9388de03e3ef05e4fea06d9c8990f3b764e
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 54f58a16dd5c43dbfca15c6ecc877fd125ea95aa86889f680dc4c0f4fab34c8e
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 54f8b69adc604ef2391495d3f8358b8d1ba3d0e7da0a90812dc3419a1a7c0c95
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 571dba874a1f1fbef700669cb0975cfde78d931bc02b39de362d7bf338f63955
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 5682e727401df89f8b5a8d8013aca85b4e5521fa66a6a62905e3fd7b62b1af93
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 556dddbd4c906efe4eae5637765aadfcc8d2019baf61211ccafe95c20b1b4b52
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 544d0b736c168a39f17d7b79bf92a9e48697446b61f6383705a843c60b848bba
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 56d971425f1139757ec2f5707fed0c920bbae4c5d1f219645a465ca75107cd9b
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 54cc40d63f783792a2b04fff2d44a7c39f8688c4e87a079eb4b3d357be1f23e6
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 57093cac86de4e09dc61f1c529018187a094263578ebca4992dc723ada8b4853
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 568dc5ca7885ec974594a5234335aae795ce5fff3cd183afe70a66752ebceea4
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 56d9607ce3897a814ad4affb2710a3991e7ac628ddfb1b85630008df8bc563de
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 555aee0c0f3e8b62ed64dc66cba681784f3e1618a34848adc5cd735db69a65f7
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 5537c323d5d0b0d077a2c4e21e1c080855ff1d5d3cb6f9c9eec8f3941072b8bc
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 567fad0197682026c0769e640be363002064bcd6bc667b625c0c3df4e912bc44
+
+IDENTITY_CONFLICT
+
+CORTEX_ASSET: 55c691fb403c303538182f8721f36586d0c94998f2ffe4057f04edb71a91bdb8
+
+IDENTITY_CONFLICT
+
+VirtualMachine: vm-5196
+
+IDENTITY_CONFLICT
+
+VirtualMachine: vm-8076
+
+IDENTITY_CONFLICT
+
+VirtualMachine: vm-5224
+
+IDENTITY_CONFLICT
+
+VirtualMachine: vm-5197
+
+IDENTITY_CONFLICT
+
+VirtualMachine: vm-5225
+
+IDENTITY_CONFLICT
+
+VirtualMachine: vm-5232
+
+IDENTITY_CONFLICT
+
+VirtualMachine: vm-5210
+
+IDENTITY_CONFLICT
+
+VirtualMachine: vm-8073
+
+IDENTITY_CONFLICT
+
+VirtualMachine: vm-5231
+
+IDENTITY_CONFLICT
+
+VirtualMachine: vm-8078
+
+IDENTITY_CONFLICT
+
+CORTEX_ENDPOINT: 2b9d3d321c14445f8455fa02cd8929fb
+
+IDENTITY_CONFLICT
+
+CORTEX_ENDPOINT: 342713256f77436688d5b47d00c6fd39
+
+IDENTITY_CONFLICT
+
+CORTEX_ENDPOINT: 3056461538324e0bbea55fa67442c6dc
+
+IDENTITY_CONFLICT
+
+CORTEX_ENDPOINT: 62cc5da6f4e343dda13c1922f7ebc1d9
+
+IDENTITY_CONFLICT
+
+CORTEX_ENDPOINT: 707a14ce55e44179b4fae10520b7c0f7
+
+IDENTITY_CONFLICT
+
+CORTEX_ENDPOINT: 6bcce6001c7245f399e02615887fe192
+
+IDENTITY_CONFLICT
+
+CORTEX_ENDPOINT: 6f38b230fa194e358a8e8c23680e639f
+
+IDENTITY_CONFLICT
+
+CORTEX_ENDPOINT: 81e8d4557e98468a8fbe16b2ab7fa694
+
+IDENTITY_CONFLICT
+
+CORTEX_ENDPOINT: c82f9dce96434c539fd4845d3bee9464
+
+IDENTITY_CONFLICT
+
+CORTEX_ENDPOINT: db271c7438044c9ca4df70741caf9c19
+
+IDENTITY_CONFLICT
+
+CORTEX_ENDPOINT: fe346e746eef4c90b78ff92dfe878132
+
+IDENTITY_CONFLICT
+
+VirtualMachine: vm-317
+
+IDENTITY_CONFLICT
+
+Reconciliation workbench
+
+Only weak or ambiguous evidence matched; human correlation review is required.
+
+Incoming source record
+
+COMPUTE_INSTANCE
+
+vm-ambiguous
+
+Mənbə: dconn-test-primary
+
+Strong/conflicting identity
+
+REVIEW_REQUIRED
+
+8/28/2026, 12:12:00 PM
+
+VM A from second source · CI-DISC-034A69A95B0A40368675
+10%
+
+WEAK: HOSTNAME
+
+Əlaqələndir
+VM B · CI-DISC-299D082B8E754162B484
+10%
+
+WEAK: HOSTNAME
+
+Əlaqələndir
+Create New Asset
+Keep Separate / Mark False Match
+AKTİVLƏR VƏ CMDB
+Sübutlar və korrelyasiya
+
+Read-only source evidence awaiting governed CMDB correlation.
+
+Live updates are enabled.
+
+Yenilə
+SÜBUT QEYDLƏRİ
+20421
+KORRELYASİYA GÖZLƏYİR
+0
+KORRELYASİYA OLUNUB
+25
+OBYEKT	MƏNBƏ	SÜBUT VƏZİYYƏTİ	KORRELYASİYA	SON GÖRÜLMƏ
+
+Turxan(EXB0001) DEVOPS
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 5:53:45 PM
+
+EXB-App-Test(200.77)
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 5:53:45 PM
+
+AssetIT
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+EXB-TEST-Notification(199.50)
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+appips01.expressbank.az(0.62)
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+Centos8_Tomcat9(0.82) Mobile app Test for 20.7)
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+Test - Vcenter
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+test-express24be(0.80)_Recovered
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+app_test_t24_zkpay(81.30)_Recovered
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+MobilBanking(200.70)TestMobileBanking(Restored)_New
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+Gitlab-clone-backup
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+nginx _test
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+EXB-PT-Test(200.5)_Recovered
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+kb-test-lin
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+ESB-TEST (89.8)
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+Test - VestaWeb(172.17.4.2)(4.3)
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+T24 DB_test_ALEX(81.7)
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+ESD-DB(0.75)(192.168.13.4)
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+Test - CRM(89.22)_Recovered
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+Panorama-ESX-11.1.6-h7
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+dbips01.expressbank.az(0.63)
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+ESD-TestEXC(10.33.33.5)
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+Test-PowerBI (0.48 )
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+EXB-EXPRESSPAY-TEST (81.30)
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+
+EXB-GNI-HRMS(200.99)(203.81) TEST ENV_New
+VirtualMachine
+	VCenter Test	AKTİV	AUTO_LINK	9/7/2026, 4:56:41 PM
+20421 records
+Əvvəlki
+Növbəti

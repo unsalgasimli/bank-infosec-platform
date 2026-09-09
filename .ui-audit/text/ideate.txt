@@ -1,0 +1,63 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+İdeya lövhəsi
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+Wrike Ideate: Cyber Threat & Strategy Canvas
+Real-Time Backend Synced
+
+Brainstorm cyber defense initiatives, model attack vectors, and persist real ideas with 1-click task creation.
+
+Hamısı
+THREAT VECTOR
+ZERO TRUST
+COMPLIANCE
+DEVSECOPS
+Yapışqan qeyd əlavə et
+100%
+Bu kateqoriyada yapışqan qeyd yoxdur
+
+Click "+ Add Sticky Note" to brainstorm a new threat defense strategy or security architectural initiative.
+
+İlk qeydi yarat

@@ -164,7 +164,7 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `AegisSec_Jira_Export_${Date.now()}.csv`);
+    link.setAttribute('download', `Security_Tasks_Export_${Date.now()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -208,7 +208,7 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
                     ? 'bg-semantic-jira-brand text-white font-semibold shadow-sm'
                     : 'text-semantic-jira-muted hover:text-semantic-jira-primary'
                 }`}
-                title={t('Jira Table / List View')}
+                title={t('FIUUU Table / List View')}
               >
                 <List className="w-3.5 h-3.5" />
                 <span>{t('List')}</span>
@@ -220,7 +220,7 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
                     ? 'bg-semantic-jira-brand text-white font-semibold shadow-sm'
                     : 'text-semantic-jira-muted hover:text-semantic-jira-primary'
                 }`}
-                title={t('Jira Kanban Board View')}
+                title={t('FIUUU Kanban Board View')}
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
                 <span>{t('Board')}</span>
@@ -279,7 +279,7 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
           </div>
 
           <div className="text-label text-slate-400 font-mono">
-            {t('Showing')} <strong className="text-semantic-jira-primary">{filteredTickets.length}</strong> {t('of')} {tickets.length} {t('issues')}
+            <strong className="text-semantic-jira-primary">{filteredTickets.length}</strong> / {tickets.length} {t('issues')}
           </div>
         </div>
       </div>
@@ -355,7 +355,7 @@ export const TicketListView: React.FC<TicketListViewProps> = ({
               {filteredTickets.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="text-center py-20 text-semantic-jira-muted text-xs italic">
-                    No Jira issues match your query or active filters.
+                    No FIUUU issues match your query or active filters.
                   </td>
                 </tr>
               ) : (

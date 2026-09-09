@@ -2,6 +2,7 @@ import { pgClient, pgClient as defaultPgClient } from './client.js';
 import type pg from 'pg';
 import { persistManagerLinks } from './projection-manager-links.js';
 import { directoryUserColumns, rowToUser } from './departments-repository.js';
+import { logger } from '../../services/logger.service.js';
 import type { DatabaseSchema } from '../database.js';
 import { normalizeDirectoryKey, normalizeDirectoryText } from '../../services/ldap-directory.data.js';
 import crypto from 'node:crypto';
@@ -662,10 +663,19 @@ export class PostgresProjectionRepository {
         );
       }
 
-      // Resolve section parent links after all sections exist.
-      for (const section of departmentSections) {
+      // Resolve section parent links after all sections exist. The record hash
+      // covers parentSectionId, so skipping unchanged records is safe — and
+      // required: re-linking every parented section on every persist locked
+      // most of this table per transaction from each API/scheduler/worker
+      // replica, which surfaced as lock timeouts and deadlocks.
+      for (let index = 0; index < departmentSections.length; index++) {
+        const section = departmentSections[index];
+        if (!changed('departmentSections', section as RecordValue, index)) continue;
         if (section.parentSectionId && sectionIds.has(section.parentSectionId) && section.parentSectionId !== section.id) {
-          await client.query('UPDATE bank_department_sections SET parent_section_id=$2, updated_at=NOW() WHERE id=$1', [section.id, section.parentSectionId]);
+          await client.query(
+            'UPDATE bank_department_sections SET parent_section_id=$2, updated_at=NOW() WHERE id=$1 AND parent_section_id IS DISTINCT FROM $2',
+            [section.id, section.parentSectionId]
+          );
         }
       }
 
@@ -818,7 +828,18 @@ export class PostgresProjectionRepository {
       const visited = new Set<string>();
       const append = (ticket: any): void => { if (visited.has(ticket.id)) return; if (ticket.parentTicketId && ticketById.has(ticket.parentTicketId)) append(ticketById.get(ticket.parentTicketId)); visited.add(ticket.id); orderedTickets.push(ticket); };
       for (const ticket of data.tickets || []) append(ticket);
-      for (const ticket of orderedTickets) {
+      // The store can transiently hold two tickets sharing one key while tickets
+      // are created/renamed; `tickets_key_key` is UNIQUE. Keep the first occurrence
+      // per key so a duplicate cannot abort the whole projection (and login with it).
+      const seenTicketKeys = new Set<string>();
+      const persistableTickets = orderedTickets.filter((ticket) => {
+        const key = typeof ticket?.key === 'string' ? ticket.key.trim() : '';
+        if (!key) return true;
+        if (seenTicketKeys.has(key)) return false;
+        seenTicketKeys.add(key);
+        return true;
+      });
+      for (const ticket of persistableTickets) {
         const ticketIndex = data.tickets?.indexOf(ticket) ?? -1;
         if (ticketIndex >= 0 && !changed('tickets', ticket as RecordValue, ticketIndex)) continue;
         const createdAt = iso(ticket.createdAt);
@@ -828,7 +849,12 @@ export class PostgresProjectionRepository {
            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24::jsonb,$25::jsonb,$26,$27,$28,$29,$30,$31,$32,$33,$34::jsonb,$35::jsonb,$36::jsonb,$37::jsonb,$38::jsonb,$39::jsonb,$40,$41,$42,$43,$44,$45,$46,$47,$48,$49,$50,$51,$52::jsonb)
            ON CONFLICT(id) DO UPDATE SET key=EXCLUDED.key,category=EXCLUDED.category,security_domain=EXCLUDED.security_domain,title=EXCLUDED.title,description=EXCLUDED.description,status_id=EXCLUDED.status_id,status_name=EXCLUDED.status_name,status_category=EXCLUDED.status_category,workflow_id=EXCLUDED.workflow_id,workflow_version=EXCLUDED.workflow_version,assignee_id=EXCLUDED.assignee_id,security_owner_id=EXCLUDED.security_owner_id,team_id=EXCLUDED.team_id,department_id=EXCLUDED.department_id,application_id=EXCLUDED.application_id,asset_id=EXCLUDED.asset_id,risk_owner_id=EXCLUDED.risk_owner_id,watcher_ids=EXCLUDED.watcher_ids,finding_details=EXCLUDED.finding_details,incident_details=EXCLUDED.incident_details,exception_details=EXCLUDED.exception_details,custom_fields=EXCLUDED.custom_fields,tags=EXCLUDED.tags,due_date=EXCLUDED.due_date,remediation_deadline=EXCLUDED.remediation_deadline,sla_policy_id=EXCLUDED.sla_policy_id,sla_state=EXCLUDED.sla_state,sla_remaining_minutes=EXCLUDED.sla_remaining_minutes,requester_id=EXCLUDED.requester_id,owner_id=EXCLUDED.owner_id,parent_ticket_id=EXCLUDED.parent_ticket_id,updated_at=EXCLUDED.updated_at,version=EXCLUDED.version,source_payload=EXCLUDED.source_payload`,
           [ticket.id, ticket.key, ticket.projectCode || 'SEC', ticket.ticketTypeId || ticket.category || 'GENERAL_TASK', ticket.ticketTypeName || 'Security Ticket', ticket.category || 'GENERAL_TASK', ticket.securityDomain || 'GENERAL_INFOSEC', ticket.title || 'Imported ticket', ticket.description || '', ticket.statusId || 'OPEN', ticket.statusName || 'Open', ticket.statusCategory || 'TO_DO', ticket.workflowId || 'wf-imported', ticket.workflowVersion || 1, ticket.technicalSeverity || 'MEDIUM', ticket.businessPriority || 'P3_MEDIUM', ticket.businessImpact || 'MODERATE', ticket.inherentRisk || 'MEDIUM', ticket.residualRisk || 'LOW', ticket.riskScore ?? 0, ticket.cvssScore ?? null, ticket.cvssVector || null, ticket.confidentiality || 'INTERNAL', json(ticket.restrictedUserIds || []), json(ticket.restrictedTeamIds || []), ticket.reporterId, userRef(ticket.assigneeId), userRef(ticket.securityOwnerId), teamIds.has(ticket.teamId) ? ticket.teamId : null, departmentIds.has(ticket.departmentId) ? ticket.departmentId : null, applicationIds.has(ticket.applicationId) ? ticket.applicationId : null, assetIds.has(ticket.assetId) ? ticket.assetId : null, userRef(ticket.riskOwnerId), json(ticket.watcherIds || []), json(ticket.findingDetails || null), json(ticket.incidentDetails || null), json(ticket.exceptionDetails || null), json(ticket.customFields || []), json(ticket.tags || []), iso(ticket.detectedAt, createdAt), createdAt, iso(ticket.updatedAt, createdAt), iso(ticket.dueDate, createdAt), iso(ticket.remediationDeadline, createdAt), policyIds.has(ticket.slaPolicyId) ? ticket.slaPolicyId : null, ticket.slaState || 'SAFE', ticket.slaRemainingMinutes ?? null, ticket.version || 1, userRef(ticket.requesterId), userRef(ticket.ownerId), ticket.parentTicketId && ticketIds.has(ticket.parentTicketId) ? ticket.parentTicketId : null, json(ticket)]
-        );
+        ).catch((error: { code?: string }) => {
+          // A key owned by a row outside this batch still must not break the
+          // projection; the next full sync rewrites the row once the collision clears.
+          if (error?.code === '23505') return undefined;
+          throw error;
+        });
       }
 
       for (let index = 0; index < (data.comments || []).length; index++) {
@@ -997,11 +1023,32 @@ export class PostgresProjectionRepository {
         );
       }
     };
-    if (options.client) await write(options.client);
-    else {
-      await pgClient.transaction(write);
-      this.persistedHashes = nextHashes;
+    if (options.client) {
+      await write(options.client);
+      return;
     }
+    // The API, scheduler, and worker containers each flush full projection
+    // snapshots through this transaction. Taking the advisory lock before any
+    // row lock orders those replicas into a queue instead of letting them
+    // deadlock on shared rows, mirroring the LDAP sync commit lock. Rare
+    // overlaps with caller-owned transactions retry rather than fail persist.
+    const maxAttempts = 3;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await pgClient.transaction(async (client) => {
+          await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', ['aegissec:projection-persist']);
+          await write(client);
+        });
+        break;
+      } catch (error) {
+        const code = (error as { code?: string })?.code;
+        if (attempt >= maxAttempts || (code !== '40P01' && code !== '55P03')) throw error;
+        const backoffMs = 200 * 2 ** attempt + Math.floor(Math.random() * 200);
+        logger.warn({ err: error, attempt, backoffMs }, 'Projection persist hit PostgreSQL lock contention; retrying');
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      }
+    }
+    this.persistedHashes = nextHashes;
   }
 
   /** Called only after an externally owned projection transaction commits. */

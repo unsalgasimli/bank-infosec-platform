@@ -1,0 +1,81 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+İDARƏETMƏ
+/
+Taksonomiya
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+Müəssisə İnzibatçılığı və Konfiqurasiya Mühərriki
+
+RBAC kataloqu, vəziyyət maşınları, SLA siyasətləri, avtomatlaşdırma qaydaları, taksonomiyalar, inteqrasiyalar və dəyişdirilməz audit qeydləri.
+
+Parametrlər və Audit Jurnalı
+SLA siyasətləri
+İş axını şablonları
+Avtomatlaşdırmalar
+Taksonomiya
+İnteqrasiyalar
+İstifadəçi Kataloqu
+Kataloq idarəetməsi
+BANK BİLET TAKSONOMİYASI VƏ TƏSNİFAT SXEMİ
+
+Standartlaşdırılmış kateqoriyalar, ciddilik metrikləri və məxfilik dərəcələri.
+
+Məxfilik səviyyələri
+• İCTİMAİ (Tier 1)
+• DAXİLİ (Tier 2)
+• Məhdud (Tier 3)
+• CONFIDENTIAL_SECURITY_ONLY (Tier 4)
+• HIGHLY_RESTRICTED_HR_LEGAL (Tier 5)
+Texniki ciddilik səviyyələri
+• Kritik (15m MTTA / 2h MTTR)
+• Yüksək (30m MTTA / 24h MTTR)
+• Orta (1h MTTA / 72h MTTR)
+• Aşağı (2h MTTA / 7d MTTR)
+Əsas kateqoriyalar
+• INCIDENT (SOC & Security)
+• VULNERABILITY (AppSec & VM)
+• SECURITY_EXCEPTION (GRC Waiver)
+• SERVICE_REQUEST (ITSM)
+• CHANGE_REQUEST (CAB)

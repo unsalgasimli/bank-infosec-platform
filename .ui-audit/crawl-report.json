@@ -1,0 +1,418 @@
+[
+ {
+  "slug": "my-work-overview",
+  "route": "/my-work/overview",
+  "ok": true,
+  "textChars": 1680,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "my-tasks",
+  "route": "/my-work/tasks",
+  "ok": true,
+  "textChars": 1302,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "my-requests",
+  "route": "/my-work/requests",
+  "ok": true,
+  "textChars": 1295,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "approvals",
+  "route": "/my-work/approvals",
+  "ok": true,
+  "textChars": 994,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "projects-tasks-table",
+  "route": "/work-management/projects-tasks",
+  "ok": true,
+  "textChars": 729,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "projects-tasks-kanban",
+  "route": "/work-management/projects-tasks?view=kanban",
+  "ok": true,
+  "textChars": 1124,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "workflows",
+  "route": "/work-management/workflows",
+  "ok": true,
+  "textChars": 947,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "ideate",
+  "route": "/work-management/ideate",
+  "ok": true,
+  "textChars": 693,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "service-incidents",
+  "route": "/service-management/incidents",
+  "ok": true,
+  "textChars": 699,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "service-requests",
+  "route": "/service-management/requests",
+  "ok": true,
+  "textChars": 697,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "service-changes",
+  "route": "/service-management/changes",
+  "ok": true,
+  "textChars": 693,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "service-problems",
+  "route": "/service-management/problems",
+  "ok": true,
+  "textChars": 696,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "service-catalog",
+  "route": "/service-management/catalog",
+  "ok": true,
+  "textChars": 695,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "vulnerabilities",
+  "route": "/security-grc/vulnerabilities",
+  "ok": true,
+  "textChars": 680,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "security-incidents",
+  "route": "/security-grc/security-incidents",
+  "ok": true,
+  "textChars": 82,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "policy-exceptions",
+  "route": "/security-grc/policy-exceptions",
+  "ok": true,
+  "textChars": 82,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "risk-management",
+  "route": "/security-grc/risk-management",
+  "ok": true,
+  "textChars": 82,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "threat-modeling",
+  "route": "/security-grc/threat-modeling",
+  "ok": true,
+  "textChars": 82,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "audit-compliance",
+  "route": "/security-grc/audit-compliance",
+  "ok": true,
+  "textChars": 657,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": [
+   "console: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+   "console: Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+  ]
+ },
+ {
+  "slug": "dlp",
+  "route": "/security-grc/dlp",
+  "ok": true,
+  "textChars": 657,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": [
+   "console: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+   "console: Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+  ]
+ },
+ {
+  "slug": "asset-inventory",
+  "route": "/assets-cmdb/inventory",
+  "ok": true,
+  "textChars": 657,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": [
+   "console: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+   "console: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+   "console: WebSocket connection to 'ws://localhost:5173/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED",
+   "console: WebSocket connection to 'ws://localhost:5173/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED"
+  ]
+ },
+ {
+  "slug": "discovery-sources",
+  "route": "/assets-cmdb/discovery-sources",
+  "ok": false,
+  "error": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/assets-cmdb/discovery-sources\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5173/assets-cmdb/discovery-sources\", waiting until \"domcontentloaded\"\u001b[22m\n",
+  "errors": []
+ },
+ {
+  "slug": "discovery-runs",
+  "route": "/assets-cmdb/discovery-runs",
+  "ok": false,
+  "error": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/assets-cmdb/discovery-runs\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5173/assets-cmdb/discovery-runs\", waiting until \"domcontentloaded\"\u001b[22m\n",
+  "errors": []
+ },
+ {
+  "slug": "correlation-review",
+  "route": "/assets-cmdb/correlation-review",
+  "ok": false,
+  "error": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/assets-cmdb/correlation-review\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5173/assets-cmdb/correlation-review\", waiting until \"domcontentloaded\"\u001b[22m\n",
+  "errors": []
+ },
+ {
+  "slug": "configuration-items",
+  "route": "/assets-cmdb/configuration-items",
+  "ok": false,
+  "error": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/assets-cmdb/configuration-items\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5173/assets-cmdb/configuration-items\", waiting until \"domcontentloaded\"\u001b[22m\n",
+  "errors": []
+ },
+ {
+  "slug": "business-services",
+  "route": "/assets-cmdb/business-services",
+  "ok": false,
+  "error": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/assets-cmdb/business-services\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5173/assets-cmdb/business-services\", waiting until \"domcontentloaded\"\u001b[22m\n",
+  "errors": []
+ },
+ {
+  "slug": "applications",
+  "route": "/assets-cmdb/applications",
+  "ok": false,
+  "error": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/assets-cmdb/applications\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5173/assets-cmdb/applications\", waiting until \"domcontentloaded\"\u001b[22m\n",
+  "errors": []
+ },
+ {
+  "slug": "relationship-map",
+  "route": "/assets-cmdb/relationship-map",
+  "ok": false,
+  "error": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/assets-cmdb/relationship-map\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5173/assets-cmdb/relationship-map\", waiting until \"domcontentloaded\"\u001b[22m\n",
+  "errors": []
+ },
+ {
+  "slug": "knowledge-base",
+  "route": "/knowledge",
+  "ok": false,
+  "error": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/knowledge\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5173/knowledge\", waiting until \"domcontentloaded\"\u001b[22m\n",
+  "errors": []
+ },
+ {
+  "slug": "operational-analytics",
+  "route": "/analytics/operational",
+  "ok": false,
+  "error": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/analytics/operational\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5173/analytics/operational\", waiting until \"domcontentloaded\"\u001b[22m\n",
+  "errors": []
+ },
+ {
+  "slug": "executive-analytics",
+  "route": "/analytics/executive",
+  "ok": false,
+  "error": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/analytics/executive\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5173/analytics/executive\", waiting until \"domcontentloaded\"\u001b[22m\n",
+  "errors": []
+ },
+ {
+  "slug": "admin-request-forms",
+  "route": "/administration/request-forms",
+  "ok": false,
+  "error": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/administration/request-forms\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5173/administration/request-forms\", waiting until \"domcontentloaded\"\u001b[22m\n",
+  "errors": []
+ },
+ {
+  "slug": "admin-workflow-templates",
+  "route": "/administration/workflow-templates",
+  "ok": false,
+  "error": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/administration/workflow-templates\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5173/administration/workflow-templates\", waiting until \"domcontentloaded\"\u001b[22m\n",
+  "errors": []
+ },
+ {
+  "slug": "admin-automations",
+  "route": "/administration/automations",
+  "ok": false,
+  "error": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/administration/automations\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5173/administration/automations\", waiting until \"domcontentloaded\"\u001b[22m\n",
+  "errors": []
+ },
+ {
+  "slug": "admin-sla-policies",
+  "route": "/administration/sla-policies",
+  "ok": false,
+  "error": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/administration/sla-policies\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5173/administration/sla-policies\", waiting until \"domcontentloaded\"\u001b[22m\n",
+  "errors": []
+ },
+ {
+  "slug": "admin-departments",
+  "route": "/administration/departments",
+  "ok": false,
+  "error": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/administration/departments\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5173/administration/departments\", waiting until \"domcontentloaded\"\u001b[22m\n",
+  "errors": []
+ },
+ {
+  "slug": "admin-taxonomy",
+  "route": "/administration/taxonomy",
+  "ok": true,
+  "textChars": 82,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "admin-integrations",
+  "route": "/administration/integrations",
+  "ok": true,
+  "textChars": 82,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "admin-settings",
+  "route": "/administration/settings",
+  "ok": true,
+  "textChars": 703,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ },
+ {
+  "slug": "dept-admin",
+  "route": "/administration/departments/manage",
+  "ok": true,
+  "textChars": 694,
+  "dims": {
+   "w": 1536,
+   "h": 864,
+   "vw": 1536
+  },
+  "errors": []
+ }
+]

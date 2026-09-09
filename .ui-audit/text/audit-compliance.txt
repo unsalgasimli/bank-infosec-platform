@@ -1,0 +1,107 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+TƏHLÜKƏSİZLİK VƏ GRC
+/
+Audit və uyğunluq
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+Audit və tənzimləyici uyğunluq
+
+Continuous regulatory control assurance, gap remediation workflows, and append-only audit trail logs.
+
+Audit jurnalını ixrac et
+Compliance scores and certification claims are not shown until they are received from an approved control-assessment integration. The audit trail below contains only persisted system activity.
+Verified Append-Only Audit Trail (100 Hadisə)
+
+Tapşırıq keçidlərinin, şərhlərin və səlahiyyətlərin dəyişdirilməz qeydi.
+
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:53:56 PM • IP: ::1 • CID: req-f8dd0e17
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13039]
+9/7/2026, 5:52:55 PM • IP: unknown • CID: req-6234c044
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13038]
+9/7/2026, 5:52:40 PM • IP: unknown • CID: req-b547f2ca
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13037]
+9/7/2026, 5:52:25 PM • IP: unknown • CID: req-d35c0793
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13036]
+9/7/2026, 5:51:42 PM • IP: unknown • CID: req-072aec21
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13035]
+9/7/2026, 5:50:51 PM • IP: unknown • CID: req-135445e3
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13034]
+9/7/2026, 5:50:11 PM • IP: unknown • CID: req-47c355a0
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13033]
+9/7/2026, 5:49:20 PM • IP: unknown • CID: req-9f6c9399
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13032]
+9/7/2026, 5:48:40 PM • IP: unknown • CID: req-339caa09
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13031]
+9/7/2026, 5:48:00 PM • IP: unknown • CID: req-3a95cf71

@@ -7,6 +7,8 @@ import { z } from 'zod';
 import { ThreatReportingService } from './threat-reporting.service.js';
 import { ThreatReadinessService } from './threat-readiness.service.js';
 import { hasThreatCapability, canReadSecurityModel } from '../../shared/threat-permissions.js';
+import { ProjectService } from './project.service.js';
+import { db } from '../db/database.js';
 import { storageService } from './storage.service.js';
 import { threatAuthoringSchema, threatEditSchema } from './threat-authoring.schema.js';
 import { architectureSchemas, architectureStorage, architectureEditSchema, type ArchitectureKind } from './threat-architecture.schema.js';
@@ -16,7 +18,6 @@ import type { PoolClient } from 'pg';
 import type { BankUser } from '../../shared/types/auth.js';
 import { ThreatModelRepository } from '../db/postgres/threat-model-repository.js';
 import { pgClient } from '../db/postgres/client.js';
-import { db } from '../db/database.js';
 import { AuthService, CONFIDENTIALITY_LEVELS } from './auth.service.js';
 import { AuditService } from './audit.service.js';
 import { evaluateSecurityReleaseGate, issueReleaseAuthorization, verifyReleaseAuthorization } from './security-release-gate.service.js';
@@ -127,7 +128,7 @@ export class ThreatModelService {
     const filters = z.object({
       q: z.string().trim().min(1).max(200).optional(),
       status: z.enum(['DRAFT','IN_REVIEW','CHANGES_REQUIRED','APPROVED','REVIEW_REQUIRED','SUPERSEDED','RETIRED','ARCHIVED']).optional(),
-      ownerId: identifier, serviceId: identifier, assetId: identifier,
+      ownerId: identifier, serviceId: identifier, assetId: identifier, projectId: identifier,
       threatId: identifier, controlId: identifier, complianceId: identifier,
       tier: z.coerce.number().int().min(0).max(3).optional(),
       risk: z.enum(['CRITICAL','HIGH','MEDIUM','LOW']).optional(),
@@ -138,7 +139,37 @@ export class ThreatModelService {
     }).parse(input);
     if (!actor.isActive) throw new Error('Inactive user access is restricted.');
     const classifications = Object.entries(CONFIDENTIALITY_LEVELS).filter(([,level]) => level <= (CONFIDENTIALITY_LEVELS[actor.securityClearance] || 0)).map(([classification])=>classification);
-    return ThreatModelRepository.list({ userId: actor.id, elevated: canReadSecurityModel(actor), classifications, filters, ...paging });
+    const projectIds = db.data.projects.filter((project) => ProjectService.authorize(project.id, actor, 'READ').allowed).map((project) => project.id);
+    return ThreatModelRepository.list({ userId: actor.id, elevated: canReadSecurityModel(actor), projectIds, classifications, filters, ...paging });
+  }
+
+  /** Returns the same canonical, actor-visible records accepted by create(). */
+  static async scopeOptions(actor: BankUser) {
+    if (!actor.isActive) throw new Error('Inactive user access is restricted.');
+    const [cis, projects, tickets] = await Promise.all([
+      pgClient.query<Input>(`SELECT id,ci_number,name,display_name,type_id,owner_user_id,technical_owner_user_id,business_owner_user_id,department_id FROM configuration_items WHERE archived_at IS NULL ORDER BY name,id LIMIT 500`),
+      pgClient.query<Input>(`SELECT record_id,payload FROM legacy_json_records WHERE collection='projects' ORDER BY record_id LIMIT 500`),
+      pgClient.query<Input>(`SELECT id,key,category,ticket_type_id,title,confidentiality,restricted_user_ids,restricted_team_ids,reporter_id,requester_id,on_behalf_of_user_id,assignee_id,owner_id,security_owner_id,department_id,application_id,asset_id,watcher_ids,participant_ids,security_domain,tags,source_payload FROM tickets ORDER BY updated_at DESC,id LIMIT 1000`),
+    ]);
+    const canUse = (record: Input) => {
+      if (appSec(actor)) return true;
+      const owners = new Set<string>();
+      for (const owner of [record.ownerId, record.ownerUserId, record.managerId, record.businessOwnerId, record.businessOwnerUserId, record.technicalOwnerId, record.technicalOwnerUserId, record.requesterId, record.reporterId]) if (owner) owners.add(String(owner));
+      return owners.has(actor.id) || Boolean(actor.departmentId && record.departmentId === actor.departmentId);
+    };
+    const inventory = cis.rows.map((row) => this.ticketAuthorizationRecord(row)).filter(canUse);
+    const projectRecords = projects.rows.map((row) => ({ ...(row.payload || {}), id: row.record_id })).filter(canUse);
+    const authorizedTickets = tickets.rows.map((row) => this.ticketAuthorizationRecord(row)).filter((ticket) => canUse(ticket) && AuthService.canAccessResource({ user: actor, action: 'READ', resourceType: 'TICKET', resource: ticket }).allowed);
+    const ciOption = (record: Input) => ({ value: String(record.id), label: `${record.ciNumber || record.id} — ${record.name || record.displayName || 'Unnamed CMDB record'}` });
+    const projectOption = (record: Input) => ({ value: String(record.id), label: `${record.identifier || record.key || record.id} — ${record.name || 'Unnamed project'}` });
+    const ticketOption = (record: Input) => ({ value: String(record.id), label: `${record.key || record.id} — ${record.title || 'Untitled ticket'}` });
+    return {
+      serviceId: inventory.map(ciOption),
+      assetId: inventory.filter((record) => !['application', 'business_service'].includes(String(record.typeId))).map(ciOption),
+      projectId: projectRecords.map(projectOption),
+      changeId: authorizedTickets.filter((ticket) => ticket.category === 'CHANGE_REQUEST' || ticket.ticketTypeId === 'CHANGE_REQUEST').map(ticketOption),
+      releaseId: authorizedTickets.filter((ticket) => (ticket.tags || []).some((tag: unknown) => /release|deploy|production/i.test(String(tag)))).map(ticketOption),
+    };
   }
 
   static async governanceReport(actor: BankUser) { return ThreatReportingService.report(actor); }
@@ -214,6 +245,12 @@ export class ThreatModelService {
     await this.assertScopeReferences(input, actor);
     return pgClient.transaction(async (client) => {
       await client.query("SELECT pg_advisory_xact_lock(hashtext('threat-model-key'))");
+      const projectId = text(input.projectId, '', false) || null;
+      if (input.projectOnboarding && projectId) {
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`project-threat-model:${projectId}`]);
+        const existing = await client.query<{ id: string }>("SELECT id FROM threat_models WHERE project_id=$1 AND status NOT IN ('RETIRED','ARCHIVED') LIMIT 1", [projectId]);
+        if (existing.rowCount) throw new Error('This project already has an active Threat Model. Refresh the project workspace to continue in the existing model.');
+      }
       const now = new Date();
       const year = now.getUTCFullYear();
       const sequence = await client.query<{ next: number }>(`SELECT count(*)::int + 1 AS next FROM threat_models WHERE key LIKE $1`, [`TM-${year}-%`]);
@@ -225,7 +262,7 @@ export class ThreatModelService {
       await client.query(
         `INSERT INTO threat_models(id,key,organization_id,service_id,asset_id,project_id,change_id,release_id,title,description,criticality,data_classification,business_owner_id,technical_owner_id,security_owner_id,department_id,current_revision_id,status,created_by_user_id)
          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NULL,'DRAFT',$17)`,
-        [modelId, key, text(input.organizationId || 'org-bank', 'Organization'), text(input.serviceId, '', false) || null, text(input.assetId, '', false) || null, text(input.projectId, '', false) || null, text(input.changeId, '', false) || null, text(input.releaseId, '', false) || null, title, text(input.description, '', false), criticality, text(input.dataClassification || 'CONFIDENTIAL_SECURITY_ONLY', 'Data classification'), businessOwnerId, technicalOwnerId, text(input.securityOwnerId, '', false) || null, departmentId, actor.id]
+        [modelId, key, text(input.organizationId || 'org-bank', 'Organization'), text(input.serviceId, '', false) || null, text(input.assetId, '', false) || null, projectId, text(input.changeId, '', false) || null, text(input.releaseId, '', false) || null, title, text(input.description, '', false), criticality, text(input.dataClassification || 'CONFIDENTIAL_SECURITY_ONLY', 'Data classification'), businessOwnerId, technicalOwnerId, text(input.securityOwnerId, '', false) || null, departmentId, actor.id]
       );
       await client.query(
         `INSERT INTO threat_model_revisions(id,threat_model_id,revision_number,status,scope_summary,architecture_summary,assumptions,security_objectives,in_scope,out_of_scope,created_by_user_id)
@@ -625,13 +662,15 @@ export class ThreatModelService {
         }
       }
       const verificationType = text(input.verificationType, 'Verification type'); const policy = await this.loadPolicy(context.model.organizationId, client);
+      const executionContext = input.executionContext || {};
+      if (result === 'PASS' && (!text(executionContext.target, '', false) || !text(executionContext.environment, '', false) || !text(executionContext.buildReference, '', false))) throw new Error('Passing verification requires target, environment, and immutable build or deployment reference.');
       const expiresAt = text(input.expiresAt, '', false) || new Date(Date.now() + (policy.verificationExpirationDays[verificationType] || policy.verificationExpirationDays.DEFAULT || defaultPolicy.verificationExpirationDays.DEFAULT) * 86400000).toISOString();
       const maximumExpiry = Date.now() + (policy.verificationExpirationDays[verificationType] || policy.verificationExpirationDays.DEFAULT) * 86400000;
       if (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now() || Date.parse(expiresAt) > maximumExpiry) throw new Error('Verification expiry must be within the configured freshness period.');
       if (input.reviewerId && input.reviewerId !== actor.id) throw new Error('Verification reviewer must be the authenticated actor.');
-      await client.query(`INSERT INTO control_verifications(id,control_id,verification_type,test_case,expected_result,result,evidence_ids,executed_by_user_id,executed_at,reviewer_id,reviewed_at,expires_at,notes,control_scope_version) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,NOW(),$9,NOW(),$10,$11,$12)`, [verificationId, controlId, verificationType, text(input.testCase, 'Test case'), text(input.expectedResult, 'Expected result'), result, JSON.stringify(evidenceIds), actor.id, text(input.reviewerId, '', false) || actor.id, expiresAt, text(input.notes, '', false) || null,scopeVersion]);
+      await client.query(`INSERT INTO control_verifications(id,control_id,verification_type,test_case,expected_result,result,evidence_ids,execution_context,executed_by_user_id,executed_at,reviewer_id,reviewed_at,expires_at,notes,control_scope_version) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,NOW(),$10,NOW(),$11,$12,$13)`, [verificationId, controlId, verificationType, text(input.testCase, 'Test case'), text(input.expectedResult, 'Expected result'), result, JSON.stringify(evidenceIds), JSON.stringify(executionContext), actor.id, text(input.reviewerId, '', false) || actor.id, expiresAt, text(input.notes, '', false) || null,scopeVersion]);
       await client.query(`UPDATE threat_controls SET status=$1,updated_at=NOW() WHERE id=$2`, [result === 'PASS' ? 'VERIFIED' : result === 'FAIL' ? 'FAILED' : 'VERIFICATION_REQUIRED', controlId]);
-      await ThreatModelRepository.audit(client, { id: id('tmae'), modelId: context.model.id, revisionId: context.revisionId, actorId: actor.id, action: 'CONTROL_VERIFIED', entityType: 'CONTROL_VERIFICATION', entityId: verificationId, newValue: { controlId, result,scopeVersion } });
+      await ThreatModelRepository.audit(client, { id: id('tmae'), modelId: context.model.id, revisionId: context.revisionId, actorId: actor.id, action: 'CONTROL_VERIFIED', entityType: 'CONTROL_VERIFICATION', entityId: verificationId, newValue: { controlId, result, scopeVersion, executionContext } });
       if (result === 'FAIL') await enqueueOutbox(client, 'threat-control.verification.failed', 'THREAT_CONTROL', controlId, { threatModelId: context.model.id, controlId, verificationId });
       return (await client.query<Input>('SELECT * FROM control_verifications WHERE id=$1', [verificationId])).rows.map(ThreatModelRepository.verification)[0];
     });
@@ -685,20 +724,6 @@ export class ThreatModelService {
       await ThreatReadinessService.refresh(client,revision.id);
       const readiness=await ThreatReadinessService.evaluateThreatModelReadiness(client,revision.id);
       if(!readiness.ready)throw new Error(`TM_COVERAGE_INCOMPLETE: ${readiness.blockers.map(b=>b.message).join(' ')}`);
-      const components = await client.query('SELECT 1 FROM threat_model_components WHERE revision_id=$1 LIMIT 1', [revision.id]);
-      const threats = await client.query('SELECT 1 FROM threats WHERE revision_id=$1 LIMIT 1', [revision.id]);
-      const screening = (await client.query<Input>('SELECT tier,policy_version_id FROM threat_model_revisions WHERE id=$1', [revision.id])).rows[0];
-      if (screening.tier === null || !screening.policy_version_id) throw new Error('Security impact screening is required before submission.');
-      if((await client.query('SELECT 1 FROM threat_analysis_suggestions s LEFT JOIN threat_suggestion_dispositions d ON d.suggestion_id=s.id WHERE s.revision_id=$1 AND d.id IS NULL LIMIT 1',[revision.id])).rowCount)throw new Error('Analyst disposition is required for every pending threat suggestion before submission.');
-      if (screening.tier > 0 && (!components.rowCount || !threats.rowCount)) throw new Error('Architecture and at least one structured threat are required before submission.');
-      if (screening.tier >= 2) {
-        const completeness = (await client.query<Input>(`SELECT EXISTS(SELECT 1 FROM threat_model_data_flows WHERE revision_id=$1) AS flows, EXISTS(SELECT 1 FROM threat_model_trust_boundaries WHERE revision_id=$1) AS boundaries, EXISTS(SELECT 1 FROM threat_security_requirements WHERE revision_id=$1) AS requirements, EXISTS(SELECT 1 FROM threat_data_object_links WHERE revision_id=$1) AS data`, [revision.id])).rows[0];
-        if (!Object.values(completeness).every(Boolean)) throw new Error('TM-2/3 requires structured flows, boundaries, data classification and security requirements.');
-      }
-      if (screening.tier === 3) {
-        const abuse = await client.query(`SELECT 1 FROM threats WHERE revision_id=$1 AND categories ?| ARRAY['BUSINESS_ABUSE','FRAUD','TRANSACTION_MANIPULATION','WORKFLOW_BYPASS'] LIMIT 1`, [revision.id]);
-        if (!abuse.rowCount || !revision.assumptions?.trim()) throw new Error('TM-3 requires abuse analysis and explicit assumptions.');
-      }
       await client.query(`UPDATE threat_model_revisions SET status='IN_REVIEW',submitted_by_user_id=$1,submitted_at=NOW(),review_cycle=review_cycle+1,version=version+1 WHERE id=$2`, [actor.id, revision.id]);
       await client.query(`UPDATE threat_models SET status='IN_REVIEW',updated_at=NOW(),version=version+1 WHERE id=$1`, [modelId]);
       await ThreatModelRepository.audit(client, { id: id('tmae'), modelId, revisionId: revision.id, actorId: actor.id, action: 'REVISION_SUBMITTED', entityType: 'THREAT_MODEL_REVISION', entityId: revision.id });
@@ -903,7 +928,7 @@ await client.query(`INSERT INTO threat_model_exceptions(id,threat_id,control_id,
         if (days > exceptionLimits[exception.risk_level as keyof typeof exceptionLimits] || !exception.remediation_plan || !exception.remediation_owner_id || !exception.compensating_controls || (exception.risk_level === 'CRITICAL' && !exception.emergency)) throw new Error('Exception requires a fresh assessment under current bank limits.');
       }
       if (['CRITICAL', 'HIGH'].includes(exception.risk_level) && !riskAuthority(actor)) throw new Error('CISO or delegated risk authority is required for high or critical risk acceptance.');
-      if (!['CRITICAL', 'HIGH'].includes(exception.risk_level) && !(riskAuthority(actor) || appSec(actor) || actor.roles.includes('GRC_ANALYST'))) throw new Error('GRC, AppSec, or risk authority is required for this exception decision.');
+      if (!['CRITICAL', 'HIGH'].includes(exception.risk_level) && !(riskAuthority(actor) || (hasThreatCapability(actor,'threat_model.risk_accept') && actor.id===model.businessOwnerId))) throw new Error('Designated business risk-owner or CISO authority is required for this exception decision.');
       await client.query(`UPDATE threat_model_exceptions SET status=$1::varchar,approver_id=$2,approved_at=CASE WHEN $1::varchar='APPROVED' THEN NOW() ELSE approved_at END WHERE id=$3`, [decision, actor.id, exceptionId]);
       await ThreatModelRepository.audit(client, { id: id('tmae'), modelId: exception.threat_model_id, revisionId: exception.revision_id, actorId: actor.id, action: `RISK_ACCEPTANCE_${decision}`, entityType: 'THREAT_MODEL_EXCEPTION', entityId: exceptionId, newValue: { decision } });
       return (await client.query<Input>('SELECT * FROM threat_model_exceptions WHERE id=$1', [exceptionId])).rows.map(ThreatModelRepository.exception)[0];
@@ -1417,13 +1442,16 @@ await client.query(`INSERT INTO threat_model_exceptions(id,threat_id,control_id,
     const control=(await client.query<Input>('SELECT t.revision_id,c.implementation_owner_id FROM threat_controls c JOIN threats t ON t.id=c.threat_id WHERE c.id=$1 FOR UPDATE OF c,t',[controlId])).rows[0];
     return {model,revisionId:control.revision_id,implementerId:control.implementation_owner_id||undefined};
   }
+  private static projectAccess(model: Input, actor: BankUser, action: 'READ' | 'TASK_WRITE'): boolean {
+    return Boolean(model.projectId && ProjectService.authorize(String(model.projectId), actor, action).allowed);
+  }
   private static assertRead(model: Input, actor: BankUser): void {
     const required = CONFIDENTIALITY_LEVELS[model.dataClassification as keyof typeof CONFIDENTIALITY_LEVELS] || CONFIDENTIALITY_LEVELS.CONFIDENTIAL_SECURITY_ONLY;
     if (!actor.isActive || (CONFIDENTIALITY_LEVELS[actor.securityClearance] || 0) < required) throw new Error('Threat Model access is restricted by security clearance.');
-    if (canReadSecurityModel(actor) || [model.businessOwnerId, model.technicalOwnerId, model.securityOwnerId].includes(actor.id) || (model.accessGrants||[]).some((grant:Input)=>grant.user_id===actor.id&&new Date(grant.valid_until)>new Date())) return;
-    throw new Error('Threat Model access is restricted to its owners, security reviewers, and auditors.');
+    if (canReadSecurityModel(actor) || this.projectAccess(model, actor, 'READ') || [model.businessOwnerId, model.technicalOwnerId, model.securityOwnerId].includes(actor.id) || (model.accessGrants||[]).some((grant:Input)=>grant.user_id===actor.id&&new Date(grant.valid_until)>new Date())) return;
+    throw new Error('Threat Model access is restricted to the linked project, model owners, security reviewers, and auditors.');
   }
-private static assertWrite(model: Input, actor: BankUser): void { this.assertRead(model, actor); if (['RETIRED','ARCHIVED'].includes(model.status)) throw new Error('Retired or archived models are read-only.'); if (actor.roles.includes('AUDITOR')) throw new Error('Auditor access is read-only.'); if (appSec(actor) || [model.businessOwnerId, model.technicalOwnerId, model.securityOwnerId].includes(actor.id) || (model.accessGrants||[]).some((grant:Input)=>grant.user_id===actor.id&&grant.permission==='CONTRIBUTE'&&new Date(grant.valid_until)>new Date())) return; throw new Error('Only a Threat Model owner or authorized security team member may modify this model.'); }
+private static assertWrite(model: Input, actor: BankUser): void { this.assertRead(model, actor); if (['RETIRED','ARCHIVED'].includes(model.status)) throw new Error('Retired or archived models are read-only.'); if (actor.roles.includes('AUDITOR')) throw new Error('Auditor access is read-only.'); if (appSec(actor) || this.projectAccess(model, actor, 'TASK_WRITE') || [model.businessOwnerId, model.technicalOwnerId, model.securityOwnerId].includes(actor.id) || (model.accessGrants||[]).some((grant:Input)=>grant.user_id===actor.id&&grant.permission==='CONTRIBUTE'&&new Date(grant.valid_until)>new Date())) return; throw new Error('Only a project contributor, Threat Model owner, or authorized security team member may modify this model.'); }
   /** IDs received from the browser must reference an existing, actor-visible operational record; opaque strings cannot create cross-scope models. */
   private static async assertScopeReferences(input: Input, actor: BankUser,client:QueryClient=pgClient): Promise<void> {
     const addRecord = (record: any, label: string) => {
@@ -1440,7 +1468,12 @@ private static assertWrite(model: Input, actor: BankUser): void { this.assertRea
     };
     const serviceId = text(input.serviceId, '', false); if (serviceId) addRecord(await inventory(serviceId,'bank_applications'),'Service');
     const assetId = text(input.assetId, '', false); if (assetId) addRecord(await inventory(assetId,'bank_assets'),'Asset');
-    const projectId = text(input.projectId, '', false); if (projectId) addRecord((await client.query("SELECT payload FROM legacy_json_records WHERE collection='projects' AND record_id=$1",[projectId])).rows[0]?.payload,'Project');
+    const projectId = text(input.projectId, '', false);
+    if (projectId) {
+      const project = (await client.query("SELECT payload FROM legacy_json_records WHERE collection='projects' AND record_id=$1", [projectId])).rows[0]?.payload;
+      if (!project) throw new Error('Project does not exist or is no longer available.');
+      if (!ProjectService.authorize(projectId, actor, 'TASK_WRITE').allowed) throw new Error('Project access is restricted; create the Threat Model from a project where you can contribute.');
+    }
     for(const [field,label] of [['changeId','Change request'],['releaseId','Release record']] as const){
       const value=text(input[field],'',false);if(!value)continue;
       const row=(await client.query('SELECT * FROM tickets WHERE id=$1',[value])).rows[0];

@@ -49,7 +49,7 @@ export const LeadDashboard: React.FC<LeadDashboardProps> = ({
           <div className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4 text-semantic-jira-brand" />
             <span className="text-label font-mono text-semantic-jira-muted uppercase tracking-wider">
-              Jira Service Management • Operations Lead
+              FIUUU Service Management • Operations Lead
             </span>
           </div>
           <h1 className="text-xl font-bold text-semantic-jira-primary tracking-tight mt-1">
@@ -76,7 +76,7 @@ export const LeadDashboard: React.FC<LeadDashboardProps> = ({
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-bold uppercase tracking-wider text-semantic-jira-primary">
-            Jira Operational Queues ({queues.length})
+            FIUUU Operational Queues ({queues.length})
           </h3>
           <span className="text-label text-semantic-jira-muted font-mono">Live Sync</span>
         </div>
@@ -100,7 +100,7 @@ export const LeadDashboard: React.FC<LeadDashboardProps> = ({
               <div className="flex items-center justify-between pt-2 border-t border-semantic-jira-border text-caption text-semantic-jira-muted-light font-mono">
                 <span>Filter: {q.code}</span>
                 <span className="text-semantic-jira-brand group-hover:underline flex items-center gap-1 font-sans font-medium">
-                  Open in Jira <ArrowRight className="w-3 h-3" />
+                  Open in FIUUU <ArrowRight className="w-3 h-3" />
                 </span>
               </div>
             </div>
@@ -146,7 +146,7 @@ export const LeadDashboard: React.FC<LeadDashboardProps> = ({
 
       {/* Workload Rebalance Modal */}
       {isRebalanceOpen && (
-        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-black/65 backdrop-blur-[2px] p-4">
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-semantic-modal-tint/60 backdrop-blur-sm p-4">
           <div className="bg-semantic-panel border border-semantic-jira-border rounded-md max-w-md w-full p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-semantic-jira-border pb-3">
               <div className="flex items-center gap-2">

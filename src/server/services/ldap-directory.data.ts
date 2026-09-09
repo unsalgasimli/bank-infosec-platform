@@ -174,11 +174,12 @@ export function generateDeptCode(text: string): string {
 /** Keep hierarchy IDs within PostgreSQL's 128-character key limit. */
 export function makeDepartmentNodeId(name: string): string {
   const slug = slugifyDept(name);
-  const base = `dept-${slug}`;
+  const cleanSlug = slug.startsWith('dept-') ? slug.slice(5) : slug;
+  const base = `dept-${cleanSlug}`;
   if (base.length <= 64) return base;
   const digest = createHash('sha256').update(`department|${normalizeDirectoryKey(name)}`).digest('hex').slice(0, 10);
   const availableSlugLength = Math.max(1, 64 - 'dept-'.length - digest.length - 1);
-  return `dept-${slug.slice(0, availableSlugLength)}-${digest}`;
+  return `dept-${cleanSlug.slice(0, availableSlugLength)}-${digest}`;
 }
 
 /** Keep hierarchy IDs within PostgreSQL's 128-character key limit. */
@@ -241,12 +242,67 @@ export function normalizeAzerbaijani(text: string): string {
     .replace(/ğ/g, 'g');
 }
 
+export interface KnownBranchInfo {
+  canonicalName: string;
+  id: string;
+  code: string;
+  aliases: string[];
+}
+
+export const KNOWN_EXPRESSBANK_BRANCHES: KnownBranchInfo[] = [
+  { canonicalName: 'Bakıxanov filialı', id: 'dept-bakikhanov-filiali', code: 'BRANCH_BAKIKHANOV', aliases: ['bakixanov', 'bakikhanov'] },
+  { canonicalName: 'Bərdə filialı', id: 'dept-berde-filiali', code: 'BRANCH_BERDE', aliases: ['berde', 'barda'] },
+  { canonicalName: 'Əhmədli filialı', id: 'dept-ehmedli-filiali', code: 'BRANCH_EHMEDLI', aliases: ['ehmedli', 'ahmedli'] },
+  { canonicalName: 'Elmlər Akademiyası filialı', id: 'dept-elmler-filiali', code: 'BRANCH_ELMLER', aliases: ['elmler', 'elmler akademiyasi'] },
+  { canonicalName: 'Gəncə filialı', id: 'dept-gence-filiali', code: 'BRANCH_GANCE', aliases: ['gence', 'ganja'] },
+  { canonicalName: 'Həzi Aslanov filialı', id: 'dept-hezi-aslanov-filiali', code: 'BRANCH_HAZI_ASLANOV', aliases: ['hezi aslanov', 'hazi aslanov', 'haziaslanov', 'heziaslanov'] },
+  { canonicalName: 'Xaçmaz filialı', id: 'dept-xacmaz-filiali', code: 'BRANCH_XACMAZ', aliases: ['xacmaz', 'khachmaz'] },
+  { canonicalName: 'Xətai filialı', id: 'dept-xetai-filiali', code: 'BRANCH_XETAI', aliases: ['xetai', 'khatai'] },
+  { canonicalName: 'Lənkəran filialı', id: 'dept-lenkeran-filiali', code: 'BRANCH_LENKERAN', aliases: ['lenkeran', 'lankaran'] },
+  { canonicalName: 'Mingəçevir filialı', id: 'dept-mingecevir-filiali', code: 'BRANCH_MINGECEVIR', aliases: ['mingecevir', 'mingachevir'] },
+  { canonicalName: 'Nəsimi filialı', id: 'dept-nesimi-filiali', code: 'BRANCH_NESIMI', aliases: ['nesimi', 'nasimi'] },
+  { canonicalName: 'Neftçilər filialı', id: 'dept-neftciler-filiali', code: 'BRANCH_NEFTCILER', aliases: ['neftciler', 'neftchilar'] },
+  { canonicalName: 'Qaradağ filialı', id: 'dept-qaradag-filiali', code: 'BRANCH_QARADAG', aliases: ['qaradag', 'garadagh'] },
+  { canonicalName: 'Qusar filialı', id: 'dept-qusar-filiali', code: 'BRANCH_QUSAR', aliases: ['qusar', 'gusar'] },
+  { canonicalName: 'Şirvan filialı', id: 'dept-sirvan-filiali', code: 'BRANCH_SIRVAN', aliases: ['sirvan', 'shirvan'] },
+  { canonicalName: 'Sumqayıt filialı', id: 'dept-sumqayit-filiali', code: 'BRANCH_SUMQAYIT', aliases: ['sumqayit', 'sumgait'] },
+  { canonicalName: 'Yasamal filialı', id: 'dept-yasamal-filiali', code: 'BRANCH_YASAMAL', aliases: ['yasamal'] },
+  { canonicalName: 'Mərkəz filialı', id: 'dept-merkez-filiali', code: 'BRANCH_MERKEZ', aliases: ['merkez', 'central'] },
+];
+
+export function matchKnownBranchEntry(value: any): KnownBranchInfo | undefined {
+  if (!value) return undefined;
+  const raw = normalizeDirectoryText(value);
+  if (!raw) return undefined;
+  const normalizedTokens = normalizeAzerbaijani(raw)
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
+
+  for (const b of KNOWN_EXPRESSBANK_BRANCHES) {
+    for (const alias of b.aliases) {
+      const aliasTokens = alias.split(' ');
+      const matchIdx = normalizedTokens.findIndex((token, idx) => {
+        return aliasTokens.every((at, aOffset) => normalizedTokens[idx + aOffset] === at);
+      });
+      if (matchIdx >= 0) return b;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Stable branch/city key used across Azerbaijani and English AD labels.
- * Examples: "Bərdə filialı" and "Barda Branch - SG" both become "brd".
+ * Examples: "Bərdə filialı" and "Barda Branch - SG" both become "berde".
  * The key is only a routing aid; it is never used as a user identity.
  */
 export function makeDirectoryBranchMatchKey(value: any): string {
+  const branch = matchKnownBranchEntry(value);
+  if (branch) {
+    return branch.aliases[0];
+  }
   const normalized = normalizeAzerbaijani(normalizeDirectoryText(value))
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
@@ -263,8 +319,8 @@ export function makeDirectoryBranchMatchKey(value: any): string {
 
 /**
  * Extracts the human branch/city prefix from AD department, title, OU, or
- * security-group labels. It intentionally ignores generic "Branch Users"
- * containers and returns only labels that contain a concrete prefix.
+ * security-group labels. It intentionally ignores network/technical groups
+ * (e.g. DOT1x, SFB) and returns only authentic Expressbank branch prefixes.
  */
 export function extractDirectoryBranchName(values: any[] = []): string | undefined {
   for (const value of values) {
@@ -272,16 +328,23 @@ export function extractDirectoryBranchName(values: any[] = []): string | undefin
     if (!raw) continue;
     const rawTokens = raw.split(/\s+/).filter(Boolean);
     const normalizedTokens = normalizeAzerbaijani(raw)
-      .toLowerCase()
       .replace(/[^a-z0-9\s]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
       .split(' ')
       .filter(Boolean);
-    const markerIndex = normalizedTokens.findIndex((token) => token.startsWith('filial') || token.startsWith('branch'));
-    if (markerIndex <= 0) continue;
-    const prefix = rawTokens.slice(0, markerIndex).join(' ').replace(/[\s\-_]+$/g, '').trim();
-    if (prefix && makeDirectoryBranchMatchKey(prefix)) return prefix;
+
+    for (const b of KNOWN_EXPRESSBANK_BRANCHES) {
+      for (const alias of b.aliases) {
+        const aliasTokens = alias.split(' ');
+        const matchIdx = normalizedTokens.findIndex((token, idx) => {
+          return aliasTokens.every((at, aOffset) => normalizedTokens[idx + aOffset] === at);
+        });
+        if (matchIdx >= 0) {
+          return rawTokens.slice(matchIdx, matchIdx + aliasTokens.length).join(' ');
+        }
+      }
+    }
   }
   return undefined;
 }
@@ -515,6 +578,30 @@ export function parseJobTitleAndHierarchy(
   };
 }
 
+export const CANONICAL_DEPARTMENTS_MAP: Record<string, { id: string; divisionId: string; name: string; code: string; roles: BankRole[]; securityClearance: string }> = {
+  'dept-secops': { id: 'dept-secops', divisionId: 'div-sec', name: 'İnformasiya Təhlükəsizliyi Departamenti', code: 'INFOSEC', roles: ['SECURITY_ANALYST', 'APPROVER', 'REQUESTER'], securityClearance: 'CONFIDENTIAL_SECURITY_ONLY' },
+  'dept-it': { id: 'dept-it', divisionId: 'div-it', name: 'İnformasiya Texnologiyaları Departamenti', code: 'IT_DEPT', roles: ['IT_ADMIN', 'APPROVER', 'REQUESTER'], securityClearance: 'CONFIDENTIAL_SECURITY_ONLY' },
+  'dept-retail': { id: 'dept-retail', divisionId: 'div-banking', name: 'Pərakəndə Bankçılıq Departamenti', code: 'RETAIL', roles: ['REQUESTER', 'ASSIGNEE'], securityClearance: 'INTERNAL' },
+  'dept-corporate': { id: 'dept-corporate', divisionId: 'div-banking', name: 'Biznes Bankçılıq Departamenti', code: 'CORP_BANK', roles: ['REQUESTER', 'APPROVER'], securityClearance: 'INTERNAL' },
+  'dept-finance': { id: 'dept-finance', divisionId: 'div-banking', name: 'Maliyyə və Mühasibatlıq Departamenti', code: 'FINANCE', roles: ['REQUESTER', 'APPROVER'], securityClearance: 'RESTRICTED' },
+  'dept-hr': { id: 'dept-hr', divisionId: 'div-hr', name: 'İnsan Resursları Departamenti', code: 'HR_DEPT', roles: ['HR_ADMIN', 'REQUESTER', 'APPROVER'], securityClearance: 'HIGHLY_RESTRICTED_HR_LEGAL' },
+  'dept-legal': { id: 'dept-legal', divisionId: 'div-hr', name: 'Hüquq Departamenti', code: 'LEGAL', roles: ['REQUESTER', 'APPROVER'], securityClearance: 'RESTRICTED' },
+  'dept-audit': { id: 'dept-audit', divisionId: 'div-sec', name: 'Daxili Audit Departamenti', code: 'AUDIT', roles: ['AUDITOR', 'REQUESTER'], securityClearance: 'CONFIDENTIAL_SECURITY_ONLY' },
+  'dept-daxili-nezaret-departamenti': { id: 'dept-daxili-nezaret-departamenti', divisionId: 'div-sec', name: 'Daxili Nəzarət Departamenti', code: 'DND_DEPT', roles: ['REQUESTER', 'APPROVER'], securityClearance: 'INTERNAL' },
+  'dept-risk': { id: 'dept-risk', divisionId: 'div-sec', name: 'Risklərin İdarə Edilməsi Departamenti', code: 'RISK_DEPT', roles: ['AUDITOR', 'REQUESTER'], securityClearance: 'CONFIDENTIAL_SECURITY_ONLY' },
+  'dept-compliance': { id: 'dept-compliance', divisionId: 'div-sec', name: 'Komplayens Departamenti', code: 'COMPLIANCE', roles: ['AUDITOR', 'REQUESTER'], securityClearance: 'CONFIDENTIAL_SECURITY_ONLY' },
+  'dept-hesablasmalar-departamenti': { id: 'dept-hesablasmalar-departamenti', divisionId: 'div-banking', name: 'Hesablaşmalar Departamenti', code: 'HESAB_DEPT', roles: ['REQUESTER', 'ASSIGNEE'], securityClearance: 'RESTRICTED' },
+  'dept-customer-care': { id: 'dept-customer-care', divisionId: 'div-banking', name: 'Müştəri Xidmətləri və Çağrı Mərkəzi', code: 'CALL_CENTER', roles: ['REQUESTER', 'ASSIGNEE'], securityClearance: 'INTERNAL' },
+  'dept-odenis-sistemlerin-idare-edilmesi-departamenti': { id: 'dept-odenis-sistemlerin-idare-edilmesi-departamenti', divisionId: 'div-banking', name: 'Ödəniş Sistemlərinin İdarə Edilməsi Departamenti', code: 'ODENIS_DEPT', roles: ['REQUESTER', 'ASSIGNEE'], securityClearance: 'RESTRICTED' },
+  'dept-treasury': { id: 'dept-treasury', divisionId: 'div-banking', name: 'Xəzinədarlıq Departamenti', code: 'TREASURY', roles: ['REQUESTER', 'APPROVER'], securityClearance: 'RESTRICTED' },
+  'dept-pmo': { id: 'dept-pmo', divisionId: 'div-banking', name: 'Biznes Proseslərin Təhlili və Optimallaşdırılması Şöbəsi', code: 'PMO', roles: ['REQUESTER', 'APPROVER'], securityClearance: 'INTERNAL' },
+  'dept-procurement': { id: 'dept-procurement', divisionId: 'div-banking', name: 'İnzibati Təsərrüfat və Satınalma Departamenti', code: 'INZIBATI_DEPT', roles: ['REQUESTER', 'ASSIGNEE'], securityClearance: 'INTERNAL' },
+  'dept-marketing': { id: 'dept-marketing', divisionId: 'div-hr', name: 'Reklam və Marketinq Departamenti', code: 'MARKETING', roles: ['REQUESTER', 'APPROVER'], securityClearance: 'INTERNAL' },
+  'dept-katiblik-sobesi': { id: 'dept-katiblik-sobesi', divisionId: 'div-hr', name: 'Katiblik və Tərcümə Şöbəsi', code: 'KATIB_DEPT', roles: ['REQUESTER', 'APPROVER'], securityClearance: 'RESTRICTED' },
+  'dept-executive': { id: 'dept-executive', divisionId: 'div-banking', name: 'İdarə Heyəti və Rəhbərlik', code: 'EXECUTIVE', roles: ['DEPARTMENT_ADMIN', 'APPROVER', 'REQUESTER'], securityClearance: 'HIGHLY_RESTRICTED_HR_LEGAL' },
+  'dept-credit': { id: 'dept-credit', divisionId: 'div-banking', name: 'Kredit və Anderraytinq Departamenti', code: 'CREDIT', roles: ['REQUESTER', 'APPROVER'], securityClearance: 'RESTRICTED' },
+};
+
 /**
  * Intelligently maps Active Directory department/şöbə, title, distinguishedName OUs,
  * and security groups to BankDepartment with precise 3-tier hierarchy & leadership.
@@ -586,8 +673,33 @@ export function mapDepartment(
 
   let result: DepartmentMappingResult;
 
+  const explicitBranch = matchKnownBranchEntry(deptStr);
+  const explicitCanonical = CANONICAL_DEPARTMENTS_MAP[deptStr];
+
+  if (explicitBranch) {
+    result = {
+      departmentId: explicitBranch.id,
+      divisionId: 'div-banking',
+      teamIds: ['team-swift-eng'],
+      departmentName: explicitBranch.canonicalName,
+      departmentCode: explicitBranch.code,
+      roles: isManagerTitle ? ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'] : ['REQUESTER', 'ASSIGNEE'],
+      securityClearance: 'INTERNAL',
+    };
+  } else if (explicitCanonical) {
+    result = {
+      departmentId: explicitCanonical.id,
+      divisionId: explicitCanonical.divisionId,
+      teamIds: explicitCanonical.id === 'dept-it' ? ['team-it-infra'] : explicitCanonical.id === 'dept-secops' ? ['team-soc'] : ['team-swift-eng'],
+      departmentName: explicitCanonical.name,
+      departmentCode: explicitCanonical.code,
+      roles: isManagerTitle ? ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'] : explicitCanonical.roles,
+      securityClearance: explicitCanonical.securityClearance as any,
+    };
+  }
+
   // 1. Executive Board & Leadership (BOSSES, İdarə Heyəti, Müşahidə Şurası)
-  if (
+  else if (
     norm.includes('bosses') ||
     titleNorm.includes('idare heyet') ||
     titleNorm.includes('musahide surasi') ||
@@ -1228,7 +1340,30 @@ export function mapDepartment(
     const explicitName = normalizeDirectoryText(deptStr || hierarchy.departmentCandidate || '');
     const explicitNorm = normalizeAzerbaijani(explicitName);
     const isGenericContainer = !explicitName || /^(users|bank users|ho users|branch users|general|common)$/.test(explicitNorm);
-    if (!isGenericContainer) {
+    const fallbackBranch = matchKnownBranchEntry(explicitName);
+    const fallbackCanonical = CANONICAL_DEPARTMENTS_MAP[explicitName];
+
+    if (fallbackBranch) {
+      result = {
+        departmentId: fallbackBranch.id,
+        divisionId: 'div-banking',
+        teamIds: ['team-swift-eng'],
+        departmentName: fallbackBranch.canonicalName,
+        departmentCode: fallbackBranch.code,
+        roles,
+        securityClearance: 'INTERNAL',
+      };
+    } else if (fallbackCanonical) {
+      result = {
+        departmentId: fallbackCanonical.id,
+        divisionId: fallbackCanonical.divisionId,
+        teamIds: fallbackCanonical.id === 'dept-it' ? ['team-it-infra'] : fallbackCanonical.id === 'dept-secops' ? ['team-soc'] : ['team-swift-eng'],
+        departmentName: fallbackCanonical.name,
+        departmentCode: fallbackCanonical.code,
+        roles: isManagerTitle ? ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'] : fallbackCanonical.roles,
+        securityClearance: fallbackCanonical.securityClearance as any,
+      };
+    } else if (!isGenericContainer) {
       result = {
         departmentId: makeDepartmentNodeId(explicitName),
         divisionId: 'div-banking',

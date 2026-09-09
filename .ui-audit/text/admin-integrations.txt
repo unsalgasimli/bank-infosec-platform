@@ -1,0 +1,365 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+İDARƏETMƏ
+/
+İnteqrasiyalar
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+Müəssisə İnzibatçılığı və Konfiqurasiya Mühərriki
+
+RBAC kataloqu, vəziyyət maşınları, SLA siyasətləri, avtomatlaşdırma qaydaları, taksonomiyalar, inteqrasiyalar və dəyişdirilməz audit qeydləri.
+
+Parametrlər və Audit Jurnalı
+SLA siyasətləri
+İş axını şablonları
+Avtomatlaşdırmalar
+Taksonomiya
+İnteqrasiyalar
+İstifadəçi Kataloqu
+Kataloq idarəetməsi
+Active Directory / LDAP Gündəlik İstifadəçi Sinxronizasiyası
+GÜNDƏLİK 13:30 GMT+4
+
+Bütün domen istifadəçilərini avtomatik çəkir, Departament/Şöbə üzrə kateqoriyalara ayırır, əlavə edilmiş/deaktiv edilmiş statusları sinxronlaşdırır və təkrarlanan qeydləri təmizləyir.
+
+Gündəlik Yoxlamanı İndi İşə Sal
+Planlaşdırılmış gündəlik icra
+13:30 GMT+4 (Asia/Baku)
+UTC+4 Dəqiq Planlaşdırıcı
+Növbəti planlaşdırılmış yoxlama
+2026-09-08 13:30:00 GMT+4 (Asia/Baku)
+~1207 dəqiqəyə
+Son sinxronizasiya
+Sistem başladıqda sinxronlaşdırıldı
+769 ümumi istifadəçi
+Hesab statusu statistikası
+769 Aktiv / 0 Disabled
+0 Təkrar (Təmizləndi)
+Sinxronlaşdırılmış Şöbələr:
+038 - Kredit access (106_Neftçilər filialı
+BASE_038_KREDIT_ACCESS_1
+0 aktiv
+Daxili Audit Departamenti
+Audit
+5 aktiv
+Bakıxanov filialı
+BRANCH_BAKIKHANOV
+12 aktiv
+Bankomatlar və filialı
+__OBS_2fbd9665ca6d47ad4dc6
+0 aktiv
+Bankomatlarla və filialı
+__OBS_9672f2f6eccd81c3d625
+0 aktiv
+Bərdə filialı
+BRANCH_BERDE
+18 aktiv
+Biznes bankçılıq departamenti
+BASE_BIZNES_BANKCILIQ_DE
+10 aktiv
+Biznes proseslərin təhlili və optimallaşdırılması şöbəsi
+BASE_BIZNES_PROSESLERIN_
+3 aktiv
+CMDB Test
+CMDBTEST
+1 aktiv
+Komplayens Departamenti
+COMPLIANCE
+2 aktiv
+Bank Əməliyyat Sistemləri və Proqram Təminatı
+CORE_BANKING
+0 aktiv
+Biznes Bankçılıq Departamenti
+CORP_BANK
+8 aktiv
+Kredit və Anderraytinq Departamenti
+CREDIT
+5 aktiv
+Müştəri Xidmətləri və Çağrı Mərkəzi
+CALL_CENTER
+28 aktiv
+Daxili audit departamenti
+BASE_DAXILI_AUDIT_DEPART
+4 aktiv
+Daxili Nəzarət Departamenti
+DND_DEPT
+21 aktiv
+DND filialı
+__OBS_5a1eb8afb303d1ce4301
+0 aktiv
+DOT1x-Branch filialı
+__OBS_1ae43b95a5ccada7ff8e
+0 aktiv
+Əhmədli filialı
+BRANCH_EHMEDLI
+28 aktiv
+Elmlər Akademiyası filialı
+BASE_ELMLER_AKADEMIYASI_
+0 aktiv
+Elmlər Akademiyası filialı
+BRANCH_ELMLER
+14 aktiv
+Əməliyyat şöbəsi / Müştəri sorğuları filialı
+__OBS_6cb6ffc6ac44c6b6ba73
+0 aktiv
+İdarə Heyəti və Rəhbərlik
+EXECUTIVE
+12 aktiv
+"ExpressPay" şöbəsi
+BASE_EXPRESSPAY_SOBESI
+0 aktiv
+Maliyyə və Mühasibatlıq Departamenti
+FINANCE
+17 aktiv
+Ganja filialı
+BASE_GANJA_FILIALI
+2 aktiv
+Garadag filialı
+BASE_GARADAG_FILIALI
+0 aktiv
+Gəncə filialı
+BRANCH_GANCE
+34 aktiv
+Komplayens və Risk Departamenti
+GRC
+33 aktiv
+Hazi Aslanov filialı
+__OBS_92c92935f744d9dda126
+0 aktiv
+HaziAslanov filialı
+__OBS_8fdeb66933fc612dfedc
+0 aktiv
+Hesablaşmalar Departamenti
+HESAB_DEPT
+41 aktiv
+Həzi Aslanov filialı
+BRANCH_HAZI_ASLANOV
+10 aktiv
+İnsan Resursları Departamenti
+HR_DEPT
+11 aktiv
+İdarə heyəti
+__OBS_14a3ee24816d4f189768
+0 aktiv
+İnformasiya təhlükəsizliyinin təmin edilməsi departamenti
+__OBS_df2e53584bab001545a1
+0 aktiv
+İnformasiya texnologiyaları departamenti
+__OBS_afef0b2f3c289bb2254d
+0 aktiv
+İnkassasiya şöbəsi
+__OBS_03a6db2862d87b68b4d0
+0 aktiv
+İnsan resursları departamenti
+__OBS_2ad3394496d607b1673e
+0 aktiv
+İnzibati şöbə
+__OBS_f91244effb617bd796be
+0 aktiv
+İstehlakçıların hüquqlarının müdafiəsi şöbəsi
+__OBS_dc372ebf2d67faa27ca6
+0 aktiv
+İnformasiya Texnologiyaları Departamenti
+IT_DEPT
+79 aktiv
+Katiblik və Tərcümə Şöbəsi
+KATIB_DEPT
+15 aktiv
+Khatai filialı
+__OBS_fba4f7cfc1dce5248289
+0 aktiv
+Komplayens departamenti
+__OBS_6e0d22d8f0bd012d1303
+0 aktiv
+Korporativ hüquq şöbəsi
+__OBS_6b9f6ee40d8a48c4bddc
+0 aktiv
+Hüquq Departamenti
+LEGAL
+7 aktiv
+Lənkəran filialı
+BRANCH_LENKERAN
+24 aktiv
+Maliyyə departamenti
+__OBS_7ce14f51039c4218243e
+0 aktiv
+Maliyyə əməliyyatlarının monitorinqi şöbəsi
+__OBS_4a15991a3d587899b7ae
+0 aktiv
+Reklam və Marketinq Departamenti
+MARKETING
+13 aktiv
+Məlumat mərkəzi şöbəsi
+__OBS_d657fd31d26cba0502bc
+0 aktiv
+Mərkəz filialı
+BRANCH_MERKEZ
+0 aktiv
+Mingəçevir filialı
+BRANCH_MINGECEVIR
+31 aktiv
+Müşahidə Şurası
+__OBS_1442c417716ae59f8cc7
+0 aktiv
+Müştəri sorğuları və filialı
+__OBS_34b40a7743cda510c9e5
+0 aktiv
+Müştəri xidmətləri departamenti
+__OBS_c499f561e85fb6a6d89b
+0 aktiv
+Nağd vəsaitlərin və digər qiymətlilərin saxlanılması və uçotu şöbəsi
+__OBS_4fb333cb6fe310123f4e
+0 aktiv
+Neftchilar filialı
+__OBS_87c5510f65166b7efa5a
+0 aktiv
+Neftchiler filialı
+__OBS_4f95d7139299d48d4b6b
+0 aktiv
+Neftçilər filialı
+BRANCH_NEFTCILER
+20 aktiv
+Nəsimi filialı
+BRANCH_NESIMI
+12 aktiv
+Ödəniş Sistemlərinin İdarə Edilməsi Departamenti
+ODENIS_DEPT
+14 aktiv
+Ödəniş sistemlərinin idarəedilməsi departamenti
+__OBS_59470fce4d6d6c5461ca
+0 aktiv
+Pərakəndə bankçılıq departamenti
+__OBS_353963c03aa18f291142
+0 aktiv
+Texniki və Fiziki Təhlükəsizlik Şöbəsi
+PHYS_SEC
+3 aktiv
+Biznes Proseslərin Təhlili və PMO
+PMO_DEPT
+2 aktiv
+İnzibati Təsərrüfat və Satınalma Departamenti
+INZIBATI_DEPT
+13 aktiv
+Qaradağ filialı
+BRANCH_QARADAG
+14 aktiv
+Qusar filialı
+BRANCH_QUSAR
+9 aktiv
+Reklam və marketinq şöbəsi
+__OBS_644a821da2da2b18ee59
+0 aktiv
+Rəqəmsal Bankçılıq Departamenti
+DIGITAL_BANK
+4 aktiv
+Rəqəmsal xidmətlərin tətbiqi şöbəsi
+__OBS_13ebf2960155d5107b85
+0 aktiv
+Pərakəndə Bankçılıq Departamenti
+RETAIL
+62 aktiv
+Risklərin İdarə Edilməsi Departamenti
+RISK_DEPT
+0 aktiv
+Risklərin idarə edilməsi departamenti
+__OBS_cd2caed14f6b3c5a2581
+0 aktiv
+İnformasiya Təhlükəsizliyi Departamenti
+INFOSEC
+25 aktiv
+SFB-BranchManagers filialı
+__OBS_c168daffa2e67aa026da
+0 aktiv
+Shirvan filialı
+__OBS_09201c76d00982955d0c
+0 aktiv
+Şirvan filialı
+BRANCH_SIRVAN
+16 aktiv
+Sumgait filialı
+__OBS_f612e945274c2c28654e
+0 aktiv
+Sumgayit filialı
+__OBS_5139d1cd3f5db55ea1eb
+0 aktiv
+Sumqayıt filialı
+BRANCH_SUMQAYIT
+25 aktiv
+Tərəfdaşlarla iş şöbəsi
+__OBS_26bf1c92034e251e34f5
+0 aktiv
+Xəzinədarlıq Departamenti
+TREASURY
+3 aktiv
+Xachmaz filialı
+__OBS_f08acca53cf449d54b55
+0 aktiv
+Xaçmaz filialı
+BRANCH_XACMAZ
+17 aktiv
+Xətai filialı
+BRANCH_XETAI
+17 aktiv
+Xəzinədarlıq şöbəsi
+__OBS_4622996277e6a9ded1da
+0 aktiv
+Xidmətin keyfiyyətinə nəzarət şöbəsi
+__OBS_6f260bb2484b670ccabd
+0 aktiv
+Yasamal filialı
+BRANCH_YASAMAL
+26 aktiv
+TƏHLÜKƏSİZLİK ƏMƏLİYYATLARI VƏ QƏBUL DİNLƏYİCİLƏRİ
+
+SIEM qəbul dinləyiciləri, zəiflik skanerləri və avtomatlaşdırılmış təkrar təmizləmə.
+
+Splunk / QRadar SIEM İnteqrasiyası
+DİNLƏNİLİR
+
+Son nöqtə: /api/findings/ingest • Təkrar aşkarlama aktivdir
+
+Zəiflik Skaneri Bağlayıcısı
+AKTİV
+
+Tenable Nessus / Qualys VM • Avtomatik ciddilik təyini və tapşırıq yaradılması

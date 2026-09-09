@@ -143,7 +143,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
                 className={`p-3 rounded border text-xs cursor-pointer transition-all ${
                   isSelected
                     ? 'bg-semantic-jira-brand-surface border-semantic-jira-brand text-semantic-jira-brand font-medium shadow-sm'
-                    : 'bg-semantic-panel border-semantic-jira-border hover:border-semantic-jira-brand text-semantic-jira-primary'
+                    : 'bg-semantic-panel border border-semantic-jira-border hover:border-semantic-jira-brand text-semantic-jira-primary'
                 }`}
               >
                 <div className="flex items-center justify-between text-caption font-mono text-semantic-jira-brand mb-1">
@@ -155,6 +155,11 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
               </div>
             );
           })}
+          {filtered.length === 0 && (
+            <div className="p-3 text-center text-caption text-semantic-jira-muted">
+              {t('No playbooks match this filter.')}
+            </div>
+          )}
         </div>
       </div>
 
@@ -217,6 +222,12 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
               </div>
             )}
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-20 text-semantic-jira-muted text-xs">
+            {articles.length === 0
+              ? t('No playbooks have been published yet.')
+              : t('No playbooks match this filter.')}
+          </div>
         ) : (
           <div className="text-center py-20 text-semantic-jira-muted text-xs">
             {t('Select a playbook from the left sidebar to view procedures.')}
@@ -226,7 +237,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ articles }
 
       {/* Create Playbook Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-black/65 backdrop-blur-[2px] p-4">
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-semantic-modal-tint/60 backdrop-blur-sm p-4">
           <div className="bg-semantic-panel border border-semantic-jira-border rounded-md max-w-xl w-full p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-semantic-jira-border pb-3">
               <div className="flex items-center gap-2">

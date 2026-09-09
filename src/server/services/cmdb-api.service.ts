@@ -145,11 +145,19 @@ function requirePermission(actor: BankUser | undefined, permission: CmdbPermissi
   AuthService.assertCmdbPermission(actor, permission);
 }
 
+// Rows written before ingestion-side normalization may hold concatenated or
+// annotated values ('STAGINGSTAGING', 'UNKNOWN—'). Snap to the canonical enum on read.
+const CANONICAL_ENVIRONMENTS = ['PRODUCTION', 'STAGING', 'UAT', 'TEST', 'DR', 'DEV', 'UNKNOWN'] as const;
+function canonicalEnvironment(value: unknown): string {
+  const raw = String(value ?? '').toUpperCase();
+  return CANONICAL_ENVIRONMENTS.find((env) => raw.includes(env)) ?? 'UNKNOWN';
+}
+
 function mapAsset(row: any): any {
   return {
     id: row.id, ciNumber: row.ci_number, assetKey: row.asset_key, name: row.name, displayName: row.display_name || row.name,
     typeId: row.type_id, assetSubtype: row.asset_subtype || undefined, status: row.status, lifecycleState: row.lifecycle_state,
-    lifecycleStatus: row.lifecycle_status, technicalStatus: row.technical_status, environment: row.effective_environment || row.environment,
+    lifecycleStatus: row.lifecycle_status, technicalStatus: row.technical_status, environment: canonicalEnvironment(row.effective_environment || row.environment),
     criticality: row.criticality, businessCriticality: row.business_criticality || undefined, description: row.description || undefined,
     ownerUserId: row.owner_user_id || undefined, technicalOwnerUserId: row.technical_owner_user_id || undefined,
     businessOwnerUserId: row.business_owner_user_id || undefined, supportGroupId: row.support_group_id || undefined,

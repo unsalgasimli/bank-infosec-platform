@@ -8,6 +8,8 @@ import { TicketCreateModal } from '../tickets/TicketCreateModal.js';
 import { RiskRegisterItem } from '../../../shared/types/risk.js';
 import { KBArticle } from '../../../shared/types/kb.js';
 
+import { BankDepartment, BankDivision } from '../../../shared/types/auth.js';
+
 interface AppLayoutProps {
   activeView: string;
   onSelectView: (view: string) => void;
@@ -17,9 +19,12 @@ interface AppLayoutProps {
   risks?: RiskRegisterItem[];
   kbArticles?: KBArticle[];
   pendingApprovalsCount?: number;
+  departments?: BankDepartment[];
   departmentsCount?: number;
   activeDepartmentId?: string | null;
   onSelectDepartment?: (deptId: string | null) => void;
+  activeCompanyId?: string;
+  onSelectCompany?: (companyId: string) => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onTicketCreated: (ticket: Ticket) => void;
@@ -39,9 +44,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   risks = [],
   kbArticles = [],
   pendingApprovalsCount = 0,
+  departments = [],
   departmentsCount = 0,
   activeDepartmentId = null,
   onSelectDepartment,
+  activeCompanyId,
+  onSelectCompany,
   searchQuery,
   onSearchChange,
   onTicketCreated,
@@ -91,8 +99,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         onNavigate={onNavigate}
         searchQuery={searchQuery}
         onSearchChange={onSearchChange}
+        departments={departments}
         activeDepartmentId={activeDepartmentId}
         onSelectDepartment={onSelectDepartment}
+        activeCompanyId={activeCompanyId}
+        onSelectCompany={onSelectCompany}
         onToggleSidebar={() => setIsMobileSidebarOpen((open) => !open)}
       />
 

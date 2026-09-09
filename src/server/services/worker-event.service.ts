@@ -1,4 +1,6 @@
 import { db } from '../db/database.js';
+import { ThreatDeploymentService } from './threat-deployment.service.js';
+import { ThreatFindingReassessmentService } from './threat-finding-reassessment.service.js';
 import { pgClient } from '../db/postgres/client.js';
 import { AutomationService } from './automation.service.js';
 import { logger } from './logger.service.js';
@@ -32,18 +34,20 @@ export class WorkerEventService {
    * disappeared. A RUNNING row retains a five-minute lease so a healthy long
    * inventory job is never executed twice by the recovery loop.
    */
-  public static async recoverQueuedDiscoveryRuns(limit = 100): Promise<void> {
+  public static async recoverQueuedDiscoveryRuns(limit = 100, connectorTypes?: string[]): Promise<void> {
+    const requestedTypes = connectorTypes?.filter(Boolean) || [];
     const runs = await pgClient.query<{ id: string; connector_type_id: string; correlation_id: string | null }>(`
       SELECT r.id,c.connector_type_id,r.correlation_id
       FROM cmdb_discovery_sync_runs r
       JOIN cmdb_discovery_connectors c ON c.id=r.connector_id
       WHERE c.deleted_at IS NULL
+        AND (cardinality($2::varchar[]) = 0 OR c.connector_type_id = ANY($2::varchar[]))
         AND (
           r.state = 'QUEUED'
           OR (r.state = 'RUNNING' AND r.updated_at < NOW() - INTERVAL '5 minutes')
         )
       ORDER BY r.queued_at
-      LIMIT $1`, [limit]);
+      LIMIT $1`, [limit, requestedTypes]);
     for (const run of runs.rows) {
       try {
         if (run.connector_type_id === 'ACTIVE_DIRECTORY') await ActiveDirectoryInventorySyncService.runQueued(run.id);
@@ -105,6 +109,8 @@ export class WorkerEventService {
       if (hasMaterialSecurityChange(fields)) await ThreatModelService.markReviewRequiredForMaterialChange({ assetId: ciId, serviceId: ciId }, this.eventActor(event), { source:event.topic,eventId:event.id,reason:`CMDB security-relevant change ${ciId}: ${fields.join(', ')}` });
     } else if (event.topic === 'threat-governance.tick') {
       await ThreatModelService.maintainGovernance(this.eventActor(event));
+      await ThreatDeploymentService.reconcile();
+      await ThreatFindingReassessmentService.record();
     } else if (event.topic === 'attachment.scan.requested') {
       await this.scanAttachment(event);
     } else if (event.topic === 'sla.tick') {
@@ -269,13 +275,21 @@ export class WorkerEventService {
     const titleFor: Record<string, string> = {
       ARCHITECTURE_REVIEW: 'Architecture Review', THREAT_MODEL_WORKSHOP: 'Threat Modeling Workshop', APPSEC_THREAT_MODEL_REVIEW: 'AppSec Threat Model Review', SECURITY_ARCHITECTURE_APPROVAL: 'Security Architecture Approval', HIGH_RISK_SECURITY_TEST: 'High-Risk Security Test', SECURITY_VERIFICATION: 'Security Verification',
     };
+    const instructionsFor: Record<string, string> = {
+      ARCHITECTURE_REVIEW: 'Technical owner: record the planned architecture, data flows, trust boundaries, integrations, internet exposure, privileged paths, and assumptions.',
+      THREAT_MODEL_WORKSHOP: 'Development team: document credible abuse cases and the initial mitigation approach against the recorded architecture and exposure.',
+      APPSEC_THREAT_MODEL_REVIEW: 'AppSec: independently review the developer-authored model, challenge assumptions, and record a decision with evidence.',
+      SECURITY_ARCHITECTURE_APPROVAL: 'Security Architecture: independently validate architecture, data-flow, and trust-boundary decisions before approval.',
+      HIGH_RISK_SECURITY_TEST: 'Security testing: validate the high-risk scenario and attach independent test evidence before release.',
+      SECURITY_VERIFICATION: 'Independent verifier: validate the implemented control and its evidence; a completed development ticket alone is not verification.',
+    };
     for (const kind of kinds) {
       if (db.data.tickets.some((ticket) => ticket.customFields?.some((field) => field.name === 'threatModelLifecycleKey' && field.value === `${modelId}:${kind}:${String(event.payload.revisionId || '')}:${String(event.payload.controlId || '')}`))) continue;
       const year = new Date().getUTCFullYear(); const sequence = db.data.tickets.reduce((maximum, ticket) => Math.max(maximum, Number(ticket.key.match(new RegExp(`^SEC-${year}-(\\d+)$`))?.[1] || 0)), 0) + 1;
       const ownerId = ownerFor(kind); const severity = model.criticality; const riskSeverity = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(severity) ? severity as 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' : 'MEDIUM'; const deadline = await ThreatModelService.remediationDueDate(model.organization_id, riskSeverity);
       const ticket: Ticket = {
         id: `tick-${uuidv4().slice(0, 8)}`, key: `SEC-${year}-${String(sequence).padStart(4, '0')}`, projectCode: 'SEC', ticketTypeId: kind, ticketTypeName: titleFor[kind] || kind, type: 'SERVICE_REQUEST', category: 'SECURITY_REVIEW', securityDomain: 'APPSEC', title: `${titleFor[kind] || kind}: ${model.key} ${model.title}`,
-        description: `${titleFor[kind] || kind} generated from ${model.key}. Complete this governed security step; completion does not bypass Threat Model approval, verification, risk acceptance, or the server release gate.`, statusId: initial.id, statusName: initial.name, statusCategory: initial.category as Ticket['statusCategory'], workflowId: workflow?.id || 'wf-secops-default', workflowVersion: workflow?.version || 1,
+        description: `${titleFor[kind] || kind} generated from ${model.key}. ${instructionsFor[kind] || 'Complete this governed security step.'} Completion does not bypass Threat Model approval, verification, risk acceptance, or the server release gate.`, statusId: initial.id, statusName: initial.name, statusCategory: initial.category as Ticket['statusCategory'], workflowId: workflow?.id || 'wf-secops-default', workflowVersion: workflow?.version || 1,
         technicalSeverity: severity, businessPriority: severity === 'CRITICAL' ? 'P1_URGENT' : severity === 'HIGH' ? 'P2_HIGH' : 'P3_MEDIUM', businessImpact: severity === 'CRITICAL' ? 'CATASTROPHIC' : severity === 'HIGH' ? 'SIGNIFICANT' : 'MODERATE', urgency: severity === 'CRITICAL' ? 'CRITICAL' : severity === 'HIGH' ? 'HIGH' : 'MEDIUM', inherentRisk: riskSeverity, residualRisk: riskSeverity, riskScore: severity === 'CRITICAL' ? 20 : severity === 'HIGH' ? 12 : 6,
         confidentiality: 'CONFIDENTIAL_SECURITY_ONLY', reporterId: actor.id, requesterId: model.business_owner_id, assigneeId: ownerId, ownerId, securityOwnerId: model.security_owner_id || ownerId, departmentId: model.department_id || actor.departmentId, projectId: model.project_id || undefined, applicationId: model.service_id || undefined, assetId: model.asset_id || undefined, parentTicketId: parent?.id,
         watcherIds: [...new Set([actor.id, model.business_owner_id, model.technical_owner_id, model.security_owner_id].filter(Boolean) as string[])], participantIds: [...new Set([actor.id, ownerId])], customFields: [
@@ -312,7 +326,7 @@ export class WorkerEventService {
       category: 'SECURITY_REVIEW', securityDomain: 'APPSEC', title: `${control.threat_key}: ${control.control_title}`, description: `${control.control_description}\n\nSource Threat: ${control.threat_key} — ${control.threat_title}\nAcceptance criteria: implement the control, attach implementation evidence, and obtain independent AppSec verification.`,
       statusId: initial.id, statusName: initial.name, statusCategory: initial.category as Ticket['statusCategory'], workflowId: workflow?.id || 'wf-secops-default', workflowVersion: workflow?.version || 1,
       technicalSeverity: severity, businessPriority: severity === 'CRITICAL' ? 'P1_URGENT' : severity === 'HIGH' ? 'P2_HIGH' : 'P3_MEDIUM', businessImpact: severity === 'CRITICAL' ? 'CATASTROPHIC' : severity === 'HIGH' ? 'SIGNIFICANT' : 'MODERATE', urgency: severity === 'CRITICAL' ? 'CRITICAL' : severity === 'HIGH' ? 'HIGH' : 'MEDIUM', inherentRisk: severity, residualRisk: severity, riskScore: control.inherent_score * 4,
-      confidentiality: 'CONFIDENTIAL_SECURITY_ONLY', reporterId: actor.id, requesterId: actor.id, assigneeId: control.implementation_owner_id || undefined, ownerId: control.implementation_owner_id || actor.id, securityOwnerId: actor.id, departmentId: control.department_id || actor.departmentId, applicationId: control.service_id || undefined, assetId: control.asset_id || undefined,
+      confidentiality: 'CONFIDENTIAL_SECURITY_ONLY', reporterId: actor.id, requesterId: actor.id, assigneeId: control.implementation_owner_id || undefined, ownerId: control.implementation_owner_id || actor.id, securityOwnerId: actor.id, departmentId: control.department_id || actor.departmentId, projectId: control.project_id || undefined, applicationId: control.service_id || undefined, assetId: control.asset_id || undefined,
       watcherIds: [actor.id], participantIds: [actor.id, ...(control.implementation_owner_id ? [control.implementation_owner_id] : [])], customFields: [
         { fieldId: 'source', name: 'source', type: 'TEXT', value: 'THREAT_MODEL' }, { fieldId: 'threatModelId', name: 'threatModelId', type: 'TEXT', value: control.threat_model_id }, { fieldId: 'threatModelRevisionId', name: 'threatModelRevisionId', type: 'TEXT', value: control.revision_id }, { fieldId: 'threatId', name: 'threatId', type: 'TEXT', value: control.threat_id }, { fieldId: 'controlId', name: 'controlId', type: 'TEXT', value: control.control_id }, { fieldId: 'securityVerificationRequired', name: 'securityVerificationRequired', type: 'BOOLEAN', value: true },
       ], acceptanceCriteria: 'Implementation evidence attached; independent AppSec verification passes; no release until the control is VERIFIED.', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), dueDate: control.due_date || policyDueDate, remediationDeadline: control.due_date || policyDueDate, slaState: 'SAFE', version: 1, tags: ['THREAT_MODEL', control.model_key, control.threat_key, control.required_before_release ? 'RELEASE_BLOCKING' : 'NON_BLOCKING'],

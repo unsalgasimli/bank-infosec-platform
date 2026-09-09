@@ -56,37 +56,6 @@
   align-items: center;
   gap: 30px;
 }
-.garden-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  text-decoration: none;
-  color: var(--garden-ink);
-}
-.garden-brand__symbol {
-  font-family: Georgia, serif;
-  font-size: 49px;
-  font-weight: bold;
-  line-height: 1;
-  letter-spacing: -7px;
-  margin-right: 8px;
-}
-.garden-brand__symbol span {
-  color: var(--garden-clay);
-}
-.garden-brand > span:last-child {
-  font-size: 17px;
-  font-weight: 650;
-  letter-spacing: 3px;
-  line-height: 1.25;
-}
-.garden-brand > span:last-child > span {
-  display: block;
-  font-size: 8px;
-  letter-spacing: 2.4px;
-  font-weight: 500;
-  margin-top: 5px;
-}
 .garden-header__note {
   margin-left: auto;
   margin-right: 35px;
@@ -771,12 +740,6 @@
   }
   .garden-header__note {
     display: none;
-  }
-  .garden-brand__symbol {
-    font-size: 40px;
-  }
-  .garden-brand > span:last-child {
-    font-size: 14px;
   }
   .garden-layout {
     display: flex;

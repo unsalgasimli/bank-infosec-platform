@@ -99,6 +99,7 @@ app.use(authMiddleware);
 
 // 5. Bank Active Directory / LDAP Authentication, Directory & Daily Check
 app.post('/api/auth/ldap-login', authRateLimiter, AuthController.ldapLogin);
+app.post('/api/auth/switch-user', AuthController.switchUser);
 app.post('/api/auth/logout', AuthController.logout);
 app.get('/api/auth/me', AuthController.getCurrentUser);
 app.get('/api/auth/public-directory', AuthController.getPublicDirectory);
@@ -323,6 +324,12 @@ app.get('/api/threat-models', ThreatModelsController.list);
 app.post('/api/threat-delivery-mappings', ThreatDeploymentsController.configure);
 app.get('/api/threat-models/:id/deployment-receipts', ThreatDeploymentsController.receipts);
 app.get('/api/threat-models/:id/readiness', ThreatModelsController.readiness);
+app.get('/api/threat-governance/operations', ThreatModelsController.operations);
+app.post('/api/threat-models/:id/compliance-scope', ThreatModelsController.complianceScopeFacts);
+app.post('/api/threat-models/:id/compliance-scope/reviews', ThreatModelsController.complianceScopeReview);
+app.post('/api/threat-correlation-policies', ThreatModelsController.correlationPolicy);
+app.post('/api/threat-correlation-policies/reviews', ThreatModelsController.correlationPolicyReview);
+app.post('/api/threat-models/:id/owner-attestation', ThreatModelsController.ownerAttestation);
 app.post('/api/threat-compliance-profiles', ThreatModelsController.complianceProfile);
 app.post('/api/threat-compliance-profiles/review', ThreatModelsController.complianceProfileReview);
 app.post('/api/threat-models/:id/compliance-applicability', ThreatModelsController.complianceApplicability);
@@ -376,6 +383,7 @@ app.get('/api/threat-model-policy', ThreatModelsController.policy);
 app.put('/api/threat-model-policy', ThreatModelsController.updatePolicy);
 app.get('/api/threat-models/report', ThreatModelsController.report);
 app.get('/api/threat-model-migration-backlog', ThreatModelsController.migrationBacklog);
+app.get('/api/threat-models/scope-options', ThreatModelsController.scopeOptions);
 app.post('/api/threat-model-migration-backlog', ThreatModelsController.upsertMigrationBacklog);
 app.post('/api/threat-models', ThreatModelsController.create);
 app.get('/api/threat-models/:id', ThreatModelsController.get);

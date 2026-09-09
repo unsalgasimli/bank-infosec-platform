@@ -1,0 +1,86 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+MƏNİM İŞLƏRİM
+/
+Müraciətlər
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+Göndərdiyim müraciətlər
+2
+
+Service tickets, access requests, and change orders submitted by you.
+
+Cədvəl
+Kanban
+Bütün elementlər
+Aktiv
+Tamamlanıb
+İxrac et
+Yeni müraciət
+	AÇAR	TAPŞIRIQ İCMALI	STATUS	CİDDİLİK	PRİORİTET	SLA GERİ SAYIMI	İCRAÇI	HƏDƏF SİSTEM	YARADILDI
+	SEC-2026-0008	
+Threat Modeling Workshop: TM-2026-0005 dlp
+#THREAT_MODEL
+	Növbə (Backlog)	
+ORTA	P3 MEDIUM	
+SAFE
+	
+U
+Unsal Gasimli
+	d	9/1/2026
+	SEC-2026-0007	
+Architecture Review: TM-2026-0005 dlp
+#THREAT_MODEL
+	Növbə (Backlog)	
+ORTA	P3 MEDIUM	
+SAFE
+	
+U
+Unsal Gasimli
+	d	9/1/2026
+Göstərilir 2 ümumi tapşırıq
+Kritik: 0
+İcradadır: 0
+Həll edilib: 0
+Arxiv

@@ -23,7 +23,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({ auditEvents }) => {
             {t('Append-only chronological log of all state transitions, approvals, field changes, and access records.')}
           </p>
         </div>
-        <span className="text-label font-mono font-bold bg-white px-3 py-1 rounded-full border border-slate-200 text-slate-700 shadow-xs">
+        <span className="text-label font-mono font-bold bg-semantic-panel px-3 py-1 rounded-full border border-slate-200 text-slate-700 shadow-xs">
           {auditEvents.length} {t('Events')}
         </span>
       </div>
@@ -37,7 +37,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({ auditEvents }) => {
         {auditEvents.map((evt) => (
           <div
             key={evt.id}
-            className="p-4 bg-white border border-slate-200 rounded-xl space-y-3 text-xs shadow-xs"
+            className="p-4 bg-semantic-panel border border-slate-200 rounded-xl space-y-3 text-xs shadow-xs"
           >
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2 flex-wrap">

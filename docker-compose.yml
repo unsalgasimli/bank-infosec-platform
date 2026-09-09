@@ -328,6 +328,10 @@ services:
       - RABBITMQ_DEFAULT_VHOST=${RABBITMQ_VHOST:-aegissec}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+    # The development-only Windows SMB worker joins the broker from the host.
+    # Keep AMQP loopback-bound: it must never become a LAN-facing endpoint.
+    ports:
+      - "127.0.0.1:${RABBITMQ_AMQP_PORT:-5672}:5672"
     networks:
       - bank_internal_network
     healthcheck:

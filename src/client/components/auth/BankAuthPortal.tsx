@@ -124,18 +124,6 @@ export const BankAuthPortal: React.FC<BankAuthPortalProps> = ({
         {copy("Skip to sign in", "Girişə keç")}
       </a>
       <header className="garden-header">
-        <a
-          className="garden-brand"
-          href="#garden-username"
-          aria-label="Apex Bank GRC"
-        >
-          <span className="garden-brand__symbol" aria-hidden="true">
-            a<span>·</span>
-          </span>
-          <span>
-            APEX<span>BANK GRC</span>
-          </span>
-        </a>
         <span className="garden-header__note">
           {copy(
             "A place for everything that matters.",

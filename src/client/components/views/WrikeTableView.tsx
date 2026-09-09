@@ -155,7 +155,7 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `wrike_secops_table_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `fiuuu_secops_table_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -281,7 +281,7 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
       )}
 
       {/* Table Container */}
-      <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
+      <div className="flex-1 min-w-0 overflow-y-auto overflow-x-auto custom-scrollbar">
         <table className="wrike-table wrike-table-responsive w-full table-fixed">
           <thead className="sticky top-0 z-dsContent shadow-xs">
             <tr>
@@ -428,9 +428,9 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
       </div>
 
       {/* Table Footer */}
-      <div className="bg-semantic-subtle border-t border-semantic-border px-6 py-2.5 flex items-center justify-between text-xs text-semantic-jira-muted-strong shrink-0 font-medium">
+      <div className="bg-semantic-subtle border-t border-semantic-border pl-6 pr-24 py-2.5 flex items-center justify-between text-xs text-semantic-jira-muted-strong shrink-0 font-medium">
         <div>
-          {t('Showing')} <span className="font-bold text-semantic-primary">{filteredTickets.length}</span> {t('total tasks')}
+          <span className="font-bold text-semantic-primary">{filteredTickets.length}</span> {t('total tasks')}
         </div>
         <div className="flex items-center gap-5 text-xs">
           <span>{t('Critical:')} <b className="text-semantic-brand-danger">{filteredTickets.filter((t) => t.technicalSeverity === 'CRITICAL').length}</b></span>

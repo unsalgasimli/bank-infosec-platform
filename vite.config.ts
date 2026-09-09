@@ -47,15 +47,20 @@ export default defineConfig({
     },
   },
   build: {
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
         // Keep long-lived third-party code cacheable across application
         // releases. Route modules are already loaded on demand from App.tsx.
         manualChunks(id) {
           const normalized = id.replace(/\\/g, '/');
-          // Keep the optional renderer out of the critical React/vendor chunk.
-          if (normalized.includes('/node_modules/') && normalized.includes('/three/')) return 'garden-engine';
-          if (normalized.includes('/node_modules/')) return 'vendor';
+          if (normalized.includes('/node_modules/')) {
+            // Keep the optional renderer out of the critical React/vendor chunk.
+            if (normalized.includes('/three/')) return 'garden-engine';
+            if (normalized.includes('/react/') || normalized.includes('/react-dom/')) return 'vendor-react';
+            if (normalized.includes('/lucide-react/')) return 'vendor-icons';
+            return 'vendor';
+          }
           if (normalized.includes('/src/shared/')) return 'shared';
           return undefined;
         },

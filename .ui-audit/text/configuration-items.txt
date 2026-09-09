@@ -1,0 +1,290 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+AKTİVLƏR VƏ CMDB
+/
+CMDB reyestri
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+AKTİVLƏR VƏ CMDB
+Konfiqurasiya vahidləri
+
+Governed configuration records and service relationships.
+
+Yenilə
+Bütün qeydlər
+İnfrastruktur
+Tətbiqlər
+Biznes xidmətləri
+Advanced
+Tətbiq et
+21081 matching records
+Columns
+	Asset	Növ	Primary identity	IP	Mühit	Sahib	Sources	Korrelyasiya	Security posture	Son görülmə	Həyat dövrü	Kritiklik dərəcəsi
+	
+dsec-winsrv2
+CI-DISC-15C4F1D0A3C2475BBA40
+	Virtual Machine	
+dsec-winsrv2
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 7	DISCOVERED	Orta
+	
+dsec-winsrv1
+CI-DISC-A0B067A5B626452A8738
+	Virtual Machine	
+dsec-winsrv1
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 7	DISCOVERED	Orta
+	
+assetit-n
+CI-DISC-5D0CBE19456B4A1886B0
+	Virtual Machine	
+assetit-n
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 7	DISCOVERED	Orta
+	
+DMR0052
+CI-DISC-CC2A61FDB3C243A38F70
+	Workstation	
+DMR0052
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 7	DISCOVERED	Orta
+	
+ASDFGHJKL
+CI-DISC-458B57C37C13401D918D
+	Workstation	
+ASDFGHJKL
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 7	DISCOVERED	Orta
+	
+appsrv_test
+CI-DISC-7CD3E193E6734DEFA2F6
+	Physical Server	
+appsrv_test
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 7	DISCOVERED	Orta
+	
+Infosec-Ubuntu-Test
+CI-DISC-7756329F7A1B42CCA3D8
+	Physical Server	
+Infosec-Ubuntu-Test
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 7	DISCOVERED	Orta
+	
+khakimzade’s MacBook Pro
+CI-DISC-23A976A09B5748E1A0AB
+	Workstation	
+khakimzade’s MacBook Pro
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 7	DISCOVERED	Orta
+	
+DMR0052
+CI-DISC-95490543D67348E0945A
+	Workstation	
+DMR0052
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 7	DISCOVERED	Orta
+	
+Microtic Ataturk
+IMP-F26AAA70EECD
+	Network Device	
+Microtic Ataturk
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 3	AKTİV	Orta
+	
+CUCME-HEAD_RT
+IMP-F07058CB1DDF
+	Network Device	
+CUCME-HEAD_RT
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 3	AKTİV	Orta
+	
+CISCO ASA 2
+IMP-C87945442AA6
+	Network Device	
+CISCO ASA 2
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 3	AKTİV	Orta
+	
+Microtic old DR
+IMP-0479DF0DD1A6
+	Network Device	
+Microtic old DR
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 3	AKTİV	Orta
+	
+Microtic Demirci
+IMP-5A56F73729C2
+	Network Device	
+Microtic Demirci
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 3	AKTİV	Orta
+	
+CISCO ASA 1
+IMP-088DE9BACBB6
+	Network Device	
+CISCO ASA 1
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 3	AKTİV	Orta
+	
+Huawei DR-Hacmaz
+IMP-5A139B94F4CC
+	Network Device	
+Huawei DR-Hacmaz
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 3	AKTİV	Orta
+	
+Huawei HQ-ATATURK
+IMP-9A9C9BCE527E
+	Network Device	
+Huawei HQ-ATATURK
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 3	AKTİV	Orta
+	
+Lenova2
+IMP-5E9FEC0F844D
+	Network Device	
+Lenova2
+No secondary identity
+	—	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 3	AKTİV	Orta
+	
+xatai_router.expressbank.az
+IMP-326E21D52D4C
+	Network Device	
+xatai_router.expressbank.az
+Cisco ios
+	192.168.147.1	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 3	AKTİV	Orta
+	
+lankaran_router.expressbank.az
+IMP-DC31DF052144
+	Network Device	
+lankaran_router.expressbank.az
+Cisco ios
+	192.168.145.1	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 3	AKTİV	Orta
+	
+lankaran_sw1.expressbank.az
+IMP-F967D011087F
+	Network Device	
+lankaran_sw1.expressbank.az
+Cisco ios
+	192.168.145.2	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 3	AKTİV	Orta
+	
+lankaran_sw2.expressbank.az
+IMP-E2240219653F
+	Network Device	
+lankaran_sw2.expressbank.az
+Cisco ios
+	192.168.145.3	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 3	AKTİV	Orta
+	
+lankaran_sw3.expressbank.az
+IMP-756C406ABFEA
+	Network Device	
+lankaran_sw3.expressbank.az
+Cisco ios
+	192.168.145.4	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 3	AKTİV	Orta
+	
+elmler_router.expressbank.az
+IMP-EA9E829652EA
+	Network Device	
+elmler_router.expressbank.az
+Cisco ios
+	192.168.146.1	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 3	AKTİV	Orta
+	
+elmler_sw.expressbank.az
+IMP-ED364D8FEE29
+	Network Device	
+elmler_sw.expressbank.az
+Cisco ios
+	192.168.146.2	UNKNOWN	Təyin edilməyib	
+No source evidence
+	Manual	Not reported	Sep 3	AKTİV	Orta
+1–25 of 21081
+Səhifə 1

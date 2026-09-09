@@ -1,0 +1,137 @@
+[
+ {
+  "slug": "discovery-sources",
+  "ok": true,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "discovery-runs",
+  "ok": true,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "correlation-review",
+  "ok": true,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "configuration-items",
+  "ok": true,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "business-services",
+  "ok": true,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "applications",
+  "ok": true,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "relationship-map",
+  "ok": true,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "knowledge-base",
+  "ok": true,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "operational-analytics",
+  "ok": true,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "executive-analytics",
+  "ok": true,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "admin-request-forms",
+  "ok": true,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "admin-workflow-templates",
+  "ok": true,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "admin-automations",
+  "ok": true,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "admin-sla-policies",
+  "ok": true,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "admin-departments",
+  "ok": true,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ }
+]

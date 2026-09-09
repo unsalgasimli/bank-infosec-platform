@@ -61,7 +61,7 @@ export const ServiceCatalogView: React.FC<ServiceCatalogViewProps> = ({ onOpenCr
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder={t('Search service catalog...')}
-            className="w-full bg-white border border-semantic-border-strong focus:border-semantic-info rounded-lg pl-9 pr-3 py-2 text-xs text-semantic-primary outline-none"
+            className="w-full bg-semantic-panel border border-semantic-border-strong focus:border-semantic-info rounded-lg pl-9 pr-3 py-2 text-xs text-semantic-primary outline-none"
           />
         </div>
       </div>
@@ -70,7 +70,7 @@ export const ServiceCatalogView: React.FC<ServiceCatalogViewProps> = ({ onOpenCr
           <button
             key={category}
             onClick={() => setSelectedCategory(category)}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${selectedCategory === category ? 'bg-semantic-info text-white shadow-xs' : 'bg-white border border-semantic-border text-semantic-muted'}`}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${selectedCategory === category ? 'bg-semantic-info text-white shadow-xs' : 'bg-semantic-panel border border-semantic-border text-semantic-muted'}`}
           >
             {category === 'ALL' ? t('All Services') : category}
           </button>

@@ -1,0 +1,57 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+İDARƏETMƏ
+/
+Avtomatlaşdırmalar
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+Wrike Automation Engine & Project Blueprints
+Real-Time Backend Synced
+
+Build custom trigger-condition-action workflow rules and launch turnkey enterprise project blueprints.
+
+Automation Rules (0)
+Project Blueprints (0)
+ACTİVE SECOPS WORKFLOW AUTOMATİON RULES (0)
+Avtomatlaşdırma qaydası yarat

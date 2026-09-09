@@ -1,0 +1,64 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+Zəifliklər
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+Zəiflik və AST Konveyer Komandası
+
+Avtomatlaşdırılmış barmaq izi təkrar təmizləməsi ilə fasiləsiz AST konveyer inteqrasiyası (SAST, SCA, DAST, Konteyner).
+
+0 Ümumi Tapıntı
+SKANER QƏBULU
+AST CI/CD Konveyeri
+
+Tapıntılar yalnız təsdiqlənmiş skaner inteqrasiyası qəbul API-nə autentifikasiya edilmiş məlumat göndərdikdən sonra burada görünür. Demo skaner məlumatları deaktivdir.
+
+Bütün tapıntılar
+SAST (Mənbə kodu)
+SCA (Asılılıqlar)
+DAST (Veb API)
+Konteyner və bulud
+AKTİV TAPINTILAR İNVENTARI (0)
+Təkrarlanması təmizlənmiş konveyer
+Aktiv filtrə və ya axtarış sorğusuna uyğun heç bir zəiflik tapılmadı.

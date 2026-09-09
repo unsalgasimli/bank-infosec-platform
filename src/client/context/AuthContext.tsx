@@ -7,6 +7,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   ldapLogin: (payload: LDAPLoginPayload) => Promise<{ success: boolean; message?: string }>;
+  switchUser: (targetUserIdOrUsername: string) => Promise<boolean>;
   logout: () => Promise<void>;
   refreshUsers: () => Promise<void>;
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
@@ -108,6 +109,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const switchUser = async (targetUserIdOrUsername: string): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/auth/switch-user', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: targetUserIdOrUsername }),
+      });
+      const data = await readJsonResponse<{ success?: boolean; user?: BankUser }>(res);
+      if (res.ok && data?.success && data.user) {
+        setCurrentUser(data.user);
+        await refreshUsers();
+        return true;
+      }
+    } catch (err) {
+      console.error('Failed to switch user:', err);
+    }
+    // Fallback: search local user list
+    const fallbackUser = allUsers.find(
+      (u) => u.id === targetUserIdOrUsername || u.username === targetUserIdOrUsername || u.sAMAccountName === targetUserIdOrUsername
+    );
+    if (fallbackUser) {
+      setCurrentUser(fallbackUser);
+      return true;
+    }
+    return false;
+  };
+
   const logout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
@@ -135,6 +164,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated: Boolean(currentUser),
         isLoading,
         ldapLogin,
+        switchUser,
         logout,
         refreshUsers,
         fetchWithAuth,

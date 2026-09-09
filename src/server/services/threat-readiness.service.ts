@@ -5,6 +5,7 @@ import type { BankUser } from '../../shared/types/auth.js';
 import { ThreatModelService } from './threat-model.service.js';
 import { ThreatModelRepository } from '../db/postgres/threat-model-repository.js';
 import { ThreatComplianceApplicabilityService } from './threat-compliance-applicability.service.js';
+import { ThreatFindingReassessmentService } from './threat-finding-reassessment.service.js';
 
 export type ReadinessConnection = {query(statement:string,params?:any[]):Promise<{rows:any[];rowCount:number|null}>};
 type Connection = ReadinessConnection;
@@ -15,9 +16,16 @@ export class ThreatReadinessService {
     const blockers: Array<{code:string; entityId:string; message:string}> = [];
     const compliance=await ThreatComplianceApplicabilityService.evaluate(client,revisionId);
     blockers.push(...compliance.blockers);
-    if (revision?.tier == null) blockers.push({code:'TM_SCREENING_REQUIRED',entityId:revisionId,message:'Complete security impact screening.'});
+    const findingImpacts=await ThreatFindingReassessmentService.impacts(client,revisionId);
+    for(const impact of findingImpacts)blockers.push({code:'FINDING_REASSESSMENT_REQUIRED',entityId:impact.control_id,message:`${impact.threat_id}: ${impact.effect} control ${impact.control_id}; finding ${impact.finding_id}: ${impact.reason}`});
+    if((await client.query('SELECT 1 FROM threat_analysis_suggestions s LEFT JOIN threat_suggestion_dispositions d ON d.suggestion_id=s.id WHERE s.revision_id=$1 AND d.id IS NULL LIMIT 1',[revisionId])).rowCount)blockers.push({code:'ANALYST_DISPOSITION_PENDING',entityId:revisionId,message:'Analyst disposition is required for every pending threat suggestion before submission.'});
+    if (revision?.tier == null) blockers.push({code:'TM_SCREENING_REQUIRED',entityId:revisionId,message:'Security impact screening is required before submission.'});
     for (const unit of units) if (!unit.completed) blockers.push({code:unit.target_type==='BUSINESS_CAPABILITY'?'ABUSE_ANALYSIS_INCOMPLETE':'STRIDE_ANALYSIS_INCOMPLETE',entityId:unit.id,message:`${unit.label}: ${unit.category} ${unit.disposition_id?'requires independent AppSec review':'has no current disposition'}.`});
     if(revision?.tier===3 && !(await client.query('SELECT 1 FROM threat_business_capabilities WHERE revision_id=$1',[revisionId])).rowCount) blockers.push({code:'ABUSE_ANALYSIS_INCOMPLETE',entityId:revisionId,message:'Identify critical business capabilities and their architecture targets.'});
+    if(revision?.tier===3){
+      if(!revision.assumptions?.trim())blockers.push({code:'TM_ASSUMPTIONS_MISSING',entityId:revisionId,message:'TM-3 requires explicit security assumptions.'});
+      if(!(await client.query('SELECT 1 FROM threat_owner_attestations WHERE revision_id=$1 AND content_sha256=threat_attestation_digest($1)',[revisionId])).rowCount)blockers.push({code:'OWNER_ATTESTATION_MISSING',entityId:revisionId,message:'Technical owner must attest to the current analysis package.'});
+    }
     const counts=(await client.query(`SELECT
       EXISTS(SELECT 1 FROM threat_model_components WHERE revision_id=$1) AS architecture,
       EXISTS(SELECT 1 FROM threats WHERE revision_id=$1) AS threats,
@@ -26,7 +34,7 @@ export class ThreatReadinessService {
       EXISTS(SELECT 1 FROM threat_data_object_links WHERE revision_id=$1) AS data,
       EXISTS(SELECT 1 FROM threat_security_requirements WHERE revision_id=$1) AS requirements`,[revisionId])).rows[0];
     for(const key of revision?.tier>=2?['architecture','threats','flows','boundaries','data','requirements']:revision?.tier>0?['architecture','threats']:[]) if(!counts[key])blockers.push({code:'TM_STRUCTURE_INCOMPLETE',entityId:revisionId,message:`Missing ${key}.`});
-    return {revisionId,ready:blockers.length===0,blockers,units,compliance,requiredAnalysisUnits:units.length,completedAnalysisUnits:units.filter(u=>u.completed).length,coveragePercentage:units.length?Math.floor(units.filter(u=>u.completed).length*100/units.length):100,architectureVersion:revision?.architecture_version};
+    return {revisionId,ready:blockers.length===0,blockers,units,compliance,findingImpacts,requiredAnalysisUnits:units.length,completedAnalysisUnits:units.filter(u=>u.completed).length,coveragePercentage:units.length?Math.floor(units.filter(u=>u.completed).length*100/units.length):100,architectureVersion:revision?.architecture_version};
   }
   static async refresh(client:Connection,revisionId:string) {
     await client.query(`INSERT INTO threat_analysis_units(id,revision_id,target_type,target_id,category,policy_id,fingerprint,architecture_version)
@@ -36,6 +44,16 @@ export class ThreatReadinessService {
   }
   static async get(modelId:string,actor:BankUser) {
     return ThreatModelService.withGovernanceModel(modelId,actor,async(client,model)=>this.evaluateThreatModelReadiness(client,model.currentRevisionId));
+  }
+  static async attest(modelId:string,input:unknown,actor:BankUser){
+    const value=z.object({reason:z.string().trim().min(20).max(10000)}).strict().parse(input);
+    return ThreatModelService.withAnalysisModel(modelId,actor,async(client,model)=>{
+      if(actor.id!==model.technicalOwnerId)throw new Error('Current technical owner attestation required');
+      const id=randomUUID();
+      await client.query('INSERT INTO threat_owner_attestations(id,revision_id,content_sha256,attested_by,reason) VALUES($1,$2,threat_attestation_digest($2),$3,$4)',[id,model.currentRevisionId,actor.id,value.reason]);
+      await ThreatModelRepository.audit(client,{id:randomUUID(),modelId,revisionId:model.currentRevisionId,actorId:actor.id,action:'OWNER_ATTESTED',entityType:'THREAT_MODEL_REVISION',entityId:model.currentRevisionId,newValue:value});
+      return {id};
+    });
   }
   static async dispose(modelId:string,input:unknown,actor:BankUser) {
     const value=z.object({unitId:z.string().min(1),fingerprint:z.string().length(64),disposition:z.enum(['THREAT_IDENTIFIED','REVIEWED_NO_THREAT','NOT_APPLICABLE']),threatId:z.string().optional(),reason:z.string().trim().min(20).max(10000)}).strict().parse(input);

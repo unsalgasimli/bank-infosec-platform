@@ -6,9 +6,7 @@ const WorkManagementContainer = lazy(() => import('./components/views/WorkManage
 const ProjectOperationsWorkspace = lazy(() => import('./components/projects/ProjectOperationsWorkspace.js').then((m) => ({ default: m.ProjectOperationsWorkspace })));
 const MyWorkOverviewView = lazy(() => import('./components/views/MyWorkOverviewView.js').then((m) => ({ default: m.MyWorkOverviewView })));
 const ServiceCatalogView = lazy(() => import('./components/views/ServiceCatalogView.js').then((m) => ({ default: m.ServiceCatalogView })));
-const CMDBRelationshipMapView = lazy(() => import('./components/assets/CMDBRelationshipMapView.js').then((m) => ({ default: m.CMDBRelationshipMapView })));
 const CMDBExplorerView = lazy(() => import('./components/assets/CMDBExplorerView.js').then((m) => ({ default: m.CMDBExplorerView })));
-const CMDBAssetInventoryView = lazy(() => import('./components/assets/CMDBAssetInventoryView.js').then((m) => ({ default: m.CMDBAssetInventoryView })));
 const DiscoveryAdminView = lazy(() => import('./components/assets/DiscoveryAdminView.js').then((m) => ({ default: m.DiscoveryAdminView })));
 const AuditComplianceView = lazy(() => import('./components/governance/AuditComplianceView.js').then((m) => ({ default: m.AuditComplianceView })));
 const IdeateCanvasView = lazy(() => import('./components/ideate/IdeateCanvasView.js').then((m) => ({ default: m.IdeateCanvasView })));
@@ -58,6 +56,47 @@ const apiErrorMessage = (data: any, fallback: string): string => {
   return typeof message === 'string' && message.trim() ? message : fallback;
 };
 
+// Lazy view chunks can stall (proxy wedge, deploy mid-session). Escape the
+// indefinite Suspense fallback with a retry affordance instead of a dead spinner.
+const ViewSuspenseFallback: React.FC = () => {
+  const { t } = useI18n();
+  const [timedOut, setTimedOut] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setTimedOut(true), 8000);
+    return () => window.clearTimeout(timer);
+  }, []);
+  if (timedOut) {
+    return (
+      <div className="flex min-h-[320px] flex-col items-center justify-center gap-3">
+        <p className="text-sm font-medium text-semantic-primary">{t('This view is taking too long to load')}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="rounded-lg border border-semantic-border px-3 py-1.5 text-xs font-semibold text-semantic-primary transition-colors hover:bg-semantic-panel"
+        >
+          {t('Retry')}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-h-[320px] items-center justify-center text-sm text-semantic-muted" role="status">
+      {t('Loading...')}
+    </div>
+  );
+};
+
+class ViewErrorBoundary extends React.Component<
+  { fallback: React.ReactNode; children: React.ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) return this.props.fallback;
+    return this.props.children;
+  }
+}
+
 export const App: React.FC = () => {
   const { currentUser, isLoading, fetchWithAuth } = useAuth();
   const { t } = useI18n();
@@ -75,6 +114,7 @@ export const App: React.FC = () => {
   const [isProofingOpen, setIsProofingOpen] = useState<boolean>(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
   const [activeDepartmentId, setActiveDepartmentId] = useState<string | null>(null);
+  const [activeCompanyId, setActiveCompanyId] = useState<string>('comp-standard-ho');
   const [selectedAdminDeptId, setSelectedAdminDeptId] = useState<string | null>(null);
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -369,11 +409,11 @@ export const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-semantic-auth-loading flex flex-col items-center justify-center text-slate-300">
         <div className="flex flex-col items-center gap-4">
-          <div className="relative flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-semantic-brand to-semantic-info p-0.5 shadow-brand-glow animate-pulse">
-            <div className="w-full h-full bg-semantic-auth-loading rounded-[14px] flex items-center justify-center">
-              <span className="text-xl">🛡️</span>
-            </div>
-          </div>
+          <div
+            className="w-10 h-10 rounded-full border-2 border-slate-600 border-t-slate-200 animate-spin"
+            role="status"
+            aria-label="Loading"
+          />
           <div className="text-sm font-semibold tracking-wide text-slate-200">
             {t('Verifying Secure Bank Session...')}
           </div>
@@ -397,19 +437,32 @@ export const App: React.FC = () => {
   const activeParentModule = NAVIGATION_MODULES.find((m) => m.items.some((i) => i.id === activeDestination));
   const activeViewTitle = activeNavModule
     ? t(activeNavModule.label)
-    : String(activeDestination).replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    : String(activeDestination)
+        .replace(/-/g, ' ')
+        // Keep domain acronyms uppercase instead of "Dlp"/"Cmdb" title-casing.
+        .replace(/\b(dlp|cmdb|grc|soc|sla|sop|api|iam|pki|sso|mfa|cve|cvss|iso|nist)\b/gi, (m) => m.toUpperCase())
+        .replace(/\b\w/g, (c) => c.toUpperCase());
   const activeParentModuleTitle = activeParentModule ? t(activeParentModule.label) : undefined;
 
 
 
+  const viewErrorFallback = (
+    <div className="flex min-h-[320px] flex-col items-center justify-center gap-3">
+      <p className="text-sm font-medium text-semantic-primary">{t('View failed to load')}</p>
+      <button
+        onClick={() => window.location.reload()}
+        className="rounded-lg border border-semantic-border px-3 py-1.5 text-xs font-semibold text-semantic-primary transition-colors hover:bg-semantic-panel"
+      >
+        {t('Retry')}
+      </button>
+    </div>
+  );
+
   const workspaceContent = (
-    <React.Suspense
-      fallback={(
-        <div className="flex min-h-[320px] items-center justify-center text-sm text-semantic-muted">
-          {t('Loading secure workspace…')}
-        </div>
-      )}
-    >
+    <ViewErrorBoundary fallback={viewErrorFallback}>
+      <React.Suspense
+        fallback={<ViewSuspenseFallback />}
+      >
       {/* If a ticket is open, show split detail */}
       {selectedTicketId && ticketDetailData?.ticket ? (
         <TicketSplitDetail
@@ -663,13 +716,8 @@ export const App: React.FC = () => {
           {/* ========================================================================= */}
           {/* 5. ASSETS & CMDB MODULE                                                   */}
           {/* ========================================================================= */}
-          {activeDestination === 'asset-inventory' && (
-            <CMDBAssetInventoryView />
-          )}
-
           {activeDestination === 'discovery-sources' && <DiscoveryAdminView mode="sources" onNavigateToRuns={(connectorId) => { handleNavigate('discovery-runs'); window.setTimeout(() => window.dispatchEvent(new CustomEvent('aegis:discovery-select-connector', { detail: connectorId })), 0); }} />}
           {activeDestination === 'discovery-runs' && <DiscoveryAdminView mode="runs" />}
-          {activeDestination === 'correlation-review' && <DiscoveryAdminView mode="correlation" />}
 
           {activeDestination === 'configuration-items' && (
             <CMDBExplorerView mode="all" initialCiId={cmdbFocusCiId} />
@@ -681,10 +729,6 @@ export const App: React.FC = () => {
 
           {activeDestination === 'applications' && (
             <CMDBExplorerView mode="applications" />
-          )}
-
-          {activeDestination === 'relationship-map' && (
-            <CMDBRelationshipMapView onOpenDetails={(ciId) => { setCmdbFocusCiId(ciId); handleNavigate('configuration-items'); }} />
           )}
 
           {/* ========================================================================= */}
@@ -797,6 +841,7 @@ export const App: React.FC = () => {
           />
         )}
       </React.Suspense>
+    </ViewErrorBoundary>
   );
 
   if (experience === 'alive') {
@@ -812,7 +857,15 @@ export const App: React.FC = () => {
         risks={risks}
         kbArticles={kbArticles}
         pendingApprovalsCount={pendingApprovalsCount}
+        departments={departments}
         departmentsCount={departments.length}
+        activeDepartmentId={activeDepartmentId}
+        onSelectDepartment={(dId) => {
+          setActiveDepartmentId(dId);
+          if (dId) setSelectedAdminDeptId(dId);
+        }}
+        activeCompanyId={activeCompanyId}
+        onSelectCompany={setActiveCompanyId}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onTicketCreated={(t) => {
@@ -833,11 +886,14 @@ export const App: React.FC = () => {
     <AppLayout
       activeView={activeDestination}
       onSelectView={(v) => handleNavigate(v)}
+      departments={departments}
       activeDepartmentId={activeDepartmentId}
       onSelectDepartment={(dId) => {
         setActiveDepartmentId(dId);
         if (dId) setSelectedAdminDeptId(dId);
       }}
+      activeCompanyId={activeCompanyId}
+      onSelectCompany={setActiveCompanyId}
       tickets={scopedTickets}
       applications={applications}
       assets={assets}

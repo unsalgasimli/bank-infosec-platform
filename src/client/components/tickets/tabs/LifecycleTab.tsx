@@ -303,7 +303,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {(lifecycle?.slaMetrics || []).map((metric) => (
-            <div key={metric.id} className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs space-y-2">
+            <div key={metric.id} className="rounded-xl border border-slate-200 bg-semantic-panel p-3.5 shadow-xs space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-bold text-slate-800">{metric.metric.replaceAll('_', ' ')}</span>
                 <span className={`rounded-full border px-2 py-0.5 text-caption font-bold ${SLA_COLORS[metric.state] || SLA_COLORS.RUNNING}`}>
@@ -369,7 +369,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
               <button
                 type="button"
                 onClick={() => onNavigateToTicket(parentTicket.id)}
-                className="px-2.5 py-1 bg-white hover:bg-blue-100 text-blue-700 font-bold border border-blue-300 rounded-lg flex items-center gap-1 shrink-0 transition-colors shadow-2xs"
+                className="px-2.5 py-1 bg-semantic-panel hover:bg-blue-100 text-blue-700 font-bold border border-blue-300 rounded-lg flex items-center gap-1 shrink-0 transition-colors shadow-2xs"
               >
                 <span>Əsas ticketə bax</span>
                 <ExternalLink className="w-3 h-3" />
@@ -380,7 +380,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
 
         {/* Inline Sub-Ticket Creation Form */}
         {isCreatingSubTicket && (
-          <form onSubmit={handleCreateSubTicket} className="rounded-2xl border border-semantic-border-strong bg-white p-5 shadow-xs sm:p-6">
+          <form onSubmit={handleCreateSubTicket} className="rounded-2xl border border-semantic-border-strong bg-semantic-panel p-5 shadow-xs sm:p-6">
             <div className="flex items-center justify-between gap-3 border-b border-semantic-border pb-3">
               <span className="flex items-center gap-2 text-sm font-bold text-semantic-primary">
                 <Workflow className="h-4 w-4 text-semantic-success" /> Bu ticket daxilindən başqa şəxsə / departamentə alt ticket aç
@@ -485,7 +485,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
               <div
                 key={st.id}
                 onClick={() => onNavigateToTicket && onNavigateToTicket(st.id)}
-                className="flex items-center justify-between gap-3 p-3 bg-white border border-semantic-border hover:border-semantic-brand hover:bg-slate-50/70 rounded-xl transition-all cursor-pointer shadow-2xs group"
+                className="flex items-center justify-between gap-3 p-3 bg-semantic-panel border border-semantic-border hover:border-semantic-brand hover:bg-semantic-hover/70 rounded-xl transition-all cursor-pointer shadow-2xs group"
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-7 h-7 rounded-lg bg-semantic-success-surface text-semantic-success flex items-center justify-center font-bold text-xs shrink-0">
@@ -540,7 +540,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
                 return (
                   <div
                     key={task.id}
-                    className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs space-y-2"
+                    className="rounded-lg border border-slate-200 bg-semantic-panel p-3 shadow-xs space-y-2"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0 flex-1">
@@ -575,7 +575,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
                           value={taskNoteInput}
                           onChange={(e) => setTaskNoteInput(e.target.value)}
                           placeholder="Bu tapşırıq üzrə nə edildi? (Qeyd / Nəticə yazın)..."
-                          className="w-full bg-white border border-semantic-border-strong rounded px-2.5 py-1 text-xs outline-none focus:border-semantic-brand resize-none"
+                          className="w-full bg-semantic-panel border border-semantic-border-strong rounded px-2.5 py-1 text-xs outline-none focus:border-semantic-brand resize-none"
                         />
                         <div className="flex justify-end gap-1.5">
                           <button
@@ -584,7 +584,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
                               setEditingTaskId(null);
                               setTaskNoteInput('');
                             }}
-                            className="px-2 py-1 text-label font-semibold text-slate-600 hover:bg-slate-100 rounded"
+                            className="px-2 py-1 text-label font-semibold text-slate-600 hover:bg-semantic-hover rounded"
                           >
                             Ləğv et
                           </button>
@@ -629,14 +629,14 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
               value={taskTitle}
               onChange={(event) => setTaskTitle(event.target.value)}
               placeholder="Yeni tapşırıq başlığı..."
-              className="jira-input w-full bg-white"
+              className="jira-input w-full bg-semantic-panel"
             />
             <div className="flex gap-2">
               <input
                 value={taskUpdateNote}
                 onChange={(event) => setTaskUpdateNote(event.target.value)}
                 placeholder="Görülən iş və ya qeyd (istəyə bağlı)..."
-                className="jira-input flex-1 bg-white text-xs"
+                className="jira-input flex-1 bg-semantic-panel text-xs"
               />
               <button
                 onClick={addTask}
@@ -665,7 +665,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
             </div>
             <div className="max-h-64 space-y-2.5 overflow-y-auto custom-scrollbar pr-1">
               {(lifecycle?.worklogs || []).map((worklog) => (
-                <div key={worklog.id} className="rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs shadow-xs">
+                <div key={worklog.id} className="rounded-lg border border-slate-200 bg-semantic-panel px-3.5 py-2.5 text-xs shadow-xs">
                   <div className="flex justify-between items-center gap-2">
                     <span className="font-semibold text-slate-800 truncate">{worklog.description}</span>
                     <span className="font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 text-label">
@@ -690,7 +690,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
               value={workDescription}
               onChange={(event) => setWorkDescription(event.target.value)}
               placeholder="Araşdırma və ya icra fəaliyyəti..."
-              className="jira-input bg-white"
+              className="jira-input bg-semantic-panel"
             />
             <input
               type="number"
@@ -698,7 +698,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
               max={1440}
               value={durationMinutes}
               onChange={(event) => setDurationMinutes(Number(event.target.value))}
-              className="jira-input bg-white text-center font-mono"
+              className="jira-input bg-semantic-panel text-center font-mono"
             />
             <button
               onClick={addWorklog}
@@ -724,7 +724,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
             <span
               key={relationship.id}
               onClick={() => relationship.relatedTicket?.id && onNavigateToTicket && onNavigateToTicket(relationship.relatedTicket.id)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 shadow-xs flex items-center gap-1.5 hover:border-blue-400 cursor-pointer transition-colors"
+              className="rounded-lg border border-slate-200 bg-semantic-panel px-3 py-1.5 text-xs text-slate-800 shadow-xs flex items-center gap-1.5 hover:border-blue-400 cursor-pointer transition-colors"
             >
               <strong className="text-blue-700 font-bold">{relationship.type.replaceAll('_', ' ')}</strong> ·{' '}
               <span className="font-mono font-semibold">{relationship.relatedTicket?.key || 'Unavailable'}</span> —{' '}
@@ -740,12 +740,12 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
             value={relatedTicketId}
             onChange={(event) => setRelatedTicketId(event.target.value)}
             placeholder="Tapşırıq kodu və ya ID-si (məs. SEC-2026-0002)"
-            className="jira-input bg-white"
+            className="jira-input bg-semantic-panel"
           />
           <select
             value={relationshipType}
             onChange={(event) => setRelationshipType(event.target.value as TicketRelationshipType)}
-            className="jira-input text-xs bg-white font-medium"
+            className="jira-input text-xs bg-semantic-panel font-medium"
           >
             {['RELATES_TO', 'BLOCKS', 'DUPLICATES', 'CAUSED_BY', 'PARENT_OF', 'PROBLEM_FOR', 'INCIDENT_OF', 'CHANGE_CAUSED', 'SECURITY_CASE_FOR'].map((type) => (
               <option key={type} value={type}>
@@ -766,7 +766,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
           value={relationshipNote}
           onChange={(event) => setRelationshipNote(event.target.value)}
           placeholder="İstəyə bağlı əlaqə qeydi və ya əsaslandırma..."
-          className="jira-input mt-2 w-full bg-white"
+          className="jira-input mt-2 w-full bg-semantic-panel"
         />
       </section>
 
@@ -780,7 +780,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
             </h3>
           </div>
           {lifecycle?.satisfaction ? (
-            <div className="text-xs text-slate-800 bg-white p-3.5 rounded-lg border border-slate-200">
+            <div className="text-xs text-slate-800 bg-semantic-panel p-3.5 rounded-lg border border-slate-200">
               Qiymətləndirmə: <strong className="text-amber-600 font-bold">{lifecycle.satisfaction.score}/5</strong>
               {lifecycle.satisfaction.comment && (
                 <span className="ml-2 text-slate-600">— {lifecycle.satisfaction.comment}</span>
@@ -791,7 +791,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
               <select
                 value={satisfactionScore}
                 onChange={(event) => setSatisfactionScore(Number(event.target.value))}
-                className="jira-input text-xs bg-white font-medium"
+                className="jira-input text-xs bg-semantic-panel font-medium"
               >
                 {[5, 4, 3, 2, 1].map((score) => (
                   <option key={score} value={score}>
@@ -803,7 +803,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
                 value={satisfactionComment}
                 onChange={(event) => setSatisfactionComment(event.target.value)}
                 placeholder="Rəy və təklifləriniz..."
-                className="jira-input bg-white"
+                className="jira-input bg-semantic-panel"
               />
               <button
                 type="button"
@@ -843,7 +843,7 @@ export const LifecycleTab: React.FC<LifecycleTabProps> = ({
           <p className="mt-3 text-xs text-blue-700">Analiz növbəyə alındı. Nəticə hazır olduqda səhifəni yeniləyin.</p>
         )}
         {latestRecommendation && (
-          <div className="mt-4 rounded-xl border border-blue-200 bg-white p-4 text-xs shadow-xs space-y-2">
+          <div className="mt-4 rounded-xl border border-blue-200 bg-semantic-panel p-4 text-xs shadow-xs space-y-2">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <strong className="text-slate-900 font-bold">{latestRecommendation.summary}</strong>
               <span className="font-mono text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 text-label">

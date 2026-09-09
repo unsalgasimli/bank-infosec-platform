@@ -60,7 +60,7 @@ export const Modal: React.FC<ModalProps> = ({
     <div className="fixed inset-0 z-dsDialog flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
       {/* Backdrop with modern blur */}
       <div
-        className="fixed inset-0 bg-slate-950/55 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
+        className="fixed inset-0 bg-semantic-modal-tint/60 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
         onClick={onClose}
       />
 

@@ -106,7 +106,7 @@ export const DocumentProofingModal: React.FC<DocumentProofingModalProps> = ({
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-sm text-semantic-primary">{documentData?.title || documentTitle}</h3>
                 <span className="px-2 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success text-caption font-bold border border-semantic-success-border">
-                  Wrike Proofing v{documentData?.version || '2.4'}
+                  FIUUU Proofing v{documentData?.version || '2.4'}
                 </span>
               </div>
               <span className="text-label text-semantic-jira-muted-alt">

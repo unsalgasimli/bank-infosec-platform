@@ -1,0 +1,81 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+İŞLƏRİN İDARƏ EDİLMƏSİ
+/
+Layihələr və tapşırıqlar
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+
+Active Directory giriş sərhədləri, çatdırılmanın izlənməsi və mərhələlərin idarə edilməsi ilə layihə əməliyyatları iş sahəsi.
+
+Yeni layihə
+Aktiv
+Mənim layihələrim
+Risk altında
+Tamamlanıb
+Arxivlənib
+LAYİHƏ
+VƏZİYYƏT
+TƏRƏQQİ
+SAHİB
+AKTİV TAPŞIRIQLAR
+BLOKLANIB
+GECİKMİŞ
+NÖVBƏTİ MƏRHƏLƏ
+HƏDƏF
+DLP
+DLP1
+PRJ-0001
+Qrafik üzrə
+0%
+0/0
+UN
+Unsal Gasimli
+0
+0
+0
+No milestone
+2026 M09 30

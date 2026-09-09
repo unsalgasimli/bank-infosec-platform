@@ -399,7 +399,7 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
       </div>
 
       {/* Navigation Sub-Tabs */}
-      <div className="border-b border-semantic-border flex items-center gap-2 overflow-x-auto pb-0 custom-scrollbar text-xs font-bold">
+      <div className="border-b border-semantic-border flex items-center gap-2 overflow-x-auto pb-0 custom-scrollbar text-xs">
         {[
           { id: 'SETTINGS', label: t('Settings & Audit Log'), icon: Sliders },
           { id: 'SLA', label: t('SLA Policies'), icon: Clock },
@@ -415,11 +415,26 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => {
+                setActiveTab(tab.id as any);
+                if (onNavigate) {
+                  const navMap: Record<string, string> = {
+                    SETTINGS: 'admin-settings',
+                    SLA: 'admin-sla-policies',
+                    WORKFLOWS: 'admin-workflow-templates',
+                    AUTOMATION: 'admin-automations',
+                    TAXONOMY: 'admin-taxonomy',
+                    INTEGRATIONS: 'admin-integrations',
+                  };
+                  if (navMap[tab.id]) {
+                    onNavigate(navMap[tab.id]);
+                  }
+                }
+              }}
               className={`px-3.5 py-2.5 flex items-center gap-2 transition-all border-b-2 shrink-0 ${
                 isActive
-                  ? 'text-semantic-success border-semantic-brand bg-semantic-panel rounded-t-lg'
-                  : 'text-semantic-muted hover:text-semantic-strongest border-transparent'
+                  ? 'text-semantic-primary border-semantic-brand bg-semantic-panel font-bold'
+                  : 'text-semantic-muted hover:text-semantic-primary border-transparent font-medium'
               }`}
             >
               <Icon className={`w-4 h-4 ${isActive ? 'text-semantic-brand' : 'text-semantic-placeholder'}`} />
@@ -562,7 +577,7 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
           ))}
 
           {slaEditorOpen && (
-            <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-label="SLA policy editor">
+            <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-semantic-modal-tint/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="SLA policy editor">
               <form onSubmit={saveSlaPolicy} className="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-2xl border border-semantic-border bg-semantic-panel p-5 shadow-xl space-y-5">
                 <div className="flex items-center justify-between border-b border-semantic-border pb-3">
                   <div><h3 className="text-base font-bold text-semantic-primary">{editingSlaId ? 'Edit SLA Policy' : 'Create SLA Policy'}</h3><p className="text-xs text-semantic-muted mt-1">All values are validated and persisted by the backend.</p></div>
@@ -1074,7 +1089,7 @@ export const AdminCenterView: React.FC<AdminCenterViewProps> = ({ initialTab = '
 
       {/* Active Directory Connection & Credentials Configuration Modal */}
       {isAdConfigOpen && (
-        <div className="fixed inset-0 bg-black/40 z-dsDialog flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-semantic-modal-tint/60 z-dsDialog backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-semantic-panel border border-semantic-border-strong rounded-xl max-w-xl w-full p-5 space-y-4 shadow-xl text-xs">
             <div className="flex items-center justify-between border-b border-semantic-border pb-3">
               <div className="flex items-center gap-2">

@@ -11,11 +11,13 @@ import {
   Shield,
   Layers,
 } from 'lucide-react';
-import { useAuth } from '../../../context/AuthContext.js';
 import { useNotifications } from '../../../context/NotificationContext.js';
 import { useI18n } from '../../../context/I18nContext.js';
 import { AliveExperienceSwitcher } from '../common/AliveExperienceSwitcher.js';
 import { LDAPSignInModal } from '../../auth/LDAPSignInModal.js';
+import { EnterpriseOrgContextDropdown } from '../../layout/EnterpriseOrgContextDropdown.js';
+import { EnterpriseUserDropdown } from '../../layout/EnterpriseUserDropdown.js';
+import { BankDepartment } from '../../../../shared/types/auth.js';
 
 interface AliveTopBarProps {
   activeViewTitle?: string;
@@ -23,6 +25,12 @@ interface AliveTopBarProps {
   onOpenCreate: () => void;
   onOpenCommandPalette: () => void;
   onToggleSidebar?: () => void;
+  departments?: BankDepartment[];
+  activeDepartmentId?: string | null;
+  onSelectDepartment?: (deptId: string | null) => void;
+  activeCompanyId?: string;
+  onSelectCompany?: (companyId: string) => void;
+  onNavigate?: (view: string, id?: string) => void;
 }
 
 export const AliveTopBar: React.FC<AliveTopBarProps> = ({
@@ -31,8 +39,13 @@ export const AliveTopBar: React.FC<AliveTopBarProps> = ({
   onOpenCreate,
   onOpenCommandPalette,
   onToggleSidebar,
+  departments = [],
+  activeDepartmentId,
+  onSelectDepartment,
+  activeCompanyId,
+  onSelectCompany,
+  onNavigate,
 }) => {
-  const { currentUser, logout } = useAuth();
   const { language, setLanguage, t } = useI18n();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
 
@@ -54,23 +67,11 @@ export const AliveTopBar: React.FC<AliveTopBarProps> = ({
     setActiveMenu((prev) => (prev === menuName ? null : menuName));
   };
 
-  const getInitials = (name: string) =>
-    name
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2);
-
-  const displayName = currentUser?.fullName && currentUser.fullName !== 'Encrypted Directory User'
-    ? currentUser.fullName
-    : currentUser?.sAMAccountName || currentUser?.username || 'Authenticated user';
-
   return (
     <>
       <header
         ref={menuRef}
-        className="h-14 bg-semantic-panel border-b border-semantic-border px-4 flex items-center justify-between z-dsHeader select-none shadow-xs"
+        className="h-14 bg-semantic-panel border-b border-semantic-border px-4 flex items-center justify-between z-dsDialog relative select-none shadow-xs"
       >
         {/* Left: Mobile Toggle, Brand Monogram & Breadcrumb */}
         <div className="flex items-center gap-3 shrink-0">
@@ -83,17 +84,15 @@ export const AliveTopBar: React.FC<AliveTopBarProps> = ({
             <Menu className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#00F576] to-[#00DC6A] flex items-center justify-center text-[#041407] font-black text-xs shadow-[0_0_12px_rgba(0,245,118,0.35)]">
-              🛡️
-            </div>
-            <div className="hidden sm:block">
-              <div className="text-xs font-bold font-mono tracking-wider uppercase text-[#00F576]">
-                AEGIS <span className="text-semantic-primary">GRC</span>
-              </div>
-              <div className="text-micro text-semantic-muted font-mono">Tier-1 InfoSec</div>
-            </div>
-          </div>
+          {/* Enterprise Org & Department Switcher */}
+          <EnterpriseOrgContextDropdown
+            departments={departments}
+            activeDepartmentId={activeDepartmentId}
+            onSelectDepartment={onSelectDepartment}
+            activeCompanyId={activeCompanyId}
+            onSelectCompany={onSelectCompany}
+            onNavigate={onNavigate}
+          />
 
           {activeViewTitle && (
             <div className="hidden md:flex items-center gap-1.5 pl-3 border-l border-semantic-border">
@@ -233,52 +232,12 @@ export const AliveTopBar: React.FC<AliveTopBarProps> = ({
             )}
           </div>
 
-          {/* User Profile Capsule */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => toggleMenu('userMenu')}
-              className="flex items-center gap-2 p-1 rounded-xl hover:bg-semantic-subtle border border-transparent hover:border-semantic-border transition-colors"
-            >
-              <div className="w-8 h-8 rounded-lg bg-[#00F576]/15 text-[#00F576] border border-[#00F576]/30 flex items-center justify-center font-bold text-xs">
-                {currentUser ? getInitials(displayName) : '--'}
-              </div>
-              <ChevronDown className="w-3.5 h-3.5 text-semantic-muted hidden sm:block" />
-            </button>
-
-            {activeMenu === 'userMenu' && (
-              <div className="absolute right-0 mt-2 w-64 p-3 z-dsOverlay text-xs shadow-2xl rounded-2xl border border-semantic-border bg-semantic-panel">
-                <div className="border-b border-semantic-border pb-2.5 mb-2.5">
-                  <div className="font-bold text-sm text-semantic-primary truncate">{displayName}</div>
-                  <div className="text-caption text-[#00F576] font-mono mt-0.5">
-                    {currentUser?.securityClearance || 'TIER-1 PKI'}
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowLdapModal(true)}
-                    className="w-full text-left p-2 rounded-xl hover:bg-semantic-subtle text-[#00F576] font-semibold flex items-center gap-2"
-                  >
-                    <Lock className="w-3.5 h-3.5" />
-                    <span>{t('Active Directory LDAPS')}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveMenu(null);
-                      void logout();
-                    }}
-                    className="w-full text-left p-2 rounded-xl hover:bg-rose-500/10 text-rose-400 font-semibold flex items-center gap-2"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>{t('Secure Sign Out')}</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          {/* Enterprise User Profile & Persona Switcher */}
+          <EnterpriseUserDropdown
+            departments={departments}
+            onOpenLdapModal={() => setShowLdapModal(true)}
+            onNavigate={onNavigate}
+          />
         </div>
       </header>
 

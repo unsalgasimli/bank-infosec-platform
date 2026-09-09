@@ -1,0 +1,154 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+ANALİTİKA
+/
+Rəhbərlik analitikası
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+İdarəetmə panelləri
+/
+Apex Bank Təhlükəsizlik Əməliyyatları
+CISO Cyber Risk & Operations Executive Dashboard
+Default System Dashboard
+Bu gün
+7 Days
+30 Days
+Q1 2026
+Brifinqi ixrac et
+Düzülüşü redaktə et
+Filter Results: Open Critical Security Issues (P1)
+0 Issues
+Filtrə uyğun problem tapılmadı:
+project = "SEC" AND priority = "Critical" AND statusCategory != Done
+JQL: priority = Critical AND resolution = Unresolved
+View all in search
+SLA Compliance & Remediation Velocity Gauge
+37% MET
+SLA YERİNƏ YETİRMƏ FAİZİ
+37%
+Hədəf: ≥ 98%
+MTTR (HƏLL VAXTI)
+6.4h
+Hədəf: ≤ 24 saat
+MTTA (İLKİN BAXIŞ VAXTI)
+18m
+Hədəf: ≤ 30 dəq
+İSTİSNALAR
+0
+Aktiv və təsdiqlənmiş
+SLA eskalasiya zaman xətti:
+0 Pozulub / 0 Risk altında
+Əhatə dairəsi: 1-ci Səviyyə Əsas Bank Sistemləri
+View SLA Queues
+Two-Dimensional Filter Statistics: 5×5 Enterprise Risk Matrix
+ISO 31000
+5×5 MÜƏSSİSƏ RİSK İSTİLİK MATRİSİ
+
+Dəqiq ehtimal və təsirə görə riskləri filtrləmək üçün istənilən xanaya klikləyin
+
+Kritik (15-25)
+Yüksək (10-14)
+Orta (5-9)
+Aşağı (1-4)
+5 (Demək olar ki, qaçılmaz)
+4 (Çox ehtimal)
+3 (Mümkün)
+2 (Az ehtimal)
+1 (Nadir)
+5
+10
+15
+20
+25
+4
+8
+12
+16
+20
+3
+6
+9
+12
+15
+2
+4
+6
+8
+10
+1
+2
+3
+4
+5
+1 (Əhəmiyyətsiz)
+2 (Kiçik)
+3 (Mülayim)
+4 (Əhəmiyyətli)
+5 (Fəlakətli)
+TƏSİR (NƏTİCƏNİN CİDDİLİYİ) →
+Matris ölçüləri: Ehtimal (1–5) × Nəticə (1–5)
+Open Risk Register
+Issue Statistics: Workload by Security Domain
+8 Domains
+Tətbiq Təhlükəsizliyi
+13061
+SOC
+0
+VM
+0
+GRC
+0
+DLP
+0
+IAM
+0
+Audit
+0
+ARCH
+0
+CƏMİ AKTİV İNFRASTRUKTUR
+0 Apps • 0 Risks
+Inspect CMDB
+Qruplaşdırılıb: cf[10020] (Domain)
+View all tickets in Jira

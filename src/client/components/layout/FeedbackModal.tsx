@@ -25,7 +25,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
   };
 
   return (
-    <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
+    <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-semantic-modal-tint/60 backdrop-blur-sm animate-fadeIn">
       <div className="bg-semantic-panel border border-semantic-jira-border rounded-lg shadow-2xl w-full max-w-md overflow-hidden">
         {/* Modal Header */}
         <div className="p-4 border-b border-semantic-jira-border flex items-center justify-between bg-semantic-jira-surface">
@@ -34,7 +34,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
               <MessageSquare className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-semantic-jira-primary">Give feedback on Jira Navigation</h2>
+              <h2 className="text-sm font-bold text-semantic-jira-primary">Give feedback on FIUUU Navigation</h2>
               <p className="text-label text-semantic-jira-muted">Help us improve your workspace experience</p>
             </div>
           </div>
@@ -53,7 +53,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
             </div>
             <h3 className="text-sm font-bold text-semantic-jira-primary">Thank you for your feedback!</h3>
             <p className="text-xs text-semantic-jira-muted">
-              Your input has been recorded and helps shape future Atlassian Jira platform updates.
+              Your input has been recorded and helps shape future FIUUU platform updates.
             </p>
           </div>
         ) : (
@@ -116,7 +116,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
                 rows={3}
                 value={comments}
                 onChange={(e) => setComments(e.target.value)}
-                placeholder="What did you like or what can we improve in the new Jira layout?"
+                placeholder="What did you like or what can we improve in the new FIUUU layout?"
                 className="w-full bg-semantic-panel border border-semantic-jira-border rounded p-2 text-xs text-semantic-jira-primary placeholder-semantic-jira-muted-light focus:outline-none focus:border-semantic-jira-brand"
               />
             </div>

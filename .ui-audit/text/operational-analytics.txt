@@ -1,0 +1,85 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+ANALİTİKA
+/
+Əməliyyat analitikası
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+ATLASSİAN JİRA • PERSONAL WORKSPACE
+Personal Security Workspace (Unsal Gasimli)
+
+Role: SECURITY_ANALYST • Department: dept-secops • Security Clearance: HIGHLY_RESTRICTED_HR_LEGAL
+
+MƏNİM AÇIQ İŞ YÜKÜM
+2 Issues
+TƏCİLİ SLA
+0
+ASSİGNED TO ME
+2
+
+Hazırda sizin əməliyyatınızı gözləyən problemlər.
+
+PENDİNG MY SİGN-OFF
+0
+
+Təsdiq tələb edən idarəetmə və istisna mərhələləri.
+
+SLA APPROACHİNG
+0
+
+Sürətli icra tələb edən SLA pozuntusuna yaxın tapşırıqlar.
+
+MY ASSİGNED ISSUES (2)
+SEC
+SEC-2026-0008
+Threat Modeling Workshop: TM-2026-0005 dlp
+NÖVBƏ (BACKLOG)
+ORTA
+23d 16h
+SEC
+SEC-2026-0007
+Architecture Review: TM-2026-0005 dlp
+NÖVBƏ (BACKLOG)
+ORTA
+23d 16h

@@ -289,7 +289,7 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
 
       {/* Review & Authorize Modal */}
       {actingItem && (
-        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-semantic-modal-tint/60 backdrop-blur-sm p-4">
           <div role="dialog" aria-modal="true" aria-labelledby="approval-review-title" className="bg-semantic-panel border border-semantic-border-strong rounded-2xl max-w-3xl w-full max-h-[calc(100vh-2rem)] overflow-y-auto p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-semantic-border pb-3">
               <div className="flex items-center gap-2.5">

@@ -1,0 +1,234 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+AKTİVLƏR VƏ CMDB
+/
+Asılılıqlar xəritəsi
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+Əlaqələr xəritəsi
+
+Persisted directional CI relationships. Select a node to inspect and expand a bounded topology.
+
+Select CI
+CI-DISC-15C4F1D0A3C2475BBA40 — dsec-winsrv2
+CI-DISC-A0B067A5B626452A8738 — dsec-winsrv1
+CI-DISC-5D0CBE19456B4A1886B0 — assetit-n
+CI-DISC-CC2A61FDB3C243A38F70 — DMR0052
+CI-DISC-458B57C37C13401D918D — ASDFGHJKL
+CI-DISC-7CD3E193E6734DEFA2F6 — appsrv_test
+CI-DISC-7756329F7A1B42CCA3D8 — Infosec-Ubuntu-Test
+CI-DISC-23A976A09B5748E1A0AB — khakimzade’s MacBook Pro
+CI-DISC-95490543D67348E0945A — DMR0052
+IMP-C87945442AA6 — CISCO ASA 2
+IMP-088DE9BACBB6 — CISCO ASA 1
+IMP-0479DF0DD1A6 — Microtic old DR
+IMP-5A56F73729C2 — Microtic Demirci
+IMP-F26AAA70EECD — Microtic Ataturk
+IMP-5A139B94F4CC — Huawei DR-Hacmaz
+IMP-9A9C9BCE527E — Huawei HQ-ATATURK
+IMP-5E9FEC0F844D — Lenova2
+IMP-8AFAB0A8BA81 — Lenova1
+IMP-07DE6C0662B0 — Dell2
+IMP-E48375E3B994 — DEll1
+IMP-ACD87435F439 — babekplaza_sw1.expressbank.az
+IMP-64F6D1BC21DB — babak_plaza_router.expressbank.az
+IMP-28EBDDC04245 — xatai_sw3.expressbank.az
+IMP-6696EAA54EB9 — xatai_sw2.expressbank.az
+IMP-03D81672CA14 — xatai_sw1.expressbank.az
+IMP-F07058CB1DDF — CUCME-HEAD_RT
+IMP-756C406ABFEA — lankaran_sw3.expressbank.az
+IMP-F967D011087F — lankaran_sw1.expressbank.az
+IMP-ED364D8FEE29 — elmler_sw.expressbank.az
+IMP-E2240219653F — lankaran_sw2.expressbank.az
+IMP-DC31DF052144 — lankaran_router.expressbank.az
+IMP-326E21D52D4C — xatai_router.expressbank.az
+IMP-EA9E829652EA — elmler_router.expressbank.az
+IMP-5FA8877B7918 — akhmedli_sw3.expressbank.az
+IMP-401D7CB633DA — qaradaq_switch.expressbank.az
+IMP-C8DBB8B780B2 — neftchiler_sw2.expressbank.az
+IMP-E71A400BEA21 — bakikhanov.expressbank.az
+IMP-A9ED1D2E27B2 — neftchiler_sw1.expressbank.az
+IMP-950B5D1B6013 — shirvan_sw2.expressbank.az
+IMP-FB3E902F72CD — xachmaz_router.expressbank.az
+IMP-838BE081A999 — hachmaz_sw1.expressbank.az
+IMP-CA8FFC169C57 — yasamal_sw1.expressbank.az
+IMP-C71845C23844 — yasamal_sw2.expressbank.az
+IMP-D6E67C904564 — qaradag_router.expressbank.az
+IMP-FAF4F8E2C1C9 — hezi-aslanov.heziaslanov
+IMP-AEE5CBD6C9BD — hezi_sw.expressbank.az
+IMP-C8AB5B8663FF — hezi_sw2.expressbank.az
+IMP-D0234094502F — nasimi_sw.expressbank.az
+IMP-8E7E83A46172 — nasimi_router.expressbank.az
+IMP-B64070B44DDF — barda_sw2.expressbank.az
+IMP-50118E2682E1 — barda_sw.expressbank.az
+IMP-D635EA474720 — nasimi_sw2.expressbank.az
+IMP-EB72B6290686 — neftchiler_router.expressbank.az
+IMP-E3869F8C121B — barda_router.expressbank.az
+IMP-64A779AD3713 — bakixanov_sw3.expressbank.az
+IMP-1E32F2DC869F — anbar_switch.expressbank.az
+IMP-BE27456D9DA4 — bakixanov_sw2.expressbank.az
+IMP-093A60393515 — bakixanov_sw.expressbank.az
+IMP-906102128DEC — qusar_router.expressbank.az
+IMP-1B9DF8332E59 — sumgayit_sw.expressbank.az
+IMP-D7D17257196F — qusar_sw.expressbank.az
+IMP-EAB20D4B42BF — sumgayit_sw2.expressbank.az
+IMP-449EB64A6DA8 — xachmaz_sw_2.expressbank.az
+IMP-40274A37F2AB — sumgayit_router.expressbank.az
+IMP-BFD503C0BEDA — yasamal_router.expressbank.az
+IMP-EDCF9F68CF0B — sumgayit_sw3.expressbank.az
+IMP-5254E36D5A22 — anbar_router.expressbank.az
+IMP-9ED8A344EC3F — akhmedli_sw2.expressbank.az
+IMP-ADD9ED8B102D — akhmedli_sw.expressbank.az
+IMP-53D2A4BE2694 — akhmedli_router.expressbank.az
+IMP-FAA0A2F92809 — mingechevir_router.expressbank.az
+IMP-F44D3843FF4D — mingechevir_sw1.expressbank.az
+IMP-53D21EBEF058 — ho_ataturk_fl1_sw3.expressbank.az
+IMP-FC0F1F79ED60 — ho_demirchi_fl7_sw4.expressbank.az
+IMP-1957472B2381 — mingechevir_sw2.expressbank.az
+IMP-79013754053C — mingechevir_sw3.expressbank.az
+IMP-E8301AC6BAE7 — shirvan_router.expressbank.az
+IMP-13B357FE7000 — shirvan_sw.expressbank.az
+IMP-D4C488D83337 — ho_nakhchivani_fl1_sw_1.expressbank.az
+IMP-7C8D0C0E2F92 — ho_demirchi_fl8_sw4.expressbank.az
+IMP-24187BCF74E1 — ho_ataturk_fl2_sw3.expressbank.az
+IMP-C05CCC7E46DC — ho_nakhchivani_fl0_sw2.expressbank.az
+IMP-89447BE26AED — expressbank-1
+IMP-D9C3ABEE2F30 — ho_demirchi_fl7_sw2.expressbank.az
+IMP-91581C5A40A1 — ho_nakhchivani_fl2_sw3.expressbank.az
+IMP-91EEA12618F4 — ho_demirchi_fl4_sw1.expressbank.az
+IMP-30A5492DAD5C — ho_ataturk_srv_sw_access.expressbank.az
+IMP-FE91E7379D8A — ho_nakhchivani_fl2_sw1.expressbank.az
+IMP-CB4252FE547F — fortigate-401e_active.expressbank.az
+IMP-42004166F107 — ho_demirchi_fl7_sw1.expressbank.az
+IMP-4B4C7406B7CA — HO_ATATURK_IBM Rack1-SW
+IMP-F028A2D40B23 — ho_demirchi_fl8_sw3.expressbank.az
+IMP-E1E5FDAEF09C — HO_ATATURK_IBM Rack2-SW
+IMP-60004CE81AD6 — ho_demirchi_fl8_sw2.expressbank.az
+IMP-3AC4A7DDED00 — ho_demirchi_fl7_sw3.expressbank.az
+IMP-A0609DCF48DD — ho_demirchi_fl8_sw1_main.expressbank.az
+IMP-69C048FD295A — ganja_router.expressbank.az
+IMP-1D5983B89D59 — ganja_sw1.expressbank.az
+IMP-15B3282EABCC — ganja_sw2.expressbank.az
+IMP-BBB03D0EEBDC — ganca-sw3.expressbank.az
+Both directions
+Upstream only
+Downstream only
+All CI types
+API
+Application
+Business Service
+Certificate
+Cloud Resource
+Cluster
+Database
+Datacenter
+Datastore
+Desktop
+Directory Department
+Directory Group
+Directory User
+Endpoint
+Firewall
+Hypervisor
+Şəxsiyyət
+İnfrastruktur
+Laptop
+Load Balancer
+Middleware
+Mobile Device
+Network
+Network Device
+Organizational Unit
+Other
+Physical Server
+Network Printer
+Security Device
+Software
+Storage
+Technical Service
+VMware vCenter Server
+Virtual Machine
+Workstation
+All relationships
+AUTHENTICATES_VIA
+BACKED_BY
+BACKED_UP_BY
+CONNECTED_TO
+DEPENDS_ON
+HOSTS
+LOCATED_IN
+MANAGED_BY
+MEMBER_OF
+MONITORED_BY
+PART_OF
+PROTECTED_BY
+PROVIDES
+RELATED_TO
+RUNS_ON
+STORED_ON
+STORES_DATA_IN
+SUPPORTS
+USES
+Depth 1
+Depth 2
+Depth 3
+1 CIs · 0 relationships
+100%
+Collapse
+Center
+dsec-winsrv2
+CI-DISC-15C4F1D0A3C2475BBA40 · virtual_machine
+UNKNOWN · Orta
+CI-DISC-15C4F1D0A3C2475BBA40
+dsec-winsrv2
+Növ
+virtual_machine
+Status
+AKTİV
+Mühit
+UNKNOWN
+Kritiklik dərəcəsi
+Orta
+Open CI details
+Graph requests are capped at depth 3 and use only persisted, active relationships.

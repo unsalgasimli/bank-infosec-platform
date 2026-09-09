@@ -43,7 +43,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     { label: 'Workflows & Orchestration Pipelines', view: 'workflows', icon: Layers },
     { label: 'Risk Management (5×5 Matrix)', view: 'risk-management', icon: FileText },
     { label: 'Audit & Regulatory Compliance', view: 'audit-compliance', icon: CheckCircle2 },
-    { label: 'CMDB Relationship Map', view: 'relationship-map', icon: Layers },
     { label: 'Executive Analytics & CISO Dashboard', view: 'executive-analytics', icon: Shield },
     { label: 'SOPs & Security Knowledge Base', view: 'knowledge-base', icon: FileText },
     { label: 'Space Settings & Configuration', view: 'admin-settings', icon: FileText },
@@ -51,7 +50,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   return createPortal(
       <div className="fixed inset-0 z-dsDialog flex items-start justify-center pt-20 p-4">
-      <div className="fixed inset-0 bg-black/65 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="fixed inset-0 bg-semantic-modal-tint/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-xl bg-semantic-panel border border-semantic-jira-border rounded-md shadow-2xl overflow-hidden z-dsContent">
         <div className="flex items-center px-4 py-3 border-b border-semantic-jira-border bg-semantic-panel">
           <Search className="w-4 h-4 text-semantic-jira-muted mr-2.5" />

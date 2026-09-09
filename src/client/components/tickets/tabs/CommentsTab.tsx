@@ -69,7 +69,7 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({
                     ? 'bg-purple-50/50 border-purple-200'
                     : isPublic
                     ? 'bg-blue-50/50 border-blue-200'
-                    : 'bg-white border-slate-200'
+                    : 'bg-semantic-panel border-slate-200'
                 }`}
               >
                 <div className="flex items-center justify-between gap-3">
@@ -131,7 +131,7 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({
             <select
               value={visibility}
               onChange={(e) => setVisibility(e.target.value as CommentVisibility)}
-              className="jira-input py-1 text-xs max-w-44 bg-white"
+              className="jira-input py-1 text-xs max-w-44 bg-semantic-panel"
             >
               <option value="INTERNAL">{t('Internal Bank')}</option>
               <option value="SECURITY_TEAM_ONLY">{t('Security Team Only')}</option>
@@ -146,7 +146,7 @@ export const CommentsTab: React.FC<CommentsTabProps> = ({
           value={content}
           onChange={(e) => setContent(e.target.value)}
           placeholder={t('Add findings analysis, remediation updates, or test notes...')}
-          className="jira-input font-normal bg-white"
+          className="jira-input font-normal bg-semantic-panel"
         />
 
         <div className="flex items-center justify-between pt-1">

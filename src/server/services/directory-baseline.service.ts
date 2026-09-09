@@ -16,6 +16,7 @@ import {
   makeHierarchyNodeId,
   getDepartmentColor,
   getDepartmentIcon,
+  matchKnownBranchEntry,
 } from './ldap-directory.data.js';
 import type { DepartmentMappingResult } from './ldap-directory.data.js';
 
@@ -34,34 +35,42 @@ export interface DirectoryBaselineRecord {
 }
 
 /**
- * The workbook's "Əsas struktur adı" is the authoritative root label. The
- * legacy rules classified branch/section roots by job function (for example a
- * branch cashier became part of Settlements), which loses the HR hierarchy.
- * Keep the existing role/division inference, but make the workbook structure
- * the stable department root for known employees.
+ * The workbook's "Əsas struktur adı" is the authoritative root label.
+ * Maps known branches to canonical branch departments, and bank organizational
+ * structures to their canonical platform department without creating BASE_ duplicates.
  */
 export function mapBaselineRecord(record: Pick<DirectoryBaselineRecord, 'structureName' | 'title'>): DepartmentMappingResult {
+  const branch = matchKnownBranchEntry(record.structureName);
+  if (branch) {
+    const inferred = mapDepartment(record.structureName, record.title);
+    const departmentId = branch.id;
+    const hasDistinctSection = Boolean(
+      inferred.sectionName && normalizeDirectoryKey(inferred.sectionName) !== normalizeDirectoryKey(branch.canonicalName)
+    );
+    const sectionId = hasDistinctSection ? makeHierarchyNodeId('section', departmentId, inferred.sectionName!) : undefined;
+    const unitId = inferred.unitName ? makeHierarchyNodeId('unit', departmentId, inferred.unitName) : undefined;
+    return {
+      ...inferred,
+      departmentId,
+      divisionId: 'div-banking',
+      departmentName: branch.canonicalName,
+      departmentCode: branch.code,
+      sectionId,
+      unitId,
+    };
+  }
+
   const inferred = mapDepartment(record.structureName, record.title);
-  const structureNorm = normalizeDirectoryKey(record.structureName);
-  const divisionId = structureNorm.includes('informasiya təhlükəsizliyi') || structureNorm.includes('təhlükəsizlik') || structureNorm.includes('daxili audit') || structureNorm.includes('komplayens') || structureNorm.includes('risk')
-    ? 'div-sec'
-    : structureNorm.includes('informasiya texnologiyaları') || structureNorm.includes('texniki')
-      ? 'div-it'
-      : structureNorm.includes('insan resursları') || structureNorm.includes('hüquq')
-        ? 'div-hr'
-        : 'div-banking';
-  const departmentId = makeDepartmentNodeId(record.structureName);
+  const departmentId = inferred.departmentId;
   const hasDistinctSection = Boolean(
-    inferred.sectionName && normalizeDirectoryKey(inferred.sectionName) !== normalizeDirectoryKey(record.structureName)
+    inferred.sectionName && normalizeDirectoryKey(inferred.sectionName) !== normalizeDirectoryKey(inferred.departmentName)
   );
-  const sectionId = hasDistinctSection ? makeHierarchyNodeId('section', departmentId, inferred.sectionName!) : undefined;
-  const unitId = inferred.unitName ? makeHierarchyNodeId('unit', departmentId, inferred.unitName) : undefined;
+  const sectionId = inferred.sectionId || (hasDistinctSection ? makeHierarchyNodeId('section', departmentId, inferred.sectionName!) : undefined);
+  const unitId = inferred.unitId || (inferred.unitName ? makeHierarchyNodeId('unit', departmentId, inferred.unitName) : undefined);
+
   return {
     ...inferred,
     departmentId,
-    divisionId,
-    departmentName: record.structureName,
-    departmentCode: `BASE_${slugifyDept(record.structureName).replace(/-/g, '_').slice(0, 25).toUpperCase()}`,
     sectionId,
     unitId,
   };

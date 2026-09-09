@@ -41,6 +41,7 @@ export class WorkflowRuntimeService {
     triggerType?: WorkflowInstance['triggerType'];
     triggerEventId?: string;
     title?: string;
+    persist?: boolean;
   }) {
     const { actor } = params;
     if (!actor.isActive) throw new OrchestrationError('Inactive users cannot launch workflows.', 403);
@@ -139,10 +140,14 @@ export class WorkflowRuntimeService {
       WorkflowGovernanceService.initializeClocks(created, policy, new Date(now));
       if (created.triggerType !== 'MANUAL') this.appendEvent(created, 'TRIGGER_MATCHED', actor, { triggerType: created.triggerType, triggerEventId: created.triggerEventId });
       return created;
-    });
-    this.advance(instance.id, new Date(), actor);
+    }, { persist: params.persist !== false });
+    this.advance(instance.id, new Date(), actor, params.persist !== false);
     const template = db.data.workflowCatalogTemplates.find((item) => item.workflowDefinitionId === definition.id);
-    if (template) { template.runCount += 1; template.lastUsedAt = now; db.persist(); }
+    if (template) {
+      template.runCount += 1;
+      template.lastUsedAt = now;
+      if (params.persist !== false) db.persist();
+    }
     return { instance: db.data.workflowInstances.find((item) => item.id === instance.id)!, replayed: false, execution: this.getExecution(instance.id, actor) };
   }
 
@@ -159,7 +164,7 @@ export class WorkflowRuntimeService {
       }
       launchValues = { ...launchValues, targetDepartmentId: targetDepartmentId || section.departmentId };
     }
-    const result = this.launch({ workflowDefinitionId: requestType.workflowDefinitionId, workflowVersion: requestType.workflowVersion, requestTypeId: requestType.id, context: launchValues, actor: params.actor, idempotencyKey: params.idempotencyKey, title: String(launchValues.summary || requestType.name) });
+    const result = this.launch({ workflowDefinitionId: requestType.workflowDefinitionId, workflowVersion: requestType.workflowVersion, requestTypeId: requestType.id, context: launchValues, actor: params.actor, idempotencyKey: params.idempotencyKey, title: String(launchValues.summary || requestType.name), persist: false });
 
     // Ensure corresponding Ticket entry exists in db.data.tickets for unified views
     const instance = result.instance;
@@ -235,7 +240,7 @@ export class WorkflowRuntimeService {
       ticket.slaState = sla.state;
       ticket.slaRemainingMinutes = sla.remainingMinutes;
       db.data.tickets.unshift(ticket);
-      TicketLifecycleService.initializeSlaMetrics(ticket);
+      TicketLifecycleService.initializeSlaMetrics(ticket, false);
       db.persist();
     }
     return result;
@@ -271,7 +276,7 @@ export class WorkflowRuntimeService {
     };
   }
 
-  public static advance(instanceId: string, now = new Date(), actor?: BankUser) {
+  public static advance(instanceId: string, now = new Date(), actor?: BankUser, persist = true) {
     if (this.locks.has(instanceId)) return;
     this.locks.add(instanceId);
     try {
@@ -317,7 +322,7 @@ export class WorkflowRuntimeService {
         instance.updatedAt = now.toISOString();
         instance.version += 1;
         return instance;
-      });
+      }, { persist });
     } finally {
       this.locks.delete(instanceId);
     }

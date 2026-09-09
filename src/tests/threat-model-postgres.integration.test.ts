@@ -1,6 +1,8 @@
 import test, { before, after } from 'node:test';
 import { assertDisposableDatabase } from './fixtures/disposable-database.js';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import type { BankUser } from '../shared/types/auth.js';
 import { db } from '../server/db/database.js';
 import { pgClient } from '../server/db/postgres/client.js';
 import { config } from '../server/config/index.js';
@@ -18,14 +20,18 @@ before(async () => { if (enabled) await assertDisposableDatabase(pgClient, confi
 after(() => pgClient.close());
 
 test('Threat Model creation persists the root and current revision in FK-safe order', { skip: !enabled }, async () => {
-  await db.initialize();
-  const actor = db.data.users.find((user) => user.roles.includes('PLATFORM_ADMIN') || user.roles.includes('CISO'));
-  assert.ok(actor, 'An active platform or CISO user is required for the integration fixture.');
+  const id=`tm-fk-${randomUUID()}`;
+  await pgClient.query(`INSERT INTO bank_users(id,username,email,first_name,last_name,title,roles,security_clearance) VALUES($1,$1,$2,'FK','Fixture','TEST','["APPLICATION_OWNER"]','CONFIDENTIAL_SECURITY_ONLY')`,[id,`${id}@example.invalid`]);
+  const actor={id,username:id,fullName:id,roles:['APPLICATION_OWNER'],isActive:true,securityClearance:'CONFIDENTIAL_SECURITY_ONLY',ownedApplicationIds:[],ownedAssetIds:[],teamIds:[]} as unknown as BankUser;
+  db.data.users.push(actor);
+  const appId=`fk-app-${randomUUID()}`;
+  await pgClient.query(`INSERT INTO bank_applications(id,code,name,tier,architecture_type,technical_owner_id,business_owner_id) VALUES($1,$1,'FK fixture','LOW','MONOLITH',$2,$2)`,[appId,id]);
+  db.data.applications.push({id:appId,name:'FK fixture',technicalOwnerId:id,businessOwnerId:id} as any);
 
   try {
     const created = await ThreatModelService.create({
       title: `PostgreSQL FK integration ${Date.now()}`,
-      serviceId: `integration-service-${Date.now()}`,
+      serviceId: appId,
       criticality: 'MEDIUM',
       dataClassification: 'CONFIDENTIAL_SECURITY_ONLY',
       businessOwnerId: actor.id,

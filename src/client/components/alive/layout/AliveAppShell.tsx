@@ -8,6 +8,8 @@ import { BankApplication, BankAsset } from '../../../../shared/types/asset.js';
 import { RiskRegisterItem } from '../../../../shared/types/risk.js';
 import { KBArticle } from '../../../../shared/types/kb.js';
 
+import { BankDepartment } from '../../../../shared/types/auth.js';
+
 interface AliveAppShellProps {
   activeView: string;
   activeViewTitle?: string;
@@ -19,7 +21,12 @@ interface AliveAppShellProps {
   risks?: RiskRegisterItem[];
   kbArticles?: KBArticle[];
   pendingApprovalsCount?: number;
+  departments?: BankDepartment[];
   departmentsCount?: number;
+  activeDepartmentId?: string | null;
+  onSelectDepartment?: (deptId: string | null) => void;
+  activeCompanyId?: string;
+  onSelectCompany?: (companyId: string) => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onTicketCreated: (ticket: Ticket) => void;
@@ -39,6 +46,11 @@ export const AliveAppShell: React.FC<AliveAppShellProps> = ({
   applications,
   assets,
   pendingApprovalsCount = 0,
+  departments = [],
+  activeDepartmentId,
+  onSelectDepartment,
+  activeCompanyId,
+  onSelectCompany,
   onTicketCreated,
   onNavigate,
   isCreateOpen,
@@ -89,6 +101,12 @@ export const AliveAppShell: React.FC<AliveAppShellProps> = ({
         onOpenCreate={onOpenCreate}
         onOpenCommandPalette={() => setIsCommandOpen(true)}
         onToggleSidebar={() => setIsMobileSidebarOpen((prev) => !prev)}
+        departments={departments}
+        activeDepartmentId={activeDepartmentId}
+        onSelectDepartment={onSelectDepartment}
+        activeCompanyId={activeCompanyId}
+        onSelectCompany={onSelectCompany}
+        onNavigate={onNavigate}
       />
 
       {/* Main Container */}

@@ -1,0 +1,178 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+İŞLƏRİN İDARƏ EDİLMƏSİ
+/
+İş axınları
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Universal iş orkestrləşdirməsi
+
+Müraciətləri, təsdiqləri, avtomatlaşdırmanı və müəssisə proseslərini vahid mərkəzdən idarə edin.
+
+Yeni iş axını
+İş axını kataloqu
+İş axını qurucusu
+İcrada olan işlər
+Analitika
+
+Təsdiqlənmiş iş axını şablonundan idarə olunan müraciət başladın.
+
+Şirkət şablonları
+5
+
+Təşkilat daxilində mövcud olan mərkəzləşdirilmiş iş axınları.
+
+Təhdid modeli idarəetməsi
+
+Arxitektura → STRIDE → nəzarət → yoxlama → risk → müstəqil təsdiqlər → server buraxılış qapısı.
+
+v1
+9d
+MÜDDƏT
+3
+KOMANDALAR
+3
+TƏSDİQLƏR
+1
+AVTO
+Şirkət · İnformasiya Təhlükəsizliyi
+0 icra · 0% uğur
+TƏSDİQ İŞ AXINI
+İNFORMASİYA TƏHLÜKƏSİZLİYİ · İDARƏETMƏ
+Önbaxış
+İşə sal
+USB Girişi
+
+Əməkdaş müraciəti, dəqiq LDAP rəhbər təsdiqi, İnfoSec qərarı və Help Desk icrası.
+
+v2
+1d
+MÜDDƏT
+3
+KOMANDALAR
+2
+TƏSDİQLƏR
+0
+AVTO
+Şirkət · İnformasiya Təhlükəsizliyi
+0 icra · 0% uğur
+TƏSDİQ İŞ AXINI
+İT · GİRİŞ VƏ TƏSDİQLƏR
+Önbaxış
+İşə sal
+Veb-sayta giriş müraciəti
+
+Əməkdaş → Şöbə müdiri → İnfoSec → Help Desk → Tamamlandı.
+
+v1
+1d
+MÜDDƏT
+3
+KOMANDALAR
+2
+TƏSDİQLƏR
+0
+AVTO
+Şirkət · İnformasiya Təhlükəsizliyi
+0 icra · 0% uğur
+TƏSDİQ İŞ AXINI
+İT · GİRİŞ VƏ TƏSDİQLƏR
+Önbaxış
+İşə sal
+Şəbəkə proqram təminatının yüklənməsi
+
+Müdir → InfoSec → Help Desk.
+
+v1
+1d
+MÜDDƏT
+3
+KOMANDALAR
+2
+TƏSDİQLƏR
+0
+AVTO
+Şirkət · ITSM
+0 icra · 0% uğur
+TƏSDİQ İŞ AXINI
+İT · BANK PROQRAM TƏMİNATI
+Önbaxış
+İşə sal
+Standard Task
+
+Standard single-step enterprise work item.
+
+v1
+1d
+MÜDDƏT
+1
+KOMANDALAR
+0
+TƏSDİQLƏR
+0
+AVTO
+Şirkət · Ümumi
+0 icra · 0% uğur
+HELP DESK TAPŞIRIĞI
+GENERAL · QUİCK WORK
+Önbaxış
+İşə sal
+Şöbə / Filial şablonları
+0
+
+Şöbəniz və ya filialınız üçün idarə olunan şablonlar.
+
+Hələ heç bir dərc edilmiş şablon yoxdur
+
+Üçün idarə olunan qaralama yaradın: şöbə / filial şablonları və hazır olduqda dəyişdirilməz versiyanı dərc edin.
+
+User Templates
+0
+
+Təkrar istifadə edə və təkmilləşdirə biləcəyiniz fərdi şablonlar.
+
+Hələ heç bir dərc edilmiş şablon yoxdur
+
+Üçün idarə olunan qaralama yaradın: user templates və hazır olduqda dəyişdirilməz versiyanı dərc edin.

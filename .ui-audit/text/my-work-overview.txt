@@ -1,0 +1,102 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+MƏNİM İŞLƏRİM
+/
+İcmal
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+UG
+Xoş gəldiniz, Unsal Gasimli
+Təhlükəsizlik Analitiki
+Təhlükəsizlik Əməliyyatları Mərkəzi (SOC)
+•
+Xüsusilə Məhdudlaşdırılmış (Səviyyə 5 - HR/Hüquq)
+Risk idarəetməsi
+İş axını kataloqu
+Yeni müraciət
+MƏNİM AKTİV TAPŞIRIQLARIM
+2
+0 tamamlanmış tapşırıq
+Bax →
+MAKER-CHECKER TƏSDİQLƏRİ
+0
+İkili nəzarət imzaları
+Nəzərdən keçir →
+MÜRACİƏTLƏRİM
+2
+Sizin tərəfinizdən göndərilib
+İzlə →
+TƏCİLİ / SLA RİSK ALTINDA
+0
+Dərhal diqqət tələb olunur
+Prioritetləşdir →
+Sizə təyin edilmiş yüksək prioritetli işlər
+Bütün tapşırıqlara bax (2) →
+SEC-2026-0008
+Threat Modeling Workshop: TM-2026-0005 dlp
+Threat Modeling Workshop
+•
+Növbə (Backlog)
+ORTA
+SAFE
+SEC-2026-0007
+Architecture Review: TM-2026-0005 dlp
+Architecture Review
+•
+Növbə (Backlog)
+ORTA
+SAFE
+TƏSDİQLƏR (MAKER-CHECKER)
+0 Gözləyir
+
+Səlahiyyətli təsdiq iş axını tərəfindən qaytarılan gözləyən təsdiqlər.
+
+Təsdiq mərkəzini aç
+SÜRƏTLİ KEÇİDLƏR
+Audit və tənzimləyici uyğunluq
+Audit vəziyyəti →
+SOP və təlimatları oxuyun
+Axtar →
+Risk idarəetməsi (5×5 Matris)
+Matrisə bax →

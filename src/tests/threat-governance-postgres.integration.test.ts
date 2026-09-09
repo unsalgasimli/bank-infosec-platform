@@ -1,6 +1,7 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID, generateKeyPairSync, sign } from 'node:crypto';
+import { ThreatDeploymentService as delivery, GitLabSecurityDeploymentProvider } from '../server/services/threat-deployment.service.js';
 import { pgClient } from '../server/db/postgres/client.js';
 import { ThreatModelRepository } from '../server/db/postgres/threat-model-repository.js';
 import { db } from '../server/db/database.js';
@@ -12,6 +13,8 @@ import { ThreatGovernanceAdminService as governanceAdmin } from '../server/servi
 import { storageService } from '../server/services/storage.service.js';
 import { screeningRules } from '../server/services/threat-model-policy.js';
 import { canonicalJson } from '../shared/canonical-json.js';
+import { ThreatReadinessService as coverage } from '../server/services/threat-readiness.service.js';
+import { ThreatComplianceApplicabilityService as complianceProfiles } from '../server/services/threat-compliance-applicability.service.js';
 import { assertDisposableDatabase } from './fixtures/disposable-database.js';
 import type { BankUser } from '../shared/types/auth.js';
 
@@ -28,12 +31,24 @@ test('persistent governance lifecycle, RBAC, review cycles, copies and immutable
     db.data.users.push(actor); return actor;
   };
   const owner = await user('owner',['APPLICATION_OWNER']);
-  const reviewer = await user('reviewer',['APPSEC_ANALYST']);
-  const architect = await user('architect',['INFOSEC_MANAGER']);
+  const reviewer = await user('reviewer',['APPSEC_ANALYST','RELEASE_AUTHORITY']);
+  const architect = await user('architect',['INFOSEC_MANAGER','SECURITY_ARCHITECT']);
   const postReviewer = await user('post-reviewer',['APPSEC_ANALYST']);
   const ciso = await user('ciso',['CISO']);
   const admin = await user('admin',['PLATFORM_ADMIN']);
   const outsider = await user('outsider',['REQUESTER']);
+  const coverageReviewer = await user('coverage-reviewer',['APPSEC_ANALYST']);
+  const grcAuthor=await user('grc-author',['GRC_ANALYST']),grcReviewer=await user('grc-reviewer',['GRC_ANALYST']);
+  const definition=await service.addComplianceRequirement({framework:'Fixture-only standard',frameworkVersion:'1',code:`OUTSIDE-SCOPE-${suffix}`,title:'Obligation for another organization',requirementKind:'BANK_POLICY',sourceUrl:'https://example.invalid/fixture-policy'},grcAuthor);
+  await governanceAdmin.decideCompliance(definition.id,{decision:'VALIDATED',reason:'Fixture-only independently validated definition'},grcReviewer);
+  const profile=await complianceProfiles.profile({code:`SCOPE-${suffix}`,effectiveAt:new Date(Date.now()-1000).toISOString(),predicates:{organizationId:'outside-fixture-organization'},complianceIds:[definition.id],humanReview:false,reason:'Fixture policy applies only to a different organization'},grcAuthor);
+  await complianceProfiles.reviewProfile({profileId:profile.id,decision:'APPROVED',reason:'Independent review confirms this fixture applicability predicate'},grcReviewer);
+  const completeCoverage=async(mid:string)=>{
+    for(const unit of (await coverage.get(mid,owner)).units.filter(u=>!u.completed)){
+      const decision=await coverage.dispose(mid,{unitId:unit.id,fingerprint:unit.fingerprint,disposition:'REVIEWED_NO_THREAT',reason:`Fixture analysis of ${unit.label}: ${unit.category}; no additional scenario identified.`},owner);
+      await coverage.review(mid,{dispositionId:decision.id,decision:'APPROVED',reason:'Independent fixture review confirms the documented target analysis'},coverageReviewer);
+    }
+  };
   const appId = `tmtest-app-${suffix}`;
   await pgClient.query(`INSERT INTO bank_applications(id,code,name,tier,architecture_type,technical_owner_id,business_owner_id) VALUES($1,$1,'Fixture application','LOW','MONOLITH',$2,$2)`, [appId,owner.id]);
   db.data.applications.push({ id:appId, name:'Fixture application',technicalOwnerId:owner.id,businessOwnerId:owner.id } as any);
@@ -97,6 +112,35 @@ test('persistent governance lifecycle, RBAC, review cycles, copies and immutable
     assert.notEqual(audit.event_hash,ThreatModelRepository.auditDigest({...audit,action:'TAMPERED'}));
   });
   const authorization = await service.authorizeRelease(modelId,ticketId,reviewer);
+  await t.test('signed GitLab identity binds canonical application, commit and environment; consumption and provider receipt are one-time',async t=>{
+    const releaseAdmin=await user('release-admin',['INFOSEC_ADMIN','RELEASE_AUTHORITY']);
+    const mapping=await delivery.configure({issuer:'https://gitlab.example.invalid',audience:'https://security.example.invalid',projectId:'17',environment:'production',ref:'main',applicationId:appId,modelId,releaseId:ticketId,apiCredential:'fixture-scoped-project-credential'},releaseAdmin);
+    const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
+    const sha='a'.repeat(40),now=Math.floor(Date.now()/1000);
+    const claims={iss:'https://gitlab.example.invalid',aud:'https://security.example.invalid',iat:now,exp:now+300,project_id:'17',job_project_id:'17',job_id:'101',pipeline_id:'51',ref:'main',environment:'production',ref_protected:true,environment_protected:true,jti:randomUUID(),sha};
+    const header=Buffer.from(JSON.stringify({alg:'RS256',kid:'fixture-key'})).toString('base64url');
+    const tokenFor=(value:unknown)=>{const payload=`${header}.${Buffer.from(JSON.stringify(value)).toString('base64url')}`;return `${payload}.${sign('RSA-SHA256',Buffer.from(payload),privateKey).toString('base64url')}`;};
+    const receipt={id:701,sha,status:'success',environment:{name:'production'},deployable:{id:101,pipeline:{id:51}}};
+    const adapter=new GitLabSecurityDeploymentProvider(async url=>url.includes('/oauth/')?{keys:[{...publicKey.export({format:'jwk'}),kid:'fixture-key'}]}:url.includes('/jobs/')?{id:101,ref:'main',status:'running',commit:{id:sha},pipeline:{id:51},user:{id:9}}:receipt);
+    t.mock.method(delivery.provider,'verifyIdentity',(m,token)=>adapter.verifyIdentity(m,token));
+    t.mock.method(delivery.provider,'verifyDeployment',(m,a,id)=>adapter.verifyDeployment(m,a,id));
+    const binding={applicationId:appId,releaseId:ticketId,commitSha:sha,environment:'production'};
+    const jwt=tokenFor(claims);
+    await assert.rejects(delivery.authorize(mapping.id,tokenFor({...claims,environment:'staging'}),binding),/mismatch/);
+    await assert.rejects(delivery.authorize(mapping.id,tokenFor({...claims,exp:now-1}),binding),/Expired/);
+    await assert.rejects(delivery.authorize(mapping.id,jwt,{...binding,commitSha:'b'.repeat(40)}),/mismatch/);
+    const grant=await delivery.authorize(mapping.id,jwt,binding);
+    for(const wrong of [{...binding,commitSha:'b'.repeat(40)},{...binding,applicationId:'another-application'},{...binding,environment:'staging'}])await assert.rejects(delivery.consume(mapping.id,jwt,{authorizationId:grant.authorizationId,token:grant.token,binding:wrong}),/mismatch/);
+    const consume=()=>delivery.consume(mapping.id,jwt,{authorizationId:grant.authorizationId,token:grant.token,binding});
+    const results=await Promise.allSettled([consume(),consume()]);assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+    const success=results.find(r=>r.status==='fulfilled') as PromiseFulfilledResult<any>;assert.equal(success.value.deploymentExecuted,false);
+    await assert.rejects(consume(),/already consumed/);
+    assert.equal((await delivery.callback(mapping.id,jwt,{authorizationId:grant.authorizationId,deploymentId:'701'}))?.state,'SUCCEEDED');
+    assert.equal((await delivery.callback(mapping.id,jwt,{authorizationId:grant.authorizationId,deploymentId:'701'}))?.state,'SUCCEEDED');
+    assert.equal((await pgClient.query("SELECT count(*)::int AS n FROM threat_deployment_events WHERE authorization_id=$1 AND state='SUCCEEDED'",[grant.authorizationId])).rows[0].n,1);
+    await assert.rejects(delivery.receipts(modelId,outsider),/restricted/);
+    await assert.rejects(pgClient.query("DELETE FROM threat_deployment_events WHERE authorization_id=$1",[grant.authorizationId]),/append-only/);
+  });
   await t.test('release authorization is persisted, freshly evaluated and consumed idempotently',async () => {
     await assert.rejects(service.authorizeRelease(modelId,ticketId,admin),/authority/);
     const request = {releaseId:ticketId,authorization:authorization.authorization,idempotencyKey:'fixture-job-1'};
@@ -300,7 +344,7 @@ test('persistent governance lifecycle, RBAC, review cycles, copies and immutable
     assert.equal((await service.governanceDetail(mid,owner)).revision.architecture_version,priorVersion+1);
     assert.ok((await pgClient.query("SELECT 1 FROM outbox_events WHERE topic='threat-control.verification.required' AND payload->>'threatModelId'=$1 AND payload->>'architectureVersion'=$2",[mid,String(priorVersion+1)])).rowCount);
     const screening=await service.assessApplicability({threatModelId:mid,answers:Object.fromEntries(screeningRules.map(rule=>[rule.signal,false])),justification:'Persisted boundary must win'},owner);assert.ok(screening.tier>=2);
-    await verify();await service.submit(mid,owner);await assert.rejects(service.decideApproval(mid,{stage:'APPSEC',decision:'APPROVED'},reviewer),/contributing author/);
+    await verify();await completeCoverage(mid);await service.submit(mid,owner);await assert.rejects(service.decideApproval(mid,{stage:'APPSEC',decision:'APPROVED'},reviewer),/contributing author/);
     await service.decideApproval(mid,{stage:'APPSEC',decision:'APPROVED'},postReviewer);await service.decideApproval(mid,{stage:'SECURITY_ARCHITECTURE',decision:'APPROVED'},architect);
     assert.equal((await service.releaseGate(mid,owner)).securityGate,'PASS');const report=await service.exportSnapshot(mid,rid,owner);assert.ok(report.snapshot.revision[0].architecture_version>baseline);
     await assert.rejects(service.editArchitecture(mid,b.id,{...b,kind:'component',action:'UPDATE',reason:'Approved edit'},owner),/immutable/);await assert.rejects(pgClient.query("UPDATE threat_model_data_flows SET protocol='HTTP' WHERE id=$1",[flow.id]),/immutable/);

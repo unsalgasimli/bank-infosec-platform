@@ -1,0 +1,68 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+Tətbiqlər
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+AKTİVLƏR VƏ CMDB
+Konfiqurasiya vahidləri
+
+Governed configuration records and service relationships.
+
+Yenilə
+Bütün qeydlər
+İnfrastruktur
+Tətbiqlər
+Biznes xidmətləri
+Advanced
+Tətbiq et
+0 matching records
+Columns
+
+No assets match these filters
+
+Try clearing one filter or broadening the search.
+
+Clear all filters
+0 records
+Səhifə 1

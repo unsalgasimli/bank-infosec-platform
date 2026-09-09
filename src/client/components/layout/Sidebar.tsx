@@ -252,7 +252,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <aside aria-label="Primary navigation" className={`app-sidebar fixed left-0 top-14 z-dsModal h-[calc(100dvh-3.5rem)] w-68 min-h-0 bg-semantic-panel border-r border-semantic-border flex flex-col shrink-0 select-none shadow-xs transition-transform duration-200 lg:static lg:translate-x-0 ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+    <aside aria-label="Primary navigation" className={`app-sidebar fixed left-0 top-14 z-dsModal h-[calc(100dvh-3.5rem)] w-68 min-h-0 bg-semantic-panel border-r border-semantic-border flex flex-col shrink-0 select-none shadow-xs transition-transform duration-200 lg:static lg:translate-x-0 lg:z-auto ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
       {/* Scrollable Navigation Modules Container */}
       <div className="relative min-h-0 flex-1">
         <div ref={navigationRef} className="sidebar-navigation h-full overflow-y-auto overscroll-contain p-3 space-y-2.5" tabIndex={0}>
@@ -292,7 +292,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
               {/* Module Destinations List */}
               <div id={`sidebar-module-${module.id}`} className={`sidebar-module-content grid transition-[grid-template-rows,opacity] duration-180 ease-out ${isCollapsed ? 'grid-rows-[0fr] opacity-0 invisible pointer-events-none' : 'grid-rows-[1fr] opacity-100 visible'}`} aria-hidden={isCollapsed}>
-                <div className="min-h-0 space-y-0.5 pl-1 pt-0.5">
+                <div className="min-h-0 space-y-0.5 pl-2 ml-2 border-l border-semantic-border/40 pt-1 pb-1">
                   {visibleItems.map((item) => {
                     const ItemIcon = ICON_COMPONENTS[item.iconName] || FileText;
                     const isActive =
@@ -322,21 +322,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       >
                         <div className="flex items-center gap-2.5 truncate">
                           <ItemIcon
-                            className={`h-[18px] w-[18px] shrink-0 transition-transform duration-150 ${
-                              isActive ? 'text-semantic-brand' : 'text-semantic-muted group-hover:scale-[1.01] group-hover:text-semantic-strong'
+                            className={`h-4 w-4 shrink-0 transition-colors duration-150 ${
+                              isActive ? 'text-semantic-brand' : 'text-semantic-placeholder group-hover:text-semantic-primary'
                             }`}
                           />
-                          <span className="truncate">{t(item.label)}</span>
+                          <span className={`truncate text-xs ${isActive ? 'font-semibold text-semantic-primary' : 'font-medium text-semantic-secondary group-hover:text-semantic-primary'}`}>
+                            {t(item.label)}
+                          </span>
                         </div>
 
                         {/* Optional Numeric Badge */}
-                        {count !== undefined && count > 0 && item.id !== 'configuration-items' && item.id !== 'asset-inventory' && (
+                        {count !== undefined && count > 0 && item.id !== 'configuration-items' && (
                           <span
                             className={`sidebar-badge ${
                               item.id === 'approvals'
                                 ? 'bg-semantic-warning-surface text-semantic-warning border-semantic-warning-border'
                                 : isActive
-                                ? 'bg-semantic-panel text-semantic-success border-semantic-success-border'
+                                ? 'bg-semantic-panel text-semantic-brand border-semantic-brand/30 shadow-2xs'
                                 : 'text-semantic-muted bg-semantic-neutral-surface border-semantic-border'
                             }`}
                           >
@@ -369,12 +371,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Settings className="w-4 h-4 text-semantic-brand" />
             <span>{t('Space Settings')}</span>
           </button>
-        ) : (
-          <div className="flex items-center gap-1.5 text-xs text-semantic-muted font-medium">
-            <span className="w-2 h-2 rounded-full bg-semantic-brand" />
-            <span>{t('Apex Bank GRC')}</span>
-          </div>
-        )}
+        ) : null}
         <span className="font-mono text-[11px] font-semibold tracking-wide text-semantic-placeholder">v2026.4</span>
       </div>
     </aside>

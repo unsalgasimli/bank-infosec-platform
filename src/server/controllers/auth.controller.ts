@@ -11,6 +11,7 @@ import { SessionService } from '../services/session.service.js';
 import { isGenuineEmployeeOrIntern } from '../services/ldap-directory.data.js';
 import { DepartmentsRepository } from '../db/postgres/departments-repository.js';
 import { CmdbApiService } from '../services/cmdb-api.service.js';
+import { BankUser } from '../../shared/types/auth.js';
 
 const ldapLoginSchema = z.object({
   usernameOrEmail: z.string().trim().min(1).max(256),
@@ -91,6 +92,56 @@ export class AuthController {
       .filter((user) => user.isActive && user.directorySource === 'ACTIVE_DIRECTORY' && isGenuineEmployeeOrIntern(user, user.distributionGroups || [], user.sAMAccountName || user.username))
       .map(({ distinguishedName, ldapBindStatus, lastLdapLoginAt, ...user }) => user);
     res.json({ success: true, users });
+  }
+
+  public static async switchUser(req: AuthenticatedRequest, res: Response): Promise<void> {
+    const targetUserId = req.body?.userId || req.body?.username;
+    if (!targetUserId) {
+      res.status(400).json({ success: false, message: 'İstifadəçi identifikatoru tələb olunur.' });
+      return;
+    }
+
+    let targetUser: BankUser | undefined;
+    if (config.DB_TYPE === 'postgres') {
+      try {
+        const users = await DepartmentsRepository.listActiveDirectoryUsers();
+        targetUser = users.find((u) => u.id === targetUserId || u.username === targetUserId || u.sAMAccountName === targetUserId);
+      } catch {
+        // Fallback to db
+      }
+    }
+    if (!targetUser) {
+      db.reload();
+      targetUser = db.data.users.find((u) => u.id === targetUserId || u.username === targetUserId || u.sAMAccountName === targetUserId);
+    }
+
+    if (!targetUser) {
+      res.status(404).json({ success: false, message: 'İstifadəçi tapılmadı.' });
+      return;
+    }
+
+    await SessionService.revoke(req.sessionToken);
+    const sessionToken = await SessionService.create(targetUser.id);
+    SessionService.setCookie(res, sessionToken);
+
+    AuditService.log({
+      actor: targetUser,
+      action: 'USER_ROLE_SWITCH',
+      entityType: 'USER',
+      entityId: targetUser.id,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      correlationId: req.correlationId,
+      fieldChanges: [
+        {
+          field: 'activePersona',
+          oldValue: req.user?.username || 'NONE',
+          newValue: targetUser.username,
+        },
+      ],
+    });
+
+    res.json({ success: true, user: targetUser });
   }
 
   public static async logout(req: AuthenticatedRequest, res: Response): Promise<void> {

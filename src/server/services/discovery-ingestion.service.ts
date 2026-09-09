@@ -44,6 +44,14 @@ export interface DiscoveryBatchResult {
   failed: Array<{ sourceObjectType: string; sourceObjectId: string; error: string }>;
 }
 
+// Connectors occasionally send concatenated or annotated environment values
+// ('STAGINGSTAGING', 'UNKNOWN—'). Snap them to the canonical enum at ingestion.
+const CANONICAL_ENVIRONMENTS = ['PRODUCTION', 'STAGING', 'UAT', 'TEST', 'DR', 'DEV', 'UNKNOWN'] as const;
+export const canonicalEnvironment = (value: unknown): string => {
+  const raw = String(value ?? '').toUpperCase();
+  return CANONICAL_ENVIRONMENTS.find((env) => raw.includes(env)) ?? 'UNKNOWN';
+};
+
 type SourceRecordRow = {
   id: string;
   asset_id: string | null;
@@ -588,7 +596,7 @@ export class DiscoveryIngestionService {
       lifecycleStatus: 'IN_USE',
       lifecycleState: 'DISCOVERED',
       technicalStatus: dto.technicalState,
-      environment: dto.classification.environment,
+      environment: canonicalEnvironment(dto.classification.environment),
       criticality: 'MEDIUM',
       source: 'SERVICE_DISCOVERY',
       discoveryStatus: 'SYNCED',

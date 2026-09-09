@@ -228,6 +228,15 @@ export interface ControlVerification {
   expectedResult: string;
   result: VerificationResult;
   evidenceIds: string[];
+  executionContext: {
+    target?: string;
+    environment?: string;
+    buildReference?: string;
+    tool?: string;
+    toolVersion?: string;
+    configurationReference?: string;
+    runReference?: string;
+  };
   executedBy: string;
   executedAt: string;
   reviewerId?: string;

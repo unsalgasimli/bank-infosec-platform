@@ -184,11 +184,11 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
   return (
     <div className="flex-1 flex flex-col h-full bg-slate-100 overflow-hidden">
       {/* Top Header / Action Bar */}
-      <div className="px-6 py-3.5 bg-white border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 shadow-xs">
+      <div className="px-6 py-3.5 bg-semantic-panel border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 shadow-xs">
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
-            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-semantic-hover transition-colors"
             title={t('Back to List')}
           >
             <ArrowLeft className="w-4 h-4" />
@@ -198,7 +198,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
             <Badge type="PROJECT" value={ticket.projectCode} />
             <button
               onClick={handleCopyKey}
-              className="group flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-mono font-bold text-slate-800 transition-colors"
+              className="group flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-50 hover:bg-semantic-hover border border-slate-200 text-xs font-mono font-bold text-slate-800 transition-colors"
               title={t('Click to copy ticket key')}
             >
               <span>{ticket.key}</span>
@@ -250,7 +250,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
         {/* Left Scrollable Area */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
           {/* Ticket Title & Status Header */}
-          <div className="space-y-3 bg-white p-5 rounded-xl border border-semantic-border shadow-xs">
+          <div className="space-y-3 bg-semantic-panel p-5 rounded-xl border border-semantic-border shadow-xs">
             <div className="flex flex-wrap items-center gap-2.5">
               <span className={`jira-lozenge ${getStatusLozengeClass(ticket.statusCategory)}`}>
                 {ticket.statusName}
@@ -271,7 +271,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
           </div>
 
           {/* Tab Navigation */}
-          <div className="border-b border-slate-200 flex items-center gap-1 overflow-x-auto custom-scrollbar bg-white px-3 pt-2 rounded-t-lg border-t border-x">
+          <div className="border-b border-slate-200 flex items-center gap-1 overflow-x-auto custom-scrollbar bg-semantic-panel px-3 pt-2 rounded-t-lg border-t border-x">
             {tabsConfig.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -282,7 +282,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
                   className={`flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold transition-all relative border-b-2 whitespace-nowrap ${
                     isActive
                       ? 'border-semantic-jira-brand text-semantic-jira-brand'
-                      : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded-t-md'
+                      : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-semantic-hover rounded-t-md'
                   }`}
                 >
                   <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-semantic-jira-brand' : 'text-slate-400'}`} />
@@ -304,7 +304,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
           </div>
 
           {/* Active Tab Component Container */}
-          <div className="bg-white rounded-b-lg border-x border-b border-slate-200 p-5 shadow-xs -mt-6">
+          <div className="bg-semantic-panel rounded-b-lg border-x border-b border-slate-200 p-5 shadow-xs -mt-6">
             {activeTab === 'OVERVIEW' && (
               <OverviewTab
                 ticket={ticket}
@@ -352,7 +352,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
         </div>
 
         {/* Right Info Sidebar Panel */}
-        <div className="w-80 bg-white border-l border-semantic-border overflow-y-auto p-5 space-y-5 shrink-0 text-xs custom-scrollbar">
+        <div className="w-80 bg-semantic-panel border-l border-semantic-border overflow-y-auto p-5 space-y-5 shrink-0 text-xs custom-scrollbar">
           {/* SLA Card */}
           <SLARing
             remainingMinutes={ticket.slaRemainingMinutes}
@@ -424,7 +424,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
             </div>
             <div className="flex items-center justify-between gap-2">
               <span className="text-slate-500 font-medium">{t('Channel:')}</span>
-              <span className="font-mono text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200 text-label">{ticket.intakeChannel || 'LEGACY'}</span>
+              <span className="font-mono text-slate-700 bg-semantic-panel px-2 py-0.5 rounded border border-slate-200 text-label">{ticket.intakeChannel || 'LEGACY'}</span>
             </div>
           </div>
 
@@ -495,7 +495,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
                 {ticket.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-white text-blue-700 border border-blue-200 text-caption font-mono font-medium shadow-xs"
+                    className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-semantic-panel text-blue-700 border border-blue-200 text-caption font-mono font-medium shadow-xs"
                   >
                     #{tag}
                   </span>
@@ -508,7 +508,7 @@ export const TicketSplitDetail: React.FC<TicketSplitDetailProps> = ({
 
       {/* Transition Comment Modal */}
       {selectedTransition && (
-        <div className="fixed inset-0 z-dsDialog flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center p-4 bg-semantic-modal-tint/60 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="w-full max-w-md bg-semantic-panel border border-semantic-border-strong text-semantic-primary rounded-xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-semantic-border pb-3">
               <h3 className="text-sm font-bold text-semantic-primary uppercase tracking-wider">

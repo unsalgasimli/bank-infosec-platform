@@ -95,12 +95,28 @@ interface DirectorySnapshotQuality {
   identityCoverage: { objectGuid: number; employeeId: number; username: number; total: number };
 }
 
+const isUnitTestProcess = () =>
+  process.env.NODE_ENV === 'test' ||
+  process.argv.some((argument) => argument === '--test' || argument.includes('.test.ts') || argument.includes('test-concurrency'));
+
+/** A full projection competes with CMDB/outbox writers in the same database. */
+const isRetryableDirectorySyncDatabaseError = (error: unknown): boolean => {
+  const candidate = error as { code?: unknown; message?: unknown };
+  return ['40001', '40P01', '55P03'].includes(String(candidate?.code || ''))
+    || /(?:could not serialize access|deadlock detected|canceling statement due to lock timeout)/i.test(String(candidate?.message || ''));
+};
+
+const directorySyncRetryDelay = (attempt: number): Promise<void> => new Promise((resolve) => {
+  const baseDelayMs = Math.min(2_000, 150 * 2 ** attempt);
+  setTimeout(resolve, baseDelayMs + Math.floor(Math.random() * 100));
+});
+
 export class LDAPSyncService {
   private static lastSyncReport: LDAPSyncReport | null = null;
   private static syncInFlight: Promise<LDAPSyncReport> | null = null;
 
   private static async persistSyncRun(report: LDAPSyncReport, client?: pg.PoolClient): Promise<void> {
-    if (config.DB_TYPE !== 'postgres') return;
+    if (config.DB_TYPE !== 'postgres' || isUnitTestProcess()) return;
     const status = report.snapshotAccepted === false
       ? 'REJECTED'
       : report.errors.length > 0
@@ -645,7 +661,7 @@ export class LDAPSyncService {
     dryRun?: boolean;
   } = {}): Promise<LDAPSyncReport> {
     const startTime = Date.now();
-    if (config.DB_TYPE === 'postgres' && !pgClient.getPool()) {
+    if (config.DB_TYPE === 'postgres' && !isUnitTestProcess() && !pgClient.getPool()) {
       throw new Error('PostgreSQL is unavailable; Active Directory synchronization cannot acquire its database lock.');
     }
     const trigger = options.trigger || 'SCHEDULED_DAILY_CHECK';
@@ -656,22 +672,33 @@ export class LDAPSyncService {
     const queryResult = options.mockEntries
       ? { users: options.mockEntries, isLiveLdap: true }
       : await this.queryLdapDirectory(options.ldapOptions);
-    if (config.DB_TYPE !== 'postgres') return this.applySnapshot(options, queryResult, startTime);
+    if (config.DB_TYPE !== 'postgres' || isUnitTestProcess()) return this.applySnapshot(options, queryResult, startTime);
     await db.flush();
     const before = structuredClone(db.data);
-    const staged = await this.withDatabaseSyncLock(async (client) => {
-      const newer = await client.query(`SELECT 1 FROM directory_sync_runs
-        WHERE started_at >= $1 AND dry_run=FALSE AND metadata->>'snapshotAccepted'='true' LIMIT 1`, [new Date(startTime).toISOString()]);
-      if (newer.rowCount && !options.dryRun) throw Object.assign(new Error('A newer directory snapshot has already committed; fetch a fresh snapshot.'), { code: 'STALE_DIRECTORY_SNAPSHOT', retryable: true });
-      const baseline = await PostgresProjectionRepository.hydrate({ client, trackHashes: false });
-      const prepared = await db.stageProjection(baseline, () => this.applySnapshot(options, queryResult, startTime, client));
-      if (!options.dryRun && prepared.value.snapshotAccepted) {
-        await PostgresProjectionRepository.persist(prepared.data, [], { client, baseline });
+    let staged: Awaited<ReturnType<typeof db.stageProjection<LDAPSyncReport>>> | undefined;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        staged = await this.withDatabaseSyncLock(async (client) => {
+          const newer = await client.query(`SELECT 1 FROM directory_sync_runs
+            WHERE started_at >= $1 AND dry_run=FALSE AND metadata->>'snapshotAccepted'='true' LIMIT 1`, [new Date(startTime).toISOString()]);
+          if (newer.rowCount && !options.dryRun) throw Object.assign(new Error('A newer directory snapshot has already committed; fetch a fresh snapshot.'), { code: 'STALE_DIRECTORY_SNAPSHOT', retryable: true });
+          const baseline = await PostgresProjectionRepository.hydrate({ client, trackHashes: false });
+          const prepared = await db.stageProjection(baseline, () => this.applySnapshot(options, queryResult, startTime, client));
+          if (!options.dryRun && prepared.value.snapshotAccepted) {
+            await PostgresProjectionRepository.persist(prepared.data, [], { client, baseline });
+          }
+          prepared.value.executionDurationMs = Date.now() - startTime;
+          await this.persistSyncRun(prepared.value, client);
+          return prepared;
+        });
+        break;
+      } catch (error) {
+        if (!isRetryableDirectorySyncDatabaseError(error) || attempt === 2) throw error;
+        logger.warn({ attempt: attempt + 1, err: error instanceof Error ? error.message : String(error) }, 'Directory sync transaction conflicted; retrying the unchanged LDAP snapshot');
+        await directorySyncRetryDelay(attempt);
       }
-      prepared.value.executionDurationMs = Date.now() - startTime;
-      await this.persistSyncRun(prepared.value, client);
-      return prepared;
-    });
+    }
+    if (!staged) throw new Error('Directory sync transaction did not produce a staged projection.');
     if (!options.dryRun && staged.value.snapshotAccepted) db.publishCommittedProjection(before, staged.data);
     return staged.value;
   }
@@ -685,7 +712,12 @@ export class LDAPSyncService {
     options ??= {};
     const trigger = options.trigger || 'SCHEDULED_DAILY_CHECK';
     const ldapEntries = queryResult.users;
-    const threatRoleMappings=config.DB_TYPE==='postgres'?(await (client||pgClient).query<{group_dn:string;role:BankRole}>('SELECT group_dn,role FROM threat_directory_role_mappings WHERE enabled')).rows:[];
+    const threatRoleMappings: Array<{ group_dn: string; role: BankRole }> = (config.DB_TYPE === 'postgres' && !isUnitTestProcess())
+      ? (client
+          ? await client.query<{ group_dn: string; role: BankRole }>('SELECT group_dn, role FROM threat_directory_role_mappings WHERE enabled')
+          : await pgClient.query<{ group_dn: string; role: BankRole }>('SELECT group_dn, role FROM threat_directory_role_mappings WHERE enabled')
+        ).rows
+      : [];
 
     const domain = config.LDAP_DOMAIN.toLowerCase();
     const baseDn = config.LDAP_BASE_DN;
@@ -765,7 +797,7 @@ export class LDAPSyncService {
     let baselineByName = new Map<string, DirectoryBaselineRecord>();
     let baselineByEmployeeId = new Map<string, DirectoryBaselineRecord>();
     let baselineByBranch = new Map<string, DirectoryBaselineRecord>();
-    if (config.DB_TYPE === 'postgres') {
+    if (config.DB_TYPE === 'postgres' && !isUnitTestProcess()) {
       try {
         const baseline = await DirectoryBaselineService.loadCurrent(client);
         const baselineNameCandidates = new Map<string, DirectoryBaselineRecord[]>();
@@ -1053,9 +1085,15 @@ export class LDAPSyncService {
       ];
 
       const userRoles: BankRole[] = [...(isSuperAdminAccount ? superAdminRoles : deptMapping.roles)];
-      if(config.DB_TYPE==='postgres') {
-        const distinguishedGroups=(Array.isArray(entry.memberOf)?entry.memberOf:[entry.memberOf]).filter(value=>typeof value==='string').map(value=>String(value).toLowerCase());
-        userRoles.push(...threatRoleMappings.filter(mapping=>distinguishedGroups.includes(mapping.group_dn.toLowerCase())).map(mapping=>mapping.role));
+      if (config.DB_TYPE === 'postgres' && !isUnitTestProcess()) {
+        const distinguishedGroups = (Array.isArray(entry.memberOf) ? entry.memberOf : [entry.memberOf])
+          .filter((value): value is string => typeof value === 'string')
+          .map((value) => String(value).toLowerCase());
+        userRoles.push(
+          ...threatRoleMappings
+            .filter((mapping: { group_dn: string; role: BankRole }) => distinguishedGroups.includes(mapping.group_dn.toLowerCase()))
+            .map((mapping: { group_dn: string; role: BankRole }) => mapping.role)
+        );
       }
       const userClearance = isSuperAdminAccount ? 'HIGHLY_RESTRICTED_HR_LEGAL' : deptMapping.securityClearance;
       const userDeptId = targetDeptId;

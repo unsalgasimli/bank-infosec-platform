@@ -199,6 +199,14 @@ export class RisksController {
       return;
     }
     const now = new Date().toISOString();
+    const treatmentDeadline = String(body.treatmentDeadline || '').trim();
+    const today = now.slice(0, 10);
+    // Date-only values must survive parsing unchanged: JavaScript otherwise accepts
+    // impossible calendar dates such as 2026-02-30 by rolling them into March.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(treatmentDeadline) || Number.isNaN(Date.parse(`${treatmentDeadline}T00:00:00.000Z`)) || new Date(`${treatmentDeadline}T00:00:00.000Z`).toISOString().slice(0, 10) !== treatmentDeadline || treatmentDeadline < today) {
+      res.status(400).json({ success: false, error: 'Target deadline must be a valid date that is today or later.' });
+      return;
+    }
 
     const likelihood = Number(body.inherentLikelihood ?? body.likelihood) || 3;
     const impact = Number(body.inherentImpact ?? body.impact) || 3;
@@ -250,7 +258,7 @@ export class RisksController {
       residualRiskCalculatedBy: user.id,
       treatmentStrategy: body.treatmentStrategy || 'MITIGATE',
       treatmentPlan: body.treatmentPlan || '',
-      treatmentDeadline: body.treatmentDeadline || new Date(Date.now() + 86400000 * 90).toISOString().split('T')[0],
+      treatmentDeadline,
       status: 'IDENTIFIED' as const,
       linkedTicketIds: body.linkedTicketIds || [],
       createdAt: now,

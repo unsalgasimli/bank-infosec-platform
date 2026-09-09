@@ -1,0 +1,69 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+İDARƏETMƏ
+/
+Müraciət formaları
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+Wrike Dynamic Request Forms & Work Intake
+Real-Time Backend Synced
+
+Capture incoming business requests with conditional branching, validation, and automated routing.
+
+AVAİLABLE SECURİTY REQUEST FORMS (0)
+Avtomatik təyinat qovluğu
+Müraciət icmalı / Başlıq *
+Təcililik / Ciddilik səviyyəsi
+Fövqəladə (P1 SLA: 15 dəqiqə)
+Yüksək təcili (P2 SLA: 1 saat)
+Standart (P3 SLA: 4 saat)
+Aşağı (P4 SLA: 24 saat)
+Hədəf bank sistemi
+SWIFT Alliance Gateway (1-ci səviyyə)
+Apex Əsas Bankçılıq Şlüzü (Temenos T24)
+Apex Pərakəndə Mobil Bankçılıq API-si
+Perimetr DC1 Giriş Təhlükəsizlik Divarı
+Biznes əsaslandırması və kontekst
+İş qəbulu bu müraciəti birbaşa aktiv konveyerlərə yönləndirir.
+Submit Request Form

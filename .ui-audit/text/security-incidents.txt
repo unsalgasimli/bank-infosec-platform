@@ -1,0 +1,63 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+Security Incidents
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+SOC Security Incident Command Center
+
+NIST SP 800-61 / ISO 27035 incident triage, containment, MITRE ATT&CK attribution, and regulatory escalation.
+
+SIEM / EDR İNGESTİON
+SOC Qayda Mühərriki Vebhuku
+
+Incident cases are created only by authenticated SIEM/EDR integrations or an authorized manual request. Demo threat generation is disabled.
+
+NIST MƏRHƏLƏSİ:
+Bütün insidentlər
+Aşkarlama və ilkin təhlil
+Lokallaşdırma
+Kökünün kəsilməsi (Eradication)
+Bərpa və insidentdən sonrakı təhlil
+0 Active Cases
+No incident cases found in this NIST lifecycle stage.

@@ -45,7 +45,11 @@ try {
 }
 
 const viteCli = path.resolve(process.cwd(), 'node_modules', 'vite', 'bin', 'vite.js');
-const vite = spawn(process.execPath, [viteCli], {
+// Keep the checkout identity in the Windows command line. This lets
+// dev:cleanup distinguish this Vite listener from another project's Vite
+// process when the next `pnpm dev` needs to reclaim port 5173.
+const viteConfig = path.resolve(process.cwd(), 'vite.config.ts');
+const vite = spawn(process.execPath, [viteCli, '--config', viteConfig], {
   cwd: process.cwd(),
   env: process.env,
   stdio: 'inherit',

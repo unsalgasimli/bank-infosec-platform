@@ -67,6 +67,10 @@
   --color-jira-todo-text: #38BDF8;
   --color-jira-blue-50: #101C2E;
   --color-jira-blue-600: #38BDF8;
+  /* Light theme ships #DEEBFF / #B3D4FF here; without dark overrides, active
+     cards render pale-blue with white text (invisible on the matte canvas). */
+  --color-jira-brand-surface: #101C2E;
+  --color-jira-info-border: #1E3A5F;
   --color-jira-review-bg: #241432;
   --color-jira-review-text: #C084FC;
   --color-jira-blocked-bg: #2E1014;

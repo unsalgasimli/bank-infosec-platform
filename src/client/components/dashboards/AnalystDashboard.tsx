@@ -64,14 +64,14 @@ export const AnalystDashboard: React.FC<AnalystDashboardProps> = ({
           <div className="flex items-center gap-2">
             <UserCheck className="w-4 h-4 text-semantic-jira-brand" />
             <span className="text-label font-mono text-semantic-jira-muted uppercase tracking-wider">
-              Atlassian Jira • Personal Workspace
+              FIUUU • Personal Workspace
             </span>
           </div>
           <h1 className="text-xl font-bold text-semantic-jira-primary tracking-tight mt-1">
             Personal Security Workspace ({currentUser?.fullName})
           </h1>
           <p className="text-xs text-semantic-jira-muted mt-0.5">
-            Role: <strong className="text-semantic-jira-primary">{currentUser?.roles[0]}</strong> • Department: {currentUser?.departmentId} • Security Clearance: <strong className="text-semantic-jira-brand">{currentUser?.securityClearance}</strong>
+            {currentUser?.title}
           </p>
         </div>
 

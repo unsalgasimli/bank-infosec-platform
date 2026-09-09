@@ -105,10 +105,10 @@ export const WrikeWorkloadView: React.FC<WrikeWorkloadViewProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-semantic-primary">
-                {t('Wrike Workload & Resource Capacity')}
+                {t('FIUUU Workload & Resource Capacity')}
               </h2>
               <span className="px-2 py-0.5 rounded-full bg-semantic-purple-surface text-semantic-purple text-caption font-bold border border-semantic-purple-border">
-                {t('Real-Time Backend Synced')} ({utilizationPct}%)
+                {t('Utilization')}: {utilizationPct}%
               </span>
             </div>
             <p className="text-label text-semantic-jira-muted-alt">

@@ -78,8 +78,7 @@ export const AliveCommandLauncher: React.FC<AliveCommandLauncherProps> = ({
     { id: 'approvals', title: t('Dual-Control Approvals'), category: 'Navigation', icon: Shield, shortcut: 'G A' },
     { id: 'service-incidents', title: t('Service Incidents & Outages'), category: 'Navigation', icon: AlertTriangle, shortcut: 'G I' },
     { id: 'service-requests', title: t('Service & Access Requests'), category: 'Navigation', icon: Layers, shortcut: 'G R' },
-    { id: 'asset-inventory', title: t('CMDB Asset Inventory'), category: 'Navigation', icon: Server, shortcut: 'G C' },
-    { id: 'relationship-map', title: t('CMDB Topology Map'), category: 'Navigation', icon: Workflow, shortcut: 'G M' },
+    { id: 'configuration-items', title: t('CMDB Registry'), category: 'Navigation', icon: Server, shortcut: 'G C' },
     { id: 'vulnerabilities', title: t('Vulnerability Management'), category: 'Navigation', icon: Shield, shortcut: 'G V' },
     { id: 'risk-management', title: t('Risk Register Matrix'), category: 'Navigation', icon: FileText, shortcut: 'G K' },
     { id: 'threat-modeling', title: t('Threat Modeling Studio'), category: 'Navigation', icon: Shield, shortcut: 'G S' },
@@ -157,7 +156,7 @@ export const AliveCommandLauncher: React.FC<AliveCommandLauncherProps> = ({
       category: 'Assets & CMDB',
       icon: Server,
       action: () => {
-        onNavigate('asset-inventory');
+        onNavigate('configuration-items');
         onClose();
       },
     }));
@@ -203,7 +202,7 @@ export const AliveCommandLauncher: React.FC<AliveCommandLauncherProps> = ({
     <div className="fixed inset-0 z-dsDialog flex items-start justify-center pt-24 p-4">
       {/* Dimmed backdrop with micro-blur */}
       <div
-        className="fixed inset-0 bg-black/75 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-semantic-modal-tint/60 backdrop-blur-sm transition-opacity"
         onClick={onClose}
       />
 

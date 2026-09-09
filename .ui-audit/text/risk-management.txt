@@ -1,0 +1,106 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+TƏHLÜKƏSİZLİK VƏ GRC
+/
+Risk idarəetməsi
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+Müəssisə Risk Reyestri və İstilik Matrisi
+
+ISO 31000 / NIST RMF 5×5 Risk matrisi qiymətləndirməsi, ilkin və qalıq riskin hesablanması və nəzarət tədbirlərinin izlənməsi.
+
+0 Portfel Riski
+Yeni risk qiymətləndirməsi
+5×5 MÜƏSSİSƏ RİSK İSTİLİK MATRİSİ
+
+Dəqiq ehtimal və təsirə görə riskləri filtrləmək üçün istənilən xanaya klikləyin
+
+Kritik (15-25)
+Yüksək (10-14)
+Orta (5-9)
+Aşağı (1-4)
+5 (Demək olar ki, qaçılmaz)
+4 (Çox ehtimal)
+3 (Mümkün)
+2 (Az ehtimal)
+1 (Nadir)
+5
+10
+15
+20
+25
+4
+8
+12
+16
+20
+3
+6
+9
+12
+15
+2
+4
+6
+8
+10
+1
+2
+3
+4
+5
+1 (Əhəmiyyətsiz)
+2 (Kiçik)
+3 (Mülayim)
+4 (Əhəmiyyətli)
+5 (Fəlakətli)
+TƏSİR (NƏTİCƏNİN CİDDİLİYİ) →
+EMAL:
+Bütün Strategiyalar
+Azaltma (Nəzarət)
+Qəbul (İdarəetmə)
+Ötürmə (Sığorta/Tərəfdaş)
+Yayınma (İstismardan çıxarma)
+AKTİV RİSK PORTFELİ (0)
+Aktiv matris xanasına və ya axtarış filtrlərinə uyğun müəssisə riski tapılmadı.

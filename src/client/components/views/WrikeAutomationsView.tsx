@@ -66,7 +66,7 @@ export const WrikeAutomationsView: React.FC<WrikeAutomationsViewProps> = ({
       const data = await res.json();
       if (data.success) {
         setLaunchedMessage(
-          `🚀 Blueprint "${blueprint.title}" successfully instantiated! Created ${data.createdTickets?.length || 0} scheduled tasks in database.`
+          `Blueprint "${blueprint.title}" launched. Created ${data.createdTickets?.length || 0} scheduled tasks.`
         );
         if (onRefreshTickets) onRefreshTickets();
       }
@@ -88,42 +88,39 @@ export const WrikeAutomationsView: React.FC<WrikeAutomationsViewProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-semantic-page-muted overflow-hidden select-none">
-      {/* Wrike Automations Header */}
-      <div className="bg-semantic-panel border-b border-semantic-surface-alt px-5 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 shadow-wrike-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-semantic-success-surface text-semantic-brand border border-semantic-success-border flex items-center justify-center font-bold text-xs">
-            <Zap className="w-4 h-4 text-semantic-brand" />
+    <div className="flex-1 flex flex-col h-full bg-semantic-page overflow-hidden select-none">
+      {/* Enterprise Automations Header */}
+      <div className="bg-semantic-panel border-b border-semantic-border px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 shadow-sm">
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-semantic-success-surface text-semantic-brand border border-semantic-success-border flex items-center justify-center font-bold shadow-xs">
+            <Zap className="w-5 h-5 text-semantic-brand" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-semantic-primary">
-                {t('Wrike Automation Engine & Project Blueprints')}
+              <h2 className="text-base font-extrabold text-semantic-primary tracking-tight">
+                {t('SecOps Automation Engine & Project Blueprints')}
               </h2>
-              <span className="px-2 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success text-caption font-bold border border-semantic-success-border">
-                {t('Real-Time Backend Synced')}
-              </span>
             </div>
-            <p className="text-label text-semantic-jira-muted-alt">
+            <p className="text-xs text-semantic-muted mt-0.5">
               {t('Build custom trigger-condition-action workflow rules and launch turnkey enterprise project blueprints.')}
             </p>
           </div>
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex items-center bg-semantic-subtle border border-semantic-surface-alt rounded-md p-0.5 text-xs">
+        <div className="flex items-center bg-semantic-subtle border border-semantic-border rounded-lg p-1 text-xs">
           <button
             onClick={() => setActiveTab('RULES')}
-            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-              activeTab === 'RULES' ? 'bg-semantic-brand text-white font-semibold shadow-sm' : 'text-semantic-jira-muted-alt hover:text-semantic-primary'
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+              activeTab === 'RULES' ? 'bg-semantic-panel text-semantic-primary shadow-xs border border-semantic-border' : 'text-semantic-muted hover:text-semantic-primary'
             }`}
           >
             {t('Automation Rules')} ({automationRules.length})
           </button>
           <button
             onClick={() => setActiveTab('BLUEPRINTS')}
-            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-              activeTab === 'BLUEPRINTS' ? 'bg-semantic-brand text-white font-semibold shadow-sm' : 'text-semantic-jira-muted-alt hover:text-semantic-primary'
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+              activeTab === 'BLUEPRINTS' ? 'bg-semantic-panel text-semantic-primary shadow-xs border border-semantic-border' : 'text-semantic-muted hover:text-semantic-primary'
             }`}
           >
             {t('Project Blueprints')} ({blueprints.length})

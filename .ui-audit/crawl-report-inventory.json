@@ -1,0 +1,46 @@
+[
+ {
+  "slug": "asset-inventory",
+  "route": "/assets-cmdb/inventory",
+  "ok": true,
+  "chars": 4826,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "applications",
+  "route": "/assets-cmdb/applications",
+  "ok": true,
+  "chars": 993,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "business-services",
+  "route": "/assets-cmdb/business-services",
+  "ok": true,
+  "chars": 1001,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "knowledge-base",
+  "route": "/knowledge",
+  "ok": true,
+  "chars": 835,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ }
+]

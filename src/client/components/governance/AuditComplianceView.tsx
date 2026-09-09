@@ -88,7 +88,7 @@ export const AuditComplianceView: React.FC = () => {
       </div>
 
       <div className="wrike-card p-4 text-xs text-semantic-muted border border-semantic-border">
-        {t('Compliance scores and certification claims are not shown until they are received from an approved control-assessment integration. The audit trail below contains only persisted system activity.')}
+        {t('Certification metrics appear once a control-assessment integration is connected. The trail below reflects persisted system activity only.')}
       </div>
 
       {/* Verified Immutable Audit Trail Table */}

@@ -12,6 +12,8 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   CircleStop,
   ClipboardEdit,
@@ -30,6 +32,7 @@ import {
   Maximize2,
   Network,
   PanelLeft,
+  PanelRight,
   Play,
   Plus,
   RefreshCw,
@@ -67,6 +70,7 @@ import { useAuth } from "../../context/AuthContext.js";
 import { useI18n } from "../../context/I18nContext.js";
 import { AccessibleDatePicker } from "../common/AccessibleDatePicker.js";
 import { CustomSelect, type SelectOption } from "../common/CustomSelect.js";
+import { WorkflowCatalogView } from "./WorkflowCatalogView.js";
 
 type WorkspaceTab = "CATALOG" | "BUILDER" | "EXECUTIONS" | "ANALYTICS";
 type BuilderSidebarTab = "NODES" | "VARIABLES";
@@ -348,6 +352,8 @@ export const UniversalWorkflowWorkspace: React.FC<{
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isGridVisible, setIsGridVisible] = useState(true);
   const [isFocusMode, setIsFocusMode] = useState(false);
+  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(false);
+  const [isLeftPaletteCollapsed, setIsLeftPaletteCollapsed] = useState(false);
   const [clipboardNodes, setClipboardNodes] = useState<
     WorkflowNodeDefinition[]
   >([]);
@@ -459,6 +465,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
 
   useEffect(() => {
     void load("catalog");
+    void load("directory");
   }, []);
   useEffect(() => {
     if (tab === "BUILDER" && !builderVersion) {
@@ -1587,7 +1594,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-semantic-page text-semantic-primary">
-      <header className="shrink-0 border-b border-slate-200 bg-white px-5 py-3 sm:px-6">
+      <header className="shrink-0 border-b border-slate-200 bg-semantic-panel px-5 py-3 sm:px-6">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 items-center gap-3.5">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-semantic-success-border bg-semantic-success-surface text-semantic-success shadow-sm">
@@ -1628,7 +1635,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
         </div>
       </header>
 
-      <nav className="flex h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-slate-200 bg-white px-5 sm:px-6">
+      <nav className="flex h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-slate-200 bg-semantic-panel px-5 sm:px-6">
         <div className="flex h-full items-center gap-1">
           {(
             [
@@ -1660,7 +1667,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
         </div>
         <button
           onClick={() => void load()}
-          className="ml-auto shrink-0 rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+          className="ml-auto shrink-0 rounded-lg p-2 text-slate-500 transition-colors hover:bg-semantic-hover hover:text-slate-900"
           title={t('Refresh')}
         >
           <RefreshCw className="h-4 w-4" />
@@ -1682,7 +1689,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
           {t('Loading orchestration platform...')}
         </div>
       ) : tab === "CATALOG" ? (
-        <CatalogView
+        <WorkflowCatalogView
           catalog={catalog}
           query={query}
           setQuery={setQuery}
@@ -1696,6 +1703,18 @@ export const UniversalWorkflowWorkspace: React.FC<{
           }
           onClone={(item: WorkflowCatalogTemplate) => void cloneTemplate(item)}
           onDelete={(item: WorkflowCatalogTemplate) => setTemplatePendingDeletion(item)}
+          onNewWorkflow={(scope?: TemplateScope) => {
+            const workflow = blankWorkflow(currentUser?.id || "");
+            const def = blankDefinition(currentUser?.id || "");
+            if (scope) def.scope = scope;
+            setBuilderDefinition(def);
+            setBuilderVersion(workflow);
+            setSelectedStageId("stage-main");
+            setSelectedNodeId("node-start");
+            setSelectedNodeIds(["node-start"]);
+            setTab("BUILDER");
+          }}
+          directory={directory}
         />
       ) : tab === "BUILDER" ? (
         <div
@@ -1726,7 +1745,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   scope: event.target.value as TemplateScope,
                 }))
               }
-              className="rounded border border-slate-200 bg-white px-2 py-1.5 text-label font-semibold text-slate-700 outline-none focus:border-emerald-500"
+              className="rounded border border-slate-200 bg-semantic-panel px-2 py-1.5 text-label font-semibold text-slate-700 outline-none focus:border-emerald-500"
               aria-label={t("Template scope")}
               title={t("Template visibility and creation scope")}
             >
@@ -1743,16 +1762,30 @@ export const UniversalWorkflowWorkspace: React.FC<{
               <button
                 onClick={undo}
                 disabled={!history.length}
-                className="rounded p-1.5 hover:bg-slate-100 disabled:opacity-30"
+                className="rounded p-1.5 hover:bg-semantic-hover disabled:opacity-30"
               >
                 <Undo2 className="h-4 w-4" />
               </button>
               <button
                 onClick={redo}
                 disabled={!future.length}
-                className="rounded p-1.5 hover:bg-slate-100 disabled:opacity-30"
+                className="rounded p-1.5 hover:bg-semantic-hover disabled:opacity-30"
               >
                 <Undo2 className="h-4 w-4 scale-x-[-1]" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsInspectorCollapsed((prev) => !prev)}
+                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                  !isInspectorCollapsed
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                    : "border-slate-200 bg-semantic-panel text-slate-600 hover:bg-semantic-hover"
+                }`}
+                title={isInspectorCollapsed ? t("Show inspector") : t("Hide inspector")}
+                aria-pressed={!isInspectorCollapsed}
+              >
+                <PanelRight className="h-3.5 w-3.5" />
+                <span className="hidden lg:inline">{isInspectorCollapsed ? t("Show inspector") : t("Inspector")}</span>
               </button>
               <button
                 onClick={() => openWorkflowMetadata("PUBLISH")}
@@ -1768,7 +1801,27 @@ export const UniversalWorkflowWorkspace: React.FC<{
             </div>
           </div>
           <div className="flex min-h-0 flex-1">
-            <aside className="w-64 shrink-0 overflow-y-auto border-r border-semantic-border-strong bg-semantic-panel p-3 text-semantic-primary">
+            <aside
+              className={`shrink-0 overflow-y-auto border-semantic-border-strong bg-semantic-panel text-semantic-primary transition-all duration-200 ease-in-out ${
+                isLeftPaletteCollapsed
+                  ? "w-0 p-0 border-r-0 overflow-hidden opacity-0 pointer-events-none"
+                  : "w-64 border-r p-3 opacity-100"
+              }`}
+            >
+              <div className="mb-2.5 flex items-center justify-between">
+                <div className="text-caption font-bold uppercase tracking-wider text-slate-400">
+                  {t("Palette")}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsLeftPaletteCollapsed(true)}
+                  className="rounded p-1 text-slate-400 hover:bg-semantic-hover hover:text-slate-700 transition"
+                  title={t("Minimize palette")}
+                  aria-label={t("Minimize palette")}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+              </div>
               <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg bg-semantic-subtle p-1 text-label font-bold">
                 <button
                   onClick={() => setBuilderSidebarTab("NODES")}
@@ -1803,7 +1856,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                               )
                             }
                             onClick={() => addNode(item.type)}
-                            className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-left text-xs font-semibold hover:border-slate-300 hover:bg-slate-50"
+                            className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-semantic-panel px-2.5 py-2 text-left text-xs font-semibold hover:border-slate-300 hover:bg-semantic-hover"
                           >
                             <item.icon
                               className="h-4 w-4"
@@ -1891,12 +1944,23 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   }}
                 />
               )}
-              <div className="absolute left-3 top-3 z-dsSticky flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+              <div className="absolute left-3 top-3 z-dsSticky flex items-center gap-1 rounded-lg border border-slate-200 bg-semantic-panel p-1 shadow-sm">
+                {isLeftPaletteCollapsed && (
+                  <button
+                    type="button"
+                    onClick={() => setIsLeftPaletteCollapsed(false)}
+                    className="rounded p-1 text-slate-600 hover:bg-semantic-hover hover:text-slate-900 transition"
+                    title={t("Show palette")}
+                    aria-label={t("Show palette")}
+                  >
+                    <PanelLeft className="h-4 w-4" />
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={focusSearchResult}
                   disabled={!nodeSearch.trim() || !matchingNodes.length}
-                  className="ml-0.5 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="ml-0.5 rounded p-1 text-slate-400 hover:bg-semantic-hover hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
                   title={matchingNodes.length ? `Focus ${matchingNodes.length} matching node${matchingNodes.length === 1 ? "" : "s"}` : "No matching nodes"}
                   aria-label="Focus matching workflow node"
                 >
@@ -1919,7 +1983,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   type="button"
                   onClick={() => setIsGridVisible((visible) => !visible)}
                   aria-pressed={isGridVisible}
-                  className={`rounded p-1.5 transition-colors ${isGridVisible ? "bg-emerald-50 text-emerald-700" : "text-slate-500 hover:bg-slate-100"}`}
+                  className={`rounded p-1.5 transition-colors ${isGridVisible ? "bg-emerald-50 text-emerald-700" : "text-slate-500 hover:bg-semantic-hover"}`}
                   title={isGridVisible ? t("Grid and snap are on") : t("Show grid and enable snap")}
                 >
                   <Grid3X3 className="h-4 w-4" />
@@ -1927,7 +1991,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                 <button
                   type="button"
                   onClick={() => setZoom((value) => Math.min(1.4, value + 0.1))}
-                  className="rounded p-1.5 hover:bg-slate-100"
+                  className="rounded p-1.5 hover:bg-semantic-hover"
                   title={t("Zoom in")}
                 >
                   <ZoomIn className="h-4 w-4" />
@@ -1937,7 +2001,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   onClick={() =>
                     setZoom((value) => Math.max(0.45, value - 0.1))
                   }
-                  className="rounded p-1.5 hover:bg-slate-100"
+                  className="rounded p-1.5 hover:bg-semantic-hover"
                   title={t("Zoom out")}
                 >
                   <ZoomOut className="h-4 w-4" />
@@ -1945,19 +2009,19 @@ export const UniversalWorkflowWorkspace: React.FC<{
                 <button
                   type="button"
                   onClick={toggleFocusMode}
-                  className="rounded p-1.5 hover:bg-slate-100"
+                  className="rounded p-1.5 hover:bg-semantic-hover"
                   aria-pressed={isFocusMode}
                   title={isFocusMode ? t("Exit focus mode (Esc)") : t("Open workflow builder in focus mode")}
                 >
                   <Maximize2 className="h-4 w-4" />
                 </button>
               </div>
-              <div className="absolute left-3 top-14 z-dsSticky flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+              <div className="absolute left-3 top-14 z-dsSticky flex items-center gap-1 rounded-lg border border-slate-200 bg-semantic-panel p-1 shadow-sm">
                 <button
                   type="button"
                   onClick={copySelection}
                   disabled={!selectedNodeIds.length && !selectedNodeId}
-                  className="rounded p-1.5 hover:bg-slate-100 disabled:opacity-30"
+                  className="rounded p-1.5 hover:bg-semantic-hover disabled:opacity-30"
                   title={t("Copy selection (Ctrl+C)")}
                 >
                   <Copy className="h-4 w-4" />
@@ -1966,7 +2030,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   type="button"
                   onClick={pasteSelection}
                   disabled={!clipboardNodes.length}
-                  className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100 disabled:opacity-30"
+                  className="rounded px-2 py-1.5 text-caption font-bold hover:bg-semantic-hover disabled:opacity-30"
                   title={t("Paste (Ctrl+V)")}
                 >
                   {t("Paste")}
@@ -1975,7 +2039,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   type="button"
                   onClick={() => alignSelection("HORIZONTAL")}
                   disabled={selectedNodeIds.length < 2}
-                  className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100 disabled:opacity-30"
+                  className="rounded px-2 py-1.5 text-caption font-bold hover:bg-semantic-hover disabled:opacity-30"
                 >
                   {t("Align H")}
                 </button>
@@ -1983,21 +2047,21 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   type="button"
                   onClick={() => alignSelection("VERTICAL")}
                   disabled={selectedNodeIds.length < 2}
-                  className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100 disabled:opacity-30"
+                  className="rounded px-2 py-1.5 text-caption font-bold hover:bg-semantic-hover disabled:opacity-30"
                 >
                   {t("Align V")}
                 </button>
                 <button
                   type="button"
                   onClick={fitToScreen}
-                  className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100"
+                  className="rounded px-2 py-1.5 text-caption font-bold hover:bg-semantic-hover"
                 >
                   {t("Fit")}
                 </button>
                 <button
                   type="button"
                   onClick={autoLayout}
-                  className="rounded px-2 py-1.5 text-caption font-bold hover:bg-slate-100"
+                  className="rounded px-2 py-1.5 text-caption font-bold hover:bg-semantic-hover"
                   title={t("Arrange nodes on the current grid")}
                 >
                   {t("Arrange")}
@@ -2166,7 +2230,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                             event.shiftKey || event.ctrlKey || event.metaKey,
                           );
                         }}
-                        className={`absolute w-[180px] rounded-xl border-2 bg-white p-3 shadow-sm transition ${fixedEndpoint ? "border-slate-200 bg-slate-50" : ""} ${selected ? "border-semantic-brand shadow-md ring-2 ring-emerald-100" : "border-slate-200 hover:border-slate-300"}`}
+                        className={`absolute w-[180px] rounded-xl border-2 bg-semantic-panel p-3 shadow-sm transition ${fixedEndpoint ? "border-slate-200 bg-slate-50" : ""} ${selected ? "border-semantic-brand shadow-md ring-2 ring-emerald-100" : "border-slate-200 hover:border-slate-300"}`}
                         style={{
                           left: workflowNode.position.x,
                           top: workflowNode.position.y,
@@ -2260,7 +2324,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   })}
                 </div>
               )}
-              <div className="absolute bottom-3 left-3 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-caption font-semibold text-slate-500 shadow-sm">
+              <div className="absolute bottom-3 left-3 rounded-lg border border-slate-200 bg-semantic-panel px-2.5 py-1.5 text-caption font-semibold text-slate-500 shadow-sm">
                 {builderVersion?.nodes.length || 0} {t('nodes')} ·{" "}
                 {builderVersion?.edges.length || 0} {t('edges')} ·{" "}
                 {Math.round(zoom * 100)}% · {isGridVisible ? t("Grid + snap") : t("Freeform")}
@@ -2279,7 +2343,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   </button>
                 </div>
               )}
-              <div className="absolute bottom-3 right-3 h-24 w-40 overflow-hidden rounded-lg border border-slate-300 bg-white/95 p-2 shadow-lg">
+              <div className="absolute bottom-3 right-3 h-24 w-40 overflow-hidden rounded-lg border border-slate-300 bg-semantic-panel/95 p-2 shadow-lg">
                 <div className="relative h-full w-full bg-slate-50">
                   {builderVersion?.nodes.map((item) => (
                     <span
@@ -2293,8 +2357,57 @@ export const UniversalWorkflowWorkspace: React.FC<{
                   ))}
                 </div>
               </div>
+              {isInspectorCollapsed && (
+                <button
+                  type="button"
+                  onClick={() => setIsInspectorCollapsed(false)}
+                  className="absolute right-3 top-3 z-dsSticky flex items-center gap-2 rounded-lg border border-slate-200 bg-semantic-panel px-3 py-1.5 text-xs font-semibold text-semantic-primary shadow-sm hover:border-slate-300 hover:bg-semantic-hover transition-all"
+                  title={t("Show inspector")}
+                  aria-label={t("Show inspector")}
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
+                  <span>{t("Inspector")}</span>
+                  {selectedNode && (
+                    <span className="max-w-[120px] truncate text-caption font-medium text-slate-400">
+                      · {t(selectedNode.title)}
+                    </span>
+                  )}
+                  {activePreflight && activePreflight.summary?.errors > 0 ? (
+                    <span className="rounded-full bg-red-100 px-1.5 py-0.2 text-caption font-bold text-red-700">
+                      {activePreflight.summary.errors}
+                    </span>
+                  ) : activePreflight && activePreflight.summary?.warnings > 0 ? (
+                    <span className="rounded-full bg-amber-100 px-1.5 py-0.2 text-caption font-bold text-amber-700">
+                      {activePreflight.summary.warnings}
+                    </span>
+                  ) : null}
+                  <ChevronLeft className="h-3.5 w-3.5 text-slate-400" />
+                </button>
+              )}
             </div>
-            <aside className="w-80 shrink-0 overflow-y-auto border-l border-semantic-border-strong bg-semantic-panel p-4 text-semantic-primary">
+            <aside
+              className={`shrink-0 overflow-y-auto border-semantic-border-strong bg-semantic-panel text-semantic-primary transition-all duration-200 ease-in-out ${
+                isInspectorCollapsed
+                  ? "w-0 p-0 border-l-0 overflow-hidden opacity-0 pointer-events-none"
+                  : "w-80 border-l p-4 opacity-100"
+              }`}
+            >
+              <div className="mb-3 flex items-center justify-between border-b border-semantic-border-strong pb-2.5">
+                <div className="flex items-center gap-2 text-xs font-bold text-semantic-primary">
+                  <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
+                  <span>{t("Inspector")}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsInspectorCollapsed(true)}
+                  className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-label font-semibold text-slate-400 hover:bg-semantic-hover hover:text-slate-700 transition-colors"
+                  title={t("Minimize panel")}
+                  aria-label={t("Minimize panel")}
+                >
+                  <span className="text-caption">{t("Minimize")}</span>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
               {selectedNode ? (
                 <NodeInspector
                   node={selectedNode}
@@ -2466,7 +2579,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
         />
       )}
       {templatePendingDeletion && (
-        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="delete-workflow-template-title">
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-semantic-modal-tint/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-workflow-template-title">
           <div className="w-full max-w-md rounded-2xl border border-semantic-border-strong bg-semantic-panel p-6 shadow-2xl">
             <div className="flex items-start gap-3">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-rose-500/30 bg-rose-500/15 text-rose-400">
@@ -2534,7 +2647,7 @@ const WorkflowMetadataModal = ({
     { value: "COMPANY", label: "Company level", description: "Available across the company.", enabled: canCreateCompanyTemplate },
   ];
   return (
-    <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="workflow-metadata-title">
+    <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-semantic-modal-tint/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="workflow-metadata-title">
       <div className="w-full max-w-lg rounded-2xl border border-semantic-border-strong bg-semantic-panel p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -2564,7 +2677,7 @@ const WorkflowMetadataModal = ({
                 key={scope.value}
                 disabled={!scope.enabled || busy}
                 onClick={() => setMetadata((current: any) => ({ ...current, scope: scope.value }))}
-                className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition ${metadata.scope === scope.value ? "border-semantic-brand bg-emerald-50 ring-1 ring-semantic-brand/20" : "border-slate-200 bg-white hover:border-slate-300"} ${!scope.enabled ? "cursor-not-allowed opacity-45" : ""}`}
+                className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition ${metadata.scope === scope.value ? "border-semantic-brand bg-emerald-50 ring-1 ring-semantic-brand/20" : "border-slate-200 bg-semantic-panel hover:border-slate-300"} ${!scope.enabled ? "cursor-not-allowed opacity-45" : ""}`}
               >
                 <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${metadata.scope === scope.value ? "border-semantic-brand bg-semantic-brand text-white" : "border-slate-300"}`}>
                   {metadata.scope === scope.value && <Check className="h-3 w-3" />}
@@ -2591,169 +2704,6 @@ const WorkflowMetadataModal = ({
   );
 };
 
-const workflowCatalogTemplatesForDisplay = (templates: WorkflowCatalogTemplate[]) => templates.filter((template) => !(template.kind === "BASIC_TICKET" && template.catalogGroup?.startsWith("IT ·")));
-
-const CatalogView = ({
-  catalog,
-  query,
-  setQuery,
-  onPreview,
-  onLaunch,
-  onEdit,
-  onClone,
-  onDelete,
-}: any) => {
-  const { t } = useI18n();
-  return (
-    <div className="flex-1 overflow-y-auto p-6">
-      <div className="mx-auto max-w-[1500px]">
-        <div className="mb-8 flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-slate-500">
-            {t('Start a governed request from an approved workflow template.')}
-          </p>
-          <label className="flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-xs transition focus-within:border-emerald-400 focus-within:ring-4 focus-within:ring-emerald-50 sm:w-[420px]">
-            <Search className="h-4 w-4 shrink-0 text-slate-400" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t('Search workflows, domains, owners, nodes...')}
-              aria-label={t('Search workflow templates')}
-              className="w-full border-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
-            />
-          </label>
-        </div>
-        {catalog.sections.map((section: any) => (
-          <section key={section.name} className="mb-10">
-            <div className="mb-4 flex items-end justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold text-slate-900">{t(section.name)}</h3>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-caption font-bold text-slate-600">
-                    {workflowCatalogTemplatesForDisplay(section.templates).length}
-                  </span>
-                </div>
-                <p className="mt-1 text-xs text-slate-500">
-                  {section.name === "Company Templates"
-                    ? t("Centrally governed workflows available across the organization.")
-                    : section.name === "Department / Branch Templates"
-                      ? t("Templates managed for your department or branch.")
-                      : t("Personal templates you can reuse and refine.")}
-                </p>
-              </div>
-            </div>
-            <div className="grid gap-5 lg:grid-cols-2">
-              {[...workflowCatalogTemplatesForDisplay(section.templates)]
-                .sort((left: WorkflowCatalogTemplate, right: WorkflowCatalogTemplate) => `${left.kind === "WORKFLOW" ? "1" : "2"}-${left.catalogGroup || ""}-${left.title}`.localeCompare(`${right.kind === "WORKFLOW" ? "1" : "2"}-${right.catalogGroup || ""}-${right.title}`))
-                .map((template: WorkflowCatalogTemplate) => (
-                <article
-                  key={template.id}
-                  className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-xs transition duration-200 hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-semantic-success-surface text-semantic-success ring-1 ring-emerald-100">
-                      <Workflow className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="truncate text-sm font-bold text-slate-900">
-                        {t(template.title)}
-                      </h4>
-                      <p title={t(template.purpose)} className="mt-0.5 line-clamp-1 text-xs leading-5 text-slate-500">
-                        {t(template.purpose)}
-                      </p>
-                    </div>
-                    <span className="ml-auto shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-caption font-bold text-slate-600">
-                      v{template.publishedWorkflowVersion}
-                    </span>
-                  </div>
-                  <div className="my-3.5 grid grid-cols-4 divide-x divide-slate-200 rounded-xl border border-slate-100 bg-slate-50/80 py-2.5 text-center">
-                    <Metric
-                      value={formatDuration(template.estimatedDurationMinutes)}
-                      label="Duration"
-                    />
-                    <Metric value={template.departmentCount} label="Teams" />
-                    <Metric value={template.approvalCount} label="Approvals" />
-                    <Metric value={template.automationCount} label="Auto" />
-                  </div>
-                  <div className="mb-2.5 flex items-center justify-between gap-3 text-caption font-semibold text-slate-500">
-                    <span className="min-w-0 truncate rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">
-                      {template.scope === "COMPANY" ? t("Company") : template.scope === "DEPARTMENT" ? t("Department / Branch") : t("User")} · {t(template.domain.replaceAll("_", " "))}
-                    </span>
-                    <span>
-                      {template.runCount.toLocaleString()} {t('runs')} ·{" "}
-                      {template.successRate}% {t('success')}
-                    </span>
-                  </div>
-                  <div className="mb-2.5 flex flex-wrap gap-1.5 text-micro font-bold uppercase tracking-wide">
-                    <span className={`rounded-full px-2 py-0.5 ${template.kind === "WORKFLOW" ? "bg-violet-50 text-violet-700" : "bg-emerald-50 text-emerald-700"}`}>
-                      {template.kind === "WORKFLOW" ? t("Approval workflow") : t("Help Desk task")}
-                    </span>
-                    {template.catalogGroup && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">{t(template.catalogGroup)}</span>}
-                  </div>
-                  <div className="flex gap-1.5">
-                    <button
-                      onClick={() => onPreview(template)}
-                      className="wrike-btn-secondary h-9 flex-1 px-2 text-xs"
-                    >
-                      {t('Preview')}
-                    </button>
-                    <button
-                      onClick={() => onLaunch(template)}
-                      className="wrike-btn-primary h-9 flex-1 px-2 text-xs"
-                    >
-                      {t('Launch')}
-                    </button>
-                    <button
-                      onClick={() => onClone(template)}
-                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
-                      title={t('Clone as an editable draft')}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </button>
-                    {template.canEdit && (
-                      <button
-                        onClick={() => onEdit(template)}
-                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
-                        title={t('Open published definition')}
-                      >
-                        <Code2 className="h-4 w-4" />
-                      </button>
-                    )}
-                    {template.canDelete && (
-                      <button
-                        onClick={() => onDelete(template)}
-                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50"
-                        title={t('Remove template from catalog')}
-                        aria-label={`${t('Remove')} ${t(template.title)}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                </article>
-                  ))}
-              {!workflowCatalogTemplatesForDisplay(section.templates).length && (
-                <div className="flex min-h-28 items-center gap-4 rounded-2xl border border-dashed border-slate-300 bg-white/70 px-5 py-5 text-left">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
-                    <Layers3 className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-700">
-                      {t('No published templates yet')}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {t('Create a governed draft for')} {t(section.name).toLowerCase()} {t('and publish an immutable version when it is ready.')}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-        ))}
-      </div>
-    </div>
-  );
-};
-
 const Metric = ({ value, label }: any) => {
   const { t } = useI18n();
   return (
@@ -2775,7 +2725,7 @@ const TemplatePreview = ({
 }: any) => {
   const { t } = useI18n();
   return (
-    <div className="fixed inset-0 z-dsDialog flex justify-end bg-slate-950/60 backdrop-blur-xs">
+    <div className="fixed inset-0 z-dsDialog flex justify-end bg-semantic-modal-tint/60 backdrop-blur-sm">
       <div className="flex h-full w-[620px] flex-col border-l border-semantic-border-strong bg-semantic-panel text-semantic-primary shadow-2xl">
         <header className="flex items-start justify-between border-b border-semantic-border bg-semantic-panel p-6">
           <div>
@@ -2868,7 +2818,7 @@ const DynamicIntakeModal = ({
     localCondition(section.visibilityCondition, values),
   );
   return (
-    <div className="fixed inset-0 z-dsToast flex items-center justify-center bg-slate-950/60 p-6 backdrop-blur-sm">
+    <div className="fixed inset-0 z-dsToast flex items-center justify-center bg-semantic-modal-tint/60 p-6 backdrop-blur-sm">
       <div className="flex max-h-dsModal w-[760px] flex-col overflow-hidden rounded-2xl border border-semantic-border-strong bg-semantic-panel text-semantic-primary shadow-2xl">
         <header className="flex items-start justify-between border-b border-semantic-border bg-semantic-panel p-5">
           <div>
@@ -3403,19 +3353,19 @@ const InputNodeFormEditor = ({
           Every ticket workflow always includes standard base fields:
         </p>
         <div className="mt-2.5 grid grid-cols-2 gap-1.5 text-caption">
-          <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200/80 bg-white/90 px-2 py-1 font-semibold text-slate-700">
+          <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200/80 bg-semantic-panel/90 px-2 py-1 font-semibold text-slate-700">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             <span>Title / Summary (<span className="text-red-500 font-bold">*</span>)</span>
           </div>
-          <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200/80 bg-white/90 px-2 py-1 font-semibold text-slate-700">
+          <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200/80 bg-semantic-panel/90 px-2 py-1 font-semibold text-slate-700">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             <span>Description / Details</span>
           </div>
-          <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200/80 bg-white/90 px-2 py-1 font-semibold text-slate-700">
+          <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200/80 bg-semantic-panel/90 px-2 py-1 font-semibold text-slate-700">
             <LockKeyhole className="h-2.5 w-2.5 text-emerald-600" />
             <span>Requester (LDAP)</span>
           </div>
-          <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200/80 bg-white/90 px-2 py-1 font-semibold text-slate-700">
+          <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200/80 bg-semantic-panel/90 px-2 py-1 font-semibold text-slate-700">
             <LockKeyhole className="h-2.5 w-2.5 text-emerald-600" />
             <span>Department / Branch</span>
           </div>
@@ -3441,7 +3391,7 @@ const InputNodeFormEditor = ({
             className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-label font-bold transition ${
               showPreview
                 ? "border border-emerald-300 bg-emerald-50 text-emerald-800"
-                : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                : "border border-slate-200 bg-semantic-panel text-slate-700 hover:bg-semantic-hover"
             }`}
           >
             {showPreview ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -3453,7 +3403,7 @@ const InputNodeFormEditor = ({
           <button
             type="button"
             onClick={() => addCustomField("SELECT")}
-            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-caption font-bold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 transition"
+            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-semantic-panel px-2 py-1 text-caption font-bold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 transition"
           >
             <Plus className="h-3 w-3 text-emerald-600" />
             <span>+ Dropdown</span>
@@ -3461,7 +3411,7 @@ const InputNodeFormEditor = ({
           <button
             type="button"
             onClick={() => addCustomField("CHECKBOX")}
-            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-caption font-bold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 transition"
+            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-semantic-panel px-2 py-1 text-caption font-bold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 transition"
           >
             <Plus className="h-3 w-3 text-emerald-600" />
             <span>+ Checkbox</span>
@@ -3469,7 +3419,7 @@ const InputNodeFormEditor = ({
           <button
             type="button"
             onClick={() => addCustomField("TEXT")}
-            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-caption font-bold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 transition"
+            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-semantic-panel px-2 py-1 text-caption font-bold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 transition"
           >
             <Plus className="h-3 w-3 text-emerald-600" />
             <span>+ Text</span>
@@ -3477,7 +3427,7 @@ const InputNodeFormEditor = ({
           <button
             type="button"
             onClick={() => addCustomField("DATE")}
-            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-caption font-bold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 transition"
+            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-semantic-panel px-2 py-1 text-caption font-bold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 transition"
           >
             <Plus className="h-3 w-3 text-emerald-600" />
             <span>+ Date</span>
@@ -3485,7 +3435,7 @@ const InputNodeFormEditor = ({
           <button
             type="button"
             onClick={() => addCustomField("MULTI_SELECT")}
-            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-caption font-bold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 transition"
+            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-semantic-panel px-2 py-1 text-caption font-bold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 transition"
           >
             <Plus className="h-3 w-3 text-emerald-600" />
             <span>+ Multi-Select</span>
@@ -3663,7 +3613,7 @@ const InputNodeFormEditor = ({
                       </div>
 
                       {(field.type === "SELECT" || field.type === "MULTI_SELECT" || field.type === "RADIO") && (
-                        <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2.5">
+                        <div className="mt-2 rounded-lg border border-slate-200 bg-semantic-panel p-2.5">
                           <div className="mb-2 flex items-center justify-between">
                             <span className="text-label font-bold text-slate-800">
                               Dropdown Choices ({field.options?.length || 0})
@@ -3747,7 +3697,7 @@ const InputNodeFormEditor = ({
               Interactive Test
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-3 bg-white p-3.5 rounded-xl border border-slate-200">
+          <div className="grid grid-cols-2 gap-3 bg-semantic-panel p-3.5 rounded-xl border border-slate-200">
             <div className="col-span-2">
               <span className="mb-1 block text-xs font-bold text-slate-700">
                 Request Title <span className="text-red-500">*</span>
@@ -3879,14 +3829,22 @@ const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRem
   const { t } = useI18n();
   if (isFixedEndpoint(node)) {
     return (
-      <div>
-        <div className="mb-3 flex items-center gap-2 text-semantic-success">
-          <LockKeyhole className="h-4 w-4" />
-          <span className="text-caption font-bold uppercase tracking-wider">{t('Fixed endpoint')}</span>
+      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-emerald-700">
+            <LockKeyhole className="h-3.5 w-3.5" />
+            <span className="text-caption font-bold uppercase tracking-wider">{t('Fixed endpoint')}</span>
+          </div>
+          <span className="rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-caption font-bold text-emerald-700">
+            {t("Protected")}
+          </span>
         </div>
-        <h3 className="text-sm font-bold">{node.type === "START" ? t("Start") : t("Complete")}</h3>
-        <p className="mt-2 text-xs leading-5 text-slate-500">
-          {t('This default node marks where the workflow begins or completes. It is protected from deletion and duplication, but you can move it and connect it on the canvas.')}
+        <div className="mt-2 flex items-baseline gap-2">
+          <h3 className="text-sm font-bold text-semantic-primary">{node.type === "START" ? t("Start") : t("Complete")}</h3>
+          <span className="text-caption text-slate-400">({node.id})</span>
+        </div>
+        <p className="mt-1 text-label text-slate-500 leading-snug">
+          {t('Default boundary node. Connect on canvas to establish execution flow.')}
         </p>
       </div>
     );
@@ -4013,7 +3971,7 @@ const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRem
       <div className="flex">
         <button
           onClick={onDuplicate}
-          className="rounded p-1.5 text-slate-500 hover:bg-slate-100"
+          className="rounded p-1.5 text-slate-500 hover:bg-semantic-hover"
         >
           <Copy className="h-4 w-4" />
         </button>
@@ -4579,7 +4537,7 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDeci
             />
           </div>
           <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-            <section className="rounded-2xl border border-slate-200 bg-white p-5">
+            <section className="rounded-2xl border border-slate-200 bg-semantic-panel p-5">
               <h3 className="mb-3 text-sm font-bold">Workflow progress</h3>
               <div className="rounded-xl bg-slate-50 p-4">
                 <div className="flex items-end justify-between gap-4">
@@ -4614,7 +4572,7 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDeci
                     {Object.entries(execution.instance.context).map(([key, value]) => {
                       if (["currentStageId", "activeNodeIds"].includes(key)) return null;
                       return (
-                        <div key={key} className="rounded-lg bg-white p-2 border border-slate-200/70">
+                        <div key={key} className="rounded-lg bg-semantic-panel p-2 border border-slate-200/70">
                           <span className="text-caption font-bold text-slate-500 capitalize">
                             {key.replace(/([A-Z])/g, " $1").replaceAll("_", " ")}
                           </span>
@@ -4637,7 +4595,7 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDeci
               )}
             </section>
             <aside className="space-y-4">
-              <section className="rounded-2xl border border-slate-200 bg-white p-4">
+              <section className="rounded-2xl border border-slate-200 bg-semantic-panel p-4">
                 <h3 className="mb-3 text-sm font-bold">Active work</h3>
                 <div className="space-y-2">
                   {execution.workItems
@@ -4689,7 +4647,7 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDeci
                   <h3 className="mb-3 text-sm font-bold text-amber-900">Pending approvals</h3>
                   <div className="space-y-3">
                     {execution.approvals.filter((chain: any) => chain.status === "PENDING").map((chain: any) => (
-                      <div key={chain.id} className="rounded-xl border border-amber-200 bg-white p-3">
+                      <div key={chain.id} className="rounded-xl border border-amber-200 bg-semantic-panel p-3">
                         <div className="text-xs font-bold">{chain.title}</div>
                         {chain.steps.filter((step: any) => step.status === "PENDING").map((step: any) => (
                           <div key={step.id} className="mt-2 rounded-lg bg-slate-50 p-2">
@@ -4709,8 +4667,8 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDeci
                   </div>
                 </section>
               )}
-              {execution.deadLetters?.some((entry: any) => entry.status !== "RESOLVED") && <section className="rounded-2xl border border-red-200 bg-red-50 p-4"><h3 className="mb-3 text-sm font-bold text-red-800">Failed automation recovery</h3><div className="space-y-2">{execution.deadLetters.filter((entry: any) => entry.status !== "RESOLVED").map((entry: any) => <div key={entry.id} className="rounded-xl border border-red-200 bg-white p-3"><div className="text-xs font-bold">{entry.actionKey}</div><div className="mt-1 line-clamp-2 text-caption text-red-700">{entry.error}</div><button onClick={() => onRetry(entry.id)} className="wrike-btn-secondary mt-2 w-full py-1.5 text-xs">Requeue safely</button></div>)}</div></section>}
-              <section className="rounded-2xl border border-slate-200 bg-white p-4">
+              {execution.deadLetters?.some((entry: any) => entry.status !== "RESOLVED") && <section className="rounded-2xl border border-red-200 bg-red-50 p-4"><h3 className="mb-3 text-sm font-bold text-red-800">Failed automation recovery</h3><div className="space-y-2">{execution.deadLetters.filter((entry: any) => entry.status !== "RESOLVED").map((entry: any) => <div key={entry.id} className="rounded-xl border border-red-200 bg-semantic-panel p-3"><div className="text-xs font-bold">{entry.actionKey}</div><div className="mt-1 line-clamp-2 text-caption text-red-700">{entry.error}</div><button onClick={() => onRetry(entry.id)} className="wrike-btn-secondary mt-2 w-full py-1.5 text-xs">Requeue safely</button></div>)}</div></section>}
+              <section className="rounded-2xl border border-slate-200 bg-semantic-panel p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-sm font-bold">Governed lifecycle</h3>
                   <span className="text-caption font-bold text-slate-400">
@@ -4759,7 +4717,7 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDeci
                   </div>
                 )}
               </section>
-              <section className="rounded-2xl border border-slate-200 bg-white p-4">
+              <section className="rounded-2xl border border-slate-200 bg-semantic-panel p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-sm font-bold">Participants & comments</h3>
                   <span className="text-caption font-bold text-slate-400">{execution.participants?.length || 0} participants</span>
@@ -4774,7 +4732,7 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDeci
                 <textarea value={comment} onChange={(event) => setComment(event.target.value)} rows={2} maxLength={5000} className="wrike-input mt-3 w-full resize-y" placeholder="Add an auditable update or decision context…" />
                 <button type="button" disabled={!comment.trim()} onClick={() => { const body = comment.trim(); if (!body) return; onComment(body); setComment(""); }} className="wrike-btn-primary mt-2 w-full py-1.5 text-xs disabled:opacity-50">Add comment</button>
               </section>
-              <section className="rounded-2xl border border-slate-200 bg-white p-4">
+              <section className="rounded-2xl border border-slate-200 bg-semantic-panel p-4">
                 <h3 className="mb-3 text-sm font-bold">
                   Immutable audit timeline
                 </h3>
@@ -4808,7 +4766,7 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDeci
       </div>
     )}
     {confirmationItem && (
-      <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="task-confirmation-title">
+      <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-semantic-modal-tint/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="task-confirmation-title">
         <div className="w-full max-w-md rounded-2xl border border-semantic-border-strong bg-semantic-panel p-5 shadow-2xl">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/15 text-emerald-400"><CheckCircle2 className="h-5 w-5" /></div>
@@ -4874,7 +4832,7 @@ const AnalyticsView = ({ analytics }: any) => (
         />
       </div>
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <section className="rounded-2xl border border-slate-200 bg-white p-5">
+        <section className="rounded-2xl border border-slate-200 bg-semantic-panel p-5">
           <h3 className="mb-4 text-sm font-bold">Template adoption</h3>
           {analytics?.templateAdoption?.slice(0, 10).map((item: any) => (
             <div key={item.templateId} className="mb-3">
@@ -4891,7 +4849,7 @@ const AnalyticsView = ({ analytics }: any) => (
             </div>
           ))}
         </section>
-        <section className="rounded-2xl border border-slate-200 bg-white p-5">
+        <section className="rounded-2xl border border-slate-200 bg-semantic-panel p-5">
           <h3 className="mb-4 text-sm font-bold">Bottleneck nodes</h3>
           {analytics?.bottleneckNodes?.length ? (
             analytics.bottleneckNodes.map((item: any) => (
@@ -4913,7 +4871,7 @@ const AnalyticsView = ({ analytics }: any) => (
         </section>
       </div>
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <section className="rounded-2xl border border-slate-200 bg-white p-5">
+        <section className="rounded-2xl border border-slate-200 bg-semantic-panel p-5">
           <h3 className="mb-4 text-sm font-bold">Onboarding readiness</h3>
           <div className="grid grid-cols-3 gap-3">
             <Metric
@@ -4930,7 +4888,7 @@ const AnalyticsView = ({ analytics }: any) => (
             />
           </div>
         </section>
-        <section className="rounded-2xl border border-slate-200 bg-white p-5">
+        <section className="rounded-2xl border border-slate-200 bg-semantic-panel p-5">
           <h3 className="mb-4 text-sm font-bold">DevOps delivery</h3>
           <div className="grid grid-cols-4 gap-3">
             <Metric
@@ -4958,7 +4916,7 @@ const AnalyticsView = ({ analytics }: any) => (
 
 const RuntimeMetric = ({ label, value, alert }: any) => (
   <div
-    className={`rounded-2xl border bg-white p-4 ${alert ? "border-amber-200" : "border-slate-200"}`}
+    className={`rounded-2xl border bg-semantic-panel p-4 ${alert ? "border-amber-200" : "border-slate-200"}`}
   >
     <div className="text-caption font-bold uppercase tracking-wider text-slate-400">
       {label}

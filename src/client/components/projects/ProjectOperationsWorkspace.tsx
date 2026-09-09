@@ -69,14 +69,13 @@ const healthStyle: Record<ProjectHealth, string> = {
   AT_RISK: 'bg-amber-50 text-amber-700 border-amber-200',
   DELAYED: 'bg-rose-50 text-rose-700 border-rose-200',
   BLOCKED: 'bg-red-50 text-red-700 border-red-200',
-  COMPLETED: 'bg-slate-100 text-slate-700 border-slate-200',
+  COMPLETED: 'bg-semantic-subtle text-semantic-secondary border-slate-200',
   ON_HOLD: 'bg-violet-50 text-violet-700 border-violet-200',
 };
 
 const display = (value?: string) =>
   value ? new Date(value).toLocaleDateString('az-AZ', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
-const avatar = (nameOrId?: string) => (nameOrId || 'U').replace(/^usr-/, '').slice(0, 2).toUpperCase();
 
 export const ProjectOperationsWorkspace: React.FC = () => {
   const { currentUser, allUsers, fetchWithAuth } = useAuth();
@@ -223,7 +222,7 @@ export const ProjectOperationsWorkspace: React.FC = () => {
           </button>
         </div>
 
-        <div className="flex flex-col gap-3 rounded-xl border border-semantic-border bg-white p-3 shadow-sm md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-3 rounded-xl border border-semantic-border bg-semantic-panel p-3 shadow-sm md:flex-row md:items-center md:justify-between">
           <div className="flex overflow-x-auto gap-1">
             {[
               ['ACTIVE', t('Active')],
@@ -236,7 +235,7 @@ export const ProjectOperationsWorkspace: React.FC = () => {
                 key={val}
                 onClick={() => setStatus(val)}
                 className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  status === val ? 'bg-semantic-primary text-white shadow-xs' : 'text-semantic-jira-muted-stronger hover:bg-slate-100'
+                  status === val ? 'bg-semantic-primary text-white shadow-xs' : 'text-semantic-jira-muted-stronger hover:bg-semantic-hover'
                 }`}
               >
                 {label}
@@ -259,7 +258,7 @@ export const ProjectOperationsWorkspace: React.FC = () => {
         {error && <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
 
         {loading ? (
-          <div className="rounded-xl border border-semantic-border bg-white p-12 text-center text-sm text-semantic-muted">
+          <div className="rounded-xl border border-semantic-border bg-semantic-panel p-12 text-center text-sm text-semantic-muted">
             <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-semantic-success" />
             {t('Loading authorized projects...')}
           </div>
@@ -300,7 +299,7 @@ const ProjectList: React.FC<{
   const userMap = useMemo(() => new Map<string, BankUser>(allUsers.map((u: BankUser) => [u.id, u])), [allUsers]);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-semantic-border bg-white shadow-sm">
+    <div className="overflow-hidden rounded-xl border border-semantic-border bg-semantic-panel shadow-sm">
       <div className="hidden grid-cols-[minmax(250px,2fr)_110px_150px_160px_120px_105px_105px_170px_100px] gap-3 border-b border-semantic-border bg-semantic-subtle px-4 py-3 text-caption font-bold uppercase tracking-wider text-semantic-muted lg:grid">
         <span>Project</span>
         <span>Health</span>
@@ -315,7 +314,6 @@ const ProjectList: React.FC<{
       {projects.map((summary) => {
         const owner = userMap.get(summary.project.ownerId);
         const ownerName = owner?.fullName || summary.project.ownerId || 'Unassigned';
-        const ownerInitials = avatar(owner?.fullName || summary.project.ownerId);
 
         return (
           <button
@@ -348,8 +346,8 @@ const ProjectList: React.FC<{
             </div>
 
             <div className="flex items-center gap-2 text-xs text-semantic-jira-muted-stronger">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-semantic-success-ring text-caption font-bold text-semantic-success">
-                {ownerInitials}
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-semantic-success-ring text-semantic-success">
+                <UserCheck className="h-3 w-3" />
               </span>
               <span className="truncate max-w-[120px]" title={ownerName}>
                 {ownerName}
@@ -384,7 +382,7 @@ const Health: React.FC<{ health: ProjectHealth }> = ({ health }) => (
 );
 
 const EmptyProjectList: React.FC<{ onCreate: () => void; hasFilters: boolean }> = ({ onCreate, hasFilters }) => (
-  <div className="rounded-xl border border-dashed border-semantic-border-strong bg-white px-6 py-16 text-center">
+  <div className="rounded-xl border border-dashed border-semantic-border-strong bg-semantic-panel px-6 py-16 text-center">
     <FolderKanban className="mx-auto h-9 w-9 text-semantic-placeholder" />
     <h2 className="mt-3 font-bold text-semantic-primary">{hasFilters ? 'No projects match these filters' : 'No projects yet'}</h2>
     <p className="mx-auto mt-1 max-w-md text-sm text-semantic-muted">
@@ -423,6 +421,27 @@ const ProjectDetail: React.FC<any> = ({
 }) => {
   const { project, health, progressPercent, members } = projectData as ProjectPayload;
   const userMap: Map<string, BankUser> = useMemo(() => new Map<string, BankUser>(allUsers.map((u: BankUser) => [u.id, u])), [allUsers]);
+  const [linkedThreatModelId, setLinkedThreatModelId] = useState<string | undefined>();
+  const [showThreatOnboarding, setShowThreatOnboarding] = useState(false);
+  const [threatModelLookup, setThreatModelLookup] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [threatModelLookupAttempt, setThreatModelLookupAttempt] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLinkedThreatModelId(undefined);
+    setThreatModelLookup('loading');
+    void fetchWithAuth(`/api/threat-models?limit=1&projectId=${encodeURIComponent(project.id)}`, { signal: controller.signal })
+      .then(async (response: Response) => {
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Threat Model lookup failed.');
+        if (!controller.signal.aborted) {
+          setLinkedThreatModelId(data.threatModels?.[0]?.id);
+          setThreatModelLookup('ready');
+        }
+      })
+      .catch(() => { if (!controller.signal.aborted) setThreatModelLookup('error'); });
+    return () => controller.abort();
+  }, [project.id, fetchWithAuth, threatModelLookupAttempt]);
 
   const canManage = members.some(
     (member: ProjectMember) =>
@@ -436,7 +455,7 @@ const ProjectDetail: React.FC<any> = ({
 
   return (
     <div className="flex-1 min-w-0 h-full overflow-auto bg-semantic-project-canvas">
-      <div className="sticky top-0 z-dsSticky border-b border-semantic-project-border-strong bg-white/95 backdrop-blur">
+      <div className="sticky top-0 z-dsSticky border-b border-semantic-project-border-strong bg-semantic-panel/95 backdrop-blur">
         <div className="mx-auto max-w-dsContent px-4 pt-3 md:px-6">
           <button onClick={onBack} className="mb-2 inline-flex items-center gap-1 text-xs font-semibold text-semantic-jira-muted-stronger hover:text-semantic-success">
             <ArrowLeft className="w-3.5 h-3.5" /> All projects
@@ -470,12 +489,19 @@ const ProjectDetail: React.FC<any> = ({
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <a
-                className="jira-btn-primary text-xs"
-                href={`/security-grc/threat-modeling?projectId=${encodeURIComponent(project.id)}&title=${encodeURIComponent(`${project.name} Threat Model`)}`}
-              >
-                <ShieldCheck className="w-3.5 h-3.5" /> Threat Model
-              </a>
+              {linkedThreatModelId ? (
+                <a className="jira-btn-primary text-xs" href={`/security-grc/threat-modeling?modelId=${encodeURIComponent(linkedThreatModelId)}`}>
+                  <ShieldCheck className="w-3.5 h-3.5" /> Threat Model
+                </a>
+              ) : threatModelLookup === 'loading' ? (
+                <button className="jira-btn-subtle text-xs" disabled><Loader2 className="w-3.5 h-3.5 animate-spin" /> Checking Threat Model…</button>
+              ) : threatModelLookup === 'error' ? (
+                <button className="jira-btn-subtle text-xs" onClick={() => setThreatModelLookupAttempt((attempt) => attempt + 1)}><RotateCw className="w-3.5 h-3.5" /> Retry model check</button>
+              ) : (
+                <button className="jira-btn-primary text-xs" onClick={() => setShowThreatOnboarding(true)}>
+                  <ShieldCheck className="w-3.5 h-3.5" /> Start Threat Model
+                </button>
+              )}
               <div className="text-right">
                 <div className="text-lg font-bold text-semantic-primary">{progressPercent}%</div>
                 <div className="text-caption font-semibold uppercase tracking-wide text-semantic-muted">Project progress</div>
@@ -532,6 +558,10 @@ const ProjectDetail: React.FC<any> = ({
             onMember={() => setShowMemberForm(true)}
             post={post}
             onRefresh={onRefresh}
+            linkedThreatModelId={linkedThreatModelId}
+            onStartThreatModel={() => setShowThreatOnboarding(true)}
+            threatModelLookup={threatModelLookup}
+            onRetryThreatModelLookup={() => setThreatModelLookupAttempt((attempt) => attempt + 1)}
           />
         )}
         {tab === 'tasks' && (
@@ -610,19 +640,32 @@ const ProjectDetail: React.FC<any> = ({
           }}
         />
       )}
+      {showThreatOnboarding && (
+        <ProjectThreatModelOnboarding
+          project={project}
+          currentUserId={currentUserId}
+          onClose={() => setShowThreatOnboarding(false)}
+          onCreated={async () => { setShowThreatOnboarding(false); await onRefresh(); }}
+          fetchWithAuth={fetchWithAuth}
+        />
+      )}
     </div>
   );
 };
 
-const Overview: React.FC<any> = ({ data, allUsers = [], departments = [], ldapGroups = [], teams = [], onTask, onMilestone, onMember, post, onRefresh }) => {
+const Overview: React.FC<any> = ({ data, allUsers = [], departments = [], ldapGroups = [], teams = [], onTask, onMilestone, onMember, post, onRefresh, linkedThreatModelId, onStartThreatModel, threatModelLookup, onRetryThreatModelLookup }) => {
   const { project, health, healthReasons, progressPercent, taskCounts, nextMilestone, milestones, myTasks, recentlyCompleted, upcoming, risks, latestUpdate, members } = data as ProjectPayload;
   const userMap = useMemo(() => new Map<string, BankUser>(allUsers.map((u: BankUser) => [u.id, u])), [allUsers]);
   const deptMap = useMemo(() => new Map<string, BankDepartment>(departments.map((d: BankDepartment) => [d.id, d])), [departments]);
+  const securityTasks = (data.tasks || []).filter((task: Ticket) => task.customFields?.some((field) => field.name === 'source' && field.value === 'THREAT_MODEL'));
+  const screening = (data.tasks || []).find((task: Ticket) => task.customFields?.some((field) => field.name === 'source' && field.value === 'THREAT_MODEL_SCREENING'));
+  const threatModelId = linkedThreatModelId || [...securityTasks, screening].flatMap((task: Ticket | undefined) => task?.customFields || []).find((field: any) => field.name === 'threatModelId' && field.value)?.value as string | undefined;
+  const completedSecurityTasks = securityTasks.filter((task: Ticket) => task.statusCategory === 'DONE').length;
 
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-5">
-        <section className="rounded-xl border border-semantic-border bg-white p-5 shadow-sm">
+        <section className="rounded-xl border border-semantic-border bg-semantic-panel p-5 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-caption font-bold uppercase tracking-widest text-semantic-muted">Project health</p>
@@ -653,7 +696,41 @@ const Overview: React.FC<any> = ({ data, allUsers = [], departments = [], ldapGr
           )}
         </section>
 
-        <section className="rounded-xl border border-semantic-border bg-white shadow-sm">
+        {project.category === 'SOFTWARE_DEVELOPMENT' && (
+          <section className="rounded-xl border border-semantic-brand-border bg-semantic-brand-surface shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-semantic-brand-border px-5 py-4">
+              <div>
+                <p className="text-caption font-bold uppercase tracking-widest text-semantic-success">Security delivery cycle</p>
+                <h2 className="mt-1 text-sm font-bold text-semantic-primary">One governed flow from development plan to release</h2>
+                <p className="mt-1 text-xs text-semantic-jira-muted-stronger">Developers document the initial plan and exposure first; independent departments then review. Resulting control work returns here as the final development cycle.</p>
+              </div>
+              {threatModelId ? <a className="wrike-btn-primary px-3 py-2 text-xs" href={`/security-grc/threat-modeling?modelId=${encodeURIComponent(threatModelId)}`}><ShieldCheck className="h-3.5 w-3.5" /> Open linked Threat Model</a> : threatModelLookup === 'loading' ? <button className="wrike-btn-subtle px-3 py-2 text-xs" disabled><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking linked model…</button> : threatModelLookup === 'error' ? <button className="wrike-btn-secondary px-3 py-2 text-xs" onClick={onRetryThreatModelLookup}><RotateCw className="h-3.5 w-3.5" /> Retry model check</button> : <button className="wrike-btn-primary px-3 py-2 text-xs" onClick={onStartThreatModel}><ShieldCheck className="h-3.5 w-3.5" /> Start Threat Model</button>}
+            </div>
+            <div className="grid gap-px bg-semantic-brand-border md:grid-cols-4">
+              {([
+                ['1', 'DEV plan & exposure', 'Architecture, data, boundaries, integrations and assumptions.', ['ARCHITECTURE_REVIEW', 'THREAT_MODEL_WORKSHOP']],
+                ['2', 'Independent review', 'AppSec and Security Architecture record separate decisions.', ['APPSEC_THREAT_MODEL_REVIEW', 'SECURITY_ARCHITECTURE_APPROVAL']],
+                ['3', 'Control implementation', 'Required mitigations are created as project-scoped development work.', ['SECURITY_REMEDIATION']],
+                ['4', 'Evidence & release gate', 'Independent verification and approved model are required to release.', ['SECURITY_VERIFICATION', 'HIGH_RISK_SECURITY_TEST']],
+              ] as Array<[string, string, string, string[]]>).map(([number, title, description, kinds]) => {
+                const stepTasks = securityTasks.filter((task: Ticket) => kinds.includes(String(task.ticketTypeId)));
+                const isComplete = stepTasks.length > 0 && stepTasks.every((task: Ticket) => task.statusCategory === 'DONE');
+                return <div key={number} className="bg-semantic-panel px-4 py-4">
+                  <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${isComplete ? 'bg-semantic-success text-white' : 'bg-semantic-brand-surface text-semantic-success'}`}>{isComplete ? <Check className="h-3.5 w-3.5" /> : number}</span>
+                  <h3 className="mt-3 text-sm font-bold text-semantic-primary">{title}</h3>
+                  <p className="mt-1 text-xs leading-5 text-semantic-jira-muted-stronger">{description}</p>
+                  <p className="mt-3 text-caption font-semibold text-semantic-muted">{stepTasks.length ? `${stepTasks.filter((task: Ticket) => task.statusCategory === 'DONE').length}/${stepTasks.length} tasks complete` : 'Waiting for governed task'}</p>
+                </div>;
+              })}
+            </div>
+            <div className="flex items-center justify-between gap-3 px-5 py-3 text-xs text-semantic-jira-muted-stronger">
+              <span>{securityTasks.length ? `${completedSecurityTasks}/${securityTasks.length} linked security tasks complete` : 'Creating the screening and initial developer tasks through the governed queue.'}</span>
+              <span className="font-semibold text-semantic-success">Ticket done ≠ control verified</span>
+            </div>
+          </section>
+        )}
+
+        <section className="rounded-xl border border-semantic-border bg-semantic-panel shadow-sm">
           <SectionTitle
             title="Milestone timeline"
             action={
@@ -698,18 +775,18 @@ const Overview: React.FC<any> = ({ data, allUsers = [], departments = [], ldapGr
         </section>
 
         <div className="grid gap-5 lg:grid-cols-2">
-          <section className="rounded-xl border border-semantic-border bg-white shadow-sm">
+          <section className="rounded-xl border border-semantic-border bg-semantic-panel shadow-sm">
             <SectionTitle title="My work" />
             <WorkList tasks={myTasks} empty="No active work assigned or watched by you." />
           </section>
-          <section className="rounded-xl border border-semantic-border bg-white shadow-sm">
+          <section className="rounded-xl border border-semantic-border bg-semantic-panel shadow-sm">
             <SectionTitle title="Recently completed" />
             <WorkList tasks={recentlyCompleted} empty="Completed work will appear here." done />
           </section>
         </div>
 
         <div className="grid gap-5 lg:grid-cols-2">
-          <section className="rounded-xl border border-semantic-border bg-white shadow-sm">
+          <section className="rounded-xl border border-semantic-border bg-semantic-panel shadow-sm">
             <SectionTitle title="Upcoming" />
             <div className="divide-y divide-semantic-border-subtle">
               {upcoming.map((item: any) => (
@@ -720,7 +797,7 @@ const Overview: React.FC<any> = ({ data, allUsers = [], departments = [], ldapGr
               ))}
             </div>
           </section>
-          <section className="rounded-xl border border-semantic-border bg-white shadow-sm">
+          <section className="rounded-xl border border-semantic-border bg-semantic-panel shadow-sm">
             <SectionTitle title="Risks & blockers" />
             <div className="divide-y divide-semantic-border-subtle">
               {risks.length ? (
@@ -744,7 +821,7 @@ const Overview: React.FC<any> = ({ data, allUsers = [], departments = [], ldapGr
       </div>
 
       <aside className="space-y-5">
-        <section className="rounded-xl border border-semantic-border bg-white p-4 shadow-sm">
+        <section className="rounded-xl border border-semantic-border bg-semantic-panel p-4 shadow-sm">
           <p className="text-caption font-bold uppercase tracking-widest text-semantic-muted">Project summary</p>
           <dl className="mt-3 space-y-3 text-sm">
             <div>
@@ -770,7 +847,7 @@ const Overview: React.FC<any> = ({ data, allUsers = [], departments = [], ldapGr
           </dl>
         </section>
 
-        <section className="rounded-xl border border-semantic-border bg-white shadow-sm">
+        <section className="rounded-xl border border-semantic-border bg-semantic-panel shadow-sm">
           <SectionTitle
             title="Project Team"
             action={
@@ -784,7 +861,7 @@ const Overview: React.FC<any> = ({ data, allUsers = [], departments = [], ldapGr
               let name = member.subjectId;
               let subtitle = member.role.replace('_', ' ');
               let isAd = false;
-              let initial = avatar(member.subjectId);
+              let icon = <UserCheck className="h-3.5 w-3.5" />;
 
               if (member.subjectType === 'USER') {
                 const u = userMap.get(member.subjectId);
@@ -792,29 +869,28 @@ const Overview: React.FC<any> = ({ data, allUsers = [], departments = [], ldapGr
                   name = u.fullName || u.username;
                   subtitle = `${u.title || 'Specialist'} · ${member.role.replace('_', ' ')}`;
                   isAd = u.directorySource === 'ACTIVE_DIRECTORY';
-                  initial = avatar(u.fullName || u.username);
                 }
               } else if (member.subjectType === 'DEPARTMENT') {
                 const d = deptMap.get(member.subjectId) || departments.find((dept: any) => dept.code === member.subjectId);
                 name = d?.name || member.subjectId;
                 subtitle = `Department · ${member.role.replace('_', ' ')}`;
-                initial = 'DP';
+                icon = <Building2 className="h-3.5 w-3.5" />;
               } else if (member.subjectType === 'GROUP') {
                 name = member.subjectId;
                 subtitle = `LDAP Group · ${member.role.replace('_', ' ')}`;
-                initial = 'SG';
+                icon = <Shield className="h-3.5 w-3.5" />;
                 isAd = true;
               } else if (member.subjectType === 'TEAM') {
                 name = member.subjectId.replace(/^team-/, '').replace(/-/g, ' ').toUpperCase();
                 subtitle = `Team Squad · ${member.role.replace('_', ' ')}`;
-                initial = 'TM';
+                icon = <Users className="h-3.5 w-3.5" />;
               }
 
               return (
                 <div className="flex items-center gap-2.5 text-xs" key={member.id}>
                   <div className="relative">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-semantic-success-surface font-bold text-semantic-success border border-semantic-success-border">
-                      {initial}
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-semantic-success-surface text-semantic-success border border-semantic-success-border">
+                      {icon}
                     </span>
                     {isAd && (
                       <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-emerald-500 text-overline text-white" title="Active Directory Verified">
@@ -832,7 +908,7 @@ const Overview: React.FC<any> = ({ data, allUsers = [], departments = [], ldapGr
           </div>
         </section>
 
-        <section className="rounded-xl border border-semantic-border bg-white shadow-sm">
+        <section className="rounded-xl border border-semantic-border bg-semantic-panel shadow-sm">
           <SectionTitle title="Latest project update" />
           <div className="p-4">
             <p className="text-sm text-semantic-jira-muted-stronger">{latestUpdate?.body || 'No status update posted yet.'}</p>
@@ -847,6 +923,55 @@ const Overview: React.FC<any> = ({ data, allUsers = [], departments = [], ldapGr
       </aside>
     </div>
   );
+};
+
+const onboardingSignals = [
+  ['internetExposed', 'Internet-facing surface', 'Can an external party reach any component, API, portal, or integration?'],
+  ['confidentialData', 'Confidential / customer data', 'Will the change process customer, bank-secret, personal, credential, or payment data?'],
+  ['thirdPartyIntegration', 'Third-party integration', 'Does the solution exchange data or trust with a vendor, partner, SaaS, or outsourced service?'],
+  ['privilegedCapability', 'Privileged capability', 'Does it create or change administrative, approval, payment, identity, or elevated access paths?'],
+] as const;
+
+const ProjectThreatModelOnboarding: React.FC<{ project: Project; currentUserId?: string; fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>; onClose: () => void; onCreated: () => Promise<void> }> = ({ project, currentUserId, fetchWithAuth, onClose, onCreated }) => {
+  const [step, setStep] = useState(1);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [createdModelId, setCreatedModelId] = useState<string>();
+  const [form, setForm] = useState({ title: `${project.name} Threat Model`, description: '', scopeSummary: project.scope || '', architectureSummary: '', assumptions: '', securityObjectives: '' });
+  const [answers, setAnswers] = useState<Record<string, boolean>>({ internetExposed: false, confidentialData: false, thirdPartyIntegration: false, privilegedCapability: false, materialArchitectureChange: true });
+  const [explanations, setExplanations] = useState<Record<string, string>>({});
+  const set = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const signalsComplete = onboardingSignals.every(([key]) => explanations[key].trim().length >= 8);
+  const create = async () => {
+    if (busy || createdModelId || !signalsComplete) return;
+    setBusy(true); setError('');
+    try {
+      const description = form.description.trim() || form.scopeSummary.trim();
+      const response = await fetchWithAuth('/api/threat-models', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, description, projectId: project.id, projectOnboarding: true, businessOwnerId: project.ownerId || currentUserId, technicalOwnerId: project.managerId || currentUserId, departmentId: project.departmentId, criticality: project.businessCriticality, dataClassification: 'CONFIDENTIAL_SECURITY_ONLY' }) });
+      const data = await response.json();
+      if (!response.ok || !data.success || !data.model?.id) throw new Error(data.error || 'Threat Model could not be created.');
+      setCreatedModelId(data.model.id);
+      const rationale = onboardingSignals.map(([key, label]) => `${label}: ${answers[key] ? 'Yes' : 'No'} — ${explanations[key].trim()}`).join('\n');
+      const assessment = await fetchWithAuth(`/api/threat-models/${data.model.id}/assess`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answers, justification: rationale }) });
+      const assessmentData = await assessment.json();
+      if (!assessment.ok || !assessmentData.success) throw new Error(assessmentData.error || 'Threat Model was created, but screening could not be recorded. Complete screening from the model workspace.');
+      await onCreated();
+      window.location.assign(`/security-grc/threat-modeling?modelId=${encodeURIComponent(data.model.id)}`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Threat Model could not be created.'); } finally { setBusy(false); }
+  };
+  const openCreatedModel = async () => {
+    if (!createdModelId) return;
+    await onCreated();
+    window.location.assign(`/security-grc/threat-modeling?modelId=${encodeURIComponent(createdModelId)}`);
+  };
+  return <Modal isOpen onClose={onClose} maxWidth="3xl" icon={<ShieldCheck className="h-5 w-5" />} title="Threat Model onboarding" subtitle={`Project: ${project.identifier} — ${project.name}`} footer={<div className="flex w-full items-center justify-between gap-3"><span className="text-xs text-semantic-muted">Step {step} of 3 · Project members receive default access; administrators can add time-bound access later.</span><div className="flex gap-2">{step > 1 && <button className="wrike-btn-secondary px-3 py-2 text-xs" onClick={() => setStep(step - 1)}>Back</button>}{step < 3 ? <button className="wrike-btn-primary px-3 py-2 text-xs" disabled={(step === 1 && (!form.title.trim() || !form.scopeSummary.trim())) || (step === 2 && !signalsComplete)} onClick={() => setStep(step + 1)}>Continue</button> : createdModelId ? <button className="wrike-btn-primary px-3 py-2 text-xs" onClick={() => void openCreatedModel()}>Open created model</button> : <button className="wrike-btn-primary px-3 py-2 text-xs" disabled={busy} onClick={() => void create()}>{busy ? 'Creating…' : 'Create and start assessment'}</button>}</div></div>}>
+    <div className="space-y-5 p-1">
+      {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"><p>{error}</p>{createdModelId && <button type="button" className="mt-2 font-semibold underline underline-offset-2" onClick={() => void openCreatedModel()}>Open the created Threat Model and continue the screening</button>}</div>}
+      {step === 1 && <div className="space-y-4"><p className="text-sm text-semantic-jira-muted-stronger">Start with what the team intends to deliver. This becomes the first immutable, auditable revision.</p><Field label="Threat Model title" required><input className="wrike-input w-full" value={form.title} onChange={(event) => set('title', event.target.value)} /></Field><Field label="Initial plan and scope" required hint="What is changing, what is included, and who uses it?"><textarea className="wrike-input min-h-24 w-full" value={form.scopeSummary} onChange={(event) => set('scopeSummary', event.target.value)} /></Field><Field label="Architecture / integration plan" hint="Components, data flows, APIs, trust boundaries, and dependencies."><textarea className="wrike-input min-h-20 w-full" value={form.architectureSummary} onChange={(event) => set('architectureSummary', event.target.value)} /></Field><Field label="Assumptions and security objectives" hint="Document constraints and what must be protected."><textarea className="wrike-input min-h-20 w-full" value={form.assumptions} onChange={(event) => set('assumptions', event.target.value)} /></Field></div>}
+      {step === 2 && <div className="space-y-4"><p className="text-sm text-semantic-jira-muted-stronger">Answer each exposure question and explain the answer. “No” still needs context, so reviewers can challenge assumptions instead of guessing.</p>{onboardingSignals.map(([key, label, help]) => <div className="rounded-xl border border-semantic-border bg-semantic-subtle p-4" key={key}><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-semibold text-sm text-semantic-primary">{label}</p><p className="mt-1 text-xs text-semantic-jira-muted-stronger">{help}</p></div><div className="flex rounded-lg border border-semantic-border bg-semantic-panel p-1"><button type="button" onClick={() => setAnswers((current) => ({ ...current, [key]: true }))} className={`rounded px-3 py-1.5 text-xs font-bold ${answers[key] ? 'bg-rose-600 text-white' : 'text-semantic-muted'}`}>Yes</button><button type="button" onClick={() => setAnswers((current) => ({ ...current, [key]: false }))} className={`rounded px-3 py-1.5 text-xs font-bold ${!answers[key] ? 'bg-semantic-success text-white' : 'text-semantic-muted'}`}>No</button></div></div><textarea required className="wrike-input mt-3 min-h-20 w-full" placeholder={answers[key] ? 'Describe the exposure, entry point, affected data, and planned mitigation…' : 'Explain why this does not apply and what evidence or design decision supports it…'} value={explanations[key] || ''} onChange={(event) => setExplanations((current) => ({ ...current, [key]: event.target.value }))} /></div>)}</div>}
+      {step === 3 && <div className="space-y-4"><div className="rounded-xl border border-semantic-success-border bg-semantic-success-surface p-4"><h3 className="font-bold text-semantic-primary">Ready to create the governed workspace</h3><p className="mt-1 text-sm text-semantic-jira-muted-stronger">The model is linked to this project. Project viewers can read it; project contributors can document it. Approval, verification, and release authority stay separated.</p></div><dl className="grid gap-3 text-sm md:grid-cols-2"><div><dt className="text-xs text-semantic-muted">Scope</dt><dd className="mt-1 font-medium">{form.scopeSummary}</dd></div><div><dt className="text-xs text-semantic-muted">Exposure answers</dt><dd className="mt-1 font-medium">{onboardingSignals.filter(([key]) => answers[key]).map(([, label]) => label).join(', ') || 'No declared exposure'}</dd></div></dl></div>}
+    </div>
+  </Modal>;
 };
 
 const SectionTitle: React.FC<{ title: string; action?: React.ReactNode }> = ({ title, action }) => (
@@ -953,7 +1078,7 @@ const Tasks: React.FC<any> = ({ data, allUsers = [], onTask, post, patch, onRefr
   const tasks = serverTasks || data.tasks || [];
 
   return (
-    <section className="overflow-hidden rounded-xl border border-semantic-border bg-white shadow-sm">
+    <section className="overflow-hidden rounded-xl border border-semantic-border bg-semantic-panel shadow-sm">
       <div className="flex flex-col gap-3 border-b border-semantic-border p-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-base font-bold text-semantic-primary">Project tasks</h2>
@@ -1190,7 +1315,7 @@ const ProjectTaskDetail: React.FC<any> = ({ detail, projectId, currentUserId, ta
           <h3 className="text-sm font-bold text-semantic-content-alt">Discussion</h3>
           <div className="mt-3 space-y-3">
             {(detail.comments || []).map((comment: any) => (
-              <article key={comment.id} className="rounded-lg border border-semantic-border bg-white p-3">
+              <article key={comment.id} className="rounded-lg border border-semantic-border bg-semantic-panel p-3">
                 <div className="flex items-center justify-between gap-3 text-xs"><span className="font-bold text-semantic-content-alt">{comment.authorName}</span><time className="text-semantic-muted">{display(comment.createdAt)}</time></div>
                 <p className="mt-2 whitespace-pre-wrap text-sm text-semantic-jira-muted-stronger">{comment.content}</p>
               </article>
@@ -1229,7 +1354,7 @@ const Kanban: React.FC<any> = ({ data, allUsers = [], patch, onRefresh }) => {
                 const assigneeName = assignee?.fullName || task.assigneeId || 'Unassigned';
 
                 return (
-                  <article key={task.id} className="rounded-lg border border-semantic-border bg-white p-3 shadow-sm">
+                  <article key={task.id} className="rounded-lg border border-semantic-border bg-semantic-panel p-3 shadow-sm">
                     <div className="font-mono text-caption font-bold text-semantic-info">{task.key}</div>
                     <div className="mt-1 text-xs font-semibold text-semantic-content-alt">{task.title}</div>
                     <div className="mt-3 flex items-center justify-between text-caption text-semantic-muted">
@@ -1269,7 +1394,7 @@ const Kanban: React.FC<any> = ({ data, allUsers = [], patch, onRefresh }) => {
 };
 
 const Timeline: React.FC<any> = ({ data }) => (
-  <section className="rounded-xl border border-semantic-border bg-white shadow-sm">
+  <section className="rounded-xl border border-semantic-border bg-semantic-panel shadow-sm">
     <SectionTitle title="Project timeline" />
     <div className="divide-y divide-semantic-border-subtle">
       {[
@@ -1314,7 +1439,7 @@ const Capacity: React.FC<any> = ({ data, allUsers = [] }) => {
   );
 
   return (
-    <section className="rounded-xl border border-semantic-border bg-white shadow-sm">
+    <section className="rounded-xl border border-semantic-border bg-semantic-panel shadow-sm">
       <SectionTitle title="Capacity & workload" />
       <div className="overflow-auto">
         <table className="wrike-table">
@@ -1370,7 +1495,7 @@ const Capacity: React.FC<any> = ({ data, allUsers = [] }) => {
 };
 
 const Files: React.FC = () => (
-  <section className="rounded-xl border border-semantic-border bg-white shadow-sm">
+  <section className="rounded-xl border border-semantic-border bg-semantic-panel shadow-sm">
     <SectionTitle title="Project files" />
     <ProjectEmpty icon={<FileText />} title="No project files yet" text="Files attached to project tasks remain in the task evidence record." />
   </section>
@@ -1380,7 +1505,7 @@ const Activity: React.FC<any> = ({ data, allUsers = [] }) => {
   const userMap = useMemo(() => new Map<string, BankUser>(allUsers.map((u: BankUser) => [u.id, u])), [allUsers]);
 
   return (
-    <section className="rounded-xl border border-semantic-border bg-white shadow-sm">
+    <section className="rounded-xl border border-semantic-border bg-semantic-panel shadow-sm">
       <SectionTitle title="Project activity" />
       <div className="divide-y divide-semantic-border-subtle">
         {data.activity?.length ? (
@@ -1390,8 +1515,8 @@ const Activity: React.FC<any> = ({ data, allUsers = [] }) => {
 
             return (
               <div key={event.id} className="flex gap-3 px-5 py-3">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-caption font-bold text-semantic-jira-muted-stronger">
-                  {avatar(actorName)}
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-semantic-jira-muted-stronger">
+                  <UserCheck className="h-3.5 w-3.5" />
                 </span>
                 <div>
                   <div className="text-sm text-semantic-content-alt">
@@ -1464,7 +1589,7 @@ const Access: React.FC<{
         isAd: u?.directorySource === 'ACTIVE_DIRECTORY' || Boolean(u?.sAMAccountName),
         typeBadge: 'USER',
         typeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-        initials: avatar(u?.fullName || u?.username || member.subjectId),
+        icon: <UserCheck className="h-4 w-4" />,
       };
     }
     if (member.subjectType === 'DEPARTMENT') {
@@ -1479,7 +1604,7 @@ const Access: React.FC<{
         isAd: true,
         typeBadge: 'DEPARTMENT',
         typeColor: 'bg-purple-50 text-purple-800 border-purple-200',
-        initials: 'DP',
+        icon: <Building2 className="h-4 w-4" />,
       };
     }
     if (member.subjectType === 'GROUP') {
@@ -1494,7 +1619,7 @@ const Access: React.FC<{
         isAd: true,
         typeBadge: 'GROUP',
         typeColor: 'bg-amber-50 text-amber-800 border-amber-200',
-        initials: 'SG',
+        icon: <Shield className="h-4 w-4" />,
       };
     }
     if (member.subjectType === 'TEAM') {
@@ -1509,7 +1634,7 @@ const Access: React.FC<{
         isAd: false,
         typeBadge: 'TEAM',
         typeColor: 'bg-blue-50 text-blue-800 border-blue-200',
-        initials: 'TM',
+        icon: <Users className="h-4 w-4" />,
       };
     }
     return {
@@ -1521,8 +1646,8 @@ const Access: React.FC<{
       email: '—',
       isAd: false,
       typeBadge: member.subjectType,
-      typeColor: 'bg-slate-50 text-slate-800 border-slate-200',
-      initials: '?',
+      typeColor: 'bg-semantic-subtle text-semantic-primary border-semantic-border',
+      icon: <CircleDot className="h-4 w-4" />,
     };
   };
 
@@ -1598,7 +1723,7 @@ const Access: React.FC<{
     <div className="space-y-5">
       {/* Top Metric Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-xl border border-semantic-border bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-semantic-border bg-semantic-panel p-4 shadow-sm">
           <div className="text-label font-bold uppercase tracking-wider text-semantic-muted">Total Access Subjects</div>
           <div className="mt-1 flex items-center justify-between">
             <span className="text-2xl font-bold text-semantic-primary">{membersWithDetails.length}</span>
@@ -1606,7 +1731,7 @@ const Access: React.FC<{
           </div>
         </div>
 
-        <div className="rounded-xl border border-semantic-border bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-semantic-border bg-semantic-panel p-4 shadow-sm">
           <div className="text-label font-bold uppercase tracking-wider text-semantic-muted">Direct LDAP Users</div>
           <div className="mt-1 flex items-center justify-between">
             <span className="text-2xl font-bold text-semantic-primary">{directUsersCount}</span>
@@ -1614,7 +1739,7 @@ const Access: React.FC<{
           </div>
         </div>
 
-        <div className="rounded-xl border border-semantic-border bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-semantic-border bg-semantic-panel p-4 shadow-sm">
           <div className="text-label font-bold uppercase tracking-wider text-semantic-muted">Depts &amp; Groups</div>
           <div className="mt-1 flex items-center justify-between">
             <span className="text-2xl font-bold text-semantic-primary">{groupsCount}</span>
@@ -1622,7 +1747,7 @@ const Access: React.FC<{
           </div>
         </div>
 
-        <div className="rounded-xl border border-semantic-border bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-semantic-border bg-semantic-panel p-4 shadow-sm">
           <div className="text-label font-bold uppercase tracking-wider text-semantic-muted">Project Governance</div>
           <div className="mt-1 flex items-center justify-between">
             <span className="text-2xl font-bold text-semantic-primary">{managersCount}</span>
@@ -1641,7 +1766,7 @@ const Access: React.FC<{
       )}
 
       {/* Main Access Table Card */}
-      <section className="overflow-hidden rounded-xl border border-semantic-border bg-white shadow-sm">
+      <section className="overflow-hidden rounded-xl border border-semantic-border bg-semantic-panel shadow-sm">
         <div className="flex flex-col gap-3 border-b border-semantic-border p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-base font-bold text-semantic-primary flex items-center gap-2">
@@ -1673,7 +1798,7 @@ const Access: React.FC<{
                 key={val}
                 onClick={() => setTypeFilter(val as any)}
                 className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
-                  typeFilter === val ? 'bg-semantic-primary text-white shadow-sm' : 'text-semantic-jira-muted-stronger hover:bg-slate-200/70'
+                  typeFilter === val ? 'bg-semantic-primary text-white shadow-sm' : 'text-semantic-jira-muted-stronger hover:bg-semantic-hover'
                 }`}
               >
                 {label}
@@ -1730,13 +1855,13 @@ const Access: React.FC<{
                   const isBusy = busyMemberId === member.id;
 
                   return (
-                    <tr key={member.id} className="hover:bg-slate-50/70 transition-colors">
+                    <tr key={member.id} className="hover:bg-semantic-hover transition-colors">
                       {/* Subject Name & Info */}
                       <td>
                         <div className="flex items-center gap-3">
                           <div className="relative">
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-semantic-success-surface text-xs font-bold text-semantic-success border border-semantic-success-border">
-                              {details.initials}
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-semantic-success-surface text-semantic-success border border-semantic-success-border">
+                              {details.icon}
                             </span>
                             {details.isAd && (
                               <span
@@ -1807,7 +1932,7 @@ const Access: React.FC<{
                                 ? 'bg-blue-50 text-blue-700 border-blue-200'
                                 : member.role === 'CONTRIBUTOR'
                                 ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : 'bg-slate-100 text-slate-700 border-slate-200'
+                                : 'bg-semantic-subtle text-semantic-secondary border-slate-200'
                             }`}
                           >
                             {member.role.replace('_', ' ')}
@@ -1951,7 +2076,7 @@ const Settings: React.FC<any> = ({ project, patch, onRefresh, fetchWithAuth }) =
   };
 
   return (
-    <section className="rounded-xl border border-semantic-border bg-white shadow-sm">
+    <section className="rounded-xl border border-semantic-border bg-semantic-panel shadow-sm">
       <SectionTitle title="Project settings" />
       <div className="space-y-6 p-5 text-sm text-semantic-jira-muted-stronger">
         <div className="space-y-3">
@@ -1980,7 +2105,7 @@ const Settings: React.FC<any> = ({ project, patch, onRefresh, fetchWithAuth }) =
             {PROJECT_WORK_ITEM_TYPES.map((type) => {
               const selected = workItemTypes.includes(type);
               return (
-                <label key={type} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${selected ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-semantic-border bg-white text-semantic-jira-muted-stronger hover:border-emerald-200'}`}>
+                <label key={type} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${selected ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-semantic-border bg-semantic-panel text-semantic-jira-muted-stronger hover:border-emerald-200'}`}>
                   <input type="checkbox" checked={selected} onChange={() => toggleType(type)} className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
                   {type.replace(/_/g, ' ')}
                 </label>
@@ -2069,7 +2194,7 @@ const priorityOptions: SelectOption[] = [
     label: 'Low',
     sublabel: 'Minor / opportunistic work',
     badge: 'P4',
-    badgeColor: 'bg-slate-100 text-slate-700 border border-slate-200',
+    badgeColor: 'bg-semantic-subtle text-semantic-secondary border border-slate-200',
     icon: <CircleDot className="w-4 h-4 text-slate-400" />,
   },
 ];
@@ -2143,7 +2268,7 @@ const progressWeightingOptions: SelectOption[] = [
 ];
 
 const taskStatusOptions: SelectOption[] = [
-  { value: 'BACKLOG', label: 'Backlog', badge: 'BACKLOG', badgeColor: 'bg-slate-100 text-slate-700' },
+  { value: 'BACKLOG', label: 'Backlog', badge: 'BACKLOG', badgeColor: 'bg-semantic-subtle text-semantic-secondary' },
   { value: 'TO_DO', label: 'To Do', badge: 'TODO', badgeColor: 'bg-blue-50 text-blue-700' },
   { value: 'IN_PROGRESS', label: 'In Progress', badge: 'ACTIVE', badgeColor: 'bg-indigo-50 text-indigo-700' },
   { value: 'IN_REVIEW', label: 'In Review', badge: 'REVIEW', badgeColor: 'bg-amber-50 text-amber-700' },
@@ -2269,8 +2394,8 @@ const ProjectForm: React.FC<{
         value: u.id,
         label: u.fullName || u.username,
         icon: (
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-semantic-success-surface text-caption font-bold text-semantic-success border border-semantic-success-border">
-            {avatar(u.fullName || u.username)}
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-semantic-success-surface text-semantic-success border border-semantic-success-border">
+            <UserCheck className="h-3 w-3" />
           </span>
         ),
       }));
@@ -2341,7 +2466,7 @@ const ProjectForm: React.FC<{
             />
           </Field>
 
-          <Field label="Project key / short code" required hint="Used as ticket prefix (e.g. DLP-1)">
+          <Field label="Project key" required hint="Used as ticket prefix (e.g. DLP-1)">
             <input
               required
               value={form.key}
@@ -2571,8 +2696,8 @@ const TaskForm: React.FC<{
         badge: u.directorySource === 'ACTIVE_DIRECTORY' ? 'AD' : undefined,
         badgeColor: 'bg-emerald-50 text-emerald-800 border border-emerald-200',
         icon: (
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-semantic-success-surface text-label font-bold text-semantic-success border border-semantic-success-border">
-            {avatar(u.fullName || u.username)}
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-semantic-success-surface text-semantic-success border border-semantic-success-border">
+            <UserCheck className="h-3.5 w-3.5" />
           </span>
         ),
       };
@@ -2606,7 +2731,7 @@ const TaskForm: React.FC<{
     { value: 'P1_URGENT', label: 'P1 - Urgent / Critical', badge: 'P1', badgeColor: 'bg-rose-100 text-rose-700' },
     { value: 'P2_HIGH', label: 'P2 - High', badge: 'P2', badgeColor: 'bg-amber-100 text-amber-700' },
     { value: 'P3_MEDIUM', label: 'P3 - Medium', badge: 'P3', badgeColor: 'bg-blue-100 text-blue-700' },
-    { value: 'P4_LOW', label: 'P4 - Low', badge: 'P4', badgeColor: 'bg-slate-100 text-slate-700' },
+    { value: 'P4_LOW', label: 'P4 - Low', badge: 'P4', badgeColor: 'bg-semantic-subtle text-semantic-secondary' },
   ];
 
   return (
@@ -2924,7 +3049,6 @@ const MemberForm: React.FC<{
       .filter((u: BankUser) => u.isActive)
       .map((u: BankUser) => {
         const dept = deptMap.get(u.departmentId);
-        const initials = avatar(u.fullName || u.username);
         return {
           value: u.id,
           label: u.fullName || u.username,
@@ -2932,8 +3056,8 @@ const MemberForm: React.FC<{
           badge: u.directorySource === 'ACTIVE_DIRECTORY' ? 'Active Directory' : 'Local',
           badgeColor: 'bg-emerald-50 text-emerald-800 border border-emerald-200',
           icon: (
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-semantic-success-surface text-label font-bold text-semantic-success border border-semantic-success-border">
-              {initials}
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-semantic-success-surface text-semantic-success border border-semantic-success-border">
+              <UserCheck className="h-3.5 w-3.5" />
             </span>
           ),
         };
@@ -2991,7 +3115,7 @@ const MemberForm: React.FC<{
         department: dept?.name || u.departmentId,
         isAd: u.directorySource === 'ACTIVE_DIRECTORY' || Boolean(u.sAMAccountName),
         groups: (u.distributionGroups || []).slice(0, 3),
-        initials: avatar(u.fullName || u.username),
+        icon: <UserCheck className="h-5 w-5" />,
       };
     }
     if (form.subjectType === 'DEPARTMENT') {
@@ -3005,7 +3129,7 @@ const MemberForm: React.FC<{
         department: d.description || 'Expressbank Organizational Unit',
         isAd: true,
         groups: [],
-        initials: 'DP',
+        icon: <Building2 className="h-5 w-5" />,
       };
     }
     if (form.subjectType === 'GROUP') {
@@ -3018,7 +3142,7 @@ const MemberForm: React.FC<{
         department: 'Active Directory Directory Group',
         isAd: true,
         groups: [],
-        initials: 'SG',
+        icon: <Shield className="h-5 w-5" />,
       };
     }
     if (form.subjectType === 'TEAM') {
@@ -3031,7 +3155,7 @@ const MemberForm: React.FC<{
         department: 'Banking Operations',
         isAd: false,
         groups: [],
-        initials: 'TM',
+        icon: <Users className="h-5 w-5" />,
       };
     }
     return null;
@@ -3159,8 +3283,8 @@ const MemberForm: React.FC<{
           <div className="rounded-xl border border-emerald-200 bg-semantic-project-success p-3.5 text-xs text-semantic-primary shadow-sm animate-in fade-in duration-200">
             <div className="flex items-start gap-3">
               <div className="relative">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-xs font-bold text-semantic-success border border-semantic-success-border shadow-xs">
-                  {selectedPreview.initials}
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-semantic-panel text-semantic-success border border-semantic-success-border shadow-xs">
+                  {selectedPreview.icon}
                 </span>
                 {selectedPreview.isAd && (
                   <span
@@ -3190,7 +3314,7 @@ const MemberForm: React.FC<{
                   <div className="pt-1 flex flex-wrap gap-1 items-center">
                     <span className="text-caption text-slate-500 font-semibold">AD Groups:</span>
                     {selectedPreview.groups.map((g: string) => (
-                      <span key={g} className="rounded bg-white px-1.5 py-0.5 text-micro font-medium border border-slate-200 text-slate-700">
+                      <span key={g} className="rounded bg-semantic-panel px-1.5 py-0.5 text-micro font-medium border border-slate-200 text-slate-700">
                         {g}
                       </span>
                     ))}

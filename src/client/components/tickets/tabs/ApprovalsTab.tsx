@@ -85,7 +85,7 @@ export const ApprovalsTab: React.FC<ApprovalsTabProps> = ({
           return (
             <div
               key={step.id}
-              className={`p-4 bg-white border rounded-xl space-y-3 transition-all shadow-xs ${
+              className={`p-4 bg-semantic-panel border rounded-xl space-y-3 transition-all shadow-xs ${
                 isPending
                   ? 'border-slate-200'
                   : isApproved
@@ -156,7 +156,7 @@ export const ApprovalsTab: React.FC<ApprovalsTabProps> = ({
 
       {/* Decision Modal */}
       {selectedStep && (
-        <div className="fixed inset-0 z-dsDialog flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center p-4 bg-semantic-modal-tint/60 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="w-full max-w-md bg-semantic-panel border border-semantic-border-strong text-semantic-primary rounded-xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-semantic-border pb-3">
               <h3 className="text-sm font-bold text-semantic-primary uppercase tracking-wider">

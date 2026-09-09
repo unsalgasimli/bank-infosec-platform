@@ -55,7 +55,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ comments, auditEvents 
         {timeline.map((item) => (
           <div key={item.id} className="relative pl-6">
             {/* Timeline node icon */}
-            <div className="absolute -left-[17px] top-1 w-8 h-8 rounded-full bg-white border-2 border-slate-200 flex items-center justify-center text-xs shadow-xs">
+            <div className="absolute -left-[17px] top-1 w-8 h-8 rounded-full bg-semantic-panel border-2 border-slate-200 flex items-center justify-center text-xs shadow-xs">
               {item.type === 'COMMENT' ? (
                 <MessageSquare className="w-3.5 h-3.5 text-semantic-jira-brand" />
               ) : (
@@ -80,12 +80,12 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ comments, auditEvents 
               </div>
 
               {item.type === 'COMMENT' ? (
-                <div className="text-slate-800 leading-relaxed whitespace-pre-line pt-1 bg-white p-3 rounded-lg border border-slate-200">
+                <div className="text-slate-800 leading-relaxed whitespace-pre-line pt-1 bg-semantic-panel p-3 rounded-lg border border-slate-200">
                   {item.content}
                 </div>
               ) : (
                 item.fieldChanges && item.fieldChanges.length > 0 && (
-                  <div className="space-y-1.5 pt-1 font-mono text-label bg-white p-3 rounded-lg border border-slate-200">
+                  <div className="space-y-1.5 pt-1 font-mono text-label bg-semantic-panel p-3 rounded-lg border border-slate-200">
                     {item.fieldChanges.map((ch, i) => (
                       <div key={i} className="flex items-center gap-2 flex-wrap">
                         <span className="text-slate-500 font-semibold">{ch.field}:</span>

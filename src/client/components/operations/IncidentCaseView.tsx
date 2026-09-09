@@ -68,7 +68,7 @@ export const IncidentCaseView: React.FC<IncidentCaseViewProps> = ({ tickets, onS
         </div>
 
         <p className="text-xs text-semantic-jira-muted leading-relaxed">
-          Incident cases are created only by authenticated SIEM/EDR integrations or an authorized manual request. Demo threat generation is disabled.
+          Incidents are ingested from authenticated SIEM/EDR integrations or authorized manual reports.
         </p>
       </div>
 

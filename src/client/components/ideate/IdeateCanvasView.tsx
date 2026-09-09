@@ -193,11 +193,8 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-semantic-primary">
-                Wrike Ideate: Cyber Threat & Strategy Canvas
+                FIUUU Ideate: Cyber Threat & Strategy Canvas
               </h2>
-              <span className="px-2 py-0.5 rounded-full bg-semantic-success-surface text-semantic-success text-caption font-bold border border-semantic-success-border">
-                Real-Time Backend Synced
-              </span>
             </div>
             <p className="text-label text-semantic-jira-muted-alt">
               Brainstorm cyber defense initiatives, model attack vectors, and persist real ideas with 1-click task creation.
@@ -354,7 +351,7 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
                               handleConvertIdea(node);
                             }}
                             className="wrike-btn-primary text-label py-1 px-2.5 shadow-sm"
-                            title="Convert this idea into a real Wrike Task"
+                            title="Convert this idea into a real FIUUU Task"
                           >
                             <span>Convert to Task</span>
                             <ArrowRight className="w-3 h-3" />
@@ -422,7 +419,7 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
               <div className="p-3 bg-semantic-success-surface border border-semantic-success-border rounded-lg text-xs text-semantic-success space-y-1">
                 <div className="font-bold flex items-center gap-1.5">
                   <CheckSquare className="w-3.5 h-3.5" />
-                  <span>Wrike Work Intelligence</span>
+                  <span>FIUUU Work Intelligence</span>
                 </div>
                 <p className="text-label leading-snug">
                   Converting this idea writes directly to the backend database, schedules SLA timers, and initializes workflows.
@@ -520,7 +517,7 @@ export const IdeateCanvasView: React.FC<IdeateCanvasViewProps> = ({ onNavigate, 
                     className="wrike-input"
                   >
                     <option value="green">Emerald Green (Strategic)</option>
-                    <option value="blue">Wrike Blue (Architecture)</option>
+                    <option value="blue">FIUUU Blue (Architecture)</option>
                     <option value="amber">Amber (Compliance/Audit)</option>
                     <option value="coral">Coral Red (High Threat/IR)</option>
                     <option value="purple">Purple (DevSecOps)</option>

@@ -7,14 +7,22 @@ import { ThreatAnalysisService } from '../services/threat-analysis.service.js';
 import { ThreatGovernanceAdminService } from '../services/threat-governance-admin.service.js';
 import { ThreatReadinessService } from '../services/threat-readiness.service.js';
 import { ThreatComplianceApplicabilityService } from '../services/threat-compliance-applicability.service.js';
+import { ThreatFindingReassessmentService } from '../services/threat-finding-reassessment.service.js';
+import { ThreatGovernanceOperationsService } from '../services/threat-governance-operations.service.js';
 
 const object = z.object({}).passthrough();
-const modelInput = object.extend({ title: z.string().trim().min(1).max(255), description: z.string().max(10000).optional(), organizationId: z.string().trim().min(1).optional(), serviceId: z.string().trim().optional(), assetId: z.string().trim().optional(), projectId: z.string().trim().optional(), changeId: z.string().trim().optional(), releaseId: z.string().trim().optional(), criticality: z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']).optional(), dataClassification: z.string().trim().optional(), businessOwnerId: z.string().trim().optional(), technicalOwnerId: z.string().trim().optional() });
+const modelInput = object.extend({ title: z.string().trim().min(1).max(255), description: z.string().max(10000).optional(), organizationId: z.string().trim().min(1).optional(), serviceId: z.string().trim().optional(), assetId: z.string().trim().optional(), projectId: z.string().trim().optional(), projectOnboarding: z.boolean().optional(), changeId: z.string().trim().optional(), releaseId: z.string().trim().optional(), criticality: z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']).optional(), dataClassification: z.string().trim().optional(), businessOwnerId: z.string().trim().optional(), technicalOwnerId: z.string().trim().optional() });
 const threatInput = object.extend({ title: z.string().trim().min(1).max(255), description: z.string().trim().min(1), attackScenario: z.string().trim().min(1), categories: z.array(z.string().trim().min(1)).min(1), inherentLikelihood: z.coerce.number().int().min(1).max(5), inherentImpact: z.coerce.number().int().min(1).max(5) });
 const controlInput = object.extend({ title: z.string().trim().min(1).max(255), description: z.string().trim().min(1), controlType: z.string().trim().min(1) });
-const verificationInput = object.extend({ verificationType: z.string().trim().min(1), testCase: z.string().trim().min(1), expectedResult: z.string().trim().min(1), result: z.enum(['NOT_RUN', 'PASS', 'FAIL', 'PARTIAL', 'EXPIRED']) });
+const verificationInput = object.extend({ verificationType: z.string().trim().min(1), testCase: z.string().trim().min(1), expectedResult: z.string().trim().min(1), result: z.enum(['NOT_RUN', 'PASS', 'FAIL', 'PARTIAL', 'EXPIRED']), executionContext: z.object({ target: z.string().trim().max(500).optional(), environment: z.string().trim().max(128).optional(), buildReference: z.string().trim().max(500).optional(), tool: z.string().trim().max(255).optional(), toolVersion: z.string().trim().max(128).optional(), configurationReference: z.string().trim().max(500).optional(), runReference: z.string().trim().max(500).optional() }).strict().optional() });
 
 export class ThreatModelsController {
+  static operations=(req:AuthenticatedRequest,res:Response)=>this.execute(req,res,()=>ThreatGovernanceOperationsService.get(req.user!));
+  static complianceScopeFacts=(req:AuthenticatedRequest,res:Response)=>this.execute(req,res,()=>ThreatComplianceApplicabilityService.scopeFacts(this.param(req.params.id),req.body,req.user!));
+  static complianceScopeReview=(req:AuthenticatedRequest,res:Response)=>this.execute(req,res,()=>ThreatComplianceApplicabilityService.reviewScope(this.param(req.params.id),req.body,req.user!));
+  static correlationPolicy=(req:AuthenticatedRequest,res:Response)=>this.execute(req,res,()=>ThreatFindingReassessmentService.policy(req.body,req.user!));
+  static correlationPolicyReview=(req:AuthenticatedRequest,res:Response)=>this.execute(req,res,()=>ThreatFindingReassessmentService.review(req.body,req.user!));
+  static ownerAttestation=(req:AuthenticatedRequest,res:Response)=>this.execute(req,res,()=>ThreatReadinessService.attest(this.param(req.params.id),req.body,req.user!));
   static complianceProfile=(req:AuthenticatedRequest,res:Response)=>this.execute(req,res,()=>ThreatComplianceApplicabilityService.profile(req.body,req.user!));
   static complianceProfileReview=(req:AuthenticatedRequest,res:Response)=>this.execute(req,res,()=>ThreatComplianceApplicabilityService.reviewProfile(req.body,req.user!));
   static complianceApplicability=(req:AuthenticatedRequest,res:Response)=>this.execute(req,res,()=>ThreatComplianceApplicabilityService.decide(this.param(req.params.id),req.body,req.user!));
@@ -41,6 +49,7 @@ export class ThreatModelsController {
   private static context(req: AuthenticatedRequest) { return { correlationId: req.correlationId, ipAddress: req.ip, userAgent: req.get('user-agent') }; }
 
   static list = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ threatModels: await ThreatModelService.list(req.user!, req.query) }));
+  static scopeOptions = (req: AuthenticatedRequest, res: Response): Promise<void> => this.execute(req, res, async () => ({ scopeOptions: await ThreatModelService.scopeOptions(req.user!) }));
   static downloadEvidence = async(req:AuthenticatedRequest,res:Response):Promise<void>=>{
     try{const evidence=await ThreatModelService.downloadEvidence(this.param(req.params.id),this.param(req.params.evidenceId),req.user!);res.set('Cache-Control','no-store');res.set('X-Content-Type-Options','nosniff');res.set('Content-Type','application/octet-stream');res.set('Content-Disposition',`attachment; filename*=UTF-8''${encodeURIComponent(evidence.fileName)}`);res.send(evidence.buffer);}
     catch(error){res.status(403).json({success:false,error:error instanceof Error?error.message:'Evidence download denied.'});}

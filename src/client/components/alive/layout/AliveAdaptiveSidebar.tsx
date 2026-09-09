@@ -162,7 +162,7 @@ export const AliveAdaptiveSidebar: React.FC<AliveAdaptiveSidebarProps> = ({
                                   : 'bg-semantic-subtle text-semantic-muted border border-semantic-border'
                               }`}
                             >
-                              {count}
+                              {count >= 100 ? '99+' : count}
                             </span>
                           )}
                         </>

@@ -1,0 +1,79 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+AKTİVLƏR VƏ CMDB
+/
+İnventar sinxronizasiyaları
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+AKTİVLƏR VƏ CMDB
+İnventar sinxronizasiyaları
+
+Audit olunan, connector üzrə inventar icra tarixçəsi.
+
+Live updates are enabled.
+
+Yenilə
+GÖRÜNƏN RUN-LAR
+0
+SON AŞKAR EDİLƏN
+0
+SON UĞURSUZ
+0
+Connector
+Select a connector
+Active Directory (EXPRESSBANK.AZ)
+Palo Alto Cortex
+Printer Server SRV010 (read-only)
+VCenter 1
+VCenter Infosec
+VCenter RC 02
+VCenter Test
+
+Choose a connector to inspect or queue inventory sync.
+
+İCRA ET	STATE	DİSCOVERED	FAİLED	QUEUED
+No records found.
+0 records
+Əvvəlki
+Növbəti

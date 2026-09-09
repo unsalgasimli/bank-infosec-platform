@@ -1,0 +1,111 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+AKTİVLƏR VƏ CMDB
+/
+Discovery Sources
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+AKTİVLƏR VƏ CMDB
+Discovery Sources
+
+Connector-scoped infrastructure and identity evidence. Secrets stay server-side; discovery never bypasses correlation.
+
+Live updates are enabled.
+
+Yenilə
+Use existing Active Directory
+Add Active Directory
+Add SMB printers
+Add Cortex
+Add vCenter
+Active Directory (EXPRESSBANK.AZ): SUCCEEDED • 1187 discovered / 0 failed
+Palo Alto Cortex: SUCCEEDED • 1593 discovered / 0 failed
+Printer Server SRV010 (read-only): FAILED • 0 discovered / 0 failed
+VCenter 1: PARTIAL • 417 discovered / 18 failed
+VCenter Infosec: SUCCEEDED • 91 discovered / 0 failed
+VCenter RC 02: PARTIAL • 177 discovered / 3 failed
+VCenter Test: RUNNING • 338 discovered / 9 failed
+CANONİCAL ASSETS
+21081
+CORTEX COVERAGE
+8%
+1586 managed · 13039 stale
+RECONCİLİATİON REQUİRED
+43
+312 AD without Cortex
+AD	SOURCE TYPE	MÜHİT	VERSİYA	VƏZİYYƏT	LAST SUCCESS	ƏMƏLİYYATLAR
+
+Active Directory (EXPRESSBANK.AZ)
+ldaps://DC01.Expressbank.az:636
+	Active Directory	İSTEHSALAT (PROD)	LDAPS	HEALTHY	9/7/2026, 9:58:31 AM	
+
+
+Palo Alto Cortex
+https://api-exb.xdr.uk.paloaltonetworks.com
+	Palo Alto Cortex	İSTEHSALAT (PROD)	HTTPS API	HEALTHY	9/7/2026, 10:27:25 AM	
+
+
+Printer Server SRV010 (read-only)
+\\192.168.0.110
+	SMB printer shares (read-only)	İSTEHSALAT (PROD)	SMB • Read-only	DEGRADED	9/3/2026, 1:15:33 PM	
+
+
+VCenter 1
+vcenter01.expressbank.az:443
+	VMware vCenter	PROD	8.0.3.00400	DEGRADED	9/7/2026, 11:17:03 AM	
+
+
+VCenter Infosec
+vcenter-itsec.expressbank.az:443
+	VMware vCenter	PROD	8.0.0.10000	HEALTHY	9/7/2026, 11:53:09 AM	
+
+
+VCenter RC 02
+vcenterrc02.expressbank.az:443
+	VMware vCenter	PROD	8.0.3.00400	DEGRADED	9/7/2026, 12:23:15 PM	
+
+
+VCenter Test
+vcentertest.expressbank.az:443
+	VMware vCenter	PROD	8.0.3.00400	HEALTHY	9/7/2026, 5:40:31 PM	

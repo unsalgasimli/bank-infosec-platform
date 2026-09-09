@@ -35,14 +35,11 @@ export type DestinationId =
   | 'threat-modeling'
   | 'audit-compliance'
   // Assets & CMDB
-  | 'asset-inventory'
   | 'discovery-sources'
   | 'discovery-runs'
-  | 'correlation-review'
   | 'configuration-items'
   | 'business-services'
   | 'applications'
-  | 'relationship-map'
   // Knowledge
   | 'knowledge-base'
   // Analytics
@@ -237,14 +234,6 @@ export const NAVIGATION_MODULES: NavigationModule[] = [
         description: 'One canonical CMDB registry with infrastructure, applications, business services, ownership, lifecycle and quality views.',
       },
       {
-        id: 'asset-inventory',
-        label: 'Verified Assets',
-        moduleId: 'assets-cmdb',
-        iconName: 'Boxes',
-        badgeKey: 'assets',
-        description: 'Verified canonical assets with ownership, lifecycle and controlled discovery correlation.',
-      },
-      {
         id: 'discovery-sources',
         label: 'Discovery Sources',
         moduleId: 'assets-cmdb',
@@ -257,20 +246,6 @@ export const NAVIGATION_MODULES: NavigationModule[] = [
         moduleId: 'assets-cmdb',
         iconName: 'RefreshCw',
         description: 'Review connector-scoped inventory collection, evidence ingestion and bounded failure details.',
-      },
-      {
-        id: 'correlation-review',
-        label: 'Evidence & Correlation',
-        moduleId: 'assets-cmdb',
-        iconName: 'GitMerge',
-        description: 'Review discovered source evidence and govern its correlation to canonical CMDB assets.',
-      },
-      {
-        id: 'relationship-map',
-        label: 'Dependency Map',
-        moduleId: 'assets-cmdb',
-        iconName: 'Network',
-        description: 'Interactive dependency graph linking business services, applications, infrastructure and operational records.',
       },
     ],
   },
@@ -515,7 +490,7 @@ export function resolveLegacyRoute(route: string): { destinationId: DestinationI
     case 'admin-center':
       return { destinationId: 'admin-settings' };
     case 'assets':
-      return { destinationId: 'asset-inventory' };
+      return { destinationId: 'configuration-items' };
     case 'security-exceptions':
       return { destinationId: 'policy-exceptions' };
 

@@ -9,8 +9,8 @@ const SESSION_IDLE_TTL_MS = config.SESSION_TIMEOUT_MINUTES * 60 * 1000;
 const SESSION_ABSOLUTE_TTL_MS = config.SESSION_ABSOLUTE_TIMEOUT_HOURS * 60 * 60 * 1000;
 const useProcessLocalTestStore = () =>
   config.DB_TYPE === 'memory' ||
-  process.env.NODE_ENV === 'test' ||
-  process.argv.some((argument) => argument === '--test' || argument.includes('.test.ts') || argument.includes('test-concurrency'));
+  (process.env.THREAT_INTEGRATION_REQUIRED !== '1' && (process.env.NODE_ENV === 'test' ||
+  process.argv.some((argument) => argument === '--test' || argument.includes('.test.ts') || argument.includes('test-concurrency'))));
 
 interface SessionRecord {
   userId: string;

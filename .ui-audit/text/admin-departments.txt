@@ -1,0 +1,872 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+İDARƏETMƏ
+/
+Şöbələr və komandalar
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+Departamentlər və İdarəetmə Mərkəzi
+43 Departament
+
+Bank strukturu, təhlükəsizlik perimetri, departament SLA-ları və idarəetmə parametrləri
+
+Departamentlərarası iş axınları
+Yeni Departament
+
+DEPARTAMENTLƏR
+
+43
+(1 şöbə/bölmə)
+
+ÜMUMİ ƏMƏKDAŞLAR
+
+750
+heyət üzvü
+
+BAĞLAYICILAR
+
+0
+inteqrasiya
+
+AKTİV TAPŞIRIQLAR
+
+0
+icrada
+Hamısı
+43
+Filiallar şəbəkəsi
+18
+Təhlükəsizlik və risk
+7
+İT və infrastruktur
+2
+Bankçılıq və maliyyə
+10
+İnsan və təşkilat
+1
+Hüquq və idarəetmə
+3
+Əməliyyat və təminat
+2
+ƏLAVƏ FİLTER
+Hamısı
+Admin olduğum
+Aktiv tapşırığı olan
+Strukturu olan
+43 departament göstərilir
+Filiallar şəbəkəsi
+BASE_BAKIKHANOV_FILIALI
+Bakıxanov filialı
+İnzibatçı
+
+Expressbank Bakıxanov filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+12
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Azer Gasimzada
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Bankçılıq və maliyyə
+CORP_BANK
+Biznes Bankçılıq Departamenti
+İnzibatçı
+
+Korporativ müştərilər, KOB bankçılığı və kommersiya kreditləri
+
+Əsas struktur vahidi
+Heyət
+8
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Filiallar şəbəkəsi
+BASE_BERDE_FILIALI
+Bərdə filialı
+İnzibatçı
+
+Expressbank Bərdə filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+18
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Elshad Faracov
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Filiallar şəbəkəsi
+BASE_ELMLER_FILIALI
+Elmlər Akademiyası filialı
+İnzibatçı
+
+Expressbank Elmlər Akademiyası filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+14
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Filiallar şəbəkəsi
+BASE_GENCE_FILIALI
+Gəncə filialı
+İnzibatçı
+
+Expressbank Gəncə filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+34
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Bankçılıq və maliyyə
+HESAB_DEPT
+Hesablaşmalar Departamenti
+İnzibatçı
+
+Milli və xarici valyutada hesablaşmalar, klirinq və kassa əməliyyatları
+
+Əsas struktur vahidi
+Heyət
+41
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Lala Talibova
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Filiallar şəbəkəsi
+BRANCH_HAZI_ASLANOV
+Həzi Aslanov filialı
+İnzibatçı
+
+Expressbank Həzi Aslanov filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+10
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 2s
+İdarə et və Tənzimləmələr
+Bankçılıq və maliyyə
+CREDIT
+Kredit və Anderraytinq Departamenti
+İnzibatçı
+
+Kredit təhlili, anderraytinq və kredit məhsullarının idarə edilməsi
+
+Əsas struktur vahidi
+Heyət
+5
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Filiallar şəbəkəsi
+BASE_LENKERAN_FILIALI
+Lənkəran filialı
+İnzibatçı
+
+Expressbank Lənkəran filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+24
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Ramil Tahirov
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Bankçılıq və maliyyə
+FINANCE
+Maliyyə və Mühasibatlıq Departamenti
+İnzibatçı
+
+Mühasibat uçotu, maliyyə hesabatlığı və büdcə planlaması
+
+Əsas struktur vahidi
+Heyət
+17
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Filiallar şəbəkəsi
+BASE_MINGECEVIR_FILIALI
+Mingəçevir filialı
+İnzibatçı
+
+Expressbank Mingəçevir filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+31
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Bankçılıq və maliyyə
+CALL_CENTER
+Müştəri Xidmətləri və Çağrı Mərkəzi
+İnzibatçı
+
+Çağrı mərkəzi, müştəri sorğuları və informasiya dəstəyi
+
+Əsas struktur vahidi
+Heyət
+28
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Maharram Huseynov
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Filiallar şəbəkəsi
+BRANCH_MERKEZ
+Mərkəz filialı
+İnzibatçı
+
+Expressbank Mərkəz filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+0
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 2s
+İdarə et və Tənzimləmələr
+Filiallar şəbəkəsi
+BASE_NEFTCILER_FILIALI
+Neftçilər filialı
+İnzibatçı
+
+Expressbank Neftçilər filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+20
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Filiallar şəbəkəsi
+BASE_NESIMI_FILIALI
+Nəsimi filialı
+İnzibatçı
+
+Expressbank Nəsimi filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+12
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Bankçılıq və maliyyə
+RETAIL
+Pərakəndə Bankçılıq Departamenti
+İnzibatçı
+
+Pərakəndə müştərilərə xidmət, satış və filial şəbəkəsi kurasiyası
+
+Əsas struktur vahidi
+Heyət
+62
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Filiallar şəbəkəsi
+BASE_QARADAG_FILIALI
+Qaradağ filialı
+İnzibatçı
+
+Expressbank Qaradağ filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+14
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Fuad Aliyev
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Filiallar şəbəkəsi
+BASE_QUSAR_FILIALI
+Qusar filialı
+İnzibatçı
+
+Expressbank Qusar filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+9
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Tahir Balaqadashov
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Bankçılıq və maliyyə
+MARKETING
+Reklam və Marketinq Departamenti
+İnzibatçı
+
+Marketinq kommunikasiyaları, ictimaiyyətlə əlaqələr və brend idarəetməsi
+
+Əsas struktur vahidi
+Heyət
+13
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Bankçılıq və maliyyə
+DIGITAL_BANK
+Rəqəmsal Bankçılıq Departamenti
+İnzibatçı
+
+Mobil bankçılıq, internet bankçılıq və rəqəmsal transformasiya
+
+Əsas struktur vahidi
+Heyət
+4
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 2s
+İdarə et və Tənzimləmələr
+Filiallar şəbəkəsi
+BASE_SUMQAYIT_FILIALI
+Sumqayıt filialı
+İnzibatçı
+
+Expressbank Sumqayıt filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+25
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Filiallar şəbəkəsi
+BASE_XACMAZ_FILIALI
+Xaçmaz filialı
+İnzibatçı
+
+Expressbank Xaçmaz filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+17
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Filiallar şəbəkəsi
+BASE_XETAI_FILIALI
+Xətai filialı
+İnzibatçı
+
+Expressbank Xətai filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+17
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Bankçılıq və maliyyə
+TREASURY
+Xəzinədarlıq Departamenti
+İnzibatçı
+
+Likvidliyin idarə edilməsi, valyuta bazarları və qiymətli kağızlar
+
+Əsas struktur vahidi
+Heyət
+3
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Filiallar şəbəkəsi
+BASE_YASAMAL_FILIALI
+Yasamal filialı
+İnzibatçı
+
+Expressbank Yasamal filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+26
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Adil Kamilov
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Bankçılıq və maliyyə
+ODENIS_DEPT
+Ödəniş Sistemlərinin İdarə Edilməsi Departamenti
+İnzibatçı
+
+Plastik kartlar, prosessinq, POS terminallar və ödəniş sistemləri
+
+Əsas struktur vahidi
+Heyət
+14
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Orkhan Mirzamammadli
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Filiallar şəbəkəsi
+BASE_SIRVAN_FILIALI
+Şirvan filialı
+İnzibatçı
+
+Expressbank Şirvan filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+16
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Filiallar şəbəkəsi
+BASE_EHMEDLI_FILIALI
+Əhmədli filialı
+İnzibatçı
+
+Expressbank Əhmədli filialı regional filialı
+
+Əsas struktur vahidi
+Heyət
+28
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Qudrat Quliyev
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+İT və infrastruktur
+CORE_BANKING
+Bank Əməliyyat Sistemləri və Proqram Təminatı
+İnzibatçı
+
+Avtomatlaşdırılmış bank sistemi (ABS), prosessinq və bank proqram təminatı
+
+Əsas struktur vahidi
+Heyət
+0
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 2s
+İdarə et və Tənzimləmələr
+İT və infrastruktur
+IT_DEPT
+İnformasiya Texnologiyaları Departamenti
+İnzibatçı
+
+Bankın İT infrastrukturu, şəbəkə, telekommunikasiya və sistem inzibatçılığı
+
+Əsas struktur vahidi
+Heyət
+79
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Aleksey Gorbachev
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Təhlükəsizlik və risk
+AUDİT
+Daxili Audit Departamenti
+İnzibatçı
+
+Daxili audit, audit komitəsi və təftiş mexanizmləri
+
+Əsas struktur vahidi
+Heyət
+5
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 2s
+İdarə et və Tənzimləmələr
+Təhlükəsizlik və risk
+BASE_DAXILI_NEZARET_DEPA
+Daxili Nəzarət Departamenti
+İnzibatçı
+
+Daxili nəzarət, prosedur yoxlamaları və operativ audit
+
+Əsas struktur vahidi
+Heyət
+21
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Hecer M. Aliyeva
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Təhlükəsizlik və risk
+COMPLIANCE
+Komplayens Departamenti
+İnzibatçı
+
+AML, CFT və qanunvericilik tələblərinə uyğunluq
+
+Əsas struktur vahidi
+Heyət
+2
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 2s
+İdarə et və Tənzimləmələr
+Təhlükəsizlik və risk
+GRC
+Komplayens və Risk Departamenti
+İnzibatçı
+
+Tənzimləyici uyğunluq, risklərin idarə edilməsi, audit və daxili nəzarət
+
+Əsas struktur vahidi
+Heyət
+33
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Samir Taghiyev
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Təhlükəsizlik və risk
+RISK_DEPT
+Risklərin İdarə Edilməsi Departamenti
+İnzibatçı
+
+Maliyyə, kredit və əməliyyat risklərinin təhlili və idarə olunması
+
+Əsas struktur vahidi
+Heyət
+0
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 2s
+İdarə et və Tənzimləmələr
+Təhlükəsizlik və risk
+PHYS_SEC
+Texniki və Fiziki Təhlükəsizlik Şöbəsi
+İnzibatçı
+
+Bina mühafizəsi, video-nəzarət, girişə nəzarət və fiziki təhlükəsizlik
+
+Əsas struktur vahidi
+Heyət
+3
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Təhlükəsizlik və risk
+INFOSEC
+İnformasiya Təhlükəsizliyi Departamenti
+İnzibatçı
+
+Kibertəhlükəsizlik, SOC, insidentlərin idarə edilməsi, DLP və təhlükəsizlik arxitekturası
+
+1 şöbə
+1 vahid
+Heyət
+25
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Unsal Gasimli
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Əməliyyat və təminat
+PMO
+Biznes Proseslərin Təhlili və PMO
+İnzibatçı
+
+Layihələrin idarə olunması, proseslərin optimallaşdırılması və keyfiyyətə nəzarət
+
+Əsas struktur vahidi
+Heyət
+2
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Hüquq və idarəetmə
+LEGAL
+Hüquq Departamenti
+İnzibatçı
+
+Hüquqi təminat, məhkəmə işləri və müqavilələrin hüquqi ekspertizası
+
+Əsas struktur vahidi
+Heyət
+7
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Hüquq və idarəetmə
+KATIB_DEPT
+Katiblik və Tərcümə Şöbəsi
+İnzibatçı
+
+Korporativ katiblik, sənədləşmə və tərcümə xidməti
+
+Əsas struktur vahidi
+Heyət
+15
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Naila Mirzabayova
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Hüquq və idarəetmə
+EXECUTIVE
+İdarə Heyəti və Rəhbərlik
+İnzibatçı
+
+Müşahidə Şurası, İdarə Heyəti və icraçı rəhbərlik
+
+Əsas struktur vahidi
+Heyət
+12
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+İnsan və təşkilat
+HR_DEPT
+İnsan Resursları Departamenti
+İnzibatçı
+
+İşə qəbul, təlim, inkişaf, əmək haqqı və kadr inzibatçılığı
+
+Əsas struktur vahidi
+Heyət
+11
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr
+Əməliyyat və təminat
+INZIBATI_DEPT
+İnzibati Təsərrüfat və Satınalma Departamenti
+İnzibatçı
+
+Satınalmalar, təchizat, inzibati təsərrüfat və maddi-texniki təminat
+
+Əsas struktur vahidi
+Heyət
+13
+Bağlayıcı
+0
+Tapşırıq
+0
+Rəhbər:
+Təyin olunmayıb
+SLA: 24s · P1: 4s
+İdarə et və Tənzimləmələr

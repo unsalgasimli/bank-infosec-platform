@@ -191,7 +191,7 @@ export class WrikeController {
         category: idea.category === 'INCIDENT_IR' ? 'INCIDENT' : idea.category === 'COMPLIANCE' ? 'SECURITY_REVIEW' : 'VULNERABILITY',
         securityDomain: idea.category === 'INCIDENT_IR' ? 'SOC' : idea.category === 'COMPLIANCE' ? 'GRC' : 'APPSEC',
         title: idea.title,
-        description: `${idea.description}\n\n*Converted from Wrike Ideate Canvas (${idea.category})*`,
+        description: `${idea.description}\n\n*Converted from FIUUU Ideate Canvas (${idea.category})*`,
         statusId: initialStatus.id,
         statusName: initialStatus.name,
         statusCategory: initialStatus.category,
@@ -460,9 +460,93 @@ export class WrikeController {
   // 4. WRIKE DYNAMIC REQUEST FORMS API
   // ==========================================
 
+  public static readonly CANONICAL_REQUEST_FORMS: RequestFormDefinition[] = [
+    {
+      id: 'form-incident',
+      title: 'Report Cyber Incident / Data Leak',
+      category: 'SOC & Incident Response',
+      iconName: 'Flame',
+      color: 'red',
+      description: 'Emergency intake for detected brute-force attacks, malware, ransomware, or confidential data leakage.',
+      destinationFolder: 'Incident Response Operations 📁',
+      defaultSeverity: 'CRITICAL',
+      defaultPriority: 'P1_URGENT',
+      defaultTicketType: 'INCIDENT',
+      isActive: true,
+      fields: [
+        { id: 'title', label: 'Incident Headline / Summary', type: 'text', required: true, placeholder: 'e.g. Suspicious unauthorized traffic to SWIFT host' },
+        { id: 'urgency', label: 'Urgency Tier', type: 'select', required: true, options: ['EMERGENCY', 'HIGH', 'MEDIUM', 'LOW'], defaultValue: 'HIGH' },
+        { id: 'targetSystem', label: 'Target Banking System', type: 'select', required: true, options: ['SWIFT Alliance Gateway', 'Apex Core Banking Gateway (Temenos T24)', 'Apex Retail Mobile Banking Backend API', 'Perimeter DC1 Gateway Firewall'], defaultValue: 'SWIFT Alliance Gateway' },
+        { id: 'justification', label: 'Technical Evidence & Indicators', type: 'textarea', required: false, placeholder: 'Provide IP addresses, affected workstations, timestamps...' },
+      ],
+    },
+    {
+      id: 'form-exception',
+      title: 'Production Firewall Exception Waiver',
+      category: 'GRC Dual-Control',
+      iconName: 'Lock',
+      color: 'amber',
+      description: 'Request temporary firewall port whitelist, cipher waiver, or administrative bypass requiring CISO 4-eyes sign-off.',
+      destinationFolder: 'Firewall & Network Exceptions 📁',
+      defaultSeverity: 'HIGH',
+      defaultPriority: 'P2_HIGH',
+      defaultTicketType: 'SECURITY_EXCEPTION',
+      isActive: true,
+      fields: [
+        { id: 'title', label: 'Exception Request Summary', type: 'text', required: true, placeholder: 'e.g. Temporary Port 8443 bypass for payment staging' },
+        { id: 'targetSystem', label: 'Target Banking System', type: 'select', required: true, options: ['SWIFT Alliance Gateway', 'Apex Core Banking Gateway (Temenos T24)', 'Perimeter DC1 Gateway Firewall'], defaultValue: 'Perimeter DC1 Gateway Firewall' },
+        { id: 'durationDays', label: 'Exception Validity Period (Days)', type: 'select', required: true, options: ['7', '30', '60'], defaultValue: '30' },
+        { id: 'justification', label: 'Business Justification & Compensating Controls', type: 'textarea', required: true, placeholder: 'Explain business reason, impact if denied, IPS monitoring...' },
+      ],
+    },
+    {
+      id: 'form-pentest',
+      title: 'Application Security Pentest Intake',
+      category: 'DevSecOps & AppSec',
+      iconName: 'Shield',
+      color: 'blue',
+      description: 'Schedule pre-release SAST, DAST, and manual penetration testing for mobile & core banking API releases.',
+      destinationFolder: 'Core Banking Application Hardening 📁',
+      defaultSeverity: 'MEDIUM',
+      defaultPriority: 'P2_HIGH',
+      defaultTicketType: 'SECURITY_REVIEW',
+      isActive: true,
+      fields: [
+        { id: 'title', label: 'Release / Application Name', type: 'text', required: true, placeholder: 'e.g. Mobile Banking iOS v3.4 Release Pentest' },
+        { id: 'targetSystem', label: 'Target Banking System', type: 'select', required: true, options: ['Apex Retail Mobile Banking Backend API', 'Apex Core Banking Gateway (Temenos T24)'], defaultValue: 'Apex Retail Mobile Banking Backend API' },
+        { id: 'justification', label: 'Release Scope & Testing Schedule', type: 'textarea', required: false, placeholder: 'Endpoints to test, testing window, contact person...' },
+      ],
+    },
+    {
+      id: 'form-asset',
+      title: 'New Banking Asset & Server Registration',
+      category: 'CMDB & Architecture',
+      iconName: 'Layers',
+      color: 'green',
+      description: 'Register production Linux server, firewall, or API gateway into CMDB with data classification tier.',
+      destinationFolder: 'Banking Infrastructure Assets 📁',
+      defaultSeverity: 'LOW',
+      defaultPriority: 'P3_MEDIUM',
+      defaultTicketType: 'SECURITY_REVIEW',
+      isActive: true,
+      fields: [
+        { id: 'title', label: 'Asset Name / Hostname', type: 'text', required: true, placeholder: 'e.g. srv-dc1-auth-02.apexbank.local' },
+        { id: 'targetSystem', label: 'Primary Cluster / Environment', type: 'select', required: true, options: ['DC1 Primary Datacenter', 'DC2 Disaster Recovery Datacenter', 'Cloud Private VPC'], defaultValue: 'DC1 Primary Datacenter' },
+        { id: 'justification', label: 'Hardware Specs & Network Subnet', type: 'textarea', required: false, placeholder: 'IP Address, OS version, application hosted...' },
+      ],
+    },
+  ];
+
+  public static ensureRequestForms(): RequestFormDefinition[] {
+    if (!db.data.requestForms || db.data.requestForms.length === 0) {
+      db.data.requestForms = [...WrikeController.CANONICAL_REQUEST_FORMS];
+    }
+    return db.data.requestForms;
+  }
+
   public static async listRequestForms(req: Request, res: Response): Promise<void> {
     try {
-      const forms = db.data.requestForms || [];
+      const forms = WrikeController.ensureRequestForms();
       res.json({ success: true, forms });
     } catch (err: any) {
       logger.error({ err }, 'Failed to list request forms');
@@ -475,6 +559,7 @@ export class WrikeController {
       const { id: formId } = req.params;
       const { values: rawValues } = req.body;
 
+      WrikeController.ensureRequestForms();
       const form = (db.data.requestForms || []).find((f) => f.id === formId);
       if (!form) {
         res.status(404).json({ success: false, error: 'Request form not found' });
@@ -522,7 +607,7 @@ export class WrikeController {
         category: form.defaultTicketType as any,
         securityDomain: form.category.includes('SOC') ? 'SOC' : form.category.includes('GRC') ? 'GRC' : 'APPSEC',
         title: values?.title || `[${form.title}] ${values?.targetSystem || 'Banking System'}`,
-        description: `### ${form.title}\n\n**Destination**: ${form.destinationFolder}\n\n**Justification / Details**:\n${values?.justification || 'Submitted via Wrike Request Portal'}\n\n**Parameters**:\n${JSON.stringify(values, null, 2)}`,
+        description: `### ${form.title}\n\n**Destination**: ${form.destinationFolder}\n\n**Justification / Details**:\n${values?.justification || 'Submitted via FIUUU Request Portal'}\n\n**Parameters**:\n${JSON.stringify(values, null, 2)}`,
         statusId: initialStatus.id,
         statusName: initialStatus.name,
         statusCategory: initialStatus.category,

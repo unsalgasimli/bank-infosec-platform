@@ -2,12 +2,16 @@ import amqp, { type Channel, type ChannelModel, type ConfirmChannel, type Consum
 import { config } from '../config/index.js';
 import { logger } from './logger.service.js';
 import type { OutboxEvent } from './outbox.service.js';
+import { ThreatGovernanceOperationsService } from './threat-governance-operations.service.js';
 
 // A single generic worker is intentional for the first rollout. The routing
 // contract permits individual queues (workflow, notifications, integrations)
 // to be split out later without changing API producers or outbox rows.
 export const DISCOVERY_QUEUE = 'aegissec.discovery.v2';
-export const WORKER_QUEUES = ['aegissec.worker', DISCOVERY_QUEUE] as const;
+/** SMB enumeration is deliberately assigned to a Windows-hosted worker.  The
+ * general (Linux-compatible) discovery queue never executes these commands. */
+export const SMB_PRINTER_DISCOVERY_QUEUE = 'aegissec.discovery.smb-printer.windows.v1';
+export const WORKER_QUEUES = ['aegissec.worker', DISCOVERY_QUEUE, SMB_PRINTER_DISCOVERY_QUEUE] as const;
 const MAX_RETRY_ATTEMPTS = 5;
 
 export class RetryableWorkerError extends Error {
@@ -35,7 +39,10 @@ export class QueueService {
         durable: true,
         arguments: { 'x-dead-letter-exchange': `${config.RABBITMQ_EXCHANGE}.dlx` },
       });
-      await channel.bindQueue(queue, config.RABBITMQ_EXCHANGE, queue === DISCOVERY_QUEUE ? 'cmdb.discovery.#' : '#');
+      const bindingKey = queue === SMB_PRINTER_DISCOVERY_QUEUE
+        ? 'cmdb.discovery.smb-printer.#'
+        : queue === DISCOVERY_QUEUE ? 'cmdb.discovery.#' : '#';
+      await channel.bindQueue(queue, config.RABBITMQ_EXCHANGE, bindingKey);
       await channel.assertQueue(`${queue}.dead`, { durable: true });
       await channel.bindQueue(`${queue}.dead`, `${config.RABBITMQ_EXCHANGE}.dlx`, '#');
       await channel.assertQueue(`${queue}.retry`, {
@@ -60,9 +67,15 @@ export class QueueService {
   public static async publish(event: OutboxEvent): Promise<void> {
     await this.connect();
     if (!this.channel) throw new Error('RabbitMQ channel is unavailable');
+    // RabbitMQ routing is connector-capability aware while the durable event
+    // contract remains `cmdb.discovery.sync.requested`.  This prevents a
+    // Linux worker from winning the race to execute a Windows-only SMB job.
+    const routingKey = event.topic === 'cmdb.discovery.sync.requested' && event.payload?.connectorType === 'SMB_PRINTER'
+      ? 'cmdb.discovery.smb-printer.requested'
+      : event.topic;
     const accepted = this.channel.publish(
       config.RABBITMQ_EXCHANGE,
-      event.topic,
+      routingKey,
       Buffer.from(JSON.stringify(event)),
       { contentType: 'application/json', contentEncoding: 'utf-8', deliveryMode: 2, messageId: event.id, timestamp: Date.now(), type: event.topic }
     );
@@ -81,6 +94,7 @@ export class QueueService {
       try {
         const event = JSON.parse(message.content.toString('utf8')) as OutboxEvent;
         await handler(event);
+        await ThreatGovernanceOperationsService.observe(event.id,queue,Number(message.properties.headers?.['x-aegissec-retry-count']||0),'SUCCEEDED');
         this.channel.ack(message);
       } catch (error) {
         const retries = Number(message.properties.headers?.['x-aegissec-retry-count'] || 0);
@@ -88,6 +102,7 @@ export class QueueService {
           ? { errorMessage: error.message, errorStack: error.stack }
           : { errorMessage: String(error) };
         if (error instanceof RetryableWorkerError && retries < MAX_RETRY_ATTEMPTS) {
+          await ThreatGovernanceOperationsService.observe(message.properties.messageId,queue,retries+1,'RETRY',error);
           this.channel.sendToQueue(`${queue}.retry`, message.content, {
             ...message.properties,
             headers: { ...message.properties.headers, 'x-aegissec-retry-count': retries + 1 },
@@ -97,6 +112,7 @@ export class QueueService {
           return;
         }
         logger.error({ ...errorDetails, queue, messageId: message.properties.messageId, retryAttempt: retries }, 'Worker event failed; sending to dead-letter queue');
+        await ThreatGovernanceOperationsService.observe(message.properties.messageId,queue,retries,'DEAD_LETTER',error);
         this.channel.nack(message, false, false);
       }
     }, { noAck: false });

@@ -1,0 +1,65 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+Service Changes
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+Dəyişikliklərin idarə edilməsi (CAB)
+0
+
+İstehsalat dəyişikliyi avtorizasiyaları, buraxılış pəncərələri və geri qaytarma planları.
+
+Cədvəl
+Kanban
+Bütün elementlər
+Aktiv
+Tamamlanıb
+İxrac et
+Dəyişiklik tələb et
+	AÇAR	TAPŞIRIQ İCMALI	STATUS	CİDDİLİK	PRİORİTET	SLA GERİ SAYIMI	İCRAÇI	HƏDƏF SİSTEM	YARADILDI
+Uyğun tapşırıq tapılmadı.
+Göstərilir 0 ümumi tapşırıq
+Kritik: 0
+İcradadır: 0
+Həll edilib: 0
+Arxiv

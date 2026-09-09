@@ -28,36 +28,81 @@ interface DepartmentHubViewProps {
 }
 
 const DIVISION_CONFIG: Record<string, { label: string; shortLabel: string }> = {
-  ALL: { label: 'Bütün Diviziyalar', shortLabel: 'Hamısı' },
+  ALL: { label: 'Bütün Bölmələr', shortLabel: 'Hamısı' },
+  'group-branches': { label: 'Filiallar şəbəkəsi', shortLabel: 'Filiallar' },
   'div-sec': { label: 'İnformasiya Təhlükəsizliyi', shortLabel: 'Təhlükəsizlik' },
   'div-it': { label: 'İnformasiya Texnologiyaları', shortLabel: 'İT & İnfrastruktur' },
   'div-banking': { label: 'Bank əməliyyatları və biznes', shortLabel: 'Bank & Biznes' },
   'div-hr': { label: 'İnsan Resursları', shortLabel: 'İnsan Resursları' },
+  'group-governance': { label: 'Hüquq və İdarəetmə', shortLabel: 'Hüquq & İdarəetmə' },
+  'group-operations': { label: 'Əməliyyat və Təminat', shortLabel: 'Əməliyyat & Təminat' },
 };
 
 const DEPARTMENT_GROUPS = [
-  { id: 'div-sec', label: 'Təhlükəsizlik və risk', keywords: ['təhlükəsizlik', 'informasiya təhlükəsizliyi', 'kiber', 'risk', 'soc', 'dlp', 'fraud', 'fırıldaq', 'audit', 'uyğunluq'] },
-  { id: 'div-it', label: 'İT və infrastruktur', keywords: ['informasiya texnologiyaları', 'infrastruktur', 'şəbəkə', 'network', 'server', 'sistem', 'texniki dəstək', 'help desk', 'it ', 'it&', 'digital', 'proqram'] },
-  { id: 'div-banking', label: 'Bankçılıq və maliyyə', keywords: ['bank', 'biznes', 'maliyyə', 'kredit', 'ödəniş', 'xəzinə', 'filial', 'kart', 'cash', 'expresspay', 'əməliyyat'] },
-  { id: 'div-hr', label: 'İnsan və təşkilat', keywords: ['insan resursları', 'əmək', 'personal', 'işə qəbul', 'hr ', 'təlim', 'inkişaf'] },
-  { id: 'group-governance', label: 'Hüquq və idarəetmə', keywords: ['hüquq', 'legal', 'korporativ', 'idarəetmə', 'katiblik', 'sənəd', 'arxiv'] },
-  { id: 'group-operations', label: 'Əməliyyat və təminat', keywords: ['satınalma', 'təchizat', 'təsərrüfat', 'logistika', 'anbar', 'inzibati', 'xidmət'] },
+  { id: 'group-branches', label: 'Filiallar şəbəkəsi', keywords: ['filial'] },
+  { id: 'div-sec', label: 'Təhlükəsizlik və risk', keywords: ['təhlükəsizlik', 'informasiya təhlükəsizliyi', 'kiber', 'risk', 'soc', 'dlp', 'audit', 'uyğunluq', 'komplayens'] },
+  { id: 'div-it', label: 'İT və infrastruktur', keywords: ['informasiya texnologiyaları', 'infrastruktur', 'şəbəkə', 'network', 'server', 'sistem', 'texniki dəstək', 'help desk', 'proqram', 'prosessinq'] },
+  { id: 'div-banking', label: 'Bankçılıq və maliyyə', keywords: ['pərakəndə', 'biznes', 'maliyyə', 'kredit', 'ödəniş', 'xəzinə', 'kart', 'cash', 'əməliyyat', 'hesablaşma'] },
+  { id: 'div-hr', label: 'İnsan və təşkilat', keywords: ['insan resursları', 'əmək', 'personal', 'işə qəbul', 'təlim', 'inkişaf'] },
+  { id: 'group-governance', label: 'Hüquq və idarəetmə', keywords: ['hüquq', 'legal', 'korporativ', 'idarəetmə', 'katiblik', 'sənəd', 'müşahidə', 'idarə heyəti'] },
+  { id: 'group-operations', label: 'Əməliyyat və təminat', keywords: ['satınalma', 'təchizat', 'təsərrüfat', 'logistika', 'anbar', 'inzibati', 'pmo', 'proseslərin'] },
   { id: 'group-other', label: 'Digər təşkilati vahidlər', keywords: [] },
 ] as const;
 
-const getDepartmentGroupId = (department: any) => {
+const isBranchDepartment = (department: any): boolean => {
+  const id = (department.id || '').toLowerCase();
+  const code = (department.code || '').toLowerCase();
+  const name = (department.name || '').toLowerCase();
+  return (
+    id.includes('filiali') ||
+    id.includes('filial') ||
+    code.startsWith('branch_') ||
+    code.includes('filial') ||
+    name.includes('filialı') ||
+    name.includes('filiali') ||
+    name.includes('filial')
+  );
+};
+
+const getDepartmentGroupId = (department: any): string => {
+  if (isBranchDepartment(department)) {
+    return 'group-branches';
+  }
+
+  const deptId = (department.id || '').toLowerCase();
+  if (deptId === 'dept-legal' || deptId === 'dept-katiblik-sobesi' || deptId === 'dept-executive') {
+    return 'group-governance';
+  }
+  if (deptId === 'dept-procurement' || deptId === 'dept-pmo') {
+    return 'group-operations';
+  }
+  if (deptId === 'dept-hr') {
+    return 'div-hr';
+  }
+
   const divisionId = department.divisionId || department.division_id;
+  if (divisionId === 'div-sec') return 'div-sec';
+  if (divisionId === 'div-it') return 'div-it';
+  if (divisionId === 'div-banking') return 'div-banking';
+
   const haystack = [
     department.name,
-    department.description,
+    (department.description || '').replace(/expressbank/gi, ''),
     department.code,
     ...(department.sections || []).flatMap((section: any) => [section.name, section.code]),
   ]
     .filter(Boolean)
     .join(' ')
     .toLocaleLowerCase('az-AZ');
-  const nameGroup = DEPARTMENT_GROUPS.find((group) => group.keywords.some((keyword) => haystack.includes(keyword)));
-  return nameGroup?.id || (DIVISION_CONFIG[divisionId] ? divisionId : 'group-other');
+
+  if (['hüquq', 'legal', 'katiblik', 'idarə heyəti'].some((k) => haystack.includes(k))) return 'group-governance';
+  if (['satınalma', 'təsərrüfat', 'təchizat', 'inzibati', 'pmo'].some((k) => haystack.includes(k))) return 'group-operations';
+  if (['insan resursları', 'personal', 'kadr', 'işə qəbul'].some((k) => haystack.includes(k))) return 'div-hr';
+  if (['təhlükəsizlik', 'kiber', 'soc', 'dlp', 'audit', 'risk', 'uyğunluq', 'komplayens'].some((k) => haystack.includes(k))) return 'div-sec';
+  if (['informasiya texnologiyaları', 'infrastruktur', 'şəbəkə', 'server', 'sistem'].some((k) => haystack.includes(k))) return 'div-it';
+  if (['pərakəndə', 'kredit', 'xəzinə', 'hesablaşma', 'kart', 'ödəniş', 'maliyyə'].some((k) => haystack.includes(k))) return 'div-banking';
+
+  return 'group-other';
 };
 
 const getDepartmentGroupLabel = (department: any) =>
@@ -245,7 +290,7 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
                 {t('Departments & Governance Hub')}
               </h1>
               <span className="px-2 py-0.5 rounded-full bg-semantic-brand/10 text-semantic-brand text-caption font-semibold border border-semantic-brand/20">
-                {totalStats.totalDepts} {t('Departments')}
+                <span>{totalStats.totalDepts}</span> {t('Departments')}
               </span>
             </div>
             <p className="text-xs text-semantic-jira-muted-strong mt-0.5">
@@ -418,6 +463,7 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
               <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-0.5 flex-1">
                 {[{ id: 'ALL', label: 'Hamısı' }, ...visibleDepartmentGroups].map((group) => {
                   const isSelected = selectedDivision === group.id;
+                  const count = group.id === 'ALL' ? departments.length : (divisionCounts[group.id] || 0);
                   return (
                     <button
                       key={group.id}
@@ -429,6 +475,11 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
                       }`}
                     >
                       <span>{t(group.label)}</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                        isSelected ? 'bg-white/25 text-white' : 'bg-semantic-border/70 text-semantic-jira-muted-strong'
+                      }`}>
+                        {count}
+                      </span>
                     </button>
                   );
                 })}
@@ -770,7 +821,7 @@ export const DepartmentHubView: React.FC<DepartmentHubViewProps> = ({
 
       {/* Create Department Modal (Super Admin) */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fade-in">
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-semantic-modal-tint/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-semantic-panel border border-semantic-border rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl animate-scale-in">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-semantic-border pb-4">

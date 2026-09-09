@@ -1,0 +1,131 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+TƏHLÜKƏSİZLİK VƏ GRC
+/
+Təhdid modelləşdirməsi
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+Təhdid modelləşdirməsi
+
+Versioned architecture security reviews, verification evidence, risk decisions, and server-enforced release gates.
+
+Governance settings
+New Threat Model
+Previous models
+Səhifə 1
+Next models
+Axtar
+Status
+Hamısı
+Qaralama
+BAXIŞDADIR
+CHANGES_REQUIRED
+Təsdiqlənib
+REVIEW_REQUIRED
+RETIRED
+Arxivlənib
+Səviyyə
+Hamısı
+TM-0
+TM-1
+TM-2
+TM-3
+İlkin risk
+Hamısı
+Kritik
+Yüksək
+Orta
+Aşağı
+Owner ID
+Filtrləri tətbiq et
+Scope, relationships and due dates
+Authorized application coverage and control gaps
+Critical model approval
+0%
+Approved / registered critical models
+Tier 1 coverage
+0%
+0 overdue backlog item(s)
+Tier 2 coverage
+0%
+0 overdue backlog item(s)
+Tier 3 coverage
+0%
+0 overdue backlog item(s)
+Open critical threats
+0
+Release-blocking exposure
+Unverified controls
+0
+Required verification backlog
+Expired verification
+0
+Evidence needs renewal
+Exceptions expiring
+0
+Within 30 days
+MODELS (5)
+TM-2026-0005
+ORTA
+dlp
+v1 · Qaralama
+TM-2026-0004
+ORTA
+PostgreSQL FK integration 1787835065852
+v1 · Qaralama
+TM-2026-0003
+ORTA
+PostgreSQL FK integration 1787834972367
+v1 · Qaralama
+TM-2026-0002
+ORTA
+PostgreSQL FK integration 1787834861619
+v1 · Qaralama
+TM-2026-0001
+ORTA
+PostgreSQL FK integration 1787834765947
+v1 · Qaralama
+Select a Threat Model
+
+Architecture, data flows, controls, evidence, approvals, and release decisions remain in one auditable record.

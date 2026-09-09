@@ -13,8 +13,8 @@ export interface AuthenticatedRequest extends Request {
 
 const useFixtureIdentityStore = () =>
   config.DB_TYPE === 'memory' ||
-  process.env.NODE_ENV === 'test' ||
-  process.argv.some((argument) => argument === '--test' || argument.includes('.test.ts') || argument.includes('test-concurrency'));
+  (process.env.THREAT_INTEGRATION_REQUIRED !== '1' && (process.env.NODE_ENV === 'test' ||
+  process.argv.some((argument) => argument === '--test' || argument.includes('.test.ts') || argument.includes('test-concurrency'))));
 
 export const authMiddleware = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
   const correlationId = (req.headers['x-correlation-id'] as string) || `req-${Date.now()}`;

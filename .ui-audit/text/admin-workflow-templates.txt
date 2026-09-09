@@ -1,0 +1,78 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+İDARƏETMƏ
+/
+İş axını şablonları
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+Müəssisə İnzibatçılığı və Konfiqurasiya Mühərriki
+
+RBAC kataloqu, vəziyyət maşınları, SLA siyasətləri, avtomatlaşdırma qaydaları, taksonomiyalar, inteqrasiyalar və dəyişdirilməz audit qeydləri.
+
+Parametrlər və Audit Jurnalı
+SLA siyasətləri
+İş axını şablonları
+Avtomatlaşdırmalar
+Taksonomiya
+İnteqrasiyalar
+İstifadəçi Kataloqu
+Kataloq idarəetməsi
+Project Delivery Default
+
+Default governed delivery lifecycle for project work items.
+
+Versiya 1
+VƏZİYYƏT MAŞINININ HƏYAT DÖVRÜ VƏ TƏSDİQLƏNMİŞ KEÇİDLƏR
+Növbə (Backlog)
+GÖRÜLƏCƏK
+GÖRÜLƏCƏK
+GÖRÜLƏCƏK
+İcradadır
+İCRADADIR
+BAXIŞDADIR
+BAXIŞDADIR
+Bloklanıb
+İCRADADIR
+Hazırdır
+HAZIRDIR

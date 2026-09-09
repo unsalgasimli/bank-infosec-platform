@@ -1,0 +1,110 @@
+[
+ {
+  "slug": "risk-management",
+  "ok": true,
+  "chars": 1536,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": [
+   "console: Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+   "console: Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+   "console: Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+   "console: Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+  ]
+ },
+ {
+  "slug": "threat-modeling",
+  "ok": true,
+  "chars": 2062,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": [
+   "console: Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+   "console: Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+  ]
+ },
+ {
+  "slug": "security-incidents",
+  "ok": true,
+  "chars": 1223,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "policy-exceptions",
+  "ok": true,
+  "chars": 985,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "admin-taxonomy",
+  "ok": true,
+  "chars": 1604,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "admin-departments",
+  "ok": true,
+  "chars": 12038,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "admin-sla-policies",
+  "ok": true,
+  "chars": 4903,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "admin-integrations",
+  "ok": true,
+  "chars": 7000,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "applications",
+  "ok": true,
+  "chars": 993,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ },
+ {
+  "slug": "relationship-map",
+  "ok": true,
+  "chars": 6525,
+  "dims": {
+   "w": 1536,
+   "h": 864
+  },
+  "errors": []
+ }
+]

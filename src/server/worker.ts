@@ -4,7 +4,7 @@ import { pgClient } from './db/postgres/client.js';
 import { runMigrations } from './db/postgres/migrate.js';
 import { logger } from './services/logger.service.js';
 import { OutboxRelayService } from './services/outbox-relay.service.js';
-import { DISCOVERY_QUEUE, QueueService } from './services/queue.service.js';
+import { DISCOVERY_QUEUE, SMB_PRINTER_DISCOVERY_QUEUE, QueueService } from './services/queue.service.js';
 import { WorkerEventService } from './services/worker-event.service.js';
 import { shutdownTelemetry, startTelemetry } from './services/telemetry.service.js';
 
@@ -19,21 +19,33 @@ async function startWorker(): Promise<void> {
   else logger.info('Database migrations are owned by the API role; worker startup will not contend for the migration lock.');
   await db.initialize();
   await QueueService.connect();
+  const windowsSmbWorker = process.env.WORKER_CAPABILITY === 'SMB_PRINTER';
+  if (windowsSmbWorker && process.platform !== 'win32') {
+    throw new Error('WORKER_CAPABILITY=SMB_PRINTER requires a Windows host with the approved read-only SMB identity.');
+  }
   // Keep the service context intact: process() delegates to another static
   // method through `this`, so passing it as an unbound callback breaks every
   // RabbitMQ delivery with "processCommittedEvent" undefined.
-  await QueueService.consume(DISCOVERY_QUEUE, (event) => WorkerEventService.process(event));
+  if (windowsSmbWorker) {
+    await QueueService.consume(SMB_PRINTER_DISCOVERY_QUEUE, (event) => event.payload?.connectorType === 'SMB_PRINTER'
+      ? WorkerEventService.process(event)
+      : Promise.resolve());
+  } else {
+    await QueueService.consume(DISCOVERY_QUEUE, (event) => event.payload?.connectorType === 'SMB_PRINTER'
+      ? Promise.resolve()
+      : WorkerEventService.process(event));
+  }
   // The legacy general queue is bound with '#', so discovery events are also
   // delivered there. Acknowledge that duplicate without executing it; the
   // dedicated discovery queue is the sole owner of cmdb.discovery.* work.
-  await QueueService.consume('aegissec.worker', (event) => event.topic.startsWith('cmdb.discovery.')
+  await QueueService.consume('aegissec.worker', (event) => event.topic.startsWith('cmdb.discovery.') || windowsSmbWorker
     ? Promise.resolve()
     : WorkerEventService.process(event));
-  await WorkerEventService.recoverQueuedDiscoveryRuns();
+  await WorkerEventService.recoverQueuedDiscoveryRuns(100, windowsSmbWorker ? ['SMB_PRINTER'] : ['ACTIVE_DIRECTORY', 'CORTEX', 'VCENTER']);
   // Startup-only recovery misses a run if the old process died while its lease
   // was still fresh. Reclaim only expired leases from the durable run table.
   discoveryRecoveryTimer = setInterval(() => {
-    void WorkerEventService.recoverQueuedDiscoveryRuns()
+    void WorkerEventService.recoverQueuedDiscoveryRuns(100, windowsSmbWorker ? ['SMB_PRINTER'] : ['ACTIVE_DIRECTORY', 'CORTEX', 'VCENTER'])
       .catch((error) => logger.error({ error }, 'Discovery run lease recovery failed'));
   }, DISCOVERY_RECOVERY_INTERVAL_MS);
   discoveryRecoveryTimer.unref?.();

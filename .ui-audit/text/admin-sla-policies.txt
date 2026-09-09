@@ -1,0 +1,300 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+İDARƏETMƏ
+/
+SLA siyasətləri
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+Müəssisə İnzibatçılığı və Konfiqurasiya Mühərriki
+
+RBAC kataloqu, vəziyyət maşınları, SLA siyasətləri, avtomatlaşdırma qaydaları, taksonomiyalar, inteqrasiyalar və dəyişdirilməz audit qeydləri.
+
+Parametrlər və Audit Jurnalı
+SLA siyasətləri
+İş axını şablonları
+Avtomatlaşdırmalar
+Taksonomiya
+İnteqrasiyalar
+İstifadəçi Kataloqu
+Kataloq idarəetməsi
+SLA Siyasəti Konfiqurasiyası
+
+Server tərəfli yoxlama və audit tarixçəsi ilə saxlanılan PostgreSQL konfiqurasiyası.
+
+Yeni SLA Siyasəti
+Compliance, Legal & Audit Review
+AKTİV
+
+SLA for regulatory reporting, compliance sign-offs, legal reviews and audit findings.
+
+09:00–18:00 · Asia/Baku · Weekends excluded
+
+Redaktə et
+Arxiv
+Kritik
+KRİTİK
+MTTA: 60 min
+İlkin reaksiya: 120 min
+MTTR: 960 min
+Həll: 1440 min
+Yüksək
+YÜKSƏK
+MTTA: 120 min
+İlkin reaksiya: 240 min
+MTTR: 2400 min
+Həll: 3360 min
+Orta
+ORTA
+MTTA: 240 min
+İlkin reaksiya: 480 min
+MTTR: 4800 min
+Həll: 6720 min
+Aşağı
+AŞAĞI
+MTTA: 480 min
+İlkin reaksiya: 960 min
+MTTR: 9600 min
+Həll: 14400 min
+Məlumat xarakterli
+MƏLUMAT XARAKTERLİ
+MTTA: 960 min
+İlkin reaksiya: 1440 min
+MTTR: 19200 min
+Həll: 28800 min
+Critical 24/7 (Emergency Outage)
+AKTİV
+
+Round-the-clock emergency response for critical system outages, major incidents, and urgent escalations.
+
+24/7 · Asia/Baku · Weekends included
+
+Redaktə et
+Arxiv
+Kritik
+KRİTİK
+MTTA: 15 min
+İlkin reaksiya: 15 min
+MTTR: 120 min
+Həll: 240 min
+Yüksək
+YÜKSƏK
+MTTA: 30 min
+İlkin reaksiya: 30 min
+MTTR: 240 min
+Həll: 480 min
+Orta
+ORTA
+MTTA: 60 min
+İlkin reaksiya: 120 min
+MTTR: 720 min
+Həll: 1440 min
+Aşağı
+AŞAĞI
+MTTA: 120 min
+İlkin reaksiya: 240 min
+MTTR: 1440 min
+Həll: 2880 min
+Məlumat xarakterli
+MƏLUMAT XARAKTERLİ
+MTTA: 240 min
+İlkin reaksiya: 480 min
+MTTR: 2880 min
+Həll: 4320 min
+IT Support & Workplace Services
+AKTİV
+
+SLA for user workstations, equipment provisioning, software licenses, and help desk requests.
+
+09:00–18:00 · Asia/Baku · Weekends excluded
+
+Redaktə et
+Arxiv
+Kritik
+KRİTİK
+MTTA: 30 min
+İlkin reaksiya: 60 min
+MTTR: 240 min
+Həll: 480 min
+Yüksək
+YÜKSƏK
+MTTA: 60 min
+İlkin reaksiya: 120 min
+MTTR: 480 min
+Həll: 960 min
+Orta
+ORTA
+MTTA: 120 min
+İlkin reaksiya: 240 min
+MTTR: 960 min
+Həll: 1440 min
+Aşağı
+AŞAĞI
+MTTA: 240 min
+İlkin reaksiya: 480 min
+MTTR: 1920 min
+Həll: 2880 min
+Məlumat xarakterli
+MƏLUMAT XARAKTERLİ
+MTTA: 480 min
+İlkin reaksiya: 960 min
+MTTR: 2880 min
+Həll: 4320 min
+Project & Change Management
+AKTİV
+
+SLA for planned application releases, infrastructure changes, and project milestones.
+
+09:00–18:00 · Asia/Baku · Weekends excluded
+
+Redaktə et
+Arxiv
+Kritik
+KRİTİK
+MTTA: 60 min
+İlkin reaksiya: 120 min
+MTTR: 480 min
+Həll: 960 min
+Yüksək
+YÜKSƏK
+MTTA: 120 min
+İlkin reaksiya: 240 min
+MTTR: 1440 min
+Həll: 2400 min
+Orta
+ORTA
+MTTA: 240 min
+İlkin reaksiya: 480 min
+MTTR: 3360 min
+Həll: 4800 min
+Aşağı
+AŞAĞI
+MTTA: 480 min
+İlkin reaksiya: 960 min
+MTTR: 6720 min
+Həll: 9600 min
+Məlumat xarakterli
+MƏLUMAT XARAKTERLİ
+MTTA: 960 min
+İlkin reaksiya: 1440 min
+MTTR: 14400 min
+Həll: 21600 min
+Security & Vulnerability Remediation
+AKTİV
+
+SLA for security vulnerability remediation, exception approvals, and penetration testing findings.
+
+24/7 · Asia/Baku · Weekends included
+
+Redaktə et
+Arxiv
+Kritik
+KRİTİK
+MTTA: 15 min
+İlkin reaksiya: 30 min
+MTTR: 1440 min
+Həll: 2880 min
+Yüksək
+YÜKSƏK
+MTTA: 60 min
+İlkin reaksiya: 120 min
+MTTR: 10080 min
+Həll: 14400 min
+Orta
+ORTA
+MTTA: 120 min
+İlkin reaksiya: 240 min
+MTTR: 43200 min
+Həll: 64800 min
+Aşağı
+AŞAĞI
+MTTA: 240 min
+İlkin reaksiya: 480 min
+MTTR: 129600 min
+Həll: 172800 min
+Məlumat xarakterli
+MƏLUMAT XARAKTERLİ
+MTTA: 480 min
+İlkin reaksiya: 960 min
+MTTR: 259200 min
+Həll: 259200 min
+Standard Business SLA (8x5)
+STANDART
+AKTİV
+
+Default operational turnaround for general requests and tasks during bank business hours (09:00-18:00 UTC+4).
+
+09:00–18:00 · Asia/Baku · Weekends excluded
+
+Redaktə et
+Arxiv
+Kritik
+KRİTİK
+MTTA: 30 min
+İlkin reaksiya: 60 min
+MTTR: 480 min
+Həll: 960 min
+Yüksək
+YÜKSƏK
+MTTA: 60 min
+İlkin reaksiya: 120 min
+MTTR: 960 min
+Həll: 1440 min
+Orta
+ORTA
+MTTA: 120 min
+İlkin reaksiya: 240 min
+MTTR: 2400 min
+Həll: 3360 min
+Aşağı
+AŞAĞI
+MTTA: 240 min
+İlkin reaksiya: 480 min
+MTTR: 4800 min
+Həll: 6720 min
+Məlumat xarakterli
+MƏLUMAT XARAKTERLİ
+MTTA: 480 min
+İlkin reaksiya: 960 min
+MTTR: 9600 min
+Həll: 14400 min

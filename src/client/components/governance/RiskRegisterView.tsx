@@ -27,7 +27,10 @@ export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSel
   const [treatmentStrategy, setTreatmentStrategy] = useState<'MITIGATE' | 'ACCEPT' | 'TRANSFER' | 'AVOID'>('MITIGATE');
   const [treatmentPlan, setTreatmentPlan] = useState('');
   const [ownerName, setOwnerName] = useState('SecOps Engineering Lead');
-  const [deadline, setDeadline] = useState('2026-10-31');
+  const [deadline, setDeadline] = useState(() => new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10));
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const today = new Date().toISOString().slice(0, 10);
 
   const filteredRisks = risks.filter((r) => {
     if (selectedCell && (r.likelihood !== selectedCell.likelihood || r.impact !== selectedCell.impact)) {
@@ -50,9 +53,19 @@ export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSel
 
   const handleCreateRisk = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title) return;
+    if (isSubmitting) return;
+    setSubmitError(null);
+    if (!title.trim() || !description.trim()) {
+      setSubmitError('Risk title and detailed context are required.');
+      return;
+    }
+    if (!deadline || deadline < today) {
+      setSubmitError('Target deadline must be today or a future date.');
+      return;
+    }
 
     try {
+      setIsSubmitting(true);
       const res = await fetchWithAuth('/api/risks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -67,16 +80,21 @@ export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSel
           ownerName,
         }),
       });
-      const data = await res.json();
-      if (data.success) {
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
         setIsModalOpen(false);
         setTitle('');
         setDescription('');
         setTreatmentPlan('');
         window.location.reload();
+        return;
       }
+      setSubmitError(data.error || 'Risk could not be registered. Please try again.');
     } catch (err) {
       console.error(err);
+      setSubmitError('Risk could not be registered. Check your connection and try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -103,7 +121,7 @@ export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSel
             {risks.length} {t('Portfolio Risks')}
           </span>
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => { setSubmitError(null); setIsModalOpen(true); }}
             className="jira-btn-primary"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -223,7 +241,7 @@ export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSel
 
       {/* New Risk Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-black/65 backdrop-blur-[2px] p-4">
+        <div className="fixed inset-0 z-dsDialog flex items-center justify-center bg-semantic-modal-tint/60 backdrop-blur-sm p-4">
           <div className="bg-semantic-panel border border-semantic-jira-border rounded-md max-w-lg w-full p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-semantic-jira-border pb-3">
               <div className="flex items-center gap-2">
@@ -310,6 +328,8 @@ export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSel
                     type="date"
                     value={deadline}
                     onChange={(e) => setDeadline(e.target.value)}
+                    min={today}
+                    required
                     onClick={(e) => {
                       try {
                         e.currentTarget.showPicker();
@@ -331,6 +351,12 @@ export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSel
                 />
               </div>
 
+              {submitError && (
+                <div role="alert" className="rounded-md border border-semantic-danger-strong/40 bg-semantic-danger-surface px-3 py-2 text-xs text-semantic-danger-strong">
+                  {submitError}
+                </div>
+              )}
+
               <div className="flex justify-end gap-2 pt-3 border-t border-semantic-jira-border">
                 <button
                   type="button"
@@ -341,9 +367,10 @@ export const RiskRegisterView: React.FC<RiskRegisterViewProps> = ({ risks, onSel
                 </button>
                 <button
                   type="submit"
-                  className="jira-btn-primary"
+                  disabled={isSubmitting}
+                  className="jira-btn-primary disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Register Risk
+                  {isSubmitting ? 'Registering…' : 'Register Risk'}
                 </button>
               </div>
             </form>

@@ -3,7 +3,7 @@ import { db } from '../db/database.js';
 import { logger } from './logger.service.js';
 import { OutboxService } from './outbox.service.js';
 import { CortexInventorySchedulerService } from './cortex-inventory-scheduler.service.js';
-import { ThreatDeploymentService } from './threat-deployment.service.js';
+import { ThreatGovernanceOperationsService } from './threat-governance-operations.service.js';
 
 /** Emits durable schedule ticks; it never executes ticket work in-process. */
 export class PlatformSchedulerService {
@@ -49,7 +49,7 @@ export class PlatformSchedulerService {
       db.persist();
       await db.flush();
       await CortexInventorySchedulerService.enqueueDue(now);
-      await ThreatDeploymentService.reconcile();
+      if(config.DB_TYPE==='postgres')await ThreatGovernanceOperationsService.alert();
     } finally {
       this.slaInFlight = false;
     }

@@ -133,7 +133,7 @@ export const cortexUnifiedAssetPayloadMapper: DiscoveryPayloadMapper<CortexRecor
     const identifiers: NormalizedDiscoveryDto['identity']['identifiers'] = [{ type: 'CORTEX_ASSET_ID', namespace: envelope.connectorId, value: assetId, confidence: 100, primary: true }];
     // Cortex's unified asset `strong_id` is the endpoint ID for managed
     // devices.  Preserve the vendor-specific value and also express the
-    // equivalent canonical EDR identity so asset-inventory and endpoint
+    // equivalent canonical EDR identity so the CMDB registry and endpoint
     // feeds converge on one CI without hostname-based guessing.
     if (strongId && strongId !== assetId) identifiers.push(
       { type: 'OTHER', namespace: `${envelope.connectorId}:CORTEX_STRONG_ID`, value: strongId, confidence: 100, primary: false },

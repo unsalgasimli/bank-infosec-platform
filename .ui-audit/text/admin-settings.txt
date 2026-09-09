@@ -1,0 +1,636 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+İDARƏETMƏ
+/
+Parametrlər
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+Müəssisə İnzibatçılığı və Konfiqurasiya Mühərriki
+
+RBAC kataloqu, vəziyyət maşınları, SLA siyasətləri, avtomatlaşdırma qaydaları, taksonomiyalar, inteqrasiyalar və dəyişdirilməz audit qeydləri.
+
+Audit CSV-ni ixrac et
+Parametrlər və Audit Jurnalı
+SLA siyasətləri
+İş axını şablonları
+Avtomatlaşdırmalar
+Taksonomiya
+İnteqrasiyalar
+İstifadəçi Kataloqu
+Kataloq idarəetməsi
+SYSTEM AUDİT TRAİL (100 VERİFİED EVENTS)
+
+Append-only immutable record of actions, IP addresses, and state changes.
+
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/8/2026, 9:28:23 AM
+IP: ::1 | CID: req-14fa56cb
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13063]
+9/8/2026, 9:23:05 AM
+IP: unknown | CID: req-532a91d0
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13062]
+9/8/2026, 9:20:19 AM
+IP: unknown | CID: req-6a6970ee
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13061]
+9/7/2026, 6:04:06 PM
+IP: unknown | CID: req-126f9a0c
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13060]
+9/7/2026, 6:03:45 PM
+IP: unknown | CID: req-69ea523e
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13059]
+9/7/2026, 6:03:28 PM
+IP: unknown | CID: req-81274a34
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13058]
+9/7/2026, 6:03:20 PM
+IP: unknown | CID: req-7621339f
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13057]
+9/7/2026, 6:03:08 PM
+IP: unknown | CID: req-b1311aa7
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13056]
+9/7/2026, 6:02:56 PM
+IP: unknown | CID: req-c8346621
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13055]
+9/7/2026, 6:02:44 PM
+IP: unknown | CID: req-f1b89677
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13054]
+9/7/2026, 6:02:32 PM
+IP: unknown | CID: req-c5737215
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13053]
+9/7/2026, 6:02:19 PM
+IP: unknown | CID: req-4dcfcae0
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13052]
+9/7/2026, 6:02:06 PM
+IP: unknown | CID: req-31dd1631
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13051]
+9/7/2026, 6:01:50 PM
+IP: unknown | CID: req-676402be
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13050]
+9/7/2026, 6:01:35 PM
+IP: unknown | CID: req-9aa87739
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13049]
+9/7/2026, 6:01:24 PM
+IP: unknown | CID: req-c27d711b
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13048]
+9/7/2026, 6:01:15 PM
+IP: unknown | CID: req-3623fd52
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13047]
+9/7/2026, 6:01:04 PM
+IP: unknown | CID: req-624504bd
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13046]
+9/7/2026, 6:00:52 PM
+IP: unknown | CID: req-45a90f61
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13045]
+9/7/2026, 6:00:39 PM
+IP: unknown | CID: req-23d7ea8b
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13044]
+9/7/2026, 6:00:26 PM
+IP: unknown | CID: req-3162f7b2
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13043]
+9/7/2026, 6:00:10 PM
+IP: unknown | CID: req-c5f8aafd
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13042]
+9/7/2026, 5:59:55 PM
+IP: unknown | CID: req-79ef3bc9
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13041]
+9/7/2026, 5:56:49 PM
+IP: unknown | CID: req-4260b446
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:53:56 PM
+IP: ::1 | CID: req-f8dd0e17
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13040]
+9/7/2026, 5:53:40 PM
+IP: unknown | CID: req-3efca24b
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13039]
+9/7/2026, 5:52:55 PM
+IP: unknown | CID: req-6234c044
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13038]
+9/7/2026, 5:52:40 PM
+IP: unknown | CID: req-b547f2ca
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13037]
+9/7/2026, 5:52:25 PM
+IP: unknown | CID: req-d35c0793
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13036]
+9/7/2026, 5:51:42 PM
+IP: unknown | CID: req-072aec21
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13035]
+9/7/2026, 5:50:51 PM
+IP: unknown | CID: req-135445e3
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13034]
+9/7/2026, 5:50:11 PM
+IP: unknown | CID: req-47c355a0
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13033]
+9/7/2026, 5:49:20 PM
+IP: unknown | CID: req-9f6c9399
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13032]
+9/7/2026, 5:48:40 PM
+IP: unknown | CID: req-339caa09
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13031]
+9/7/2026, 5:48:00 PM
+IP: unknown | CID: req-3a95cf71
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13030]
+9/7/2026, 5:47:08 PM
+IP: unknown | CID: req-ecf388d4
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13029]
+9/7/2026, 5:45:43 PM
+IP: unknown | CID: req-7eec27d1
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13028]
+9/7/2026, 5:44:16 PM
+IP: unknown | CID: req-f2bc22cd
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13027]
+9/7/2026, 5:43:43 PM
+IP: unknown | CID: req-bcc1fd49
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13026]
+9/7/2026, 5:43:23 PM
+IP: unknown | CID: req-23bbda37
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13025]
+9/7/2026, 5:43:03 PM
+IP: unknown | CID: req-14e0d032
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13024]
+9/7/2026, 5:42:46 PM
+IP: unknown | CID: req-fe58e4c4
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13023]
+9/7/2026, 5:42:26 PM
+IP: unknown | CID: req-cf89ba51
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13022]
+9/7/2026, 5:42:09 PM
+IP: unknown | CID: req-d20472ec
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13021]
+9/7/2026, 5:41:52 PM
+IP: unknown | CID: req-358c2d35
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13020]
+9/7/2026, 5:41:33 PM
+IP: unknown | CID: req-14b234aa
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13019]
+9/7/2026, 5:41:03 PM
+IP: unknown | CID: req-e4b9946c
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13018]
+9/7/2026, 5:40:37 PM
+IP: unknown | CID: req-68bb2561
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:33:32 PM
+IP: ::1 | CID: req-ef715f64
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:32:33 PM
+IP: ::1 | CID: req-6e069376
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13017]
+9/7/2026, 5:32:24 PM
+IP: unknown | CID: req-ed9efc75
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:31:38 PM
+IP: ::1 | CID: req-4dde64a0
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13016]
+9/7/2026, 5:31:32 PM
+IP: unknown | CID: req-5dad3504
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:30:37 PM
+IP: ::1 | CID: req-9d8bb144
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13015]
+9/7/2026, 5:30:14 PM
+IP: unknown | CID: req-b6354212
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13014]
+9/7/2026, 5:27:51 PM
+IP: unknown | CID: req-0b1f8333
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:19:00 PM
+IP: ::1 | CID: req-ccd9726c
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13013]
+9/7/2026, 5:18:57 PM
+IP: unknown | CID: req-8d792233
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:18:08 PM
+IP: ::1 | CID: req-6485b6d7
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13012]
+9/7/2026, 5:17:53 PM
+IP: unknown | CID: req-57d71a22
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13011]
+9/7/2026, 5:17:20 PM
+IP: unknown | CID: req-45d89686
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:17:14 PM
+IP: ::1 | CID: req-82828b1e
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13010]
+9/7/2026, 5:16:43 PM
+IP: unknown | CID: req-5ca9803a
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:16:21 PM
+IP: ::1 | CID: req-b130a854
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:15:34 PM
+IP: ::1 | CID: req-148873a4
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13009]
+9/7/2026, 5:15:24 PM
+IP: unknown | CID: req-56f7a2f5
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:14:36 PM
+IP: ::1 | CID: req-befa1ba0
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13008]
+9/7/2026, 5:06:45 PM
+IP: unknown | CID: req-db62fd99
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:06:43 PM
+IP: ::1 | CID: req-4adf838c
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13007]
+9/7/2026, 5:06:16 PM
+IP: unknown | CID: req-22dd1267
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13006]
+9/7/2026, 5:05:57 PM
+IP: unknown | CID: req-368d5bef
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13005]
+9/7/2026, 5:05:38 PM
+IP: unknown | CID: req-4f1bf882
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13004]
+9/7/2026, 5:05:08 PM
+IP: unknown | CID: req-466e1160
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:04:58 PM
+IP: ::1 | CID: req-1661e8ce
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13003]
+9/7/2026, 5:04:56 PM
+IP: unknown | CID: req-645bd605
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13002]
+9/7/2026, 5:04:40 PM
+IP: unknown | CID: req-958e3b43
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13001]
+9/7/2026, 5:04:27 PM
+IP: unknown | CID: req-79d70917
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:04:16 PM
+IP: ::1 | CID: req-bbe4f034
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:04:16 PM
+IP: ::1 | CID: req-810856a0
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:04:16 PM
+IP: ::1 | CID: req-9314f2e4
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:04:16 PM
+IP: ::1 | CID: req-328d9729
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:04:16 PM
+IP: ::1 | CID: req-9e4da14a
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:04:15 PM
+IP: ::1 | CID: req-5ceae15c
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-13000]
+9/7/2026, 5:04:07 PM
+IP: unknown | CID: req-9b1587c6
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-12999]
+9/7/2026, 5:03:21 PM
+IP: unknown | CID: req-857fe7ab
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-12998]
+9/7/2026, 5:02:14 PM
+IP: unknown | CID: req-27bb9d66
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-12997]
+9/7/2026, 5:01:39 PM
+IP: unknown | CID: req-d4b62a5a
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:01:11 PM
+IP: ::1 | CID: req-352018f9
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 5:00:19 PM
+IP: ::1 | CID: req-05d7f72e
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 4:59:36 PM
+IP: ::1 | CID: req-f5b51a5a
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 4:58:28 PM
+IP: ::1 | CID: req-8e67d2a5
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-12996]
+9/7/2026, 4:58:27 PM
+IP: unknown | CID: req-6cc5c86c
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 4:57:34 PM
+IP: ::1 | CID: req-18fcc027
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 4:56:41 PM
+IP: ::1 | CID: req-7922e8a0
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-12995]
+9/7/2026, 4:55:13 PM
+IP: unknown | CID: req-4dcbbbf8
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 4:54:50 PM
+IP: ::1 | CID: req-6760081c
+TICKET_CREATED
+Afgan Javadov
+(PLATFORM_ADMIN)
+[SEC-2026-12994]
+9/7/2026, 4:54:24 PM
+IP: unknown | CID: req-dc105d71
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 4:54:05 PM
+IP: ::1 | CID: req-ca8e0036
+USER_LOGIN
+Unsal Gasimli
+(SECURITY_ANALYST)
+9/7/2026, 4:53:09 PM
+IP: ::1 | CID: req-fee7e565
+RESTRICTED_ACCESS_VIEWED
+Unsal Gasimli
+(SECURITY_ANALYST)
+[SEC-2026-0008]
+9/7/2026, 4:49:02 PM
+IP: unknown | CID: req-68fac9d1

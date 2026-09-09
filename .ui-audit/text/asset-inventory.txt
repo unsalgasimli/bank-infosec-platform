@@ -1,0 +1,237 @@
+🛡️
+AEGIS GRC
+Tier-1 InfoSec
+AKTİVLƏR VƏ CMDB
+/
+Təsdiqlənmiş aktivlər
+Search anything or press ⌘K for commands...
+⌘K
+Classic
+Alive
+AZ
+EN
+7
+UG
+MƏNİM İŞLƏRİM
+İcmal
+Mənim tapşırıqlarım
+2
+Müraciətlər
+Təsdiqlər
+İŞLƏRİN İDARƏ EDİLMƏSİ
+Layihələr və tapşırıqlar
+İş axınları
+TƏHLÜKƏSİZLİK VƏ GRC
+Risk idarəetməsi
+Təhdid modelləşdirməsi
+Audit və uyğunluq
+AKTİVLƏR VƏ CMDB
+CMDB reyestri
+100
+Təsdiqlənmiş aktivlər
+100
+Discovery Sources
+İnventar sinxronizasiyaları
+Sübutlar və korrelyasiya
+Asılılıqlar xəritəsi
+BİLİK BAZASI
+SOP-lar və Bilik bazası
+İDARƏETMƏ
+Müraciət formaları
+İş axını şablonları
+Avtomatlaşdırmalar
+SLA siyasətləri
+Şöbələr və komandalar
+Taksonomiya
+İnteqrasiyalar
+Parametrlər
+LDAPS PKI Live
+AKTİVLƏR VƏ CMDB
+Unified IT Asset Inventory
+
+Canonical vCenter, Active Directory and Cortex XDR asset records.
+
+Yenilə
+Manage custom columns
+Advanced
+Tətbiq et
+619 matching records
+Custom values are operator maintained
+#	ASSET	NÖV	IDENTİTY / OS	IP	MÜHİT	SOURCES
+1	
+SRV005
+CI-DISC-92E73D611AB14716B6A8
+	Physical Server	
+SRV005.Expressbank.az
+Windows Server 2012 R2
+	192.168.0.72	UNKNOWN—	AD · Cortex XDR · vCenter
+2	
+EXB-IDAGENT02
+CI-DISC-B05A668C24FC45AE9B65
+	Physical Server	
+EXB-IDAGENT02.Expressbank.az
+Windows Server 2019
+	10.10.3.13	STAGINGSTAGING	AD · Cortex XDR · vCenter
+3	
+EXB-IDAGENT01
+CI-DISC-D05B4942BA4F4669948F
+	Physical Server	
+EXB-IDAGENT01.Expressbank.az
+Windows Server 2019
+	10.10.3.12	UNKNOWN—	AD · Cortex XDR · vCenter
+4	
+PBXSRV
+CI-DISC-F60602181FD345568264
+	Physical Server	
+pbxsrv.Expressbank.az
+Windows Server 2019
+	172.16.2.33	UNKNOWN—	AD · Cortex XDR · vCenter
+5	
+DC02
+CI-DISC-BF4EFFE8CC7841CD8D9D
+	Physical Server	
+DC02.Expressbank.az
+Windows Server 2019
+	10.33.33.6	UNKNOWN—	AD · Cortex XDR · vCenter
+6	
+DC01
+CI-DISC-C51D7E03D4D24818B25A
+	Physical Server	
+DC01.Expressbank.az
+Windows Server 2016
+	10.33.33.2	UNKNOWN—	AD · vCenter
+7	
+ESD-DB
+CI-DISC-75658CA7E65F4098B602
+	Physical Server	
+ESD-DB.Expressbank.az
+Windows Server 2012 R2
+	10.33.33.3	UNKNOWN—	AD · Cortex XDR · vCenter
+8	
+ESD-APP
+CI-DISC-ED09FDE6BF104BF48122
+	Physical Server	
+ESD-APP.Expressbank.az
+Windows Server 2012 R2
+	10.33.33.7	UNKNOWN—	AD · Cortex XDR · vCenter
+9	
+EXB-JMP-SRV8
+CI-DISC-11DD353C65834820A051
+	Physical Server	
+exb-jmp-srv8.Expressbank.az
+Windows Server 2019
+	192.168.81.10	UNKNOWN—	AD · Cortex XDR · vCenter
+10	
+SRV031
+CI-DISC-6810D2BDE1E844269299
+	Physical Server	
+SRV031.Expressbank.az
+Windows Server 2016
+	10.10.0.70	UNKNOWN—	AD · Cortex XDR · vCenter
+11	
+exb-anbar-01.expressbank.az
+CI-DISC-DBFF36FF70C24112B411
+	Physical Server	
+exb-anbar-01.expressbank.az
+Oracle 6.4
+	192.168.0.213	UNKNOWN—	Cortex XDR · vCenter
+12	
+RISK-JMP-SRV10
+CI-DISC-FBD27AA815FB43B09520
+	Physical Server	
+Risk-JMP-SRV10.Expressbank.az
+Windows Server 2019
+	172.16.14.3	UNKNOWN—	AD · Cortex XDR · vCenter
+13	
+TEST-POWERBI
+CI-DISC-F56CC0D088024170A743
+	Physical Server	
+test-powerbi.Expressbank.az
+Windows Server 2019
+	192.168.0.48	UNKNOWN—	AD · Cortex XDR · vCenter
+14	
+PG_ANALYZER
+CI-DISC-514E5B397FB248ED826E
+	Physical Server	
+pg_analyzer.Expressbank.az
+Windows Server 2016
+	192.168.0.101	UNKNOWN—	AD · Cortex XDR · vCenter
+15	
+dbips01.expressbank.az
+CI-DISC-A94122BC91754FD281C9
+	Physical Server	
+dbips01.expressbank.az
+Oracle 8.10
+	192.168.0.63	UNKNOWN—	Cortex XDR · vCenter
+16	
+appips01.expressbank.az
+CI-DISC-31C8453C33FC43779C94
+	Physical Server	
+appips01.expressbank.az
+CentOS 8.1
+	192.168.0.62	UNKNOWN—	Cortex XDR · vCenter
+17	
+testvsftpsrv01.expressbank.az
+CI-DISC-33C5B321803B4D97A3A2
+	Physical Server	
+testvsftpsrv01.expressbank.az
+CentOS 8.4
+	10.10.5.91	UNKNOWN—	Cortex XDR · vCenter
+18	
+ibtest01.expressbank.az
+CI-DISC-916046E605E64851AC79
+	Physical Server	
+ibtest01.expressbank.az
+CentOS 8.5
+	192.168.200.69	UNKNOWN—	Cortex XDR · vCenter
+19	
+ESB-TEST2
+CI-DISC-3B009605B3D3496287A7
+	Physical Server	
+ESB-TEST2.Expressbank.az
+WINDOWS_8_SERVER_64
+	fe80::44b8:fd0a:d7d1:92f8	UNKNOWN—	AD · vCenter
+20	
+ESB-TEST
+CI-DISC-B870C3232E954B048B0B
+	Physical Server	
+ESB-TEST.Expressbank.az
+Windows Server 2012 R2
+	172.16.89.8	UNKNOWN—	AD · Cortex XDR · vCenter
+21	
+ibws01.expressbank.az
+CI-DISC-A17B11FE58AC4F4F8A4F
+	Physical Server	
+ibws01.expressbank.az
+CentOS 8.1
+	192.168.0.82	UNKNOWN—	Cortex XDR · vCenter
+22	
+SEC-DC01
+CI-DISC-26CC1CB00336433BB439
+	Physical Server	
+SEC-DC01.Expressbank.az
+Windows Server 2016
+	10.21.0.25	UNKNOWN—	Cortex XDR · vCenter
+23	
+SEC-DC02
+CI-DISC-54195052702F4EFF90FB
+	Physical Server	
+SEC-DC02.Expressbank.az
+Windows Server 2019
+	10.21.0.26	UNKNOWN—	Cortex XDR · vCenter
+24	
+FP-DLP-SUP-1
+CI-DISC-0781024CA3874BE2B647
+	Physical Server	
+FP-DLP-SUP-1.Expressbank.az
+Windows Server 2019
+	10.145.0.46	UNKNOWN—	AD · Cortex XDR · vCenter
+25	
+FP-DLP-MGMT$
+CI-DISC-A0E8C43D901D4C02AE51
+	Physical Server	
+FP-DLP-MGMT.Expressbank.az
+Windows Server 2019
+	10.145.0.45	UNKNOWN—	AD · Cortex XDR · vCenter
+1–25 of 619
+Səhifə 1

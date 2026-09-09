@@ -129,7 +129,7 @@ export const EvidenceTab: React.FC<EvidenceTabProps> = ({ attachments, ticketId,
         <div className="mt-5 grid grid-cols-1 gap-4 border-t border-blue-200/60 pt-4 md:grid-cols-[1fr_auto] items-center">
           <label className="text-label font-bold text-slate-700">
             Evidence Classification
-            <select value={evidenceType} onChange={(event) => setEvidenceType(event.target.value as EvidenceType)} disabled={isUploading} className="jira-input mt-1.5 w-full text-xs bg-white">
+            <select value={evidenceType} onChange={(event) => setEvidenceType(event.target.value as EvidenceType)} disabled={isUploading} className="jira-input mt-1.5 w-full text-xs bg-semantic-panel">
               {evidenceTypes.map((type) => <option key={type} value={type}>{readable(type)}</option>)}
             </select>
           </label>
@@ -151,7 +151,7 @@ export const EvidenceTab: React.FC<EvidenceTabProps> = ({ attachments, ticketId,
           </div>
         ) : (
           attachments.map((attachment) => (
-            <article key={attachment.id} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
+            <article key={attachment.id} className="space-y-3 rounded-xl border border-slate-200 bg-semantic-panel p-4 shadow-xs">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="flex min-w-0 items-start gap-3">
                   <div className="mt-0.5 rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-slate-500 shadow-xs">

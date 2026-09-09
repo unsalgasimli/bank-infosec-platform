@@ -90,7 +90,7 @@ export class ThreatGovernanceAdminService {
     });
   }
   private static manageAccess(model:Record<string,any>,actor:BankUser){
-    if(actor.roles.includes('AUDITOR')||!(securityReviewer(actor)||[model.businessOwnerId,model.technicalOwnerId,model.securityOwnerId].includes(actor.id)))throw new Error('Model owner or security authority required for access governance.');
+    if(actor.roles.includes('AUDITOR')||!(securityReviewer(actor)||actor.roles.some(role=>['PLATFORM_ADMIN','CISO','INFOSEC_ADMIN','INFOSEC_MANAGER'].includes(role))||[model.businessOwnerId,model.technicalOwnerId,model.securityOwnerId].includes(actor.id)))throw new Error('Model owner, platform administrator, or security authority required for access governance.');
   }
   static async decideCompliance(requirementId:string,input:unknown,actor:BankUser){
     const parsed=z.object({decision:z.enum(['VALIDATED','RETIRED']),reason}).parse(input);
