@@ -71,7 +71,7 @@ const relationshipTypeId = (value: string): string => value.toLowerCase();
 const transientDatabaseError = (error: unknown): boolean => {
   const candidate = error as { code?: unknown; message?: unknown };
   return ['40001', '40P01', '55P03'].includes(String(candidate?.code || ''))
-    || /(?:canceling statement due to lock timeout|deadlock detected|could not serialize access)/i.test(String(candidate?.message || ''));
+    || /(?:canceling statement due to lock timeout|deadlock detected|could not serialize access|query read timeout)/i.test(String(candidate?.message || ''));
 };
 const retryDelay = (attempt: number) => new Promise<void>((resolve) => {
   const exponential = Math.min(2000, 100 * 2 ** attempt);
@@ -97,7 +97,18 @@ export class DiscoveryIngestionService {
     }
 
     const rawHash = sha256(validatedRaw);
-    const observation = await this.persistRawObservation(envelope, rawHash, mapper.normalizedSchemaVersion);
+    let observation: RawObservationRow | undefined;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      try {
+        observation = await this.persistRawObservation(envelope, rawHash, mapper.normalizedSchemaVersion);
+        break;
+      } catch (error) {
+        if (!transientDatabaseError(error) || attempt === 5) throw error;
+        logger.warn({ connectorId: envelope.connectorId, syncRunId: envelope.syncRunId, sourceObjectType: envelope.sourceObjectType, sourceObjectId: envelope.sourceObjectId, attempt: attempt + 1 }, 'Retrying discovery observation admission after transient database contention');
+        await retryDelay(attempt);
+      }
+    }
+    if (!observation) throw new DiscoveryIngestionError('Discovery observation admission retry loop completed without a result.', 'OBSERVATION_ADMISSION_RETRY_EXHAUSTED');
     if (observation.processing_status === 'PROCESSED') {
       const existing = await this.loadProcessedResult(observation.id);
       if (existing) return existing;
@@ -112,12 +123,12 @@ export class DiscoveryIngestionService {
         throw new DiscoveryIngestionError('Normalized source identity must exactly match the observation envelope.', 'SOURCE_IDENTITY_MISMATCH');
       }
       let result: DiscoveryIngestionResult | undefined;
-      for (let attempt = 0; attempt < 4; attempt += 1) {
+      for (let attempt = 0; attempt < 6; attempt += 1) {
         try {
           result = await this.processNormalizedObservation(envelope, dto, rawHash, observation.id);
           break;
         } catch (error) {
-          if (!transientDatabaseError(error) || attempt === 3) throw error;
+          if (!transientDatabaseError(error) || attempt === 5) throw error;
           logger.warn({ connectorId: envelope.connectorId, syncRunId: envelope.syncRunId, sourceObjectType: envelope.sourceObjectType, sourceObjectId: envelope.sourceObjectId, attempt: attempt + 1 }, 'Retrying discovery observation after transient database contention');
           await retryDelay(attempt);
         }

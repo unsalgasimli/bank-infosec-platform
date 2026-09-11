@@ -25,6 +25,8 @@ import { VCenterInventorySyncService } from './vcenter-inventory-sync.service.js
 import { ActiveDirectoryInventorySyncService } from './active-directory-inventory-sync.service.js';
 import { CortexInventorySyncService } from './cortex-inventory-sync.service.js';
 import { SmbPrinterInventorySyncService } from './smb-printer-inventory-sync.service.js';
+import { LibreNmsInventorySyncService } from './librenms-inventory-sync.service.js';
+import { DiscoveryDailySyncService } from './discovery-daily-sync.service.js';
 
 const CONSUMER_NAME = 'aegissec-general-worker-v1';
 
@@ -54,6 +56,7 @@ export class WorkerEventService {
         else if (run.connector_type_id === 'CORTEX') await CortexInventorySyncService.runQueued(run.id, { correlationId: run.correlation_id || undefined });
         else if (run.connector_type_id === 'VCENTER') await VCenterInventorySyncService.runQueued(run.id, { correlationId: run.correlation_id || undefined });
         else if (run.connector_type_id === 'SMB_PRINTER') await SmbPrinterInventorySyncService.runQueued(run.id);
+        else if (run.connector_type_id === 'LIBRENMS') await LibreNmsInventorySyncService.runQueued(run.id);
       } catch (error) {
         logger.error({ error, runId: run.id, connectorType: run.connector_type_id }, 'Queued discovery run recovery failed');
       }
@@ -127,14 +130,16 @@ export class WorkerEventService {
         if (event.payload.connectorType === 'ACTIVE_DIRECTORY') await ActiveDirectoryInventorySyncService.runQueued(runId);
         else if (event.payload.connectorType === 'CORTEX') await CortexInventorySyncService.runQueued(runId, { correlationId: event.correlationId });
         else if (event.payload.connectorType === 'SMB_PRINTER') await SmbPrinterInventorySyncService.runQueued(runId);
+        else if (event.payload.connectorType === 'LIBRENMS') await LibreNmsInventorySyncService.runQueued(runId);
         else await VCenterInventorySyncService.runQueued(runId, { correlationId: event.correlationId });
       } catch (error: any) {
         if (error?.retryable === true) throw new RetryableWorkerError(String(error?.message || 'vCenter discovery source is temporarily unavailable.'));
         throw error;
       }
-    } else if (event.topic === 'discovery.run.completed') {
-      // Discovery ingestion already committed the authoritative PostgreSQL
-      // state. This notification only needs a consumer receipt.
+    } else if (event.topic === 'discovery.run.completed' || event.topic === 'discovery.run.failed') {
+      // A daily batch advances only after its prior source has committed a
+      // terminal result. The discovery ingestion itself remains authoritative.
+      await DiscoveryDailySyncService.onRunTerminal(String(event.payload.runId || event.aggregateId));
     } else if (event.topic.startsWith('asset.')) {
       // Asset discovery already committed the authoritative CMDB projection.
       // These events are intentionally receipt-only for the general worker;
@@ -150,7 +155,7 @@ export class WorkerEventService {
     // the legacy in-memory projection. Flushing it here can fail on unrelated
     // compatibility records after the discovery run has already succeeded,
     // leaving the durable outbox event stuck in retry forever.
-    if (event.topic !== 'cmdb.discovery.sync.requested' && event.topic !== 'discovery.run.completed' && event.topic !== 'ldap.sync.requested') {
+    if (event.topic !== 'cmdb.discovery.sync.requested' && event.topic !== 'discovery.run.completed' && event.topic !== 'discovery.run.failed' && event.topic !== 'ldap.sync.requested') {
       await db.persistAsync();
     }
     await pgClient.query(
@@ -207,7 +212,10 @@ export class WorkerEventService {
     const ci = event.topic === 'cmdb.ci.created' ? db.data.configurationItems.find((item) => item.id === String(event.payload.ciId || event.aggregateId)) : undefined;
     if (!project && !ci) throw new Error(`Security-screening event ${event.id} cannot resolve its source record.`);
     const criticality = String(project?.businessCriticality || project?.priority || ci?.criticality || 'MEDIUM');
-    const securityRelevant = ['CRITICAL', 'HIGH'].includes(criticality) || project?.category === 'SOFTWARE_DEVELOPMENT' || project?.category === 'INFORMATION_SECURITY' || Boolean((ci?.details as any)?.internetExposure) || Boolean((ci?.details as any)?.dataClassification && (ci?.details as any).dataClassification !== 'INTERNAL');
+    // Registration is mandatory for every project. A low-risk project can
+    // later be assessed as not applicable, but it must never silently skip
+    // the screening record, traceability, or review decision.
+    const securityRelevant = Boolean(project) || ['CRITICAL', 'HIGH'].includes(criticality) || project?.category === 'SOFTWARE_DEVELOPMENT' || project?.category === 'INFORMATION_SECURITY' || Boolean((ci?.details as any)?.internetExposure) || Boolean((ci?.details as any)?.dataClassification && (ci?.details as any).dataClassification !== 'INTERNAL');
     let modelId: string | undefined;
     if (securityRelevant) {
       const existing = project
@@ -215,7 +223,7 @@ export class WorkerEventService {
         : await pgClient.query<{ id: string }>('SELECT id FROM threat_models WHERE asset_id=$1 OR service_id=$1 ORDER BY created_at DESC LIMIT 1', [ci!.id]);
       modelId = existing.rows[0]?.id;
       if (!modelId) {
-        const created = await ThreatModelService.create({ title: `${project?.name || ci?.name} Threat Model`, description: 'Automatically created by mandatory security screening.', projectId: project?.id, assetId: ci?.id, serviceId: ci?.typeId === 'business_service' ? ci.id : undefined, criticality: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(criticality) ? criticality : 'HIGH', dataClassification: (ci?.details as any)?.dataClassification || 'CONFIDENTIAL_SECURITY_ONLY', businessOwnerId: project?.ownerId || ci?.businessOwnerUserId || actor.id, technicalOwnerId: project?.managerId || ci?.technicalOwnerUserId || actor.id, departmentId: project?.departmentId || ci?.departmentId }, actor, { correlationId: event.correlationId });
+        const created = await ThreatModelService.create({ title: `${project?.name || ci?.name} Threat Model`, description: project ? 'Automatically created from the mandatory project-registration security cycle.' : 'Automatically created by mandatory security screening.', projectId: project?.id, assetId: ci?.id, serviceId: ci?.typeId === 'business_service' ? ci.id : undefined, criticality: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(criticality) ? criticality : 'HIGH', dataClassification: (ci?.details as any)?.dataClassification || 'CONFIDENTIAL_SECURITY_ONLY', businessOwnerId: project?.ownerId || ci?.businessOwnerUserId || actor.id, technicalOwnerId: project?.managerId || ci?.technicalOwnerUserId || actor.id, departmentId: project?.departmentId || ci?.departmentId, projectOnboarding: Boolean(project), scopeSummary: project?.scope, architectureSummary: project?.description, assumptions: project?.successCriteria, securityObjectives: project?.objective }, actor, { correlationId: event.correlationId });
         modelId = (created.model as { id?: string } | undefined)?.id;
       }
       const assessed = modelId ? await pgClient.query('SELECT 1 FROM threat_model_applicability WHERE threat_model_id=$1 LIMIT 1', [modelId]) : undefined;

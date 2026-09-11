@@ -18,8 +18,8 @@ function safeRequestId(value: string | undefined): string {
 function safeRequestPath(value: string): string {
   // Query strings frequently contain storage keys, search terms, or identifiers
   // that do not belong in centralized logs. Keep the route path for correlation.
-  try { return new URL(value, 'http://aegissec.invalid').pathname; }
-  catch { return value.split('?')[0] || '/'; }
+  const qIdx = value.indexOf('?');
+  return qIdx === -1 ? value : (value.slice(0, qIdx) || '/');
 }
 
 export function requestTracingMiddleware(req: TraceableRequest, res: Response, next: NextFunction): void {

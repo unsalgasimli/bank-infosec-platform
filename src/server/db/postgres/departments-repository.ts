@@ -556,8 +556,13 @@ export class DepartmentsRepository {
     total: number;
     nextOffset: number | null;
   }> {
+    // Assignment controls only need routable department labels. The detail
+    // projection calculates per-department ticket/member/section aggregates
+    // and made a single picker request take many seconds on a real AD
+    // catalogue. Keep those aggregates for the department detail screen, but
+    // use the bounded list projection here.
     const departmentResult = await pgClient.query(
-      `${this.departmentSelect} WHERE d.is_active = TRUE ORDER BY v.name, d.name`
+      `${this.departmentListSelect} WHERE d.is_active = TRUE ORDER BY v.name, d.name`
     );
     const departments = departmentResult.rows.map(rowToDepartment);
     const departmentIds = new Set(departments.map((department) => department.id));
@@ -580,21 +585,33 @@ export class DepartmentsRepository {
       directorySource: row.source_payload?.directorySource || 'ACTIVE_DIRECTORY',
     }));
     const sectionNames = new Map(sections.map((section) => [section.id, section.name]));
-    const userResult = await pgClient.query(
-      `SELECT ${directoryUserColumns}
-       FROM bank_users
-       WHERE is_active = TRUE
-         AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false'
-       ORDER BY full_name, username`
-    );
     const departmentId = input.departmentId?.trim() || undefined;
     const sectionId = input.sectionId?.trim() || undefined;
     const query = input.query?.trim().toLocaleLowerCase('az') || '';
+
+    const userQueryParams: any[] = [];
+    let userQueryConditions = `is_active = TRUE AND coalesce(source_payload->>'organizationEligible', 'true') <> 'false'`;
+    if (departmentId) {
+      userQueryParams.push(departmentId);
+      userQueryConditions += ` AND department_id = $${userQueryParams.length}`;
+    }
+    if (sectionId) {
+      userQueryParams.push(sectionId);
+      userQueryConditions += ` AND (section_id = $${userQueryParams.length} OR unit_id = $${userQueryParams.length})`;
+    }
+
+    const userResult = await pgClient.query(
+      `SELECT ${directoryUserColumns}
+       FROM bank_users
+       WHERE ${userQueryConditions}
+       ORDER BY full_name, username`,
+      userQueryParams
+    );
     const users = userResult.rows
       .map((row) => rowToUser(row, { decryptProtectedIdentity: false }))
       .filter((user) => isGenuineEmployeeOrIntern(user, user.distributionGroups || [], user.sAMAccountName || user.username))
       .filter((user) => !departmentId || user.departmentId === departmentId)
-      .filter((user) => !sectionId || user.sectionId === sectionId)
+      .filter((user) => !sectionId || user.sectionId === sectionId || user.unitId === sectionId)
       .filter((user) => !query || [user.fullName, user.title, user.username, user.email, sectionNames.get(user.sectionId || '')]
         .filter(Boolean)
         .some((value) => String(value).toLocaleLowerCase('az').includes(query)));

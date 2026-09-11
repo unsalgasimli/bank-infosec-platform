@@ -15,7 +15,6 @@ import { useNotifications } from '../../../context/NotificationContext.js';
 import { useI18n } from '../../../context/I18nContext.js';
 import { AliveExperienceSwitcher } from '../common/AliveExperienceSwitcher.js';
 import { LDAPSignInModal } from '../../auth/LDAPSignInModal.js';
-import { EnterpriseOrgContextDropdown } from '../../layout/EnterpriseOrgContextDropdown.js';
 import { EnterpriseUserDropdown } from '../../layout/EnterpriseUserDropdown.js';
 import { BankDepartment } from '../../../../shared/types/auth.js';
 
@@ -26,10 +25,6 @@ interface AliveTopBarProps {
   onOpenCommandPalette: () => void;
   onToggleSidebar?: () => void;
   departments?: BankDepartment[];
-  activeDepartmentId?: string | null;
-  onSelectDepartment?: (deptId: string | null) => void;
-  activeCompanyId?: string;
-  onSelectCompany?: (companyId: string) => void;
   onNavigate?: (view: string, id?: string) => void;
 }
 
@@ -40,10 +35,6 @@ export const AliveTopBar: React.FC<AliveTopBarProps> = ({
   onOpenCommandPalette,
   onToggleSidebar,
   departments = [],
-  activeDepartmentId,
-  onSelectDepartment,
-  activeCompanyId,
-  onSelectCompany,
   onNavigate,
 }) => {
   const { language, setLanguage, t } = useI18n();
@@ -84,18 +75,8 @@ export const AliveTopBar: React.FC<AliveTopBarProps> = ({
             <Menu className="w-5 h-5" />
           </button>
 
-          {/* Enterprise Org & Department Switcher */}
-          <EnterpriseOrgContextDropdown
-            departments={departments}
-            activeDepartmentId={activeDepartmentId}
-            onSelectDepartment={onSelectDepartment}
-            activeCompanyId={activeCompanyId}
-            onSelectCompany={onSelectCompany}
-            onNavigate={onNavigate}
-          />
-
           {activeViewTitle && (
-            <div className="hidden md:flex items-center gap-1.5 pl-3 border-l border-semantic-border">
+            <div className="hidden md:flex items-center gap-1.5">
               {activeParentModuleTitle && (
                 <>
                   <span className="text-caption font-mono uppercase font-bold text-semantic-muted">

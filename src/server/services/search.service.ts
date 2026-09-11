@@ -38,41 +38,53 @@ export class SearchService {
       });
     }
 
-    return authorizedTickets.filter((ticket) => {
-      return query.split(/\s+OR\s+/i).some((group) =>
-        group.split(/\s+AND\s+/i).every((clause) => SearchService.evaluateClause(ticket, clause.trim(), user))
+    const compiledGroups: Array<Array<(ticket: Ticket) => boolean>> = query
+      .split(/\s+OR\s+/i)
+      .map((group) =>
+        group
+          .split(/\s+AND\s+/i)
+          .map((clause) => SearchService.compileClause(clause.trim(), user))
       );
-    });
+
+    return authorizedTickets.filter((ticket) =>
+      compiledGroups.some((group) => group.every((matcher) => matcher(ticket)))
+    );
   }
 
-  private static evaluateClause(ticket: Ticket, clause: string, user: BankUser): boolean {
+  private static compileClause(clause: string, user: BankUser): (ticket: Ticket) => boolean {
     const containsMatch = clause.match(/^(\w+)\s*~\s*(.+)$/i);
     if (containsMatch) {
       const field = containsMatch[1].toLowerCase();
       const expected = containsMatch[2].trim().replace(/^['"]|['"]$/g, '').toLowerCase();
       if (field === 'text') {
-        const tags = Array.isArray(ticket.tags) ? ticket.tags : [];
-        return [ticket.key, ticket.title, ticket.description || '', ...tags].some((value) => value.toLowerCase().includes(expected));
+        return (ticket: Ticket) => {
+          const tags = Array.isArray(ticket.tags) ? ticket.tags : [];
+          return [ticket.key, ticket.title, ticket.description || '', ...tags].some((value) => value.toLowerCase().includes(expected));
+        };
       }
-      return String(SearchService.getFieldValue(ticket, field, user) || '').toLowerCase().includes(expected);
+      return (ticket: Ticket) => String(SearchService.getFieldValue(ticket, field, user) || '').toLowerCase().includes(expected);
     }
 
     // Check IN operator: field IN (val1, val2, ...)
     const inMatch = clause.match(/^(\w+)\s+IN\s+\(([^)]+)\)$/i);
     if (inMatch) {
       const field = inMatch[1].toLowerCase();
-      const values = inMatch[2].split(',').map((v) => v.trim().replace(/^['"]|['"]$/g, '').toLowerCase());
-      const ticketVal = SearchService.getFieldValue(ticket, field, user)?.toLowerCase();
-      return ticketVal ? values.includes(ticketVal) : false;
+      const values = new Set(inMatch[2].split(',').map((v) => v.trim().replace(/^['"]|['"]$/g, '').toLowerCase()));
+      return (ticket: Ticket) => {
+        const ticketVal = SearchService.getFieldValue(ticket, field, user)?.toLowerCase();
+        return ticketVal ? values.has(ticketVal) : false;
+      };
     }
 
     // Check NOT IN operator: field NOT IN (val1, val2, ...)
     const notInMatch = clause.match(/^(\w+)\s+NOT\s+IN\s+\(([^)]+)\)$/i);
     if (notInMatch) {
       const field = notInMatch[1].toLowerCase();
-      const values = notInMatch[2].split(',').map((v) => v.trim().replace(/^['"]|['"]$/g, '').toLowerCase());
-      const ticketVal = SearchService.getFieldValue(ticket, field, user)?.toLowerCase();
-      return ticketVal ? !values.includes(ticketVal) : true;
+      const values = new Set(notInMatch[2].split(',').map((v) => v.trim().replace(/^['"]|['"]$/g, '').toLowerCase()));
+      return (ticket: Ticket) => {
+        const ticketVal = SearchService.getFieldValue(ticket, field, user)?.toLowerCase();
+        return ticketVal ? !values.has(ticketVal) : true;
+      };
     }
 
     // Check != operator: field != value
@@ -81,25 +93,32 @@ export class SearchService {
       const field = neqMatch[1].toLowerCase();
       const value = neqMatch[2].trim().replace(/^['"]|['"]$/g, '');
       const resolvedTarget = value === 'currentUser()' ? user.id : value.toLowerCase();
-      const ticketVal = SearchService.getFieldValue(ticket, field, user)?.toLowerCase();
-      return ticketVal !== resolvedTarget;
+      return (ticket: Ticket) => {
+        const ticketVal = SearchService.getFieldValue(ticket, field, user)?.toLowerCase();
+        return ticketVal !== resolvedTarget;
+      };
     }
 
     const comparisonMatch = clause.match(/^(\w+)\s*(>=|<=|>|<)\s*(.+)$/i);
     if (comparisonMatch) {
-      const actual = SearchService.getFieldValue(ticket, comparisonMatch[1].toLowerCase(), user);
+      const field = comparisonMatch[1].toLowerCase();
+      const op = comparisonMatch[2];
       const expectedRaw = comparisonMatch[3].trim().replace(/^['"]|['"]$/g, '');
-      if (actual === undefined) return false;
-      const actualDate = Date.parse(actual);
       const expectedDate = Date.parse(expectedRaw);
-      const [left, right] = Number.isNaN(actualDate) || Number.isNaN(expectedDate)
-        ? [Number(actual), Number(expectedRaw)]
-        : [actualDate, expectedDate];
-      if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
-      if (comparisonMatch[2] === '>=') return left >= right;
-      if (comparisonMatch[2] === '<=') return left <= right;
-      if (comparisonMatch[2] === '>') return left > right;
-      return left < right;
+      const expectedNum = Number(expectedRaw);
+      return (ticket: Ticket) => {
+        const actual = SearchService.getFieldValue(ticket, field, user);
+        if (actual === undefined) return false;
+        const actualDate = Date.parse(actual);
+        const [left, right] = Number.isNaN(actualDate) || Number.isNaN(expectedDate)
+          ? [Number(actual), expectedNum]
+          : [actualDate, expectedDate];
+        if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+        if (op === '>=') return left >= right;
+        if (op === '<=') return left <= right;
+        if (op === '>') return left > right;
+        return left < right;
+      };
     }
 
     // Check = operator: field = value
@@ -108,16 +127,18 @@ export class SearchService {
       const field = eqMatch[1].toLowerCase();
       const value = eqMatch[2].trim().replace(/^['"]|['"]$/g, '');
       const resolvedTarget = value === 'currentUser()' ? user.id : value.toLowerCase();
-      const ticketVal = SearchService.getFieldValue(ticket, field, user)?.toLowerCase();
-      return ticketVal === resolvedTarget;
+      return (ticket: Ticket) => {
+        const ticketVal = SearchService.getFieldValue(ticket, field, user)?.toLowerCase();
+        return ticketVal === resolvedTarget;
+      };
     }
 
     // Fallback text match
     const lowerClause = clause.toLowerCase();
-    return (
+    return (ticket: Ticket) => (
       ticket.key.toLowerCase().includes(lowerClause) ||
       ticket.title.toLowerCase().includes(lowerClause) ||
-      ticket.description.toLowerCase().includes(lowerClause)
+      (ticket.description || '').toLowerCase().includes(lowerClause)
     );
   }
 

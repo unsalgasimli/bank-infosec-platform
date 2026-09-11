@@ -224,6 +224,10 @@ export class AuthService {
    * Filters an array of tickets based on user ABAC permissions.
    */
   public static filterAuthorizedTickets(tickets: Ticket[], user: BankUser): Ticket[] {
+    if (!tickets || tickets.length === 0) return [];
+    if (user.roles.includes('PLATFORM_ADMIN') || user.roles.includes('CISO')) {
+      return tickets.slice();
+    }
     return tickets.filter((ticket) => {
       const check = AuthService.canAccessResource({
         user,

@@ -7,14 +7,12 @@ import React, {
   useState,
 } from "react";
 import {
-  ArrowUpRight,
   Check,
-  Pause,
-  Play,
   RotateCcw,
-  Wind,
+  Sparkles,
   X,
 } from "lucide-react";
+import { Expressbank3DInspector } from "../../common/Expressbank3DInspector.js";
 import { GardenFallback } from "./GardenFallback.js";
 import { DayCycleControls } from "./DayCycleControls.js";
 import type { DayCycleController } from "./useDayCycle.js";
@@ -27,6 +25,7 @@ import {
 } from "./garden-state.js";
 
 const GardenScene = lazy(() => import("./GardenScene.js"));
+
 class GardenBoundary extends Component<
   { children: React.ReactNode; onError: () => void },
   { failed: boolean }
@@ -42,6 +41,7 @@ class GardenBoundary extends Component<
     return this.state.failed ? null : this.props.children;
   }
 }
+
 export function WindGarden({
   dayCycle,
   language,
@@ -58,10 +58,13 @@ export function WindGarden({
   const [unavailable, setUnavailable] = useState(false);
   const [paused, setPaused] = useState(false);
   const [open, setOpen] = useState(false);
-  const [gust, setGust] = useState(0);
-  const [resetView, setResetView] = useState(0);
-  const [discovery, setDiscovery] = useState<"bird" | "bell" | null>(null);
+  const [gust] = useState(0);
+  const [resetView] = useState(0);
+  const [discovery, setDiscovery] = useState<"bell" | null>(null);
+  const [show3DInspector, setShow3DInspector] = useState(false);
+
   const copy = (en: string, az: string) => (language === "az" ? az : en);
+
   const turn = useCallback(
     (index: number) => setState((previous) => turnInstrument(previous, index)),
     [],
@@ -72,8 +75,10 @@ export function WindGarden({
     setUnavailable(true);
     setReady(false);
   }, []);
+
   const solved = gardenSolved(state);
   const finished = state.chapter === 2 && solved;
+
   useEffect(() => {
     if (!solved) return;
     setOpen(true);
@@ -84,6 +89,7 @@ export function WindGarden({
     );
     return () => window.clearTimeout(timer);
   }, [solved, state.chapter]);
+
   return (
     <section
       className="wind-garden"
@@ -101,6 +107,7 @@ export function WindGarden({
           reducedMotion={reducedMotion}
         />
       </div>
+
       <div className={`garden-stage ${ready ? "is-ready" : ""}`}>
         <GardenFallback
           bloomed={state.chapter === 2 || solved}
@@ -121,12 +128,19 @@ export function WindGarden({
                 onReady={onReady}
                 onLowPerformance={onLowPerformance}
                 onUnavailable={onUnavailable}
-                onDiscovery={setDiscovery}
+                onDiscovery={(kind) => {
+                  if (kind === "bird") {
+                    setShow3DInspector(true);
+                  } else {
+                    setDiscovery(kind);
+                  }
+                }}
               />
             </Suspense>
           </GardenBoundary>
         )}
       </div>
+
       <div className="garden-caption">
         <span>01 — 03</span>
         <span>
@@ -136,6 +150,7 @@ export function WindGarden({
           )}
         </span>
       </div>
+
       <div className="garden-editorial">
         <p className="garden-eyebrow">
           {copy("A SMALL WORLD, BEFORE YOURS.", "İŞDƏN ÖNCƏ, KİÇİK BİR DÜNYA.")}
@@ -152,55 +167,8 @@ export function WindGarden({
           )}
         </p>
       </div>
-      <div className="garden-bottom">
-        <button
-          className="garden-explore"
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          aria-expanded={open}
-          aria-controls="garden-puzzle"
-        >
-          <Wind size={19} />
-          {copy("Catch the wind", "Küləyi tut")}
-          <ArrowUpRight size={16} />
-        </button>
-        <span className="garden-drag-hint">
-          {unavailable
-            ? copy("A quiet view of the garden", "Bağa sakit baxış")
-            : copy(
-                "Drag to explore · touch a sail",
-                "Baxmaq üçün sürüşdürün · yelkənə toxunun",
-              )}
-        </span>
-        <div className="garden-transport">
-          <button
-            type="button"
-            onClick={() => {
-              setResetView((n) => n + 1);
-              setGust((n) => n + 1);
-            }}
-            aria-label={copy(
-              "Send a breeze and reset view",
-              "Meh göndər və görünüşü sıfırla",
-            )}
-            title={copy("A little breeze", "Kiçik bir meh")}
-          >
-            <Wind size={17} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setPaused((value) => !value)}
-            aria-label={copy(
-              paused ? "Resume garden" : "Pause garden",
-              paused ? "Bağı canlandır" : "Bağı dayandır",
-            )}
-            aria-pressed={paused}
-            disabled={reducedMotion}
-          >
-            {paused || reducedMotion ? <Play size={15} /> : <Pause size={15} />}
-          </button>
-        </div>
-      </div>
+
+      {/* Secret Flower Rotation Dial Puzzle (Easter Egg) */}
       {open && (
         <div
           className="garden-puzzle"
@@ -209,22 +177,24 @@ export function WindGarden({
           data-complete={finished}
         >
           <div className="garden-puzzle__heading">
-            <span>
+            <span className="garden-puzzle__tag">
+              <Sparkles size={13} />
               {state.chapter === 1
-                ? copy("01 / THE FIRST BLOOM", "01 / İLK ÇİÇƏK")
-                : copy("02 / THE SECRET WIND", "02 / GİZLİ KÜLƏK")}
+                ? copy("01 / THE FIRST BLOOM · EASTER EGG", "01 / İLK ÇİÇƏK · EASTER EGG")
+                : copy("02 / THE SECRET WIND · EASTER EGG", "02 / GİZLİ KÜLƏK · EASTER EGG")}
             </span>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              aria-label={copy("Close wind puzzle", "Külək oyununu bağla")}
+              aria-label={copy("Close wind puzzle", "Külək tapmacasını bağla")}
             >
               <X size={17} />
             </button>
           </div>
+
           <h2 aria-live="polite">
             {finished
-              ? copy("The garden has a secret.", "Bağın bir sirri var.")
+              ? copy("The garden has bloomed.", "Bağ çiçəkləndi.")
               : solved
                 ? copy("A second breeze is waking…", "İkinci meh oyanır…")
                 : state.chapter === 2
@@ -237,6 +207,7 @@ export function WindGarden({
                       "Üç yelkən. Bir mükəmməl meh.",
                     )}
           </h2>
+
           <p>
             {finished
               ? copy(
@@ -253,6 +224,7 @@ export function WindGarden({
                     "Hər mis əqrəbi yaşıl nişana yönəldin. Nəsə çiçəklənməyi gözləyir.",
                   )}
           </p>
+
           <div className="garden-dials">
             {state.turns.map((value, i) => (
               <button
@@ -295,6 +267,7 @@ export function WindGarden({
               </button>
             ))}
           </div>
+
           <div className="garden-puzzle__footer">
             <span role="status">
               {state.moves} {copy("turns", "gediş")} ·{" "}
@@ -311,14 +284,16 @@ export function WindGarden({
           </div>
         </div>
       )}
+
+      {/* Bell discovery tip */}
       {discovery && !open && (
         <p className="garden-discovery" role="status">
-          {discovery === "bird"
-            ? copy("The gardener says hello.", "Bağban sizi salamlayır.")
-            : copy(
+          {discovery === "bell"
+            ? copy(
                 "A small bell. A very large silence.",
                 "Kiçik bir zəng. Böyük bir sükut.",
-              )}
+              )
+            : null}
           <button
             onClick={() => setDiscovery(null)}
             type="button"
@@ -327,6 +302,15 @@ export function WindGarden({
             <X size={12} />
           </button>
         </p>
+      )}
+
+      {/* Interactive 3D Expressbank Monument Inspector */}
+      {show3DInspector && (
+        <Expressbank3DInspector
+          isOpen={show3DInspector}
+          onClose={() => setShow3DInspector(false)}
+          language={language}
+        />
       )}
     </section>
   );

@@ -4,8 +4,9 @@ import { pgClient } from './db/postgres/client.js';
 import { runMigrations } from './db/postgres/migrate.js';
 import { logger } from './services/logger.service.js';
 import { OutboxRelayService } from './services/outbox-relay.service.js';
-import { DISCOVERY_QUEUE, SMB_PRINTER_DISCOVERY_QUEUE, QueueService } from './services/queue.service.js';
+import { DISCOVERY_QUEUE, LDAP_SYNC_QUEUE, SMB_PRINTER_DISCOVERY_QUEUE, QueueService } from './services/queue.service.js';
 import { WorkerEventService } from './services/worker-event.service.js';
+import { DiscoveryDailySyncService } from './services/discovery-daily-sync.service.js';
 import { shutdownTelemetry, startTelemetry } from './services/telemetry.service.js';
 
 const DISCOVERY_RECOVERY_INTERVAL_MS = 60_000;
@@ -31,6 +32,9 @@ async function startWorker(): Promise<void> {
       ? WorkerEventService.process(event)
       : Promise.resolve());
   } else {
+    // LDAP is a control-plane operation.  It has its own queue so a bulk
+    // inventory run cannot delay a user-requested directory refresh.
+    await QueueService.consume(LDAP_SYNC_QUEUE, (event) => WorkerEventService.process(event));
     await QueueService.consume(DISCOVERY_QUEUE, (event) => event.payload?.connectorType === 'SMB_PRINTER'
       ? Promise.resolve()
       : WorkerEventService.process(event));
@@ -41,12 +45,15 @@ async function startWorker(): Promise<void> {
   await QueueService.consume('aegissec.worker', (event) => event.topic.startsWith('cmdb.discovery.') || windowsSmbWorker
     ? Promise.resolve()
     : WorkerEventService.process(event));
-  await WorkerEventService.recoverQueuedDiscoveryRuns(100, windowsSmbWorker ? ['SMB_PRINTER'] : ['ACTIVE_DIRECTORY', 'CORTEX', 'VCENTER']);
+  await WorkerEventService.recoverQueuedDiscoveryRuns(100, windowsSmbWorker ? ['SMB_PRINTER'] : ['ACTIVE_DIRECTORY', 'CORTEX', 'VCENTER', 'LIBRENMS']);
+  await DiscoveryDailySyncService.recoverRunningBatches();
   // Startup-only recovery misses a run if the old process died while its lease
   // was still fresh. Reclaim only expired leases from the durable run table.
   discoveryRecoveryTimer = setInterval(() => {
-    void WorkerEventService.recoverQueuedDiscoveryRuns(100, windowsSmbWorker ? ['SMB_PRINTER'] : ['ACTIVE_DIRECTORY', 'CORTEX', 'VCENTER'])
+    void WorkerEventService.recoverQueuedDiscoveryRuns(100, windowsSmbWorker ? ['SMB_PRINTER'] : ['ACTIVE_DIRECTORY', 'CORTEX', 'VCENTER', 'LIBRENMS'])
       .catch((error) => logger.error({ error }, 'Discovery run lease recovery failed'));
+    void DiscoveryDailySyncService.recoverRunningBatches()
+      .catch((error) => logger.error({ error }, 'Daily discovery batch recovery failed'));
   }, DISCOVERY_RECOVERY_INTERVAL_MS);
   discoveryRecoveryTimer.unref?.();
   OutboxRelayService.start();

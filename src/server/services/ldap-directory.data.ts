@@ -141,6 +141,46 @@ export function normalizeDirectoryText(val: any): string {
 export function normalizeDirectoryKey(val: any): string {
   return normalizeDirectoryText(val).toLowerCase();
 }
+
+/**
+ * A narrowly-scoped canonical vocabulary for genuine organisation names that
+ * have more than one spelling in AD.  These are not fuzzy matches: every
+ * alias was confirmed against the live directory and is mapped to one
+ * business-owned hierarchy label before IDs, codes, or display values are
+ * derived.  Keep technical groups and arbitrary near-matches out of this map.
+ */
+const DIRECTORY_HIERARCHY_NAME_ALIASES = new Map<string, string>([
+  ['xezinadarliq sobesi', 'Xəzinədarlıq şöbəsi'],
+  ['xezinedarliq sobesi', 'Xəzinədarlıq şöbəsi'],
+  ['inkasasiya sobesi', 'İnkassasiya şöbəsi'],
+  ['inkasassiya sobesi', 'İnkassasiya şöbəsi'],
+  ['inkassasiya sobesi', 'İnkassasiya şöbəsi'],
+  ['biznes proseslerin tehlili ve optimallasdirilmasi sobesi', 'Biznes proseslərin təhlili və optimallaşdırılması şöbəsi'],
+  ['biznes proseslerinin tehlili ve optimallasdirilmasi sobesi', 'Biznes proseslərin təhlili və optimallaşdırılması şöbəsi'],
+]);
+
+function hierarchyAliasKey(value: any): string {
+  return normalizeAzerbaijani(normalizeDirectoryText(value))
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Returns the canonical display label for a confirmed organisational alias.
+ * Unknown values deliberately remain unchanged: similarity alone is never a
+ * reason to merge two business queues.
+ */
+export function canonicalizeDirectoryHierarchyName(value: any): string {
+  const clean = normalizeDirectoryText(value);
+  return DIRECTORY_HIERARCHY_NAME_ALIASES.get(hierarchyAliasKey(clean)) || clean;
+}
+
+/** Stable semantic key used when reconciling persisted hierarchy aliases. */
+export function makeDirectoryHierarchyKey(value: any): string {
+  return hierarchyAliasKey(canonicalizeDirectoryHierarchyName(value));
+}
+
 export function slugifyDept(text: string): string {
   return (
     text
@@ -185,10 +225,11 @@ export function makeDepartmentNodeId(name: string): string {
 /** Keep hierarchy IDs within PostgreSQL's 128-character key limit. */
 export function makeHierarchyNodeId(kind: 'section' | 'unit', departmentId: string, name: string): string {
   const prefix = `${kind}-`;
-  const slug = slugifyDept(name);
+  const canonicalName = canonicalizeDirectoryHierarchyName(name);
+  const slug = slugifyDept(canonicalName);
   const base = `${prefix}${departmentId}-${slug}`;
   if (base.length <= 128) return base;
-  const digest = createHash('sha256').update(`${kind}|${departmentId}|${normalizeDirectoryKey(name)}`).digest('hex').slice(0, 10);
+  const digest = createHash('sha256').update(`${kind}|${departmentId}|${makeDirectoryHierarchyKey(canonicalName)}`).digest('hex').slice(0, 10);
   const availableSlugLength = Math.max(1, 128 - prefix.length - departmentId.length - 1 - digest.length - 1);
   return `${prefix}${departmentId}-${slug.slice(0, availableSlugLength)}-${digest}`;
 }
@@ -267,8 +308,35 @@ export const KNOWN_EXPRESSBANK_BRANCHES: KnownBranchInfo[] = [
   { canonicalName: 'Şirvan filialı', id: 'dept-sirvan-filiali', code: 'BRANCH_SIRVAN', aliases: ['sirvan', 'shirvan'] },
   { canonicalName: 'Sumqayıt filialı', id: 'dept-sumqayit-filiali', code: 'BRANCH_SUMQAYIT', aliases: ['sumqayit', 'sumgait'] },
   { canonicalName: 'Yasamal filialı', id: 'dept-yasamal-filiali', code: 'BRANCH_YASAMAL', aliases: ['yasamal'] },
+  { canonicalName: 'MXD filialı', id: 'dept-mxd-filiali', code: 'BRANCH_MXD', aliases: ['mxd'] },
   { canonicalName: 'Mərkəz filialı', id: 'dept-merkez-filiali', code: 'BRANCH_MERKEZ', aliases: ['merkez', 'central'] },
 ];
+
+function isMxdBranchContext(value: string): boolean {
+  const normalized = normalizeAzerbaijani(value)
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (normalized === 'mxd') return true;
+  return /\bmxd\b.*\b(?:branch|filial|filiali|sg|dg)\b/.test(normalized)
+    || /\b(?:branch|filial|filiali)\b.*\bmxd\b/.test(normalized);
+}
+
+function knownBranchAliasMatches(
+  raw: string,
+  branch: KnownBranchInfo,
+  aliasTokens: string[],
+  normalizedTokens: string[],
+  matchIdx: number,
+): boolean {
+  // MXD is a real branch marker, but generic groups such as MXD-Online and
+  // MXD-Printers are not organizational placement. Require an OU/branch/SG
+  // context before accepting the one-token alias.
+  if (branch.id === 'dept-mxd-filiali' && aliasTokens.length === 1 && !isMxdBranchContext(raw)) {
+    return false;
+  }
+  return aliasTokens.every((token, offset) => normalizedTokens[matchIdx + offset] === token);
+}
 
 export function matchKnownBranchEntry(value: any): KnownBranchInfo | undefined {
   if (!value) return undefined;
@@ -284,8 +352,8 @@ export function matchKnownBranchEntry(value: any): KnownBranchInfo | undefined {
   for (const b of KNOWN_EXPRESSBANK_BRANCHES) {
     for (const alias of b.aliases) {
       const aliasTokens = alias.split(' ');
-      const matchIdx = normalizedTokens.findIndex((token, idx) => {
-        return aliasTokens.every((at, aOffset) => normalizedTokens[idx + aOffset] === at);
+      const matchIdx = normalizedTokens.findIndex((_token, idx) => {
+        return knownBranchAliasMatches(raw, b, aliasTokens, normalizedTokens, idx);
       });
       if (matchIdx >= 0) return b;
     }
@@ -337,8 +405,8 @@ export function extractDirectoryBranchName(values: any[] = []): string | undefin
     for (const b of KNOWN_EXPRESSBANK_BRANCHES) {
       for (const alias of b.aliases) {
         const aliasTokens = alias.split(' ');
-        const matchIdx = normalizedTokens.findIndex((token, idx) => {
-          return aliasTokens.every((at, aOffset) => normalizedTokens[idx + aOffset] === at);
+        const matchIdx = normalizedTokens.findIndex((_token, idx) => {
+          return knownBranchAliasMatches(raw, b, aliasTokens, normalizedTokens, idx);
         });
         if (matchIdx >= 0) {
           return rawTokens.slice(matchIdx, matchIdx + aliasTokens.length).join(' ');
@@ -500,14 +568,11 @@ export function parseJobTitleAndHierarchy(
     for (const ou of relevantOUs) {
       const normOu = normalizeAzerbaijani(ou);
       if (normOu.includes('tarcuba') || normOu.includes('tercume')) {
-        // Tərçüməçi/Təcrübəçi containers are generic AD folders. An explicit
-        // section in the title (for example "Texniki dəstək şöbəsi /
-        // Mütəxəssis") is authoritative and must not inherit a fake
-        // "Tərcümə bölməsi" from the user's generic container.
-        if (!sectionCand) {
-          sectionCand = 'Katiblik və Tərcümə şöbəsi';
-          if (!unitCand) unitCand = 'Tərcümə bölməsi';
-        }
+        // Training/translation containers are AD administration folders, not
+        // an organisation department or section.  Do not manufacture a
+        // hierarchy from them; an explicit HR baseline or AD department/title
+        // must supply the placement instead.
+        continue;
       } else if (normOu.includes('satinalma')) {
         if (!sectionCand) sectionCand = 'Satınalma bölməsi';
         if (!unitCand) unitCand = 'Satınalma bölməsi';
@@ -597,7 +662,6 @@ export const CANONICAL_DEPARTMENTS_MAP: Record<string, { id: string; divisionId:
   'dept-pmo': { id: 'dept-pmo', divisionId: 'div-banking', name: 'Biznes Proseslərin Təhlili və Optimallaşdırılması Şöbəsi', code: 'PMO', roles: ['REQUESTER', 'APPROVER'], securityClearance: 'INTERNAL' },
   'dept-procurement': { id: 'dept-procurement', divisionId: 'div-banking', name: 'İnzibati Təsərrüfat və Satınalma Departamenti', code: 'INZIBATI_DEPT', roles: ['REQUESTER', 'ASSIGNEE'], securityClearance: 'INTERNAL' },
   'dept-marketing': { id: 'dept-marketing', divisionId: 'div-hr', name: 'Reklam və Marketinq Departamenti', code: 'MARKETING', roles: ['REQUESTER', 'APPROVER'], securityClearance: 'INTERNAL' },
-  'dept-katiblik-sobesi': { id: 'dept-katiblik-sobesi', divisionId: 'div-hr', name: 'Katiblik və Tərcümə Şöbəsi', code: 'KATIB_DEPT', roles: ['REQUESTER', 'APPROVER'], securityClearance: 'RESTRICTED' },
   'dept-executive': { id: 'dept-executive', divisionId: 'div-banking', name: 'İdarə Heyəti və Rəhbərlik', code: 'EXECUTIVE', roles: ['DEPARTMENT_ADMIN', 'APPROVER', 'REQUESTER'], securityClearance: 'HIGHLY_RESTRICTED_HR_LEGAL' },
   'dept-credit': { id: 'dept-credit', divisionId: 'div-banking', name: 'Kredit və Anderraytinq Departamenti', code: 'CREDIT', roles: ['REQUESTER', 'APPROVER'], securityClearance: 'RESTRICTED' },
 };
@@ -638,6 +702,15 @@ export function mapDepartment(
       'clients',
       'test',
       'temp',
+      'microsoft exchange security groups',
+      'exchange security groups',
+      'exchange',
+      'security groups',
+      'distribution groups',
+      'groups',
+      'tarcubacilar',
+      'tecrubeciler',
+      'tercubeciler',
     ].includes(n) &&
     !n.includes('branch') &&
     !n.includes('filial') &&
@@ -652,6 +725,28 @@ export function mapDepartment(
   const combinedContext = [deptStr, titleStr, ...relevantOUs].join(' ');
   const norm = normalizeAzerbaijani(combinedContext);
   const titleNorm = normalizeAzerbaijani(titleStr);
+
+  // AD administrative containers are not organisation nodes.  They may
+  // appear in `department`, OU, or title fields (and dynamic mapping must
+  // never turn them into a department/section).  Keep the person in the
+  // safe general directory bucket until a real AD department or HR baseline
+  // gives us an authoritative placement.
+  const isTechnicalStructureMarker =
+    /(?:katiblik|tercume|tarcuba|translator|microsoft exchange|exchange security groups|distribution groups|security groups)/i.test(norm);
+  if (isTechnicalStructureMarker) {
+    return {
+      departmentId: 'dept-general-banking',
+      divisionId: 'div-banking',
+      teamIds: ['team-swift-eng'],
+      departmentName: 'Ümumi bank əməkdaşları',
+      departmentCode: 'GENERAL_BANKING',
+      roles: ['REQUESTER'],
+      securityClearance: 'INTERNAL',
+      positionTitle: parseJobTitleAndHierarchy(titleStr, '', []).positionTitle,
+      isDepartmentHead: false,
+      isSectionHead: false,
+    };
+  }
 
   const groupArr = Array.isArray(groups) ? groups : groups ? [groups] : [];
   const groupNorms = groupArr.map((g) => normalizeAzerbaijani(toSafeString(g))).filter(Boolean);
@@ -674,15 +769,19 @@ export function mapDepartment(
   let result: DepartmentMappingResult;
 
   const explicitBranch = matchKnownBranchEntry(deptStr);
+  const directoryBranch = matchKnownBranchEntry(
+    extractDirectoryBranchName([deptStr, titleStr, ...ous, ...groupArr]) || '',
+  );
+  const resolvedBranch = explicitBranch || directoryBranch;
   const explicitCanonical = CANONICAL_DEPARTMENTS_MAP[deptStr];
 
-  if (explicitBranch) {
+  if (resolvedBranch) {
     result = {
-      departmentId: explicitBranch.id,
+      departmentId: resolvedBranch.id,
       divisionId: 'div-banking',
       teamIds: ['team-swift-eng'],
-      departmentName: explicitBranch.canonicalName,
-      departmentCode: explicitBranch.code,
+      departmentName: resolvedBranch.canonicalName,
+      departmentCode: resolvedBranch.code,
       roles: isManagerTitle ? ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'] : ['REQUESTER', 'ASSIGNEE'],
       securityClearance: 'INTERNAL',
     };
@@ -800,7 +899,8 @@ export function mapDepartment(
     norm.includes('texniki ve fiziki tehlukesizlik') ||
     norm.includes('muhafize') ||
     norm.includes('inkassasiya') ||
-    norm.includes('inkasasiya')
+    norm.includes('inkasasiya') ||
+    norm.includes('inkasassiya')
   ) {
     let roles: BankRole[] = ['REQUESTER', 'ASSIGNEE'];
     if (isManagerTitle) {
@@ -955,30 +1055,6 @@ export function mapDepartment(
       teamIds: ['team-hr-ops'],
       departmentName: 'Hüquq Departamenti',
       departmentCode: 'LEGAL',
-      roles,
-      securityClearance: 'HIGHLY_RESTRICTED_HR_LEGAL',
-    };
-  }
-
-  // 8b. Secretariat & Translation (Katiblik və Tərcümə Şöbəsi)
-  else if (
-    norm.includes('katiblik') ||
-    norm.includes('katib') ||
-    norm.includes('tarcuba') ||
-    norm.includes('tercume') ||
-    norm.includes('translator') ||
-    norm === 'dept-katiblik-sobesi'
-  ) {
-    let roles: BankRole[] = ['REQUESTER', 'APPROVER'];
-    if (isManagerTitle) {
-      roles = ['DEPARTMENT_ADMIN', 'DEPARTMENT_MANAGER', 'TEAM_LEAD', 'APPROVER', 'REQUESTER'];
-    }
-    result = {
-      departmentId: 'dept-katiblik-sobesi',
-      divisionId: 'div-hr',
-      teamIds: ['team-hr-ops'],
-      departmentName: 'Katiblik və Tərcümə Şöbəsi',
-      departmentCode: 'KATIB_DEPT',
       roles,
       securityClearance: 'HIGHLY_RESTRICTED_HR_LEGAL',
     };
@@ -1147,7 +1223,6 @@ export function mapDepartment(
     norm.includes('call') ||
     norm.includes('melumat merkez') ||
     norm.includes('elaqe merkez') ||
-    norm.includes('mxd') ||
     norm.includes('132')
   ) {
     let roles: BankRole[] = ['REQUESTER', 'ASSIGNEE'];
@@ -1526,7 +1601,10 @@ function cleanSectionCandidate(
     }
   }
 
-  const sectionCandidate = cleanSectionCandidate(rawSectionCandidate, result.departmentId, norm, titleNorm);
+  const cleanedSectionCandidate = cleanSectionCandidate(rawSectionCandidate, result.departmentId, norm, titleNorm);
+  const sectionCandidate = cleanedSectionCandidate
+    ? canonicalizeDirectoryHierarchyName(cleanedSectionCandidate)
+    : undefined;
 
   if (sectionCandidate) {
     const sectionSlug = slugifyDept(sectionCandidate);
@@ -1545,7 +1623,7 @@ function cleanSectionCandidate(
   }
 
   if (rawUnitCandidate) {
-    const unitCandidate = normalizeDirectoryText(rawUnitCandidate);
+    const unitCandidate = canonicalizeDirectoryHierarchyName(rawUnitCandidate);
     const unitSlug = slugifyDept(unitCandidate);
     result.unitId = makeHierarchyNodeId('unit', result.departmentId, unitCandidate);
     result.unitName = unitCandidate;

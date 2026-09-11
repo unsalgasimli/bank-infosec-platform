@@ -225,6 +225,35 @@
 .garden-explore > svg:first-child {
   color: var(--garden-clay);
 }
+.garden-emblem-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  border: 1px solid rgba(250, 166, 26, 0.45);
+  background: rgba(250, 166, 26, 0.1);
+  color: var(--garden-ink);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-height: 32px;
+}
+.garden-emblem-trigger:hover {
+  background: rgba(250, 166, 26, 0.22);
+  border-color: rgba(250, 166, 26, 0.8);
+  box-shadow: 0 2px 10px rgba(250, 166, 26, 0.25);
+  transform: translateY(-1px);
+}
+.garden-emblem-trigger span {
+  font-size: 9px;
+  font-weight: 800;
+  background: #faa61a;
+  color: #1a1a1a;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
 .garden-drag-hint {
   font-size: 9px;
   color: var(--garden-muted);
@@ -541,6 +570,17 @@
   line-height: 1.7;
   color: var(--garden-muted);
   margin: 0;
+}
+.garden-puzzle__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--garden-clay);
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+.garden-puzzle__tag svg {
+  color: #faa61a;
 }
 .garden-dials {
   display: flex;

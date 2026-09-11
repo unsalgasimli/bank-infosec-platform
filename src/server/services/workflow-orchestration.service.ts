@@ -134,14 +134,16 @@ export class WorkflowOrchestrationService {
 
   public static listCatalog(actor: BankUser, query = '', category = ''): WorkflowCatalogTemplate[] {
     const normalized = query.trim().toLowerCase();
+    const definitionMap = new Map((db.data.workflowDefinitions || []).map((d) => [d.id, d]));
+    const userMap = normalized ? new Map((db.data.users || []).map((u) => [u.id, u])) : undefined;
     return db.data.workflowCatalogTemplates.filter((template) => {
       if (template.lifecycle !== 'PUBLISHED') return false;
       if (category && template.category !== category) return false;
-      const definition = db.data.workflowDefinitions.find((item) => item.id === template.workflowDefinitionId);
+      const definition = definitionMap.get(template.workflowDefinitionId);
       if (!definition || definition.lifecycle !== 'PUBLISHED' || !this.canViewDefinition(definition, actor)) return false;
       if (!normalized) return true;
       const version = definition && this.getVersion(definition.id, template.publishedWorkflowVersion);
-      const owner = db.data.users.find((user) => user.id === template.ownerId);
+      const owner = userMap?.get(template.ownerId);
       const searchable = [template.title, template.purpose, template.domain, template.category, owner?.fullName, ...(template.tags || []), ...(version?.nodes.map((node) => node.title) || [])].join(' ').toLowerCase();
       return searchable.includes(normalized);
     }).sort((left, right) => Number(right.favoriteUserIds.includes(actor.id)) - Number(left.favoriteUserIds.includes(actor.id)) || right.runCount - left.runCount);
@@ -227,7 +229,11 @@ export class WorkflowOrchestrationService {
   }
 
   public static getTemplate(id: string, actor?: BankUser): { template: WorkflowCatalogTemplate; definition: WorkflowDefinition; version: WorkflowVersion; preflight: PreflightResult } {
-    const template = db.data.workflowCatalogTemplates.find((item) => item.id === id);
+    let template = db.data.workflowCatalogTemplates.find((item) => item.id === id);
+    if (!template) {
+      this.ensureRuntimeBaseline();
+      template = db.data.workflowCatalogTemplates.find((item) => item.id === id);
+    }
     if (!template) throw new OrchestrationError('Catalog template not found.', 404);
     const definition = this.getDefinition(template.workflowDefinitionId);
     if (template.lifecycle !== 'PUBLISHED' || definition.lifecycle !== 'PUBLISHED') throw new OrchestrationError('This workflow template is no longer available.', 404);
@@ -582,17 +588,33 @@ export class WorkflowOrchestrationService {
     if (!approval) return [];
     let users: BankUser[] = [];
     const requester = db.data.users.find((user) => user.id === requesterId);
-    const approvalDepartmentId = this.resolveApprovalDepartmentId(approval, context, requester);
+    const approvalSectionId = this.resolveApprovalSectionId(approval, context, requester);
+    const approvalDepartmentId = approvalSectionId
+      ? db.data.departmentSections.find((section) => section.id === approvalSectionId)?.departmentId
+      : this.resolveApprovalDepartmentId(approval, context, requester);
     const usesDynamicDepartment = Boolean(approval.departmentSource && approval.departmentSource !== 'STATIC');
     // A runtime department route must never be overridden by a saved person ID.
     // This also keeps legacy drafts safe if they predate the designer restriction.
     const approverSource = usesDynamicDepartment && approval.approverSource === 'SPECIFIC_USER'
       ? 'DEPARTMENT_MEMBERS'
       : approval.approverSource;
-    if (!usesDynamicDepartment && approval.specificUserIds?.length) users = db.data.users.filter((user) => approval.specificUserIds!.includes(user.id) && user.isActive);
+    if (!usesDynamicDepartment && approval.specificUserIds?.length) {
+      users = db.data.users.filter((user) => approval.specificUserIds!.includes(user.id)
+        && user.isActive
+        && (!approvalSectionId || user.sectionId === approvalSectionId)
+        && (approvalSectionId || !approvalDepartmentId || user.departmentId === approvalDepartmentId));
+    }
     if (!users.length && approval.groupId) users = db.data.users.filter((user) => user.isActive && user.teamIds.includes(approval.groupId!));
     if (!users.length && approverSource === 'DEPARTMENT_MEMBERS') {
-      users = db.data.users.filter((user) => user.isActive && user.departmentId === approvalDepartmentId);
+      users = db.data.users.filter((user) => user.isActive
+        && user.departmentId === approvalDepartmentId
+        && (!approvalSectionId || user.sectionId === approvalSectionId));
+    }
+    if (!users.length && approverSource === 'DEPARTMENT_HEAD' && approvalSectionId) {
+      const managerSection = this.resolveManagedSection(approvalSectionId);
+      users = managerSection?.managerId
+        ? db.data.users.filter((user) => user.id === managerSection.managerId && user.isActive)
+        : [];
     }
     if (!users.length && approverSource === 'DYNAMIC_EXPRESSION' && approval.dynamicPath) {
       const ids = OrchestrationExpressionService.getPath(context, approval.dynamicPath);
@@ -604,9 +626,9 @@ export class WorkflowOrchestrationService {
       users = db.data.users.filter((user) => user.isActive && user.id === manager?.managerId);
     }
     if (!users.length) {
-      const ticketLike: any = { requesterId, reporterId: requesterId, departmentId: approvalDepartmentId || '', applicationId: context.applicationId, assetId: context.assetId };
+      const ticketLike: any = { requesterId, reporterId: requesterId, departmentId: approvalDepartmentId || '', targetSectionId: approvalSectionId, applicationId: context.applicationId, assetId: context.assetId };
       const resolver = approverSource === 'APPLICATION_OWNER' || approverSource === 'CI_OWNER' ? (approverSource === 'APPLICATION_OWNER' ? 'SERVICE_OWNER' : 'ASSET_OWNER') : approverSource;
-      if (['SPECIFIC_USER', 'ROLE', 'REQUESTER_MANAGER', 'DEPARTMENT_HEAD', 'SERVICE_OWNER', 'ASSET_OWNER', 'CAB_BOARD'].includes(resolver)) users = ApprovalService.resolveApprovers(resolver as any, ticketLike, approval.role);
+      if (['SPECIFIC_USER', 'ROLE', 'REQUESTER_MANAGER', 'DEPARTMENT_HEAD', 'SERVICE_OWNER', 'ASSET_OWNER', 'CAB_BOARD'].includes(resolver) && !(resolver === 'DEPARTMENT_HEAD' && approvalSectionId)) users = ApprovalService.resolveApprovers(resolver as any, ticketLike, approval.role);
     }
     if (approval.preventSelfApproval !== false) users = users.filter((user) => user.id !== requesterId);
     return [...new Map(users.map((user) => [user.id, user])).values()];
@@ -632,6 +654,45 @@ export class WorkflowOrchestrationService {
       default:
         return approval.departmentId || contextString('departmentId') || requester?.departmentId;
     }
+  }
+
+  /** Resolve the exact server-owned branch queue, including a dynamic ticket/requester route. */
+  private static resolveApprovalSectionId(approval: NonNullable<WorkflowNodeDefinition['approval']>, context: Record<string, unknown> = {}, requester?: BankUser): string | undefined {
+    const source = approval.departmentSource || 'STATIC';
+    const requesterContext = typeof context.requester === 'object' && context.requester !== null ? context.requester as Record<string, unknown> : {};
+    const contextSection = (key: string) => typeof context[key] === 'string' && context[key].trim() ? context[key] as string : undefined;
+    const candidateId = source === 'STATIC'
+      ? approval.sectionId
+      : source === 'REQUESTER_DEPARTMENT' || source === 'REQUESTER_PARENT_DEPARTMENT'
+        ? requester?.sectionId || (typeof requesterContext.sectionId === 'string' ? requesterContext.sectionId : undefined)
+        : contextSection('targetSectionId') || contextSection('sectionId');
+    const section = candidateId ? db.data.departmentSections.find((candidate) => candidate.id === candidateId
+      && candidate.isActive !== false
+      && candidate.directorySource === 'ACTIVE_DIRECTORY') : undefined;
+    return section?.id;
+  }
+
+  /** Bölmə never steals a branch route: it inherits its parent Şöbə manager. */
+  private static resolveManagedSection(sectionId?: string) {
+    let section = sectionId ? db.data.departmentSections.find((candidate) => candidate.id === sectionId && candidate.isActive !== false) : undefined;
+    const seen = new Set<string>();
+    while (section && !seen.has(section.id)) {
+      seen.add(section.id);
+      if (section.hasOwnManager !== false && section.managerId) return section;
+      section = section.parentSectionId ? db.data.departmentSections.find((candidate) => candidate.id === section!.parentSectionId && candidate.isActive !== false) : undefined;
+    }
+    return undefined;
+  }
+
+  /** Server-owned queue scope used when a department approval is claimed. */
+  public static resolveApprovalQueueScope(node: WorkflowNodeDefinition, context: Record<string, unknown>, requesterId: string): { departmentId?: string; sectionId?: string } {
+    const approval = node.approval;
+    if (!approval) return {};
+    const requester = db.data.users.find((user) => user.id === requesterId);
+    return {
+      departmentId: this.resolveApprovalDepartmentId(approval, context, requester),
+      sectionId: this.resolveApprovalSectionId(approval, context, requester),
+    };
   }
 
   public static resolvePriority(policySetId: string, context: Record<string, unknown>) {

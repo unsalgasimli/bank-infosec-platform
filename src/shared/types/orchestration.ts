@@ -273,6 +273,8 @@ export interface ApprovalConfiguration {
   departmentSource?: ApprovalDepartmentSource;
   /** Used only when departmentSource is STATIC (or by legacy definitions). */
   departmentId?: string;
+  /** Optional AD-confirmed leaf target for a static approval route. */
+  sectionId?: string;
   specificUserIds?: string[];
   groupId?: string;
   role?: BankRole;

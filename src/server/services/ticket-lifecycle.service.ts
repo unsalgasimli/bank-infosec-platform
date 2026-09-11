@@ -197,8 +197,13 @@ export class TicketLifecycleService {
 
   /** Universal orchestration uses a workflow instance as the source of truth. */
   public static archiveForCompletedWorkflow(workflowInstanceId: string, actor?: BankUser): number {
+    return this.archiveForTerminalWorkflow(workflowInstanceId, actor);
+  }
+
+  /** Archive requester tickets only when their workflow accepted or rejected them. */
+  public static archiveForTerminalWorkflow(workflowInstanceId: string, actor?: BankUser): number {
     const instance = db.data.workflowInstances.find((candidate) => candidate.id === workflowInstanceId);
-    if (!instance || instance.status !== 'COMPLETED') return 0;
+    if (!instance || !['COMPLETED', 'REJECTED'].includes(instance.status)) return 0;
 
     const ticketIds = new Set<string>();
     const contextTicketId = instance.context?.ticketId;
@@ -212,7 +217,8 @@ export class TicketLifecycleService {
 
     let archivedCount = 0;
     for (const ticket of db.data.tickets.filter((candidate) => ticketIds.has(candidate.id))) {
-      if (ticket.statusCategory === 'DONE' && this.archiveTicket(ticket, actor, 'WORKFLOW_COMPLETED')) archivedCount += 1;
+      const reason = instance.status === 'REJECTED' ? 'WORKFLOW_REJECTED' : 'WORKFLOW_COMPLETED';
+      if (ticket.statusCategory === 'DONE' && this.archiveTicket(ticket, actor, reason)) archivedCount += 1;
     }
     return archivedCount;
   }
@@ -550,11 +556,12 @@ export class TicketLifecycleService {
   }
 
   public static getBundle(ticket: Ticket, user?: BankUser): TicketLifecycleBundle {
+    const ticketMap = new Map((db.data.tickets || []).map((t) => [t.id, t]));
     const relationships = (db.data.ticketRelationships || [])
       .filter((relationship) => relationship.sourceTicketId === ticket.id || relationship.targetTicketId === ticket.id)
       .map((relationship) => {
         const relatedId = relationship.sourceTicketId === ticket.id ? relationship.targetTicketId : relationship.sourceTicketId;
-        const related = db.data.tickets.find((candidate) => candidate.id === relatedId);
+        const related = ticketMap.get(relatedId);
         const canSeeRelated = related && (!user || AuthService.canAccessResource({ user, action: 'READ', resourceType: 'TICKET', resource: related }).allowed);
         return {
           ...relationship,
@@ -591,7 +598,7 @@ export class TicketLifecycleService {
 
     let parentTicket: any = undefined;
     if (ticket.parentTicketId) {
-      const p = (db.data.tickets || []).find((t) => t.id === ticket.parentTicketId);
+      const p = ticketMap.get(ticket.parentTicketId);
       if (p) {
         parentTicket = {
           id: p.id,

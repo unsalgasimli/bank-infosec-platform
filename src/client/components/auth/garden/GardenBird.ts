@@ -1,70 +1,132 @@
 import * as THREE from "three";
-import { detailBatch, tube } from "./GardenCraft.js";
+import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
+import { EXPRESSBANK_EMBLEM_PATH } from "../../common/ExpressbankLogo.js";
 
-/** Glazed porcelain songbird; the wing pivots retain the existing flight rig. */
+/**
+ * Artisanal Expressbank brand monument in the Wind Garden:
+ * Replaces the old songbird with a sculpted golden Expressbank emblem
+ * resting on a glazed porcelain and brushed brass pedestal.
+ * Retains the discovery hit targets and wings group interface for full compatibility.
+ */
 export function buildBird(parent: THREE.Group, compact: boolean, brass: THREE.Material) {
   const bird = new THREE.Group();
-  bird.position.set(-1, 0.63, 2);
-  bird.rotation.y = Math.PI + 0.18;
-  bird.scale.setScalar(1.35);
+  bird.position.set(-1, 0.55, 2);
+  bird.rotation.y = 0.25;
+  bird.scale.setScalar(1.25);
   parent.add(bird);
-  const porcelain = new THREE.MeshPhysicalMaterial({ color: "#eee5cf", roughness: 0.38, clearcoat: 0.32, clearcoatRoughness: 0.3 });
-  const featherMaterial = new THREE.MeshStandardMaterial({ color: "#c9cbb5", roughness: 0.64 });
-  const dark = new THREE.MeshPhysicalMaterial({ color: "#222f2b", roughness: 0.22, clearcoat: 0.6 });
-  const sphere = new THREE.SphereGeometry(1, compact ? 16 : 24, compact ? 12 : 18);
+
+  const porcelain = new THREE.MeshPhysicalMaterial({
+    color: "#faf6ed",
+    roughness: 0.32,
+    clearcoat: 0.65,
+    clearcoatRoughness: 0.2,
+  });
+
+  const goldLacquer = new THREE.MeshPhysicalMaterial({
+    color: "#FAA61A",
+    metalness: 0.46,
+    roughness: 0.22,
+    clearcoat: 0.95,
+    clearcoatRoughness: 0.15,
+    emissive: "#D97706",
+    emissiveIntensity: 0.3,
+    side: THREE.DoubleSide,
+  });
+
+  const darkSlate = new THREE.MeshStandardMaterial({
+    color: "#2C3933",
+    roughness: 0.75,
+    metalness: 0.15,
+  });
+
   const hits: THREE.Object3D[] = [];
-  const ellipsoid = (material: THREE.Material, position: number[], scale: number[], target: THREE.Object3D = bird) => {
-    const mesh = new THREE.Mesh(sphere, material);
-    mesh.position.set(position[0], position[1], position[2]);
-    mesh.scale.set(scale[0], scale[1], scale[2]);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.userData.discovery = "bird";
-    target.add(mesh);
-    hits.push(mesh);
-    return mesh;
-  };
-  ellipsoid(porcelain, [0, 0.105, 0.025], [0.135, 0.16, 0.235]);
-  ellipsoid(porcelain, [0, 0.285, -0.15], [0.10, 0.11, 0.105]);
-  // Rounded breast and swept crown replace the old cone silhouette.
-  ellipsoid(porcelain, [0, 0.15, -0.12], [0.108, 0.14, 0.115]);
-  [-1, 1].forEach((side) => {
-    ellipsoid(featherMaterial, [side * 0.079, 0.29, -0.198], [0.027, 0.035, 0.012]);
-    ellipsoid(dark, [side * 0.087, 0.302, -0.208], [0.015, 0.017, 0.012]);
-    ellipsoid(porcelain, [side * 0.09, 0.308, -0.217], [0.004, 0.004, 0.003]);
-  });
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.105, 8), brass);
-  beak.rotation.x = -Math.PI / 2;
-  beak.position.set(0, 0.278, -0.282);
-  bird.add(beak);
+
+  // 1. Carved Pedestal Base
+  const basePlinth = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.18, 0.24, 0.08, compact ? 16 : 24),
+    darkSlate,
+  );
+  basePlinth.position.set(0, -0.04, 0);
+  basePlinth.castShadow = true;
+  basePlinth.receiveShadow = true;
+  basePlinth.userData.discovery = "bird";
+  bird.add(basePlinth);
+  hits.push(basePlinth);
+
+  const brassCollar = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.13, 0.16, 0.04, compact ? 16 : 24),
+    brass,
+  );
+  brassCollar.position.set(0, 0.02, 0);
+  brassCollar.castShadow = true;
+  brassCollar.userData.discovery = "bird";
+  bird.add(brassCollar);
+  hits.push(brassCollar);
+
+  const pedestalColumn = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.09, 0.12, 0.22, compact ? 16 : 24),
+    porcelain,
+  );
+  pedestalColumn.position.set(0, 0.15, 0);
+  pedestalColumn.castShadow = true;
+  pedestalColumn.userData.discovery = "bird";
+  bird.add(pedestalColumn);
+  hits.push(pedestalColumn);
+
+  const capitalPlatter = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.16, 0.10, 0.035, compact ? 16 : 24),
+    brass,
+  );
+  capitalPlatter.position.set(0, 0.28, 0);
+  capitalPlatter.castShadow = true;
+  capitalPlatter.userData.discovery = "bird";
+  bird.add(capitalPlatter);
+  hits.push(capitalPlatter);
+
+  // 2. Sculpted Expressbank 3D Emblem
+  try {
+    const loader = new SVGLoader();
+    const svgMarkup = `<svg viewBox="0 0 40 30"><path fill-rule="evenodd" clip-rule="evenodd" d="${EXPRESSBANK_EMBLEM_PATH}"/></svg>`;
+    const parsed = loader.parse(svgMarkup);
+    const shapes = SVGLoader.createShapes(parsed.paths[0]);
+
+    const emblemGeo = new THREE.ExtrudeGeometry(shapes, {
+      depth: 2.4,
+      bevelEnabled: true,
+      bevelSegments: compact ? 3 : 5,
+      bevelThickness: 0.6,
+      bevelSize: 0.45,
+      curveSegments: compact ? 20 : 32,
+    });
+    emblemGeo.center();
+    // Invert Y to match Three.js coordinate system and scale to pedestal size
+    emblemGeo.scale(0.0125, -0.0125, 0.0125);
+    emblemGeo.computeVertexNormals();
+
+    const emblemMesh = new THREE.Mesh(emblemGeo, goldLacquer);
+    emblemMesh.position.set(0, 0.48, 0);
+    emblemMesh.castShadow = true;
+    emblemMesh.receiveShadow = true;
+    emblemMesh.userData.discovery = "bird";
+    bird.add(emblemMesh);
+    hits.push(emblemMesh);
+  } catch {
+    // Fallback torus knot / gem if SVG parsing fails
+    const fallback = new THREE.Mesh(
+      new THREE.TorusGeometry(0.12, 0.04, 12, 24),
+      goldLacquer,
+    );
+    fallback.position.set(0, 0.48, 0);
+    fallback.userData.discovery = "bird";
+    bird.add(fallback);
+    hits.push(fallback);
+  }
+
+  // Soft luminous aura around the brand monument
+  const emblemGlow = new THREE.PointLight("#FFA000", 1.2, 2.5);
+  emblemGlow.position.set(0, 0.48, 0.08);
+  bird.add(emblemGlow);
+
   const wings: THREE.Mesh[] = [];
-  [-1, 1].forEach((side) => {
-    const geometry = sphere.clone().scale(0.07, 0.16, 0.055).translate(side * 0.035, -0.04, 0.065);
-    const wing = new THREE.Mesh(geometry, porcelain);
-    wing.position.set(side * 0.10, 0.16, 0.035);
-    wing.castShadow = true;
-    wing.userData.discovery = "bird";
-    bird.add(wing);
-    hits.push(wing);
-    wings.push(wing);
-    const feathers: THREE.BufferGeometry[] = [];
-    for (let i = 0; i < 5; i++) {
-      const feather = sphere.clone().scale(0.021, 0.115 - i * 0.009, 0.018);
-      feather.rotateZ(side * (0.10 + i * 0.095));
-      feather.translate(side * (-0.012 + i * 0.022), -0.085 + i * 0.012, 0.114);
-      feathers.push(feather);
-    }
-    detailBatch(wing, feathers, featherMaterial);
-  });
-  const tail: THREE.BufferGeometry[] = [];
-  for (let i = -1; i <= 1; i++) tail.push(sphere.clone().scale(0.036, 0.025, 0.18).rotateY(i * 0.14).translate(i * 0.038, 0.07, 0.29));
-  detailBatch(bird, tail, featherMaterial);
-  const feet: THREE.BufferGeometry[] = [];
-  [-1, 1].forEach((side) => {
-    const x = side * 0.063;
-    feet.push(tube([new THREE.Vector3(x, -0.01, 0.02), new THREE.Vector3(x, -0.10, 0.015), new THREE.Vector3(x, -0.115, -0.06)], 0.009, 8));
-    for (let toe = -1; toe <= 1; toe++) feet.push(tube([new THREE.Vector3(x, -0.115, -0.01), new THREE.Vector3(x + toe * 0.021, -0.116, -0.077)], 0.005, 3));
-  });
-  detailBatch(bird, feet, brass);
   return { bird, wings, hits };
 }

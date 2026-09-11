@@ -269,6 +269,16 @@ export class WrikeController {
         (dependency) => visibleTicketIds.has(dependency.fromTaskId) && visibleTicketIds.has(dependency.toTaskId)
       );
 
+      const depsByToTask = new Map<string, string[]>();
+      for (const d of dependencies) {
+        let list = depsByToTask.get(d.toTaskId);
+        if (!list) {
+          list = [];
+          depsByToTask.set(d.toTaskId, list);
+        }
+        list.push(d.fromTaskId);
+      }
+
       const tasks = tickets.map((t, idx) => {
         const startDate = new Date(Date.now() - (7 - (idx % 5)) * 86400000).toISOString();
         const durationDays = t.technicalSeverity === 'CRITICAL' ? 3 : t.technicalSeverity === 'HIGH' ? 7 : 14;
@@ -283,7 +293,7 @@ export class WrikeController {
           progressPercent: t.statusCategory === 'DONE' ? 100 : t.statusCategory === 'IN_PROGRESS' ? 60 : 15,
           isMilestone: t.technicalSeverity === 'CRITICAL' || t.businessPriority === 'P1_URGENT',
           isCriticalPath: idx === 0 || t.technicalSeverity === 'CRITICAL',
-          dependencies: dependencies.filter((d) => d.toTaskId === t.id).map((d) => d.fromTaskId),
+          dependencies: depsByToTask.get(t.id) || [],
           statusCategory: t.statusCategory,
           technicalSeverity: t.technicalSeverity,
         };
@@ -362,8 +372,20 @@ export class WrikeController {
       // Never enumerate people who have no work visible to this caller.
       const users = (db.data.users || []).filter((user) => visibleAssigneeIds.has(user.id));
 
+      const assignedTicketsByUserId = new Map<string, Ticket[]>();
+      for (const t of tickets) {
+        if (t.assigneeId && t.statusCategory !== 'DONE') {
+          let list = assignedTicketsByUserId.get(t.assigneeId);
+          if (!list) {
+            list = [];
+            assignedTicketsByUserId.set(t.assigneeId, list);
+          }
+          list.push(t);
+        }
+      }
+
       const members = users.map((u) => {
-        const assignedTickets = tickets.filter((t) => t.assigneeId === u.id && t.statusCategory !== 'DONE');
+        const assignedTickets = assignedTicketsByUserId.get(u.id) || [];
         const maxWeeklyHours = 40;
         const allocatedWeeklyHours = assignedTickets.reduce((acc, t) => {
           const h = t.technicalSeverity === 'CRITICAL' ? 12 : t.technicalSeverity === 'HIGH' ? 8 : 4;
@@ -576,8 +598,9 @@ export class WrikeController {
 
       const currentUser: BankUser = (req as any).user || db.data.users[0];
       const year = new Date().getUTCFullYear();
+      const secYearRegex = new RegExp(`^SEC-${year}-(\\d+)$`);
       const highestSequence = db.data.tickets.reduce((highest, ticket) => {
-        const match = ticket.key.match(new RegExp(`^SEC-${year}-(\\d+)$`));
+        const match = ticket.key.match(secYearRegex);
         return match ? Math.max(highest, Number(match[1])) : highest;
       }, 0);
       const ticketKey = `SEC-${year}-${String(highestSequence + 1).padStart(4, '0')}`;

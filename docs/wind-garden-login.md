@@ -24,6 +24,25 @@ Mobile gets a compact fixed-camera exhibit after the form. Reduced motion and pa
 
 The success transition passes through the garden arch in about 800 ms. Reduced motion skips it. Errors remain explicit inline messages and a quiet instrument-color change. No game or scene initialization can gate authentication.
 
+## Replayable easter eggs
+
+The original two-stage sail-tuning puzzle remains the garden's visual progression. The optional game drawer also contains two compact replay loops that can be played independently and repeatedly during a signed-out session:
+
+- **Wind Echo** presents a growing sequence of bell, bird and wind signs. Study it, then reproduce it from memory.
+- **Lily Trail** applies the same escalating-memory mechanic to a changing three-by-three path of lily leaves.
+- Clicking the porcelain bird three times in quick succession opens **Garden Flight** as a centred 3D overlay. The player mark is the bank's golden spiral-e emblem (traced tangentially in code and extruded with a soft bevel — no external asset). Click/tap or use Space to flap through the wisteria-draped garden arches; every obstacle closes in from both above and below.
+
+Each new round derives a fresh deterministic pattern locally. The memory games keep their scores in component state only. Garden Flight persists a single number — the visitor's best score — under the local `garden-flight.best` key so the record survives a reload; nothing is sent to the server and no visitor interaction can affect sign-in.
+
+## Garden Flight arcade and leaderboard
+
+The sign-in page never learns who is visiting, so the leaderboard lives on the authenticated side of the platform:
+
+- **After sign-in**, a small golden-emblem chip drifts near the bottom-right corner of the main screen (both the alive and classic shells). Hovering reveals what it guards; clicking opens the **Garden Flight arcade**, a modal with the same golden Expressbank emblem, physics and controls, plus a live leaderboard panel. The trigger, its modal and the 3D scene are lazy-loaded chunks, so `three` stays out of the initial bundle.
+- Every finished run is recorded server-side under the **session identity** (`req.user`, never a client-supplied name) via `POST /api/game/flight/score`; `GET /api/game/flight/leaderboard` returns the top ten best flights plus the signed-in player's rank, best and run count. Both routes sit behind `requireAuthentication`.
+- Scores live in the `game_flight_scores` table (migration `069`), one row per run, with display-name snapshots; the leaderboard aggregates each player's best. A new personal best is flagged on the landing card, and the local `garden-flight.best` record from the sign-in page seeds the in-app personal best.
+- The arcade degrades gracefully: if the score cannot be recorded, the run still counts locally and the panel says so. The login-page miniature never calls these endpoints.
+
 ## Seasonal day cycle
 
 Live mode follows the current date at the garden's fixed Baku coordinates, using [NOAA's approximate solar equations](https://www.gml.noaa.gov/grad/solcalc/solareqns.PDF). Latitude, longitude, declination and equation of time determine elevation, azimuth, sunrise and sunset. This is a clear-sky artistic simulation, not a weather forecast or precision astronomical instrument; the moon and stars are illustrative scenery. There is no geolocation request or network dependency.

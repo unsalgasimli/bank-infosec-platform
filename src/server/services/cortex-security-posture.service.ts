@@ -47,8 +47,8 @@ export class CortexSecurityPostureService {
       for (const row of selected.values()) await this.upsertPosture(client, connectorId, row);
 
       const assets = await client.query<any>(`SELECT a.id,a.name,a.lifecycle_state,
-          bool_or(c.connector_type_id='CORTEX' AND sr.status='ACTIVE') AS cortex,
-          bool_or(c.connector_type_id='ACTIVE_DIRECTORY' AND sr.status='ACTIVE') AS ad,
+          bool_or(c.connector_type_id='CORTEX' AND sr.external_object_type='CORTEX_ENDPOINT' AND sr.status='ACTIVE') AS cortex_endpoint,
+          bool_or(c.connector_type_id='ACTIVE_DIRECTORY' AND sr.external_object_type='Computer' AND sr.status='ACTIVE') AS ad_endpoint,
           bool_or(c.connector_type_id='VCENTER' AND sr.status='ACTIVE' AND sr.external_object_type='VirtualMachine') AS vcenter,
           count(DISTINCT c.connector_type_id) FILTER (WHERE sr.status='ACTIVE') AS source_type_count
         FROM configuration_items a
@@ -65,10 +65,13 @@ export class CortexSecurityPostureService {
 
       for (const asset of assets.rows) {
         const state = postureByAsset.get(asset.id);
-        if ((asset.ad || asset.vcenter) && !asset.cortex) add(asset.id, { type: asset.ad && asset.vcenter ? 'CORTEX_MISSING' : asset.vcenter ? 'VCENTER_WITHOUT_CORTEX' : 'AD_WITHOUT_CORTEX', severity: 'HIGH', title: 'Canonical asset is missing Cortex coverage', details: { ad: asset.ad, vcenter: asset.vcenter } });
-        if (asset.cortex && !asset.ad && !asset.vcenter) add(asset.id, { type: 'CORTEX_ONLY', severity: 'MEDIUM', title: 'Cortex endpoint is not represented in AD or vCenter', sourceRecordId: state?.source_record_id });
+        // Cortex posture applies to managed endpoints only.  AD users, groups,
+        // OUs and infrastructure evidence must never become missing-agent
+        // findings merely because they have no Cortex endpoint record.
+        if ((asset.ad_endpoint || asset.vcenter) && !asset.cortex_endpoint) add(asset.id, { type: asset.ad_endpoint && asset.vcenter ? 'CORTEX_MISSING' : asset.vcenter ? 'VCENTER_WITHOUT_CORTEX' : 'AD_WITHOUT_CORTEX', severity: 'HIGH', title: 'Canonical endpoint is missing Cortex coverage', details: { ad: asset.ad_endpoint, vcenter: asset.vcenter } });
+        if (asset.cortex_endpoint && !asset.ad_endpoint && !asset.vcenter) add(asset.id, { type: 'CORTEX_ONLY', severity: 'MEDIUM', title: 'Cortex endpoint is not represented in AD or vCenter', sourceRecordId: state?.source_record_id });
         if (conflicted.has(asset.id)) add(asset.id, { type: 'IDENTITY_CONFLICT', severity: 'HIGH', title: 'Source identities conflict during reconciliation' });
-        if (!state || !asset.cortex) continue;
+        if (!state || !asset.cortex_endpoint) continue;
         const lastSeen = state.cortex_last_seen_at ? new Date(state.cortex_last_seen_at).valueOf() : 0;
         if (isOffline(state.agent_status) || (lastSeen > 0 && Date.now() - lastSeen > staleAgentHours * 3_600_000)) add(asset.id, { type: 'CORTEX_OFFLINE', severity: 'HIGH', title: 'Cortex agent is offline or stale', details: { agentStatus: state.agent_status, lastSeenAt: state.cortex_last_seen_at, staleAgentHours }, sourceRecordId: state.source_record_id });
         if (state.protection_state === 'PARTIALLY_PROTECTED') add(asset.id, { type: 'CORTEX_PARTIALLY_PROTECTED', severity: 'HIGH', title: 'Cortex endpoint is only partially protected', sourceRecordId: state.source_record_id });

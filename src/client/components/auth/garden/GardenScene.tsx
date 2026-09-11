@@ -293,7 +293,7 @@ export default function GardenScene(props: Props) {
           ? Math.sin(Math.min(1, hop / 1.3) * Math.PI) * 0.7
           : 0);
       world.bird.rotation.y =
-        Math.PI +
+        0.25 +
         orbit +
         (moving ? Math.sin(elapsed * 0.24) * 0.12 + pointer.x * 0.15 : 0);
       const birdFlight =
@@ -448,9 +448,13 @@ export default function GardenScene(props: Props) {
         latest.current.onTurn(hit.object.userData.instrument);
       else if (hit?.object.userData.discovery) {
         const kind = hit.object.userData.discovery as "bird" | "bell";
-        if (kind === "bird") birdTime = elapsed;
-        else bellTime = elapsed;
-        latest.current.onDiscovery(kind);
+        if (kind === "bird") {
+          birdTime = elapsed;
+          latest.current.onDiscovery("bird");
+        } else {
+          bellTime = elapsed;
+          latest.current.onDiscovery(kind);
+        }
       } else {
         const waterHit = raycaster.intersectObject(water)[0];
         if (waterHit)

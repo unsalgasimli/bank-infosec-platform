@@ -21,9 +21,13 @@ export class ApprovalService {
   ): BankUser[] {
     const requester = db.data.users.find((u) => u.id === (ticket.requesterId || ticket.reporterId));
     const dept = db.data.departments.find((d) => d.id === ticket.departmentId);
+    // A selected branch/section owns its approval route. Do not let a generic
+    // requester manager or department head silently replace its branch manager.
+    const branch = this.resolveBranchManager(ticket.targetSectionId);
 
     switch (resolverType) {
       case 'REQUESTER_MANAGER': {
+        if (ticket.targetSectionId) return branch ? [branch] : [];
         const manager = requester?.managerId ? db.data.users.find((u) => u.id === requester.managerId) : undefined;
         if (manager && manager.isActive) return [manager];
         const deptId = ticket.departmentId || requester?.departmentId || db.data.departments[0]?.id;
@@ -35,6 +39,7 @@ export class ApprovalService {
         return [];
       }
       case 'DEPARTMENT_HEAD': {
+        if (ticket.targetSectionId) return branch ? [branch] : [];
         if (dept?.managerId) {
           const deptMgr = db.data.users.find((u) => u.id === dept.managerId && u.isActive);
           if (deptMgr) return [deptMgr];
@@ -77,6 +82,21 @@ export class ApprovalService {
     }
   }
 
+  /** A Bölmə inherits its parent Şöbə manager; a branch must resolve its own manager. */
+  private static resolveBranchManager(sectionId?: string): BankUser | undefined {
+    let section = sectionId ? db.data.departmentSections.find((candidate) => candidate.id === sectionId && candidate.isActive !== false) : undefined;
+    const seen = new Set<string>();
+    while (section && !seen.has(section.id)) {
+      seen.add(section.id);
+      if (section.hasOwnManager !== false && section.managerId) {
+        const manager = db.data.users.find((candidate) => candidate.id === section!.managerId && candidate.isActive);
+        if (manager) return manager;
+      }
+      section = section.parentSectionId ? db.data.departmentSections.find((candidate) => candidate.id === section!.parentSectionId && candidate.isActive !== false) : undefined;
+    }
+    return undefined;
+  }
+
   public static getPendingApprovalsForUser(user: BankUser): Array<{
     chain: TicketApprovalChain;
     step: ApprovalStep;
@@ -96,6 +116,11 @@ export class ApprovalService {
       currentStage?: string;
       startedAt?: string;
       dueAt?: string;
+      approvalWorkItemId?: string;
+      claimedByUserId?: string;
+      claimedByUserName?: string;
+      queueDepartmentName?: string;
+      queueSectionName?: string;
     };
   }> {
     const results: Array<{
@@ -110,34 +135,61 @@ export class ApprovalService {
         currentStage?: string;
         startedAt?: string;
         dueAt?: string;
+        approvalWorkItemId?: string;
+        claimedByUserId?: string;
+        claimedByUserName?: string;
+        queueDepartmentName?: string;
+        queueSectionName?: string;
       };
     }> = [];
 
-    for (const chain of db.data.approvals) {
-      if (chain.status !== 'PENDING') continue;
+    const pendingChains = (db.data.approvals || []).filter((chain) => chain.status === 'PENDING');
+    if (!pendingChains.length) return results;
 
+    const workItemMap = new Map<string, (typeof db.data.workItemsV2)[number]>();
+    for (const item of db.data.workItemsV2 || []) {
+      if (item.nodeInstanceId && item.workflowInstanceId) {
+        workItemMap.set(`${item.workflowInstanceId}:${item.nodeInstanceId}`, item);
+      }
+    }
+    const ticketMap = new Map((db.data.tickets || []).map((t) => [t.id, t]));
+    const instanceMap = new Map((db.data.workflowInstances || []).map((i) => [i.id, i]));
+    const userMap = new Map((db.data.users || []).map((u) => [u.id, u]));
+    const deptMap = new Map((db.data.departments || []).map((d) => [d.id, d]));
+    const sectionMap = new Map((db.data.departmentSections || []).map((s) => [s.id, s]));
+
+    for (const chain of pendingChains) {
       const pendingSteps = (chain.mode || 'SEQUENTIAL') === 'SEQUENTIAL'
         ? chain.steps.filter((s) => s.status === 'PENDING').slice(0, 1)
         : chain.steps.filter((s) => s.status === 'PENDING');
 
-      for (const currentStep of pendingSteps) {
+      const approvalWorkItem = chain.nodeInstanceId && chain.workflowInstanceId
+        ? workItemMap.get(`${chain.workflowInstanceId}:${chain.nodeInstanceId}`)
+        : undefined;
+      // A claimed workflow approval is private to its claimant.  Do not keep
+      // exposing it as a department-wide action after ownership moves.
+      if (approvalWorkItem?.assigneeId && approvalWorkItem.assigneeId !== user.id) continue;
+      const eligibleSteps = pendingSteps.filter((currentStep) => {
         const isAssigned = currentStep.assignedApproverId === user.id;
         const isCandidate = currentStep.candidateUserIds?.includes(user.id);
         const hasRole = currentStep.requiredRole && user.roles.includes(currentStep.requiredRole);
         const isSuper = user.roles.includes('PLATFORM_ADMIN') || user.roles.includes('CISO');
-        if (isAssigned || isCandidate || hasRole || isSuper) {
+        return isAssigned || isCandidate || hasRole || isSuper;
+      });
+      // One workflow approval is one department queue, even if its runtime
+      // policy carries several eligible people. Never return one card per
+      // department member.
+      const currentStep = eligibleSteps.find((step) => step.assignedApproverId === user.id) || eligibleSteps[0];
+      if (currentStep) {
           const ticket = chain.workflowInstanceId
             ? undefined
-            : db.data.tickets.find((item) => item.id === chain.ticketId);
+            : ticketMap.get(chain.ticketId);
           const instance = chain.workflowInstanceId
-            ? db.data.workflowInstances.find((item) => item.id === chain.workflowInstanceId)
-            : undefined;
-          const approvalWorkItem = chain.nodeInstanceId
-            ? db.data.workItemsV2.find((item) => item.nodeInstanceId === chain.nodeInstanceId && item.workflowInstanceId === chain.workflowInstanceId)
+            ? instanceMap.get(chain.workflowInstanceId)
             : undefined;
           const requesterId = instance?.requesterId || ticket?.reporterId || chain.requesterId;
           const requesterName = requesterId
-            ? db.data.users.find((candidate) => candidate.id === requesterId)?.fullName
+            ? userMap.get(requesterId)?.fullName
             : undefined;
 
           results.push({
@@ -153,6 +205,11 @@ export class ApprovalService {
                   currentStage: instance.currentStageId,
                   startedAt: instance.startedAt,
                   dueAt: approvalWorkItem?.dueAt || currentStep.deadlineAt,
+                  approvalWorkItemId: approvalWorkItem?.id,
+                  claimedByUserId: approvalWorkItem?.assigneeId,
+                  claimedByUserName: approvalWorkItem?.assigneeId ? userMap.get(approvalWorkItem.assigneeId)?.fullName : undefined,
+                  queueDepartmentName: approvalWorkItem?.targetDepartmentId ? deptMap.get(approvalWorkItem.targetDepartmentId)?.name : undefined,
+                  queueSectionName: approvalWorkItem?.targetSectionId ? sectionMap.get(approvalWorkItem.targetSectionId)?.name : undefined,
                 }
               : ticket
                 ? {
@@ -166,7 +223,6 @@ export class ApprovalService {
                 : undefined,
           });
         }
-      }
     }
 
     return results;
@@ -178,6 +234,20 @@ export class ApprovalService {
    * the server will subsequently reject.
    */
   public static canUserDecideStep(chain: TicketApprovalChain, step: ApprovalStep, user: BankUser): boolean {
+    if (!this.canUserClaimStep(chain, step, user)) return false;
+    if (chain.workflowInstanceId) {
+      const approvalWorkItem = chain.nodeInstanceId
+        ? db.data.workItemsV2.find((item) => item.nodeInstanceId === chain.nodeInstanceId && item.workflowInstanceId === chain.workflowInstanceId)
+        : undefined;
+      // Workflow approvals are queue work: a person must claim the queue
+      // record before the cryptographic decision action becomes available.
+      if (!approvalWorkItem || approvalWorkItem.assigneeId !== user.id) return false;
+    }
+    return true;
+  }
+
+  /** Authorization used while a workflow approval is still unclaimed. */
+  public static canUserClaimStep(chain: TicketApprovalChain, step: ApprovalStep, user: BankUser): boolean {
     if (!user.isActive || chain.status !== 'PENDING' || step.status !== 'PENDING') return false;
     if (chain.preventSelfApproval && chain.requesterId === user.id) return false;
     if ((chain.mode || 'SEQUENTIAL') === 'SEQUENTIAL') {

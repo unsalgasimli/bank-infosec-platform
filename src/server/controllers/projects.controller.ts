@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import { createHash } from 'crypto';
 import { AuthenticatedRequest } from '../middleware/auth.middleware.js';
 import { db } from '../db/database.js';
 import { AuditService } from '../services/audit.service.js';
@@ -7,11 +8,12 @@ import { NotificationService } from '../services/notification.service.js';
 import { WorkflowService } from '../services/workflow.service.js';
 import { ProjectService } from '../services/project.service.js';
 import { OutboxService } from '../services/outbox.service.js';
+import { ThreatModelService } from '../services/threat-model.service.js';
 import { PROJECT_WORK_ITEM_TYPES, Project, ProjectCategory, ProjectMember, ProjectPriority, ProjectRole, ProjectStatus, ProjectTaskStatus, ProjectWorkItemType } from '../../shared/types/project.js';
 import { Ticket } from '../../shared/types/ticket.js';
 import { TicketComment } from '../../shared/types/comments.js';
 
-const PROJECT_ROLES: ProjectRole[] = ['OWNER', 'PROJECT_MANAGER', 'CONTRIBUTOR', 'VIEWER', 'RESTRICTED_CONTRIBUTOR'];
+const PROJECT_ROLES: ProjectRole[] = ['OWNER', 'PROJECT_MANAGER', 'DEVELOPER', 'BUSINESS_ANALYST', 'CONTRIBUTOR', 'VIEWER', 'RESTRICTED_CONTRIBUTOR'];
 const PROJECT_STATUSES: ProjectStatus[] = ['DRAFT', 'ACTIVE', 'ON_HOLD', 'COMPLETED', 'ARCHIVED'];
 const TASK_STATUSES: ProjectTaskStatus[] = ['BACKLOG', 'TO_DO', 'IN_PROGRESS', 'IN_REVIEW', 'BLOCKED', 'DONE'];
 const priorityMap: Record<ProjectPriority, Ticket['businessPriority']> = { CRITICAL: 'P1_URGENT', HIGH: 'P2_HIGH', MEDIUM: 'P3_MEDIUM', LOW: 'P4_LOW' };
@@ -58,6 +60,10 @@ export class ProjectsController {
       relatedAssetIds: Array.isArray(body.relatedAssetIds) ? body.relatedAssetIds.map(String) : [], slaPolicyId: body.slaPolicyId, templateId: body.templateId,
       startDate: body.startDate, targetDate: body.targetDate, progressWeighting: body.progressWeighting || 'EQUAL', workflowId, workItemTypes, createdByUserId: user.id, createdAt: now, updatedAt: now,
     };
+    if (project.status !== 'DRAFT') {
+      const issues = ProjectService.registrationIssues(project);
+      if (issues.length) { res.status(400).json({ success: false, error: `Complete mandatory project registration before starting delivery: ${issues.join(', ')}.` }); return; }
+    }
     db.transaction(() => {
       db.data.projects.unshift(project);
       const members: Array<[string | undefined, ProjectRole]> = [[project.ownerId, 'OWNER'], [project.managerId, 'PROJECT_MANAGER']];
@@ -113,11 +119,20 @@ export class ProjectsController {
       body.workflowId = workflow.id;
     }
     const allowed = ['name', 'description', 'objective', 'scope', 'successCriteria', 'departmentId', 'ownerId', 'managerId', 'sponsorId', 'priority', 'businessCriticality', 'category', 'tags', 'relatedAssetIds', 'slaPolicyId', 'templateId', 'workflowId', 'startDate', 'targetDate', 'progressWeighting', 'status'] as const;
+    if (body.status && !PROJECT_STATUSES.includes(body.status)) { res.status(400).json({ success: false, error: 'Invalid project status.' }); return; }
+    const registrationCandidate: Partial<Project> = { ...project };
+    for (const field of allowed) if (Object.prototype.hasOwnProperty.call(body, field)) (registrationCandidate as any)[field] = body[field];
+    // Existing legacy records remain readable and manageable. The full
+    // registration gate applies when a draft is promoted into delivery, and
+    // to all newly created active projects above.
+    if (project.status === 'DRAFT' && registrationCandidate.status === 'ACTIVE') {
+      const issues = ProjectService.registrationIssues(registrationCandidate);
+      if (issues.length) { res.status(400).json({ success: false, error: `Complete mandatory project registration before activating delivery: ${issues.join(', ')}.` }); return; }
+    }
     const before: Record<string, unknown> = {};
     for (const field of allowed) if (Object.prototype.hasOwnProperty.call(body, field)) { before[field] = (project as any)[field]; (project as any)[field] = body[field]; }
     if (Object.prototype.hasOwnProperty.call(body, 'workItemTypes')) { const workItemTypes = ProjectsController.parseWorkItemTypes(body.workItemTypes); if (workItemTypes.length === 0) { res.status(400).json({ success: false, error: 'Enable at least one work-item type for the project.' }); return; } before.workItemTypes = project.workItemTypes; project.workItemTypes = workItemTypes; }
     if (body.healthOverride) project.healthOverride = { health: body.healthOverride.health, reason: String(body.healthOverride.reason || ''), changedByUserId: req.user!.id, changedAt: new Date().toISOString() };
-    if (body.status && !PROJECT_STATUSES.includes(body.status)) { res.status(400).json({ success: false, error: 'Invalid project status.' }); return; }
     project.updatedAt = new Date().toISOString();
     if (project.status === 'ARCHIVED') project.archivedAt = project.updatedAt;
     db.transaction(() => {
@@ -299,6 +314,60 @@ export class ProjectsController {
   static listActivity(req: AuthenticatedRequest, res: Response): void { const project = ProjectsController.authorizedProject(req, res, 'READ'); if (!project) return; const filter = String(req.query.type || 'ALL'); const activity = db.data.projectActivities.filter((event) => event.projectId === project.id && (filter === 'ALL' || event.objectType === filter)).slice(0, Math.min(200, Number(req.query.limit) || 50)); res.json({ success: true, activity }); }
 
   static report(req: AuthenticatedRequest, res: Response): void { const project = ProjectsController.authorizedProject(req, res, 'READ'); if (!project) return; const summary = ProjectService.summary(project, req.user!); res.json({ success: true, report: { project: `${project.name} (${project.identifier})`, health: summary.health, healthReasons: summary.healthReasons, progressPercent: summary.progressPercent, completed: summary.taskCounts.completed, active: summary.taskCounts.active, blocked: summary.taskCounts.blocked, overdue: summary.taskCounts.overdue, nextMilestone: summary.nextMilestone?.name, risks: summary.risks.map((risk) => risk.title), latestUpdate: summary.latestUpdate?.body } }); }
+
+  /**
+   * Produces a portable audit package, not a screen scrape. It is composed
+   * from the canonical project records, scoped work discussions and the
+   * Threat Model detail that the requesting identity is permitted to read.
+   */
+  static async auditExport(req: AuthenticatedRequest, res: Response): Promise<void> {
+    const project = ProjectsController.authorizedProject(req, res, 'READ'); if (!project) return;
+    const actor = req.user!;
+    const visibleTasks = ProjectService.visibleTasks(project.id, actor);
+    const taskIds = new Set(visibleTasks.map((task) => task.id));
+    const attachments = db.data.attachments
+      .filter((attachment) => taskIds.has(attachment.ticketId))
+      .map(({ storageKey: _storageKey, ...attachment }) => attachment);
+    let threatModels: unknown[] = [];
+    let threatModelExportState: 'INCLUDED' | 'UNAVAILABLE' = 'INCLUDED';
+    let threatModelExportNote: string | undefined;
+    try {
+      const models = await ThreatModelService.list(actor, { projectId: project.id, limit: 20 });
+      threatModels = await Promise.all((models as Array<{ id: string }>).map((model) => ThreatModelService.detail(model.id, actor)));
+    } catch (error) {
+      // The project evidence remains exportable during an operational outage;
+      // the package conspicuously records that Threat Model data was not read.
+      threatModels = [];
+      threatModelExportState = 'UNAVAILABLE';
+      threatModelExportNote = error instanceof Error ? error.message : 'Threat Model record could not be retrieved.';
+    }
+    const body = {
+      schemaVersion: 'project-audit-export/v1',
+      generatedAt: new Date().toISOString(),
+      generatedBy: { id: actor.id, name: actor.fullName, roles: actor.roles },
+      project,
+      registration: { complete: ProjectService.registrationIssues(project).length === 0, outstanding: ProjectService.registrationIssues(project) },
+      members: db.data.projectMembers.filter((member) => member.projectId === project.id),
+      milestones: db.data.projectMilestones.filter((milestone) => milestone.projectId === project.id),
+      workItems: visibleTasks,
+      workItemDependencies: db.data.projectTaskDependencies.filter((dependency) => dependency.projectId === project.id && taskIds.has(dependency.sourceTaskId) && taskIds.has(dependency.targetTaskId)),
+      discussions: db.data.comments.filter((comment) => taskIds.has(comment.ticketId) && comment.visibility === 'PUBLIC'),
+      attachmentMetadata: attachments,
+      projectActivity: db.data.projectActivities.filter((event) => event.projectId === project.id),
+      platformAuditEvents: (db.data.auditEvents || []).filter((event) => event.entityId === project.id || taskIds.has(event.entityId) || (event.metadata as { projectId?: string } | undefined)?.projectId === project.id),
+      threatModel: { state: threatModelExportState, note: threatModelExportNote, models: threatModels },
+      limitations: ['Attachment binary content is not embedded; the package retains attachment metadata and audit trace.', 'The SHA-256 value is an integrity digest of this exported body, not a digital signature.'],
+    };
+    const sha256 = createHash('sha256').update(JSON.stringify(body)).digest('hex');
+    const exportEvent = AuditService.log({ actor, action: 'PROJECT_AUDIT_EXPORTED', entityType: 'PROJECT', entityId: project.id, entityKey: project.identifier, correlationId: req.correlationId, ipAddress: req.ip, userAgent: req.get('user-agent'), metadata: { sha256, schemaVersion: body.schemaVersion, threatModelExportState, workItemCount: visibleTasks.length } });
+    const artifact = { ...body, integrity: { algorithm: 'SHA-256', value: sha256, signed: false }, exportAuditEvent: exportEvent };
+    const date = new Date().toISOString().slice(0, 10);
+    res.set('Cache-Control', 'no-store');
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.type('application/json');
+    res.attachment(`${project.identifier}-${date}-audit.json`);
+    res.send(JSON.stringify(artifact, null, 2));
+  }
 
   private static parseWorkItemTypes(value: unknown): ProjectWorkItemType[] {
     if (!Array.isArray(value)) return [...PROJECT_WORK_ITEM_TYPES];

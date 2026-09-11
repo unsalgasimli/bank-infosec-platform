@@ -138,6 +138,45 @@ test('project membership is a server-side boundary and does not leak between pro
   }
 });
 
+test('developer and business analyst roles can contribute without gaining project management authority', () => {
+  const snapshot = { projects: db.data.projects, projectMembers: db.data.projectMembers };
+  try {
+    const p = project('prj-delivery-roles');
+    const developer = user('developer');
+    const analyst = user('analyst');
+    db.data.projects = [p];
+    db.data.projectMembers = [
+      { id: 'developer-member', projectId: p.id, subjectType: 'USER', subjectId: developer.id, role: 'DEVELOPER', addedByUserId: 'owner', createdAt: new Date().toISOString() },
+      { id: 'analyst-member', projectId: p.id, subjectType: 'USER', subjectId: analyst.id, role: 'BUSINESS_ANALYST', addedByUserId: 'owner', createdAt: new Date().toISOString() },
+    ];
+    assert.equal(ProjectService.authorize(p.id, developer, 'TASK_WRITE').allowed, true);
+    assert.equal(ProjectService.authorize(p.id, analyst, 'WRITE').allowed, true);
+    assert.equal(ProjectService.authorize(p.id, developer, 'MANAGE').allowed, false);
+    assert.equal(ProjectService.authorize(p.id, analyst, 'MANAGE').allowed, false);
+  } finally {
+    db.data.projects = snapshot.projects;
+    db.data.projectMembers = snapshot.projectMembers;
+  }
+});
+
+test('active delivery registration requires audit context and a chronological schedule', () => {
+  const incomplete = project('prj-registration');
+  assert.ok(ProjectService.registrationIssues(incomplete).includes('business objective'));
+  const complete = {
+    ...incomplete,
+    description: 'Deliver a governed application change with auditable project records.',
+    objective: 'Reduce manual review work while maintaining release evidence.',
+    scope: 'The delivery application, its API integrations, users, and security boundaries.',
+    successCriteria: 'Approved Threat Model, independent verification, and captured evidence before release.',
+    departmentId: 'dept-test',
+    managerId: 'manager',
+    startDate: '2026-09-10',
+    targetDate: '2026-09-30',
+  };
+  assert.deepEqual(ProjectService.registrationIssues(complete), []);
+  assert.ok(ProjectService.registrationIssues({ ...complete, targetDate: '2026-09-01' }).includes('a target date on or after the start date'));
+});
+
 test('project progress uses configured child-work weights rather than task count', () => {
   const p = project('prj-test');
   const tasks = [task('1', 'DONE', 8), task('2', 'TO_DO', 2)];

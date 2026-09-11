@@ -4,18 +4,12 @@ import {
   FileSignature,
   CheckCircle2,
   Clock,
-  ArrowRight,
   XCircle,
   ShieldCheck,
-  UserCheck,
-  Check,
   X,
   Lock,
-  FileText,
   AlertTriangle,
   CalendarClock,
-  ClipboardCheck,
-  ExternalLink,
   Loader2,
   UserRound,
   Workflow,
@@ -35,38 +29,40 @@ type ApprovalQueueItem = {
     currentStage?: string;
     startedAt?: string;
     dueAt?: string;
+    approvalWorkItemId?: string;
+    claimedByUserId?: string;
+    claimedByUserName?: string;
+    queueDepartmentName?: string;
+    queueSectionName?: string;
   };
 };
 
 interface ApprovalsViewProps {
   pendingApprovals: ApprovalQueueItem[];
-  onOpenTicket: (ticketId: string) => void;
-  onRefresh?: () => void;
+  onRefresh?: () => void | Promise<void>;
 }
 
 export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
   pendingApprovals,
-  onOpenTicket,
   onRefresh,
 }) => {
   const { currentUser, fetchWithAuth } = useAuth();
   const { t } = useI18n();
   const [actingItem, setActingItem] = useState<ApprovalQueueItem | null>(null);
-  const [modalMode, setModalMode] = useState<'VIEW' | 'DECIDE'>('DECIDE');
   const [workflowExecution, setWorkflowExecution] = useState<any>(null);
   const [isLoadingReview, setIsLoadingReview] = useState(false);
   const [decisionNotes, setDecisionNotes] = useState('');
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [claimingChainId, setClaimingChainId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const formatDate = (value?: string) => value
     ? new Intl.DateTimeFormat('az-AZ', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
     : 'Müddət təyin edilməyib';
 
-  const openWorkflowReview = async (item: ApprovalQueueItem, mode: 'VIEW' | 'DECIDE') => {
+  const openWorkflowReview = async (item: ApprovalQueueItem) => {
     setActingItem(item);
-    setModalMode(mode);
     setWorkflowExecution(null);
     setDecisionNotes('');
     setReviewConfirmed(false);
@@ -97,12 +93,20 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
     setReviewConfirmed(false);
   };
 
-  const handleOpenWork = (item: ApprovalQueueItem) => {
-    if (item.chain.workflowInstanceId) {
-      void openWorkflowReview(item, 'VIEW');
-      return;
+  const claimApproval = async (item: ApprovalQueueItem) => {
+    if (!item.chain.workflowInstanceId) return;
+    try {
+      setClaimingChainId(item.chain.id);
+      const response = await fetchWithAuth(`/api/orchestration/instances/${item.chain.workflowInstanceId}/approvals/${item.chain.id}/claim`, { method: 'POST' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.error || 'Təsdiq queue-si özünüzə təyin edilə bilmədi.');
+      setStatusMessage('Təsdiq queue-si sizə təyin edildi. İndi baxış və qərar yalnız sizdə açıqdır.');
+      await onRefresh?.();
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Təsdiq queue-si özünüzə təyin edilə bilmədi.');
+    } finally {
+      setClaimingChainId(null);
     }
-    onOpenTicket(item.chain.ticketId);
   };
 
   const handleDecision = async (chain: TicketApprovalChain, step: ApprovalStep, approved: boolean) => {
@@ -197,6 +201,9 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
         ) : (
           pendingApprovals.map((item) => {
             const { chain, step, work } = item;
+            const isWorkflowQueue = work?.kind === 'WORKFLOW';
+            const isClaimedByCurrentUser = !isWorkflowQueue || work?.claimedByUserId === currentUser?.id;
+            const isClaiming = claimingChainId === chain.id;
             return (
             <div
               key={`${chain.id}-${step.id}`}
@@ -206,32 +213,24 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-semantic-border pb-3">
                 <div className="flex items-center gap-3">
                   <span className="px-2.5 py-0.5 rounded-full bg-semantic-warning-surface text-semantic-warning border border-semantic-warning-border font-mono text-xs font-bold">
-                    STEP {step.stepNumber} PENDING
+                    DEPARTMENT QUEUE · PENDING
                   </span>
                   <div>
                     <h3 className="font-bold text-sm text-semantic-primary">{chain.title || 'Governance Sign-Off'}</h3>
                     <p className="text-xs text-semantic-muted mt-0.5 font-mono">
-                      Gate: <strong>{step.name}</strong> • Required Role:{' '}
-                      <span className="text-semantic-info font-bold">[{step.requiredRole || 'EXECUTIVE_APPROVER'}]</span>
+                      Gate: <strong>{work?.queueSectionName || work?.queueDepartmentName || 'Authorized department'}</strong> • one member claims and records the decision
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => handleOpenWork(item)}
-                    className="wrike-btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5"
-                  >
-                    {work?.kind === 'WORKFLOW' ? <ExternalLink className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
-                    <span>{work?.kind === 'WORKFLOW' ? 'Tapşırığa bax' : 'Tapşırığı aç'}</span>
-                  </button>
-
-                  <button
-                    onClick={() => void openWorkflowReview(item, 'DECIDE')}
+                    onClick={() => isClaimedByCurrentUser ? void openWorkflowReview(item) : void claimApproval(item)}
+                    disabled={isSubmitting || isClaiming}
                     className="wrike-btn-primary text-xs py-1.5 px-3.5 flex items-center gap-1.5 shadow-sm"
                   >
-                    <FileSignature className="w-3.5 h-3.5" />
-                    <span>Review & Authorize</span>
+                    {isClaiming ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSignature className="w-3.5 h-3.5" />}
+                    <span>{isClaiming ? 'Özünüzə təyin edilir…' : isClaimedByCurrentUser ? 'Nəzərdən keçir və təsdiq et' : 'Özümə təyin et'}</span>
                   </button>
                 </div>
               </div>
@@ -251,35 +250,15 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                 </div>
                 <div className="rounded-lg border border-semantic-border bg-semantic-subtle px-3 py-2">
                   <div className="flex items-center gap-1 text-label font-bold uppercase tracking-wide text-semantic-muted"><Workflow className="h-3 w-3" /> Nəzarət</div>
-                  <div className="mt-0.5 truncate text-xs font-semibold text-semantic-primary">{chain.mode || 'SEQUENTIAL'} · {chain.steps.length} addım</div>
+                  <div className="mt-0.5 truncate text-xs font-semibold text-semantic-primary">{work?.claimedByUserName ? `${work.claimedByUserName} özünə təyin etdi` : `${work?.queueSectionName || work?.queueDepartmentName || 'Şöbə'} gözləyir`}</div>
                 </div>
               </div>
 
-              {/* Step Sequence Bar */}
-              <div className="p-3 rounded-lg bg-semantic-subtle border border-semantic-border flex items-center gap-3 overflow-x-auto text-xs font-mono">
-                {chain.steps.map((st, i) => (
-                  <React.Fragment key={st.id}>
-                    <div
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${
-                        st.status === 'APPROVED'
-                          ? 'bg-semantic-success-surface text-semantic-success border-semantic-success-border font-bold'
-                          : st.status === 'PENDING'
-                          ? 'bg-semantic-warning-surface text-semantic-warning border-semantic-warning-border font-bold'
-                          : 'bg-semantic-panel text-semantic-muted border-semantic-border'
-                      }`}
-                    >
-                      {st.status === 'APPROVED' ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-semantic-brand" />
-                      ) : (
-                        <Clock className="w-3.5 h-3.5" />
-                      )}
-                      <span>
-                        {st.stepNumber}. {st.name} ({st.status})
-                      </span>
-                    </div>
-                    {i < chain.steps.length - 1 && <ArrowRight className="w-4 h-4 text-semantic-placeholder shrink-0" />}
-                  </React.Fragment>
-                ))}
+              <div className="flex items-center gap-2 rounded-lg border border-semantic-border bg-semantic-subtle p-3 text-xs font-medium text-semantic-muted">
+                <Clock className="h-4 w-4 text-semantic-warning" />
+                {work?.claimedByUserName
+                  ? `${work.claimedByUserName} bu şöbə təsdiqini özünə təyin etdi; qərar gözlənilir.`
+                  : `${work?.queueSectionName || work?.queueDepartmentName || 'Səlahiyyətli şöbə'} növbəsində bir uyğun əməkdaşın özünə təyin etməsi gözlənilir.`}
               </div>
             </div>
             );
@@ -297,7 +276,7 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                   <Lock className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 id="approval-review-title" className="text-sm font-bold text-semantic-primary">{modalMode === 'DECIDE' ? 'Təsdiq qərarından əvvəl baxış' : 'Tapşırıq və təsdiq icmalı'}</h3>
+                  <h3 id="approval-review-title" className="text-sm font-bold text-semantic-primary">Təsdiq qərarından əvvəl baxış</h3>
                   <p className="text-label text-semantic-muted font-mono">
                     Qərar verən: {currentUser?.fullName} ({currentUser?.roles.join(', ')})
                   </p>
@@ -345,7 +324,7 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
               </div>
             )}
 
-            {modalMode === 'DECIDE' && <div className="space-y-1.5 text-xs">
+            <div className="space-y-1.5 text-xs">
               <label className="font-bold text-semantic-primary block">
                 Qərarın əsası və uyğunluq qeydləri
               </label>
@@ -356,9 +335,9 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                 className="w-full h-24 p-3 bg-semantic-panel border border-semantic-border-strong rounded-xl text-xs text-semantic-primary outline-none focus:border-semantic-brand focus:ring-2 focus:ring-semantic-brand/15 resize-none"
               />
               {actingItem.chain.commentsMandatoryOnReject && <p className="flex items-center gap-1.5 text-label text-semantic-warning"><AlertTriangle className="h-3.5 w-3.5" /> Rədd qərarı üçün qeydin daxil edilməsi məcburidir.</p>}
-            </div>}
+            </div>
 
-            {modalMode === 'DECIDE' && <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-semantic-border bg-semantic-subtle p-3 text-xs text-semantic-secondary"><input type="checkbox" checked={reviewConfirmed} onChange={(event) => setReviewConfirmed(event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-semantic-border text-semantic-brand focus:ring-semantic-brand" /><span><strong className="text-semantic-primary">Məlumatları nəzərdən keçirdim.</strong> Bu qərarın iş axınının növbəti mərhələsinə təsirini anlayıram.</span></label>}
+            <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-semantic-border bg-semantic-subtle p-3 text-xs text-semantic-secondary"><input type="checkbox" checked={reviewConfirmed} onChange={(event) => setReviewConfirmed(event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-semantic-border text-semantic-brand focus:ring-semantic-brand" /><span><strong className="text-semantic-primary">Məlumatları nəzərdən keçirdim.</strong> Bu qərarın iş axınının növbəti mərhələsinə təsirini anlayıram.</span></label>
 
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-semantic-border">
               <button
@@ -369,7 +348,6 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                 Cancel
               </button>
 
-              {modalMode === 'VIEW' ? <button onClick={() => setModalMode('DECIDE')} disabled={isLoadingReview} className="wrike-btn-primary text-xs py-2 px-4 flex items-center gap-1.5 shadow-sm"><ClipboardCheck className="w-4 h-4" /><span>Təsdiq qərarına keç</span></button> : <>
               <button
                 disabled={isSubmitting || (actingItem.chain.commentsMandatoryOnReject === true && !decisionNotes.trim())}
                 onClick={() => handleDecision(actingItem.chain, actingItem.step, false)}
@@ -387,7 +365,6 @@ export const ApprovalsView: React.FC<ApprovalsViewProps> = ({
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Təsdiqlə</span>
               </button>
-              </>}
             </div>
           </div>
         </div>

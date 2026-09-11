@@ -8,10 +8,28 @@ import { ThreatGovernanceOperationsService } from './threat-governance-operation
 // contract permits individual queues (workflow, notifications, integrations)
 // to be split out later without changing API producers or outbox rows.
 export const DISCOVERY_QUEUE = 'aegissec.discovery.v2';
+/** Directory synchronisation must not wait behind high-volume CMDB discovery
+ * notifications on the catch-all worker queue. */
+export const LDAP_SYNC_QUEUE = 'aegissec.ldap-sync.v1';
 /** SMB enumeration is deliberately assigned to a Windows-hosted worker.  The
  * general (Linux-compatible) discovery queue never executes these commands. */
 export const SMB_PRINTER_DISCOVERY_QUEUE = 'aegissec.discovery.smb-printer.windows.v1';
-export const WORKER_QUEUES = ['aegissec.worker', DISCOVERY_QUEUE, SMB_PRINTER_DISCOVERY_QUEUE] as const;
+export const WORKER_QUEUES = ['aegissec.worker', LDAP_SYNC_QUEUE, DISCOVERY_QUEUE, SMB_PRINTER_DISCOVERY_QUEUE] as const;
+// The general worker deliberately has an allow-list.  Binding it to `#`
+// duplicates every high-volume discovery/asset notification and turns a small
+// control-plane request (such as LDAP) into a backlog victim.
+const GENERAL_WORKER_ROUTING_KEYS = [
+  'ticket.created',
+  'threat-control.#',
+  'threat-model.#',
+  'threat-governance.tick',
+  'project.#',
+  'cmdb.ci.#',
+  'attachment.scan.requested',
+  'sla.tick',
+  'workflow.#',
+  'ai.analysis.requested',
+] as const;
 const MAX_RETRY_ATTEMPTS = 5;
 
 export class RetryableWorkerError extends Error {
@@ -39,10 +57,21 @@ export class QueueService {
         durable: true,
         arguments: { 'x-dead-letter-exchange': `${config.RABBITMQ_EXCHANGE}.dlx` },
       });
-      const bindingKey = queue === SMB_PRINTER_DISCOVERY_QUEUE
+      const bindingKey = queue === LDAP_SYNC_QUEUE
+        ? 'ldap.sync.requested'
+        : queue === SMB_PRINTER_DISCOVERY_QUEUE
         ? 'cmdb.discovery.smb-printer.#'
         : queue === DISCOVERY_QUEUE ? 'cmdb.discovery.#' : '#';
-      await channel.bindQueue(queue, config.RABBITMQ_EXCHANGE, bindingKey);
+      if (queue === 'aegissec.worker') {
+        // Remove the legacy catch-all binding on every startup, making the
+        // migration idempotent for existing RabbitMQ volumes.
+        await channel.unbindQueue(queue, config.RABBITMQ_EXCHANGE, '#').catch(() => undefined);
+        for (const routingKey of GENERAL_WORKER_ROUTING_KEYS) {
+          await channel.bindQueue(queue, config.RABBITMQ_EXCHANGE, routingKey);
+        }
+      } else {
+        await channel.bindQueue(queue, config.RABBITMQ_EXCHANGE, bindingKey);
+      }
       await channel.assertQueue(`${queue}.dead`, { durable: true });
       await channel.bindQueue(`${queue}.dead`, `${config.RABBITMQ_EXCHANGE}.dlx`, '#');
       await channel.assertQueue(`${queue}.retry`, {

@@ -7,7 +7,8 @@ import { Workflow } from '../../shared/types/workflow.js';
 
 const GLOBAL_PROJECT_ADMINS = new Set(['PLATFORM_ADMIN', 'CISO', 'INFOSEC_ADMIN']);
 const MANAGE_ROLES = new Set<ProjectRole>(['OWNER', 'PROJECT_MANAGER']);
-const WRITE_ROLES = new Set<ProjectRole>(['OWNER', 'PROJECT_MANAGER', 'CONTRIBUTOR']);
+const WRITE_ROLES = new Set<ProjectRole>(['OWNER', 'PROJECT_MANAGER', 'DEVELOPER', 'BUSINESS_ANALYST', 'CONTRIBUTOR']);
+const DELIVERY_ROLES = new Set<ProjectRole>(['DEVELOPER', 'BUSINESS_ANALYST', 'CONTRIBUTOR']);
 
 export class ProjectService {
   static readonly DEFAULT_WORKFLOW_ID = 'wf-project-delivery-default';
@@ -49,6 +50,31 @@ export class ProjectService {
   static workItemTypes(project: Project): ProjectWorkItemType[] {
     const configured = (project.workItemTypes || []).filter((type): type is ProjectWorkItemType => (PROJECT_WORK_ITEM_TYPES as readonly string[]).includes(type));
     return configured.length ? configured : [...PROJECT_WORK_ITEM_TYPES];
+  }
+
+  /**
+   * A delivery project may only leave Draft once the accountability and
+   * decision context needed by delivery and security review are recorded.
+   * The Threat Model itself is provisioned by the durable project-created
+   * event, so this check deliberately does not depend on a worker race.
+   */
+  static registrationIssues(project: Partial<Project>): string[] {
+    const issues: string[] = [];
+    if (!String(project.description || '').trim()) issues.push('project description');
+    if (!String(project.objective || '').trim()) issues.push('business objective');
+    if (!String(project.scope || '').trim()) issues.push('scope and boundaries');
+    if (!String(project.successCriteria || '').trim()) issues.push('success criteria');
+    if (!String(project.departmentId || '').trim()) issues.push('owning department');
+    if (!String(project.ownerId || '').trim()) issues.push('accountable owner');
+    if (!String(project.managerId || '').trim()) issues.push('delivery manager');
+    if (!String(project.startDate || '').trim()) issues.push('start date');
+    if (!String(project.targetDate || '').trim()) issues.push('target date');
+    const startTime = project.startDate ? new Date(project.startDate).getTime() : Number.NaN;
+    const targetTime = project.targetDate ? new Date(project.targetDate).getTime() : Number.NaN;
+    if (project.startDate && !Number.isFinite(startTime)) issues.push('a valid start date');
+    if (project.targetDate && !Number.isFinite(targetTime)) issues.push('a valid target date');
+    if (Number.isFinite(startTime) && Number.isFinite(targetTime) && targetTime < startTime) issues.push('a target date on or after the start date');
+    return issues;
   }
 
   static isGlobalAdmin(user: BankUser): boolean {
@@ -107,10 +133,10 @@ export class ProjectService {
     if (!access.allowed) return { allowed: false, reason: access.reason };
     if (!this.visibleTasks(projectId, user).some((candidate) => candidate.id === task.id)) return { allowed: false, reason: 'You are not authorized to access this project task.' };
     if (this.isGlobalAdmin(user) || access.member?.role === 'OWNER' || access.member?.role === 'PROJECT_MANAGER') return { allowed: true };
-    if (action === 'COMMENT') return access.member?.role === 'CONTRIBUTOR' || access.member?.role === 'RESTRICTED_CONTRIBUTOR'
+    if (action === 'COMMENT') return DELIVERY_ROLES.has(access.member?.role as ProjectRole) || access.member?.role === 'RESTRICTED_CONTRIBUTOR'
       ? { allowed: true }
       : { allowed: false, reason: 'Your project role does not permit comments.' };
-    if (access.member?.role !== 'CONTRIBUTOR') return { allowed: false, reason: 'Your project role does not permit this work-item operation.' };
+    if (!DELIVERY_ROLES.has(access.member?.role as ProjectRole)) return { allowed: false, reason: 'Your project role does not permit this work-item operation.' };
     if (action === 'TRANSITION') return task.assigneeId === user.id
       ? { allowed: true }
       : { allowed: false, reason: 'Only the assigned contributor or a project manager may transition this work item.' };

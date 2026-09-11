@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect, useId } from 'react';
+import React, { useState, useRef, useEffect, useId, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Check, Search, X } from 'lucide-react';
+import { ChevronDown, Check, X } from 'lucide-react';
 import { useI18n } from '../../context/I18nContext.js';
 
 const normalizeSearchText = (value: string) =>
@@ -96,22 +96,22 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   }, []);
 
   // Normalize options to SelectOption format
-  const normalizedOptions: SelectOption[] = options.map((opt) => {
+  const normalizedOptions = useMemo<SelectOption[]>(() => options.map((opt) => {
     if (typeof opt === 'string') {
       return { value: opt, label: opt };
     }
     return opt;
-  });
+  }), [options]);
 
   const selectedOption = normalizedOptions.find((opt) => opt.value === value);
   const normalizedQuery = normalizeSearchText(searchQuery.trim());
-  const filteredOptions = normalizedQuery
+  const filteredOptions = useMemo(() => normalizedQuery
     ? normalizedOptions.filter((opt) =>
         [opt.label, opt.sublabel, opt.badge, opt.value]
           .filter(Boolean)
           .some((candidate) => normalizeSearchText(candidate!).includes(normalizedQuery))
       )
-    : normalizedOptions;
+    : normalizedOptions, [normalizedOptions, normalizedQuery]);
 
   const isSearchable = searchable !== undefined ? searchable : normalizedOptions.length > 5;
 
@@ -141,7 +141,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     }
     const selectedIndex = filteredOptions.findIndex((option) => option.value === value);
     setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
-  }, [isOpen, value, filteredOptions]);
+  }, [isOpen, value]);
 
   useEffect(() => {
     setActiveIndex((current) =>
@@ -176,20 +176,29 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       const menuWidth = Math.min(Math.max(rect.width, 240), window.innerWidth - viewportMargin * 2);
       const left = Math.max(viewportMargin, Math.min(rect.left, window.innerWidth - menuWidth - viewportMargin));
 
-      setPlacement(nextPlacement);
-      setMenuPosition({
+      setPlacement((current) => current === nextPlacement ? current : nextPlacement);
+      setMenuPosition((current) => {
+        const next = {
         top: nextPlacement === 'top' ? Math.max(viewportMargin, rect.top - 6) : rect.bottom + 6,
         left,
         width: menuWidth,
+        };
+        return current.top === next.top && current.left === next.left && current.width === next.width ? current : next;
       });
+    };
+    const handleScroll = (event: Event) => {
+      // The portalled list also emits a captured scroll event. Repositioning
+      // on that event re-rendered the list and reset it to its active item.
+      if (event.target instanceof Node && menuRef.current?.contains(event.target)) return;
+      updateMenuPosition();
     };
 
     updateMenuPosition();
     window.addEventListener('resize', updateMenuPosition);
-    window.addEventListener('scroll', updateMenuPosition, true);
+    window.addEventListener('scroll', handleScroll, true);
     return () => {
       window.removeEventListener('resize', updateMenuPosition);
-      window.removeEventListener('scroll', updateMenuPosition, true);
+      window.removeEventListener('scroll', handleScroll, true);
     };
   }, [isOpen, placementProp, isSearchable]);
 
@@ -335,7 +344,6 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           {isSearchable && (
             <div className="p-1.5 pb-2 border-b border-semantic-border">
               <div className="relative flex items-center">
-                <Search className="w-4 h-4 text-semantic-muted absolute left-2.5 pointer-events-none" />
                 <input
                   ref={searchInputRef}
                   type="text"
@@ -343,7 +351,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={handleListNavigation}
                   placeholder={effectiveSearchPlaceholder}
-                  className="w-full pl-8.5 pr-8 py-1.5 text-sm bg-semantic-subtle border border-semantic-border rounded-lg text-semantic-primary placeholder-semantic-muted focus:outline-hidden focus:border-semantic-brand focus:ring-1 focus:ring-semantic-brand"
+                  className="w-full pl-3.5 pr-8 py-1.5 text-sm bg-semantic-subtle border border-semantic-border rounded-lg text-semantic-primary placeholder-semantic-muted focus:outline-hidden focus:border-semantic-brand focus:ring-1 focus:ring-semantic-brand"
                   role="searchbox"
                   aria-label={effectiveSearchPlaceholder}
                 />

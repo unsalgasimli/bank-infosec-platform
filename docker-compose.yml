@@ -46,6 +46,8 @@ services:
       - VCENTER_CA_MOUNT_ROOT=${VCENTER_CA_MOUNT_ROOT:-/run/vcenter-ca}
       - CORTEX_API_KEY=${CORTEX_API_KEY:-}
       - CORTEX_API_KEY_SECURITY_LEVEL=${CORTEX_API_KEY_SECURITY_LEVEL:-STANDARD}
+      # Server-only token used by the persisted env://LIBRENMS_API_TOKEN reference.
+      - LIBRENMS_API_TOKEN=${LIBRENMS_API_TOKEN:-}
       - RABBITMQ_ENABLED=true
       - RABBITMQ_URL=amqp://${RABBITMQ_USER:-aegissec}:${RABBITMQ_PASSWORD:-${DB_PASSWORD:?RABBITMQ_PASSWORD or DB_PASSWORD must be set}}@rabbitmq:5672/${RABBITMQ_VHOST:-aegissec}
       - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE:-aegissec.events}
@@ -124,6 +126,8 @@ services:
       - VCENTER_CA_MOUNT_ROOT=${VCENTER_CA_MOUNT_ROOT:-/run/vcenter-ca}
       - CORTEX_API_KEY=${CORTEX_API_KEY:-}
       - CORTEX_API_KEY_SECURITY_LEVEL=${CORTEX_API_KEY_SECURITY_LEVEL:-STANDARD}
+      # The worker performs queued LibreNMS inventory reads, so it needs the same reference.
+      - LIBRENMS_API_TOKEN=${LIBRENMS_API_TOKEN:-}
       - RABBITMQ_ENABLED=true
       - RABBITMQ_URL=amqp://${RABBITMQ_USER:-aegissec}:${RABBITMQ_PASSWORD:-${DB_PASSWORD:?RABBITMQ_PASSWORD or DB_PASSWORD must be set}}@rabbitmq:5672/${RABBITMQ_VHOST:-aegissec}
       - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE:-aegissec.events}

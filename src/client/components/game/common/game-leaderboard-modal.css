@@ -1,0 +1,467 @@
+/* Expressbank Arcade Leaderboard Modal Styles */
+.glm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3, 7, 18, 0.85);
+  backdrop-filter: blur(8px);
+  padding: 16px;
+  animation: glmFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes glmFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.glm-modal {
+  width: 100%;
+  max-width: 680px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  background: #0b1120;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 35px rgba(0, 245, 118, 0.15);
+  overflow: hidden;
+  color: #f8fafc;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Header */
+.glm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: #0f172a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glm-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.glm-header__emblem {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(0, 245, 118, 0.08);
+  border: 1px solid rgba(0, 245, 118, 0.25);
+}
+
+.glm-header__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.glm-header__title-row h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #f8fafc;
+  font-family: "Courier New", Courier, monospace, sans-serif;
+}
+
+.glm-header__sub {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+
+.glm-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.glm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+  transition: all 0.15s ease;
+}
+
+.glm-btn:hover {
+  background: #334155;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.glm-btn--close {
+  padding: 6px;
+  color: #94a3b8;
+}
+
+.glm-btn--close:hover {
+  color: #ff3344;
+  background: rgba(255, 51, 68, 0.12);
+  border-color: rgba(255, 51, 68, 0.3);
+}
+
+.is-spinning svg {
+  animation: glmSpin 0.7s linear infinite;
+}
+
+@keyframes glmSpin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Tabs Bar */
+.glm-tabs-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: #090e1a;
+  padding: 6px;
+  gap: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glm-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.glm-tab:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: #f1f5f9;
+}
+
+.glm-tab--active {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--tab-color, #00f576);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.5), inset 0 0 8px rgba(255, 255, 255, 0.03);
+}
+
+.glm-tab__badge {
+  font-size: 9.5px;
+  font-weight: 500;
+  opacity: 0.75;
+  text-transform: uppercase;
+}
+
+/* Sweeper Diff Bar */
+.glm-diff-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: #0d1527;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glm-diff-bar__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #00e5ff;
+  letter-spacing: 0.04em;
+}
+
+.glm-diff-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.glm-diff-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #162033;
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.glm-diff-btn:hover {
+  color: #fff;
+  background: #1e2c45;
+}
+
+.glm-diff-btn--active {
+  background: rgba(0, 229, 255, 0.15);
+  border-color: #00e5ff;
+  color: #00e5ff;
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
+}
+
+/* Body Table */
+.glm-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 280px;
+  max-height: 380px;
+  padding: 0;
+  background: #090e1a;
+}
+
+.glm-loading,
+.glm-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 260px;
+  gap: 12px;
+  text-align: center;
+  color: #94a3b8;
+  padding: 24px;
+}
+
+.glm-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(0, 245, 118, 0.15);
+  border-top-color: #00f576;
+  border-radius: 50%;
+  animation: glmSpin 0.8s linear infinite;
+}
+
+.glm-table-wrapper {
+  width: 100%;
+}
+
+.glm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.glm-table th {
+  padding: 10px 14px;
+  background: #0d1527;
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.glm-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.glm-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.glm-row--me {
+  background: rgba(0, 245, 118, 0.06) !important;
+  border-left: 3px solid #00f576;
+}
+
+.glm-col-rank {
+  text-align: center;
+}
+
+.glm-rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.glm-rank--gold {
+  background: rgba(255, 184, 0, 0.15);
+  color: #ffb800;
+  border: 1px solid rgba(255, 184, 0, 0.4);
+  font-size: 14px;
+}
+
+.glm-rank--silver {
+  background: rgba(203, 213, 225, 0.15);
+  color: #e2e8f0;
+  border: 1px solid rgba(203, 213, 225, 0.4);
+  font-size: 14px;
+}
+
+.glm-rank--bronze {
+  background: rgba(217, 119, 6, 0.15);
+  color: #fb923c;
+  border: 1px solid rgba(217, 119, 6, 0.4);
+  font-size: 14px;
+}
+
+.glm-rank--regular {
+  background: #162033;
+  color: #94a3b8;
+  font-family: monospace;
+}
+
+.glm-user-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.glm-user-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #1e293b;
+  color: #38bdf8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.glm-user-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.glm-user-name {
+  font-weight: 600;
+  color: #f1f5f9;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.glm-you-tag {
+  background: #00f576;
+  color: #000;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+}
+
+.glm-user-sub {
+  font-size: 10.5px;
+  color: #64748b;
+  font-family: monospace;
+}
+
+.glm-runs-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: #131d2e;
+  color: #94a3b8;
+  font-size: 11px;
+  font-family: monospace;
+}
+
+.glm-col-score {
+  text-align: right;
+}
+
+.glm-score-val {
+  font-size: 14px;
+  font-weight: 800;
+  font-family: "Courier New", Courier, monospace;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 10px currentColor;
+}
+
+/* Footer */
+.glm-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: #0f172a;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glm-my-card {
+  display: flex;
+  gap: 18px;
+}
+
+.glm-my-card__col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.glm-my-card__label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.glm-my-card__val {
+  font-size: 13px;
+  font-weight: 800;
+  color: #f8fafc;
+  font-family: monospace;
+}
+
+.glm-footer__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.glm-launch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.12s, filter 0.12s;
+}
+
+.glm-launch-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.15);
+}

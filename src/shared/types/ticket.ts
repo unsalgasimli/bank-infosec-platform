@@ -203,6 +203,8 @@ export interface Ticket {
   targetDepartmentId?: string;
   /** AD-confirmed child organisational unit selected for queue routing. */
   targetSectionId?: string;
+  /** Active orchestration queue backing this requester-visible ticket. */
+  workflowWorkItemId?: string;
   applicationId?: string;
   assetId?: string;
   riskOwnerId?: string;

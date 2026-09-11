@@ -26,6 +26,64 @@ type DirectoryPayload = {
   nextOffset?: number | null;
 };
 
+type FetchWithAuth = (url: string, options?: RequestInit) => Promise<Response>;
+
+type DirectoryCacheEntry = {
+  expiresAt: number;
+  value: Promise<DirectoryPayload>;
+};
+
+// An asset drawer renders several assignment selectors at once. Keep one
+// authenticated catalogue request per scope instead of making the primary,
+// technical, business, department, and section controls all fetch the same
+// directory projection independently. The cache is scoped to the current
+// authenticated fetch function, so it cannot survive an auth-session change.
+const directoryOptionCache = new WeakMap<FetchWithAuth, Map<string, DirectoryCacheEntry>>();
+const DIRECTORY_OPTION_CACHE_MS = 30_000;
+
+const fetchDirectoryPayload = async (fetchWithAuth: FetchWithAuth, url: string): Promise<DirectoryPayload> => {
+  const response = await fetchWithAuth(url);
+  const data = await response.json().catch(() => ({}));
+  if (response.ok && data.success && (data.departments?.length || data.users?.length)) return data;
+
+  // Retain the compatibility fallback, but issue it once for all selectors
+  // sharing this catalogue scope.
+  const [deptRes, userRes] = await Promise.all([
+    fetchWithAuth('/api/departments').then((result) => result.json()).catch(() => ({})),
+    fetchWithAuth('/api/auth/users').then((result) => result.json()).catch(() => ({})),
+  ]);
+  const departments = Array.isArray(deptRes.departments) ? deptRes.departments : [];
+  const users = Array.isArray(userRes.users) ? userRes.users : [];
+  if (departments.length || users.length) {
+    return {
+      directory: { ready: departments.length > 0 },
+      departments,
+      sections: departments.flatMap((department: any) => department.sections || []),
+      users,
+    };
+  }
+  throw new Error(data.error || 'Canlı directory məlumatı yüklənmədi.');
+};
+
+const getDirectoryPayload = (fetchWithAuth: FetchWithAuth, url: string): Promise<DirectoryPayload> => {
+  let entries = directoryOptionCache.get(fetchWithAuth);
+  if (!entries) {
+    entries = new Map();
+    directoryOptionCache.set(fetchWithAuth, entries);
+  }
+  const now = Date.now();
+  const existing = entries.get(url);
+  if (existing && existing.expiresAt > now) return existing.value;
+
+  const value = fetchDirectoryPayload(fetchWithAuth, url).catch((error) => {
+    // A transient outage must not poison the next attempt.
+    if (entries?.get(url)?.value === value) entries.delete(url);
+    throw error;
+  });
+  entries.set(url, { expiresAt: now + DIRECTORY_OPTION_CACHE_MS, value });
+  return value;
+};
+
 export type DirectoryAssignmentSelectProps = {
   kind: 'department' | 'section' | 'user';
   value: string;
@@ -38,6 +96,7 @@ export type DirectoryAssignmentSelectProps = {
   disabled?: boolean;
   required?: boolean;
   allowEmpty?: boolean;
+  emptyLabel?: string;
   className?: string;
   ariaLabelledBy?: string;
   size?: 'sm' | 'md' | 'lg';
@@ -65,6 +124,7 @@ export const DirectoryAssignmentSelect: React.FC<DirectoryAssignmentSelectProps>
   disabled = false,
   required = false,
   allowEmpty = false,
+  emptyLabel,
   className = '',
   ariaLabelledBy,
   size = 'md',
@@ -79,7 +139,6 @@ export const DirectoryAssignmentSelect: React.FC<DirectoryAssignmentSelectProps>
   const scopeKey = `${kind}:${departmentId || ''}:${sectionId || ''}`;
 
   useEffect(() => {
-    const controller = new AbortController();
     setLoading(true);
     setError('');
     setPayload({});
@@ -87,58 +146,20 @@ export const DirectoryAssignmentSelect: React.FC<DirectoryAssignmentSelectProps>
     if (departmentId) params.set('departmentId', departmentId);
     if (sectionId) params.set('sectionId', sectionId);
 
-    fetchWithAuth(`/api/directory/assignment-options?${params.toString()}`, { signal: controller.signal })
-      .then(async (response) => {
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || !data.success || (!data.departments?.length && !data.users?.length)) {
-          // Fallback to /api/departments and /api/auth/users
-          const [deptRes, userRes] = await Promise.all([
-            fetchWithAuth('/api/departments', { signal: controller.signal }).then((r) => r.json()).catch(() => ({})),
-            fetchWithAuth('/api/auth/users', { signal: controller.signal }).then((r) => r.json()).catch(() => ({})),
-          ]);
-          const depts = Array.isArray(deptRes.departments) ? deptRes.departments : [];
-          const allSections = depts.flatMap((d: any) => d.sections || []);
-          const users = Array.isArray(userRes.users) ? userRes.users : [];
-          if (!controller.signal.aborted) {
-            setPayload({
-              directory: { ready: depts.length > 0 },
-              departments: depts,
-              sections: allSections,
-              users,
-            });
-          }
-          return;
-        }
-        if (!controller.signal.aborted) setPayload(data);
+    let disposed = false;
+    const url = `/api/directory/assignment-options?${params.toString()}`;
+    getDirectoryPayload(fetchWithAuth, url)
+      .then((data) => {
+        if (!disposed) setPayload(data);
       })
-      .catch(async (cause: any) => {
-        if (cause?.name !== 'AbortError') {
-          try {
-            const [deptRes, userRes] = await Promise.all([
-              fetchWithAuth('/api/departments', { signal: controller.signal }).then((r) => r.json()).catch(() => ({})),
-              fetchWithAuth('/api/auth/users', { signal: controller.signal }).then((r) => r.json()).catch(() => ({})),
-            ]);
-            const depts = Array.isArray(deptRes.departments) ? deptRes.departments : [];
-            const allSections = depts.flatMap((d: any) => d.sections || []);
-            const users = Array.isArray(userRes.users) ? userRes.users : [];
-            if (!controller.signal.aborted) {
-              setPayload({
-                directory: { ready: depts.length > 0 },
-                departments: depts,
-                sections: allSections,
-                users,
-              });
-            }
-          } catch {
-            if (!controller.signal.aborted) setError(cause?.message || 'Canlı directory məlumatı yüklənmədi.');
-          }
-        }
+      .catch((cause: any) => {
+        if (!disposed) setError(cause?.message || 'Canlı directory məlumatı yüklənmədi.');
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!disposed) setLoading(false);
       });
 
-    return () => controller.abort();
+    return () => { disposed = true; };
   }, [fetchWithAuth, scopeKey]);
 
   const directoryReady = payload.directory?.ready !== false || Boolean(payload.departments?.length) || Boolean(payload.users?.length);
@@ -150,7 +171,7 @@ export const DirectoryAssignmentSelect: React.FC<DirectoryAssignmentSelectProps>
 
   const options = useMemo<SelectOption[]>(() => {
     const empty: SelectOption[] = allowEmpty
-      ? [{ value: '', label: kind === 'user' ? 'Avtomatik / növbə' : 'Seçilməyib' }]
+      ? [{ value: '', label: emptyLabel || (kind === 'user' ? 'Avtomatik / növbə' : 'Seçilməyib') }]
       : [];
 
     if (kind === 'department') {
@@ -198,7 +219,11 @@ export const DirectoryAssignmentSelect: React.FC<DirectoryAssignmentSelectProps>
   };
 
   const unavailableMessage = error || payload.directory?.message || 'Canlı Active Directory sinxronizasiyası tələb olunur.';
-  const isDisabled = disabled || loading || options.length === 0;
+  // An owner picker must never look locked merely because directory data is
+  // still refreshing.  Keep the searchable control operable and replace its
+  // options as soon as the live projection arrives.
+  const selectableOptions = options.filter((option) => option.value !== '');
+  const isDisabled = disabled || (!allowEmpty && selectableOptions.length === 0);
 
   return (
     <div className={className}>
@@ -217,8 +242,8 @@ export const DirectoryAssignmentSelect: React.FC<DirectoryAssignmentSelectProps>
         isLoadingMore={loadingMore}
         onLoadMore={() => void loadMore()}
       />
-      {!directoryReady && !loading && options.length === 0 && <p className="mt-1.5 text-xs text-amber-700">{unavailableMessage}</p>}
-      {directoryReady && !options.length && !loading && <p className="mt-1.5 text-xs text-semantic-muted">Bu scope üçün aktiv seçim yoxdur.</p>}
+      {!directoryReady && !loading && selectableOptions.length === 0 && <p className="mt-1.5 text-xs text-amber-700">{unavailableMessage}</p>}
+      {directoryReady && selectableOptions.length === 0 && !loading && <p className="mt-1.5 text-xs text-semantic-muted">Bu scope üçün aktiv seçim yoxdur.</p>}
     </div>
   );
 };

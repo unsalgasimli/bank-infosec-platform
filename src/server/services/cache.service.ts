@@ -9,8 +9,10 @@ interface MemoryCacheEntry {
 
 export class CacheService {
   private static instance: CacheService;
+  private static readonly MAX_MEMORY_ENTRIES = 5000;
   private redisClient: Redis | null = null;
   private memoryCache: Map<string, MemoryCacheEntry> = new Map();
+  private pruneTimer: NodeJS.Timeout | null = null;
   private isRedisConnected: boolean = false;
 
   private constructor() {
@@ -62,6 +64,18 @@ export class CacheService {
     } else {
       logger.info('Redis disabled in config, using high-performance in-memory cache');
     }
+
+    this.pruneTimer = setInterval(() => this.pruneExpired(), 60_000);
+    this.pruneTimer.unref?.();
+  }
+
+  private pruneExpired(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.memoryCache.entries()) {
+      if (entry.expiresAt < now) {
+        this.memoryCache.delete(key);
+      }
+    }
   }
 
   public getRedisClient(): Redis | null {
@@ -101,6 +115,14 @@ export class CacheService {
         return;
       } catch (err) {
         logger.warn({ err, key }, 'Failed to write key to Redis, writing to memory');
+      }
+    }
+
+    if (this.memoryCache.size >= CacheService.MAX_MEMORY_ENTRIES) {
+      this.pruneExpired();
+      if (this.memoryCache.size >= CacheService.MAX_MEMORY_ENTRIES) {
+        const oldestKey = this.memoryCache.keys().next().value;
+        if (oldestKey !== undefined) this.memoryCache.delete(oldestKey);
       }
     }
 
@@ -152,6 +174,10 @@ export class CacheService {
       }
       this.isRedisConnected = false;
       logger.info('Redis client disconnected');
+    }
+    if (this.pruneTimer) {
+      clearInterval(this.pruneTimer);
+      this.pruneTimer = null;
     }
   }
 }

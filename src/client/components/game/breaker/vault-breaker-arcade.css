@@ -1,0 +1,334 @@
+/* Expressbank Vault Breaker Arcade Styles */
+
+.vb-arcade {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: radial-gradient(circle at center, rgba(12, 17, 28, 0.88) 0%, rgba(3, 5, 8, 0.98) 100%);
+  backdrop-filter: blur(12px);
+  animation: vb-fade-in 0.22s ease-out;
+  user-select: none;
+}
+
+.vb-arcade__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(840px, 98vw);
+  background: linear-gradient(180deg, #161e2e 0%, #0c111a 60%, #080c13 100%);
+  border: 2px solid rgba(0, 245, 118, 0.35);
+  border-radius: 20px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 0 45px rgba(0, 245, 118, 0.2),
+    0 30px 80px rgba(0, 0, 0, 0.85);
+  overflow: hidden;
+}
+
+/* Header */
+.vb-arcade__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: linear-gradient(90deg, #090e17 0%, #151e2e 50%, #090e17 100%);
+  border-bottom: 2px solid rgba(0, 245, 118, 0.3);
+}
+
+.vb-arcade__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vb-arcade__title-group h2 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  color: #ffffff;
+  margin: 0;
+  text-shadow: 0 0 10px rgba(0, 245, 118, 0.6);
+}
+
+.vb-arcade__title-group span {
+  font-family: 'VT323', monospace;
+  font-size: 1.05rem;
+  color: #00f576;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vb-arcade__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-family: 'VT323', monospace;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: #a0aec0;
+}
+
+.vb-btn:hover {
+  background: rgba(0, 245, 118, 0.15);
+  border-color: rgba(0, 245, 118, 0.4);
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(0, 245, 118, 0.25);
+  transform: translateY(-1px);
+}
+
+.vb-btn--accent {
+  background: rgba(0, 245, 118, 0.2);
+  border-color: #00f576;
+  color: #00f576;
+}
+
+.vb-btn--leaderboard {
+  background: rgba(255, 184, 0, 0.12);
+  border-color: rgba(255, 184, 0, 0.4);
+  color: #ffb800;
+}
+
+.vb-btn--leaderboard:hover {
+  background: rgba(255, 184, 0, 0.22);
+  border-color: #ffb800;
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(255, 184, 0, 0.4);
+}
+
+.vb-btn--close {
+  padding: 6px;
+  border-radius: 10px;
+  border-color: rgba(255, 51, 68, 0.3);
+  color: #ff4b5c;
+  background: rgba(255, 51, 68, 0.1);
+}
+
+.vb-btn--close:hover {
+  background: rgba(255, 51, 68, 0.25);
+  border-color: #ff4b5c;
+  color: #ffffff;
+}
+
+/* HUD Bar */
+.vb-arcade__hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+  background: #060910;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+
+.vb-hud__score span,
+.vb-hud__best span {
+  color: #00f576;
+}
+
+.vb-hud__stage {
+  color: #ffb800;
+}
+
+.vb-hud__lives {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vb-heart {
+  color: #ff3344;
+  font-size: 0.85rem;
+  animation: vb-pulse 1.2s infinite;
+}
+
+.vb-hud__combo {
+  color: #00e5ff;
+  font-weight: bold;
+}
+
+/* Stage Arena Area */
+.vb-arcade__arena {
+  position: relative;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  aspect-ratio: 4 / 3;
+  background: #070b12;
+  overflow: hidden;
+}
+
+.vault-breaker-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: none;
+}
+
+/* CRT Scanlines Overlay */
+.vb-arcade__arena::before {
+  content: " ";
+  display: block;
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%,
+    rgba(0, 0, 0, 0.35) 50%
+  );
+  background-size: 100% 3px;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0.6;
+}
+
+/* Powerups Active Bar */
+.vb-active-powerups {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 20px;
+  background: #0a0f18;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-family: 'VT323', monospace;
+  font-size: 1rem;
+}
+
+.vb-active-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(0, 245, 118, 0.12);
+  border: 1px solid rgba(0, 245, 118, 0.35);
+  color: #00f576;
+}
+
+.vb-active-badge--laser {
+  background: rgba(0, 229, 255, 0.12);
+  border-color: #00e5ff;
+  color: #00e5ff;
+}
+
+.vb-active-badge--fire {
+  background: rgba(255, 51, 68, 0.15);
+  border-color: #ff3344;
+  color: #ff3344;
+}
+
+/* Overlays (Launch Ready, Stage Clear, Game Over) */
+.vb-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 9, 15, 0.85);
+  backdrop-filter: blur(6px);
+  text-align: center;
+  padding: 20px;
+  animation: vb-pop-in 0.2s ease-out;
+}
+
+.vb-overlay__title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.8rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  color: #ffffff;
+  margin-bottom: 8px;
+  text-shadow: 0 0 15px rgba(0, 245, 118, 0.6);
+}
+
+.vb-overlay__title--clear {
+  color: #ffb800;
+  text-shadow: 0 0 15px rgba(255, 184, 0, 0.6);
+}
+
+.vb-overlay__title--over {
+  color: #ff3344;
+  text-shadow: 0 0 15px rgba(255, 51, 68, 0.6);
+}
+
+.vb-overlay__subtitle {
+  font-family: 'VT323', monospace;
+  font-size: 1.3rem;
+  color: #94a3b8;
+  letter-spacing: 0.08em;
+  margin-bottom: 20px;
+}
+
+.vb-overlay__btn-group {
+  display: flex;
+  gap: 14px;
+}
+
+.vb-overlay-btn {
+  padding: 10px 22px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  border-radius: 10px;
+  border: 1px solid #00f576;
+  background: #00f576;
+  color: #041407;
+  cursor: pointer;
+  box-shadow: 0 0 20px rgba(0, 245, 118, 0.4);
+  transition: all 0.15s ease;
+}
+
+.vb-overlay-btn:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.15);
+  box-shadow: 0 0 28px rgba(0, 245, 118, 0.6);
+}
+
+.vb-overlay-btn--secondary {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #cbd5e1;
+  box-shadow: none;
+}
+
+.vb-overlay-btn--secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: #ffffff;
+  color: #ffffff;
+}
+
+/* Animations */
+@keyframes vb-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes vb-pop-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes vb-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}

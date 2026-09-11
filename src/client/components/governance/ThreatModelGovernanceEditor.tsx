@@ -26,6 +26,16 @@ const split = (value: FormDataEntryValue | null) =>
     .map((x) => x.trim())
     .filter(Boolean);
 
+/** Human-readable select labels; keys go through the translation catalog. */
+const classificationLabels: Record<string, string> = {
+  PUBLIC: 'Public', INTERNAL: 'Internal', RESTRICTED: 'Restricted',
+  CONFIDENTIAL_SECURITY_ONLY: 'Confidential (Security only)', HIGHLY_RESTRICTED_HR_LEGAL: 'Highly Restricted (HR & Legal)',
+};
+const sensitivityLabels: Record<string, string> = {
+  personalData: 'Personal data', sensitivePersonalData: 'Sensitive personal data', bankSecrecy: 'Bank secrecy',
+  credentialData: 'Credential data', paymentData: 'Payment data',
+};
+
 const SCREENING_SIGNAL_METADATA: Record<
   string,
   { title: string; titleAz: string; category: string; categoryAz: string; desc: string; descAz: string }
@@ -370,7 +380,7 @@ export function ThreatModelGovernanceEditor({
 
   const select = (name: string, label: string, items: any[], optional = false) => (
     <label className="block text-xs font-semibold text-semantic-jira-muted">
-      {label}
+      {t(label)}
       <select name={name} className={inputClass} required={!optional}>
         <option value="">{t('Select…')}</option>
         {items.map((item) => (
@@ -384,7 +394,7 @@ export function ThreatModelGovernanceEditor({
 
   const field = (name: string, label: string, value = '', type = 'text', required = true) => (
     <label className="block text-xs font-semibold text-semantic-jira-muted">
-      {label}
+      {t(label)}
       <input className={inputClass} name={name} defaultValue={value} type={type} required={required} />
     </label>
   );
@@ -639,47 +649,42 @@ export function ThreatModelGovernanceEditor({
                     return (
                       <div
                         key={rule.signal}
-                        className="p-3.5 rounded-xl border border-semantic-jira-border bg-semantic-panel hover:border-semantic-jira-info-border transition-colors flex flex-col justify-between gap-3 shadow-2xs"
+                        className="p-3.5 rounded-xl border border-semantic-jira-border bg-semantic-panel hover:border-semantic-jira-info-border transition-colors flex flex-col gap-2.5 shadow-2xs"
                       >
-                        <div className="space-y-1">
-                          <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="space-y-1 min-w-0">
                             <div className="font-semibold text-xs text-semantic-jira-primary leading-snug">
                               {info.title}
                             </div>
-                            <span
-                              className={`text-micro font-bold px-1.5 py-0.5 rounded border whitespace-nowrap ${
-                                rule.minimumTier === 3
-                                  ? 'border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger'
-                                  : rule.minimumTier === 2
-                                  ? 'border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning'
-                                  : 'border-semantic-jira-border bg-semantic-jira-surface text-semantic-jira-muted'
-                              }`}
-                            >
-                              TM-{rule.minimumTier}
-                            </span>
+                            {info.desc && (
+                              <p className="text-micro text-semantic-jira-muted leading-normal">
+                                {info.desc}
+                              </p>
+                            )}
                           </div>
-                          {info.desc && (
-                            <p className="text-micro text-semantic-jira-muted leading-normal">
-                              {info.desc}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="pt-2 border-t border-semantic-jira-border/40 flex items-center justify-between gap-2">
-                          <span className="text-micro font-mono text-semantic-jira-muted truncate">
-                            {rule.signal} · +{rule.weight} {t('Weight').toLowerCase()}
-                          </span>
-                          <select
-                            name={rule.signal}
-                            className="jira-input text-xs py-1 px-2 min-w-[130px]"
-                            required
-                            defaultValue=""
+                          <span
+                            className={`text-micro font-bold px-1.5 py-0.5 rounded border whitespace-nowrap flex-shrink-0 ${
+                              rule.minimumTier === 3
+                                ? 'border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger'
+                                : rule.minimumTier === 2
+                                ? 'border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning'
+                                : 'border-semantic-jira-border bg-semantic-jira-surface text-semantic-jira-muted'
+                            }`}
                           >
-                            <option value="">{t('Not assessed')}</option>
-                            <option value="false">{t('No')}</option>
-                            <option value="true">{t('Yes')}</option>
-                          </select>
+                            TM-{rule.minimumTier}
+                          </span>
                         </div>
+                        <select
+                          name={rule.signal}
+                          aria-label={info.title}
+                          className="jira-input text-xs py-1.5"
+                          required
+                          defaultValue=""
+                        >
+                          <option value="">{t('Not assessed')}</option>
+                          <option value="false">{t('No')}</option>
+                          <option value="true">{t('Yes')}</option>
+                        </select>
                       </div>
                     );
                   })}
@@ -709,7 +714,7 @@ export function ThreatModelGovernanceEditor({
             >
               <div className="pb-2 border-b border-semantic-jira-border/60">
                 <h4 className="font-bold text-semantic-jira-primary text-xs uppercase tracking-wider">
-                  Scope & Architectural Boundary
+                  {t('Scope & Architectural Boundary')}
                 </h4>
               </div>
               <fieldset disabled={!mutable || busy} className="grid gap-4">
@@ -720,7 +725,7 @@ export function ThreatModelGovernanceEditor({
                   ['securityObjectives', 'Security objectives'],
                 ].map(([name, label]) => (
                   <label key={name} className="block text-xs font-semibold text-semantic-jira-muted">
-                    {label}
+                    {t(label)}
                     <textarea
                       name={name}
                       className={`${inputClass} min-h-[70px]`}
@@ -739,13 +744,13 @@ export function ThreatModelGovernanceEditor({
               {Array.isArray(data.dataObjects) && data.dataObjects.length > 0 ? (
                 <div className="border border-semantic-jira-border rounded-xl divide-y divide-semantic-jira-border bg-semantic-panel shadow-sm overflow-hidden">
                   <div className="px-4 py-2.5 font-bold text-caption uppercase text-semantic-jira-muted bg-semantic-jira-surface/50">
-                    Tracked Information Assets
+                    {t('Tracked Information Assets')}
                   </div>
                   {data.dataObjects.map((item: any) => (
                     <div key={item.id} className="px-4 py-2.5 text-xs flex items-center justify-between">
                       <span className="font-medium text-semantic-jira-primary">{item.name}</span>
-                      <span className="font-mono text-micro px-2 py-0.5 rounded bg-semantic-jira-surface border border-semantic-jira-border text-semantic-jira-muted">
-                        {item.classification}
+                      <span className="text-micro px-2 py-0.5 rounded bg-semantic-jira-surface border border-semantic-jira-border text-semantic-jira-muted">
+                        {t(classificationLabels[item.classification] ?? item.classification)}
                       </span>
                     </div>
                   ))}
@@ -767,23 +772,17 @@ export function ThreatModelGovernanceEditor({
               >
                 <div className="pb-2 border-b border-semantic-jira-border/60">
                   <h4 className="font-bold text-semantic-jira-primary text-xs uppercase tracking-wider">
-                    Register Information Asset
+                    {t('Register Information Asset')}
                   </h4>
                 </div>
                 <fieldset disabled={!mutable || busy} className="grid md:grid-cols-2 gap-4">
                   {field('name', 'Information asset name')}
                   {field('ownerId', 'Canonical data owner ID')}
                   <label className="block text-xs font-semibold text-semantic-jira-muted">
-                    Classification
+                    {t('Classification')}
                     <select name="classification" className={inputClass}>
-                      {[
-                        'PUBLIC',
-                        'INTERNAL',
-                        'RESTRICTED',
-                        'CONFIDENTIAL_SECURITY_ONLY',
-                        'HIGHLY_RESTRICTED_HR_LEGAL',
-                      ].map((value) => (
-                        <option key={value}>{value}</option>
+                      {Object.entries(classificationLabels).map(([value, label]) => (
+                        <option key={value} value={value}>{t(label)}</option>
                       ))}
                     </select>
                   </label>
@@ -793,14 +792,12 @@ export function ThreatModelGovernanceEditor({
                   {select('componentId', 'Component (choose component OR flow)', detail.components, true)}
                   {select('flowId', 'Data flow', detail.dataFlows, true)}
                   <div className="md:col-span-2 flex flex-wrap gap-4 pt-2">
-                    {['personalData', 'sensitivePersonalData', 'bankSecrecy', 'credentialData', 'paymentData'].map(
-                      (name) => (
-                        <label key={name} className="flex items-center gap-2 text-xs font-medium cursor-pointer">
-                          <input type="checkbox" name={name} className="rounded border-semantic-jira-border" />
-                          <span className="capitalize">{name.replace(/([A-Z])/g, ' $1')}</span>
-                        </label>
-                      )
-                    )}
+                    {Object.entries(sensitivityLabels).map(([name, label]) => (
+                      <label key={name} className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                        <input type="checkbox" name={name} className="rounded border-semantic-jira-border text-semantic-jira-brand focus:ring-semantic-jira-brand" />
+                        {t(label)}
+                      </label>
+                    ))}
                   </div>
                   {save}
                 </fieldset>
@@ -808,7 +805,7 @@ export function ThreatModelGovernanceEditor({
 
               <details className="bg-semantic-jira-surface/50 border border-semantic-jira-border rounded-xl p-4 text-xs">
                 <summary className="font-semibold text-semantic-jira-primary cursor-pointer">
-                  Reuse an existing information asset on another component / flow
+                  {t('Reuse an existing information asset on another component / flow')}
                 </summary>
                 <form onSubmit={(event) => void submit(event, `${base}/data-objects`)} className="mt-3">
                   <fieldset disabled={!mutable || busy} className="grid gap-3">
@@ -826,7 +823,7 @@ export function ThreatModelGovernanceEditor({
             <div className="space-y-4">
               <details className="bg-semantic-jira-surface/50 border border-semantic-jira-border rounded-xl p-4 text-xs">
                 <summary className="font-semibold text-semantic-jira-primary cursor-pointer">
-                  Replace a retired compliance interpretation
+                  {t('Replace a retired compliance interpretation')}
                 </summary>
                 <form
                   key={data.revision.version}
@@ -851,7 +848,7 @@ export function ThreatModelGovernanceEditor({
 
               <div className="space-y-2">
                 <div className="text-caption font-bold uppercase tracking-wider text-semantic-jira-muted">
-                  Security Requirements
+                  {t('Security Requirements')}
                 </div>
                 <div className="space-y-2">
                   {data.requirements.map((item: any) => (
@@ -868,11 +865,11 @@ export function ThreatModelGovernanceEditor({
                               : 'bg-semantic-jira-surface text-semantic-jira-muted border border-semantic-jira-border'
                           }`}
                         >
-                          {item.mandatory ? 'Mandatory' : 'Optional'}
+                          {item.mandatory ? t('Mandatory') : t('Optional')}
                         </span>
                       </div>
                       <div className="text-xs text-semantic-jira-muted">
-                        Threats: {item.threat_ids.join(', ')} → Controls: {item.control_ids.join(', ') || 'MISSING'} → Compliance: {item.compliance_ids.join(', ') || 'Unmapped'}
+                        {t('Threats')}: {item.threat_ids.join(', ') || '—'} · {t('Controls')}: {item.control_ids.join(', ') || t('Missing')} · {t('Compliance')}: {item.compliance_ids.join(', ') || t('Unmapped')}
                       </div>
                     </div>
                   ))}
@@ -893,7 +890,7 @@ export function ThreatModelGovernanceEditor({
               >
                 <div className="pb-2 border-b border-semantic-jira-border/60">
                   <h4 className="font-bold text-semantic-jira-primary text-xs uppercase tracking-wider">
-                    Add Security Requirement
+                    {t('Add Security Requirement')}
                   </h4>
                 </div>
                 <fieldset disabled={!mutable || busy} className="grid md:grid-cols-2 gap-4">
@@ -905,10 +902,10 @@ export function ThreatModelGovernanceEditor({
                   {field('controlIds', 'Control IDs (comma-separated)', '', 'text', false)}
                   {field('complianceIds', 'Compliance IDs (comma-separated)', '', 'text', false)}
                   <label className="block text-xs font-semibold text-semantic-jira-muted">
-                    Mandatory
+                    {t('Mandatory')}
                     <select name="mandatory" className={inputClass}>
-                      <option value="true">Yes</option>
-                      <option value="false">No</option>
+                      <option value="true">{t('Yes')}</option>
+                      <option value="false">{t('No')}</option>
                     </select>
                   </label>
                   {save}
@@ -921,7 +918,7 @@ export function ThreatModelGovernanceEditor({
               >
                 <div className="pb-2 border-b border-semantic-jira-border/60">
                   <h4 className="font-bold text-semantic-jira-primary text-xs uppercase tracking-wider">
-                    Map Control to Requirement
+                    {t('Map Control to Requirement')}
                   </h4>
                 </div>
                 <fieldset disabled={!mutable || busy} className="grid md:grid-cols-2 gap-4">

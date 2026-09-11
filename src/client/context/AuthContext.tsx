@@ -36,6 +36,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentUser, setCurrentUser] = useState<BankUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__CURRENT_BANK_USER__ = currentUser;
+      window.dispatchEvent(new CustomEvent('arcade-policy-change'));
+    }
+  }, [currentUser]);
+
   const refreshUsers = useCallback(async (): Promise<void> => {
     const res = await fetch('/api/auth/users', { credentials: 'include' });
     if (!res.ok) {

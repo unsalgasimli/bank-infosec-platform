@@ -86,13 +86,31 @@ export class CMDBService {
     if (query.businessServiceOnly === 'true') items = items.filter((ci) => ci.typeId === 'business_service');
     if (query.quality === 'missing-owner') items = items.filter((ci) => !ci.ownerUserId && !ci.technicalOwnerUserId);
     if (query.quality === 'stale') items = items.filter((ci) => !ci.lastVerifiedAt || Date.now() - Date.parse(ci.lastVerifiedAt) > 90 * 86400000);
-    if (query.quality === 'no-relationships') items = items.filter((ci) => !db.data.ciRelationships.some((relationship) => relationship.status === 'ACTIVE' && !relationship.archivedAt && (relationship.sourceCiId === ci.id || relationship.targetCiId === ci.id)));
+    if (query.quality === 'no-relationships') {
+      const activeRelationshipCiIds = new Set<string>();
+      for (const rel of db.data.ciRelationships || []) {
+        if (rel.status === 'ACTIVE' && !rel.archivedAt) {
+          activeRelationshipCiIds.add(rel.sourceCiId);
+          activeRelationshipCiIds.add(rel.targetCiId);
+        }
+      }
+      items = items.filter((ci) => !activeRelationshipCiIds.has(ci.id));
+    }
     if (query.quality === 'duplicate-candidate') items = items.filter((ci) => this.duplicateCandidates(ci.id).length > 0);
     if (query.quality === 'unverified') items = items.filter((ci) => !ci.lastVerifiedAt);
     if (query.quality === 'missing-criticality') items = items.filter((ci) => !ci.criticality);
     if (text) items = items.filter((ci) => [ci.name, ci.ciNumber, ci.assetTag, ci.serialNumber, ci.hostname, ci.fqdn, ci.ipAddress].filter(Boolean).some((value) => String(value).toLowerCase().includes(text)));
     const sortBy = String(query.sortBy || 'updatedAt'); const sortable = new Set(['ciNumber', 'name', 'typeId', 'status', 'environment', 'criticality', 'lifecycleStatus', 'updatedAt', 'lastVerifiedAt', 'relationshipCount']); const direction = String(query.sortDirection || 'desc').toLowerCase() === 'asc' ? 1 : -1;
-    const relationshipCount = (ci: ConfigurationItem) => db.data.ciRelationships.filter((relationship) => relationship.status === 'ACTIVE' && !relationship.archivedAt && (relationship.sourceCiId === ci.id || relationship.targetCiId === ci.id)).length;
+    const relationshipCountMap = new Map<string, number>();
+    if (sortBy === 'relationshipCount') {
+      for (const rel of db.data.ciRelationships || []) {
+        if (rel.status === 'ACTIVE' && !rel.archivedAt) {
+          relationshipCountMap.set(rel.sourceCiId, (relationshipCountMap.get(rel.sourceCiId) || 0) + 1);
+          relationshipCountMap.set(rel.targetCiId, (relationshipCountMap.get(rel.targetCiId) || 0) + 1);
+        }
+      }
+    }
+    const relationshipCount = (ci: ConfigurationItem) => relationshipCountMap.get(ci.id) || 0;
     const total = items.length; items = items.sort((a, b) => { if (!sortable.has(sortBy)) return b.updatedAt.localeCompare(a.updatedAt); const left = sortBy === 'relationshipCount' ? relationshipCount(a) : String((a as any)[sortBy] || ''); const right = sortBy === 'relationshipCount' ? relationshipCount(b) : String((b as any)[sortBy] || ''); return typeof left === 'number' && typeof right === 'number' ? (left - right) * direction : String(left).localeCompare(String(right)) * direction; });
     return { items: items.slice((page - 1) * pageSize, page * pageSize).map((item) => this.withQuality(item)), total, page, pageSize };
   }
@@ -134,12 +152,104 @@ export class CMDBService {
 
   static relationships(id: string): { upstream: CIRelationship[]; downstream: CIRelationship[] } { this.get(id); const active = db.data.ciRelationships.filter((item) => item.status === 'ACTIVE' && !item.archivedAt); return { upstream: active.filter((item) => item.sourceCiId === id), downstream: active.filter((item) => item.targetCiId === id) }; }
 
-  static graph(id: string, query: Record<string, unknown>): CMDBGraph { this.get(id); const depth = Math.min(3, Math.max(1, Number(query.depth) || 1)); const direction = String(query.direction || 'both'); const permittedTypes = String(query.relationshipTypes || '').split(',').filter(Boolean); const permittedCiTypes = String(query.ciTypes || '').split(',').filter(Boolean); const queue: Array<{ id: string; level: number }> = [{ id, level: 0 }]; const visited = new Set<string>([id]); const edges: CIRelationship[] = [];
-    while (queue.length) { const current = queue.shift()!; if (current.level >= depth) continue; for (const relationship of db.data.ciRelationships.filter((item) => item.status === 'ACTIVE' && !item.archivedAt && (!permittedTypes.length || permittedTypes.includes(item.relationshipTypeId)))) { const outbound = relationship.sourceCiId === current.id; const inbound = relationship.targetCiId === current.id; if (!outbound && !inbound) continue; if (direction === 'upstream' && !outbound) continue; if (direction === 'downstream' && !inbound) continue; edges.push(relationship); const adjacent = outbound ? relationship.targetCiId : relationship.sourceCiId; if (!visited.has(adjacent)) { visited.add(adjacent); queue.push({ id: adjacent, level: current.level + 1 }); } } }
-    const typeMap = new Map(db.data.cmdbRelationshipTypes.map((type) => [type.id, type])); const displayNodes = db.data.configurationItems.filter((item) => visited.has(item.id) && !item.archivedAt && (item.id === id || !permittedCiTypes.length || permittedCiTypes.includes(item.typeId))); const displayIds = new Set(displayNodes.map((node) => node.id)); return { nodes: displayNodes.map(({ id: ciId, ciNumber, name, displayName, typeId, status, criticality, environment }) => ({ id: ciId, ciNumber, name, displayName, typeId, status, criticality, environment })), edges: [...new Map(edges.map((edge) => [edge.id, edge])).values()].filter((edge) => displayIds.has(edge.sourceCiId) && displayIds.has(edge.targetCiId)).map((edge) => ({ id: edge.id, source: edge.sourceCiId, target: edge.targetCiId, relationshipTypeId: edge.relationshipTypeId, relationshipType: typeMap.get(edge.relationshipTypeId)?.name || edge.relationshipTypeId })) }; }
+  static graph(id: string, query: Record<string, unknown>): CMDBGraph {
+    this.get(id);
+    const depth = Math.min(3, Math.max(1, Number(query.depth) || 1));
+    const direction = String(query.direction || 'both');
+    const permittedTypes = String(query.relationshipTypes || '').split(',').filter(Boolean);
+    const permittedCiTypes = String(query.ciTypes || '').split(',').filter(Boolean);
+    const permittedTypesSet = permittedTypes.length ? new Set(permittedTypes) : undefined;
+    const queue: Array<{ id: string; level: number }> = [{ id, level: 0 }];
+    const visited = new Set<string>([id]);
+    const edges: CIRelationship[] = [];
 
-  static impact(id: string): Record<string, unknown> { this.get(id); const maxDepth = 6; const queue: Array<{ id: string; path: string[]; depth: number }> = [{ id, path: [id], depth: 0 }]; const affected = new Map<string, string[]>(); while (queue.length) { const current = queue.shift()!; if (current.depth >= maxDepth) continue; for (const rel of db.data.ciRelationships.filter((item) => item.status === 'ACTIVE' && !item.archivedAt && item.targetCiId === current.id && dependencyRelationshipIds.has(item.relationshipTypeId))) { if (current.path.includes(rel.sourceCiId)) continue; const path = [...current.path, rel.sourceCiId]; if (!affected.has(rel.sourceCiId)) { affected.set(rel.sourceCiId, path); queue.push({ id: rel.sourceCiId, path, depth: current.depth + 1 }); } } }
-    const items = [...affected.entries()].map(([ciId, path]) => ({ ci: this.get(ciId), path })); return { directDependencies: items.filter((item) => item.path.length === 2), transitiveDependencies: items.filter((item) => item.path.length > 2), affectedBusinessServices: items.filter((item) => item.ci.typeId === 'business_service'), criticalServices: items.filter((item) => item.ci.typeId === 'business_service' && item.ci.criticality === 'CRITICAL'), maxDepth }; }
+    const relsBySource = new Map<string, CIRelationship[]>();
+    const relsByTarget = new Map<string, CIRelationship[]>();
+    for (const rel of db.data.ciRelationships || []) {
+      if (rel.status === 'ACTIVE' && !rel.archivedAt && (!permittedTypesSet || permittedTypesSet.has(rel.relationshipTypeId))) {
+        let sList = relsBySource.get(rel.sourceCiId);
+        if (!sList) { sList = []; relsBySource.set(rel.sourceCiId, sList); }
+        sList.push(rel);
+
+        let tList = relsByTarget.get(rel.targetCiId);
+        if (!tList) { tList = []; relsByTarget.set(rel.targetCiId, tList); }
+        tList.push(rel);
+      }
+    }
+
+    while (queue.length) {
+      const current = queue.shift()!;
+      if (current.level >= depth) continue;
+      const candidates: CIRelationship[] = [];
+      if (direction !== 'downstream') {
+        const outRels = relsBySource.get(current.id);
+        if (outRels) candidates.push(...outRels);
+      }
+      if (direction !== 'upstream') {
+        const inRels = relsByTarget.get(current.id);
+        if (inRels) candidates.push(...inRels);
+      }
+      for (const relationship of candidates) {
+        edges.push(relationship);
+        const adjacent = relationship.sourceCiId === current.id ? relationship.targetCiId : relationship.sourceCiId;
+        if (!visited.has(adjacent)) {
+          visited.add(adjacent);
+          queue.push({ id: adjacent, level: current.level + 1 });
+        }
+      }
+    }
+
+    const typeMap = new Map(db.data.cmdbRelationshipTypes.map((type) => [type.id, type]));
+    const displayNodes = db.data.configurationItems.filter((item) => visited.has(item.id) && !item.archivedAt && (item.id === id || !permittedCiTypes.length || permittedCiTypes.includes(item.typeId)));
+    const displayIds = new Set(displayNodes.map((node) => node.id));
+    return {
+      nodes: displayNodes.map(({ id: ciId, ciNumber, name, displayName, typeId, status, criticality, environment }) => ({ id: ciId, ciNumber, name, displayName, typeId, status, criticality, environment })),
+      edges: [...new Map(edges.map((edge) => [edge.id, edge])).values()].filter((edge) => displayIds.has(edge.sourceCiId) && displayIds.has(edge.targetCiId)).map((edge) => ({ id: edge.id, source: edge.sourceCiId, target: edge.targetCiId, relationshipTypeId: edge.relationshipTypeId, relationshipType: typeMap.get(edge.relationshipTypeId)?.name || edge.relationshipTypeId }))
+    };
+  }
+
+  static impact(id: string): Record<string, unknown> {
+    this.get(id);
+    const maxDepth = 6;
+    const queue: Array<{ id: string; path: string[]; depth: number }> = [{ id, path: [id], depth: 0 }];
+    const affected = new Map<string, string[]>();
+
+    const depsByTarget = new Map<string, string[]>();
+    for (const rel of db.data.ciRelationships || []) {
+      if (rel.status === 'ACTIVE' && !rel.archivedAt && dependencyRelationshipIds.has(rel.relationshipTypeId)) {
+        let list = depsByTarget.get(rel.targetCiId);
+        if (!list) {
+          list = [];
+          depsByTarget.set(rel.targetCiId, list);
+        }
+        list.push(rel.sourceCiId);
+      }
+    }
+
+    while (queue.length) {
+      const current = queue.shift()!;
+      if (current.depth >= maxDepth) continue;
+      const sources = depsByTarget.get(current.id);
+      if (!sources) continue;
+      for (const sourceCiId of sources) {
+        if (current.path.includes(sourceCiId)) continue;
+        const path = [...current.path, sourceCiId];
+        if (!affected.has(sourceCiId)) {
+          affected.set(sourceCiId, path);
+          queue.push({ id: sourceCiId, path, depth: current.depth + 1 });
+        }
+      }
+    }
+    const ciMap = new Map((db.data.configurationItems || []).map((ci) => [ci.id, ci]));
+    const items = [...affected.entries()].map(([ciId, path]) => ({ ci: this.withQuality(ciMap.get(ciId) || this.get(ciId)), path }));
+    return {
+      directDependencies: items.filter((item) => item.path.length === 2),
+      transitiveDependencies: items.filter((item) => item.path.length > 2),
+      affectedBusinessServices: items.filter((item) => item.ci.typeId === 'business_service'),
+      criticalServices: items.filter((item) => item.ci.typeId === 'business_service' && item.ci.criticality === 'CRITICAL'),
+      maxDepth
+    };
+  }
 
   static linkRecord(ciId: string, raw: unknown, actor: BankUser): CIRecordLink { const ci = this.get(ciId); if (!this.canManage(actor, ci)) throw new CMDBError(403, 'CMDB update permission is required.'); const input = z.object({ recordType: z.enum(['TICKET', 'INCIDENT', 'SERVICE_REQUEST', 'CHANGE', 'PROBLEM', 'VULNERABILITY', 'PROJECT', 'TASK']), recordId: z.string().min(1), relationship: z.enum(['AFFECTED_BY', 'RELATED_TO', 'IMPLEMENTED_BY']).default('AFFECTED_BY') }).parse(raw); if (db.data.ciRecordLinks.some((link) => link.ciId === ciId && link.recordId === input.recordId && link.recordType === input.recordType)) throw new CMDBError(409, 'That record is already linked to the CI.'); const link = { id: `cil-${uuidv4()}`, ciId, ...input, createdAt: new Date().toISOString(), createdBy: actor.id }; db.data.ciRecordLinks.unshift(link); this.audit(actor, 'CMDB_CI_UPDATED', 'CONFIGURATION_ITEM', ciId, { recordLink: { recordType: input.recordType, recordId: input.recordId, relationship: input.relationship } }); db.persist(); return link; }
   static relatedRecords(ciId: string): CIRecordLink[] { this.get(ciId); return db.data.ciRecordLinks.filter((link) => link.ciId === ciId); }
@@ -189,7 +299,25 @@ export class CMDBService {
   }
 
   private static withQuality(ci: ConfigurationItem): ConfigurationItem { const missing: string[] = []; if (!ci.ownerUserId && !ci.technicalOwnerUserId) missing.push('Owner'); if (!ci.departmentId) missing.push('Department'); if (!ci.typeId) missing.push('CI type'); if (!ci.environment || ci.environment === 'UNKNOWN') missing.push('Environment'); if (!ci.criticality) missing.push('Criticality'); if (!ci.lastVerifiedAt || Date.now() - Date.parse(ci.lastVerifiedAt) > 90 * 86400000) missing.push('Recent verification'); if (!ci.sourceSystem && ci.source !== 'MANUAL') missing.push('Source system'); if (!ci.assetTag && !ci.serialNumber && !ci.hostname && !ci.fqdn && !ci.externalReference) missing.push('Unique identifier'); if (!db.data.ciRelationships.some((relation) => relation.status === 'ACTIVE' && !relation.archivedAt && (relation.sourceCiId === ci.id || relation.targetCiId === ci.id))) missing.push('Relationship'); return { ...ci, details: { ...ci.details, quality: { score: Math.round(((9 - missing.length) / 9) * 100), missing } } }; }
-  private static reaches(from: string, destination: string, relationshipTypeId: string): boolean { const seen = new Set<string>(); const visit = (current: string): boolean => { if (current === destination) return true; if (seen.has(current)) return false; seen.add(current); return db.data.ciRelationships.some((rel) => rel.status === 'ACTIVE' && !rel.archivedAt && rel.relationshipTypeId === relationshipTypeId && rel.sourceCiId === current && visit(rel.targetCiId)); }; return visit(from); }
+  private static reaches(from: string, destination: string, relationshipTypeId: string): boolean {
+    const seen = new Set<string>();
+    const relsBySource = new Map<string, string[]>();
+    for (const rel of db.data.ciRelationships || []) {
+      if (rel.status === 'ACTIVE' && !rel.archivedAt && rel.relationshipTypeId === relationshipTypeId) {
+        let list = relsBySource.get(rel.sourceCiId);
+        if (!list) { list = []; relsBySource.set(rel.sourceCiId, list); }
+        list.push(rel.targetCiId);
+      }
+    }
+    const visit = (current: string): boolean => {
+      if (current === destination) return true;
+      if (seen.has(current)) return false;
+      seen.add(current);
+      const targets = relsBySource.get(current);
+      return Boolean(targets?.some((targetCiId) => visit(targetCiId)));
+    };
+    return visit(from);
+  }
   private static assertLifecycleTransition(from: string, to: string, actor: BankUser): void { if (from === to) return; if (from === 'DISPOSED' && this.canManage(actor)) throw new CMDBError(409, 'Disposed CIs require a privileged restore procedure and cannot be returned to service here.'); if (!lifecycleTransitions[from]?.includes(to)) throw new CMDBError(400, `Invalid lifecycle transition: ${from} → ${to}.`); }
   private static assertInitialLifecycle(status: string, source: string, actor: BankUser): void { if (initialLifecycleStatuses.has(status)) return; if (source === 'IMPORT' && actor.roles.some((role) => enterpriseCmdbRoles.includes(role))) return; throw new CMDBError(400, 'New CIs must begin in an approved intake lifecycle state. Historical imported records require an enterprise CMDB administrator.'); }
   private static assertReferences(input: any): void { if (!db.data.cmdbTypes.some((type) => type.id === input.typeId && type.isActive)) throw new CMDBError(400, 'CI type is invalid or inactive.'); this.assertSubtypeDetails(input.typeId, input.details || {}); for (const owner of [input.ownerUserId, input.technicalOwnerUserId, input.businessOwnerUserId, input.details?.assignedUserId, input.details?.serviceOwnerUserId, input.details?.securityLeadId]) if (owner && !db.data.users.some((user) => user.id === owner && user.isActive)) throw new CMDBError(400, 'CI owner must be an active directory user.'); for (const departmentId of [input.departmentId, input.details?.assignedDepartmentId]) if (departmentId && !db.data.departments.some((department) => department.id === departmentId && department.isActive !== false)) throw new CMDBError(400, 'Department is invalid or inactive.'); }

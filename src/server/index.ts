@@ -36,7 +36,10 @@ import { ProjectsController } from './controllers/projects.controller.js';
 import { ThreatModelsController } from './controllers/threat-models.controller.js';
 import { ThreatDeploymentsController } from './controllers/threat-deployments.controller.js';
 import { DirectoryController } from './controllers/directory.controller.js';
-
+import { GameLeaderboardController } from './controllers/game-leaderboard.controller.js';
+import { GameCyberLeaderboardController } from './controllers/game-cyber-leaderboard.controller.js';
+import { BattleChallengeController } from './controllers/battle-challenge.controller.js';
+import { CyberShooterController } from './controllers/cyber-shooter.controller.js';
 
 const app = express();
 
@@ -56,7 +59,7 @@ app.use(
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'X-Request-Id'],
-  })
+  }),
 );
 // Base64 evidence payloads expand by roughly one third; keep the transport
 // ceiling aligned with the 25 MiB storage policy rather than rejecting valid uploads.
@@ -71,15 +74,22 @@ app.use('/api', sameOriginMutationMiddleware);
 // response so successful mutations are durable when the client receives 2xx.
 app.use((req, res, next) => {
   if (config.DB_TYPE !== 'postgres' || !['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+  if (req.originalUrl?.includes('/api/shooter') || req.path?.includes('/shooter')) return next();
 
   const originalJson = res.json.bind(res);
   const originalSend = res.send.bind(res);
   res.json = ((body: unknown) => {
-    void db.flush().then(() => originalJson(body)).catch(next);
+    void db
+      .flush()
+      .then(() => originalJson(body))
+      .catch(next);
     return res;
   }) as typeof res.json;
   res.send = ((body?: any) => {
-    void db.flush().then(() => originalSend(body)).catch(next);
+    void db
+      .flush()
+      .then(() => originalSend(body))
+      .catch(next);
     return res;
   }) as typeof res.send;
   next();
@@ -106,6 +116,41 @@ app.get('/api/auth/public-directory', AuthController.getPublicDirectory);
 
 // Every route below this point requires a server-validated session cookie.
 app.use('/api', requireAuthentication);
+
+// Arcade games (workplace easter eggs): identity comes from the session.
+app.get('/api/game/:gameId/leaderboard', GameLeaderboardController.leaderboard);
+app.post('/api/game/:gameId/score', GameLeaderboardController.submitScore);
+app.get('/api/game/flight/leaderboard', GameLeaderboardController.leaderboard);
+app.post('/api/game/flight/score', GameLeaderboardController.submitScore);
+app.get('/api/game/cyber/leaderboard', GameLeaderboardController.leaderboard);
+app.post('/api/game/cyber/score', GameLeaderboardController.submitScore);
+app.get('/api/game/breaker/leaderboard', GameLeaderboardController.leaderboard);
+app.post('/api/game/breaker/score', GameLeaderboardController.submitScore);
+app.get('/api/game/sweeper/leaderboard', GameLeaderboardController.leaderboard);
+app.post('/api/game/sweeper/score', GameLeaderboardController.submitScore);
+app.get('/api/game/sudoku/leaderboard', GameLeaderboardController.leaderboard);
+app.post('/api/game/sudoku/score', GameLeaderboardController.submitScore);
+
+// Multiplayer Sea Battle (Battleship) Challenge endpoints
+app.post('/api/battle/challenge', BattleChallengeController.createChallenge);
+app.get('/api/battle/pending', BattleChallengeController.getPending);
+app.post('/api/battle/accept/:matchId', BattleChallengeController.acceptChallenge);
+app.post('/api/battle/decline/:matchId', BattleChallengeController.declineChallenge);
+app.get('/api/battle/match/:matchId', BattleChallengeController.getMatch);
+app.post('/api/battle/place-fleet/:matchId', BattleChallengeController.placeFleet);
+app.post('/api/battle/fire/:matchId', BattleChallengeController.fireShot);
+app.post('/api/battle/leave/:matchId', BattleChallengeController.leaveMatch);
+app.get('/api/battle/stream/:matchId', BattleChallengeController.streamEvents);
+
+// Expressbank Cyber Shooter: IT Warfare (Krunker-Style 3D FPS) endpoints
+app.get('/api/shooter/lobby', CyberShooterController.getLobby);
+app.post('/api/shooter/join', CyberShooterController.joinLobby);
+app.post('/api/shooter/sync', CyberShooterController.syncPlayer);
+app.post('/api/shooter/fire', CyberShooterController.fireShot);
+app.post('/api/shooter/ability', CyberShooterController.useAbility);
+app.post('/api/shooter/respawn', CyberShooterController.respawn);
+app.post('/api/shooter/leave', CyberShooterController.leaveLobby);
+app.get('/api/shooter/stream', CyberShooterController.streamEvents);
 
 app.get('/api/auth/ldap/groups', AuthController.listGroups);
 app.get('/api/auth/users', AuthController.listUsers);
@@ -159,6 +204,7 @@ app.post('/api/projects/:id/tasks/:taskId/watchers/toggle', ProjectsController.t
 app.post('/api/projects/:id/status-updates', ProjectsController.addStatusUpdate);
 app.get('/api/projects/:id/activity', ProjectsController.listActivity);
 app.get('/api/projects/:id/status-report', ProjectsController.report);
+app.get('/api/projects/:id/audit-export', ProjectsController.auditExport);
 
 // 7. Multi-Stage Approvals
 app.get('/api/approvals/pending', ApprovalsController.listPending);
@@ -221,6 +267,7 @@ app.post('/api/orchestration/instances/:id/comments', OrchestrationController.ad
 app.post('/api/orchestration/instances/:id/dead-letters/:deadLetterId/requeue', OrchestrationController.requeueDeadLetter);
 app.post('/api/orchestration/instances/:id/work-items/:workItemId/complete', OrchestrationController.completeWorkItem);
 app.post('/api/orchestration/instances/:id/work-items/:workItemId/claim', OrchestrationController.claimWorkItem);
+app.post('/api/orchestration/instances/:id/approvals/:chainId/claim', OrchestrationController.claimApproval);
 app.post('/api/orchestration/instances/:id/approvals/:chainId/decision', OrchestrationController.decideApproval);
 app.post('/api/orchestration/definitions/drafts', requireWorkflowDesigner, OrchestrationController.saveDraft);
 app.get('/api/orchestration/definitions/:id/preflight', OrchestrationController.preflight);
@@ -267,6 +314,7 @@ app.delete('/api/cmdb/relationships/:id', CMDBController.deleteRelationship);
 // PostgreSQL-backed, server-paginated asset inventory for production clients.
 app.get('/api/cmdb/assets', CMDBController.apiAssets);
 app.get('/api/cmdb/assets/:id', CMDBController.apiAssetDetail);
+app.patch('/api/cmdb/assets/:id', CMDBController.updateApiAsset);
 app.get('/api/cmdb/operating-systems', CMDBController.operatingSystems);
 app.get('/api/cmdb/custom-fields', CMDBController.customFields);
 app.post('/api/cmdb/custom-fields', CMDBController.createCustomField);
@@ -305,6 +353,8 @@ app.get('/api/cmdb/discovery/connectors/:id/health', CMDBController.discoveryCon
 app.get('/api/cmdb/discovery/connectors/:id/runs', CMDBController.discoveryRuns);
 app.get('/api/cmdb/discovery/connectors/:id/runs/:runId', CMDBController.discoveryRunDetail);
 app.post('/api/cmdb/discovery/connectors/:id/sync', CMDBController.triggerDiscoverySync);
+app.get('/api/cmdb/discovery/daily-sync', CMDBController.dailyDiscoverySyncStatus);
+app.post('/api/cmdb/discovery/daily-sync', CMDBController.startDailyDiscoverySync);
 app.get('/api/cmdb/discovery/coverage', CMDBController.discoveryCoverage);
 app.get('/api/cmdb/discovery/evidence', CMDBController.discoveryEvidence);
 app.get('/api/cmdb/discovery/correlation-cases', CMDBController.correlationCases);
@@ -473,8 +523,7 @@ async function startServer(): Promise<void> {
     if (config.NODE_ENV !== 'production' && !config.RABBITMQ_ENABLED) {
       void WorkerEventService.recoverQueuedDiscoveryRuns().catch((error) => logger.error({ error }, 'Discovery run recovery failed after API restart'));
       discoveryRecoveryTimer = setInterval(() => {
-        void WorkerEventService.recoverQueuedDiscoveryRuns()
-          .catch((error) => logger.error({ error }, 'Discovery run lease recovery failed'));
+        void WorkerEventService.recoverQueuedDiscoveryRuns().catch((error) => logger.error({ error }, 'Discovery run lease recovery failed'));
       }, 60_000);
       discoveryRecoveryTimer.unref?.();
     }
@@ -496,7 +545,7 @@ async function startServer(): Promise<void> {
         storageProvider: config.STORAGE_PROVIDER,
         redisEnabled: config.REDIS_ENABLED,
       },
-      `🛡️ AegisSec Banking GRC & SecOps Production API running on http://${config.HOST}:${config.PORT}`
+      `🛡️ AegisSec Banking GRC & SecOps Production API running on http://${config.HOST}:${config.PORT}`,
     );
 
     // API is request/response only. Timers and asynchronous execution run in
@@ -513,43 +562,43 @@ void startServer().catch((err) => {
 async function handleGracefulShutdown(signal: string) {
   if (shutdownPromise) return shutdownPromise;
   shutdownPromise = (async () => {
-  logger.info({ signal }, 'Received shutdown signal, terminating server gracefully...');
-  HealthService.setDraining(true);
+    logger.info({ signal }, 'Received shutdown signal, terminating server gracefully...');
+    HealthService.setDraining(true);
 
-  if (discoveryRecoveryTimer) clearInterval(discoveryRecoveryTimer);
-  discoveryRecoveryTimer = undefined;
+    if (discoveryRecoveryTimer) clearInterval(discoveryRecoveryTimer);
+    discoveryRecoveryTimer = undefined;
 
-  // Stop background scheduler timers
-  LocalOutboxWorkerService.stop();
+    // Stop background scheduler timers
+    LocalOutboxWorkerService.stop();
 
-  if (!server) {
-    await pgClient.close();
-    await cacheService.close();
-    await shutdownTelemetry();
-    process.exit(0);
-    return;
-  }
-
-  server.close(async () => {
-    logger.info('HTTP server closed, draining database and cache connections...');
-    try {
-      await db.flush();
+    if (!server) {
       await pgClient.close();
       await cacheService.close();
       await shutdownTelemetry();
-      logger.info('All database and cache connections closed cleanly. Exiting.');
       process.exit(0);
-    } catch (err) {
-      logger.error({ err }, 'Error during graceful teardown');
-      process.exit(1);
+      return;
     }
-  });
 
-  // Force shutdown if an in-flight request or dependency refuses to drain.
-  setTimeout(() => {
-    logger.fatal('Forced shutdown due to timeout');
-    process.exit(1);
-  }, config.SHUTDOWN_GRACE_MS).unref();
+    server.close(async () => {
+      logger.info('HTTP server closed, draining database and cache connections...');
+      try {
+        await db.flush();
+        await pgClient.close();
+        await cacheService.close();
+        await shutdownTelemetry();
+        logger.info('All database and cache connections closed cleanly. Exiting.');
+        process.exit(0);
+      } catch (err) {
+        logger.error({ err }, 'Error during graceful teardown');
+        process.exit(1);
+      }
+    });
+
+    // Force shutdown if an in-flight request or dependency refuses to drain.
+    setTimeout(() => {
+      logger.fatal('Forced shutdown due to timeout');
+      process.exit(1);
+    }, config.SHUTDOWN_GRACE_MS).unref();
   })();
   return shutdownPromise;
 }

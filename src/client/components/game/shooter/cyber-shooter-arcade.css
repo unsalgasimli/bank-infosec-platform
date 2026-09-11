@@ -1,0 +1,542 @@
+/**
+ * Expressbank Cyber Shooter: IT Warfare (Krunker-Style 3D FPS)
+ * Cyberpunk HUD, Dynamic Crosshair, Killfeed, Scoreboard, and Class Selector Styles
+ */
+
+.cyber-shooter {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background-color: #040711;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+.cyber-shooter__canvas-container {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+}
+
+/* -------------------------------------------------------------
+ * Start / Pointer Lock Overlay
+ * ------------------------------------------------------------- */
+.cyber-shooter__lock-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, rgba(10, 16, 32, 0.85) 0%, rgba(4, 7, 17, 0.96) 100%);
+  backdrop-filter: blur(8px);
+  z-index: 50;
+  cursor: pointer;
+}
+
+.cyber-shooter__lock-box {
+  background: rgba(13, 22, 40, 0.92);
+  border: 1px solid rgba(0, 245, 118, 0.35);
+  box-shadow: 0 0 40px rgba(0, 245, 118, 0.15), inset 0 0 20px rgba(0, 229, 255, 0.05);
+  border-radius: 16px;
+  padding: 32px 48px;
+  text-align: center;
+  max-width: 540px;
+  animation: cyberPulseBox 3s infinite ease-in-out;
+}
+
+@keyframes cyberPulseBox {
+  0%, 100% { border-color: rgba(0, 245, 118, 0.35); box-shadow: 0 0 35px rgba(0, 245, 118, 0.15); }
+  50% { border-color: rgba(0, 229, 255, 0.6); box-shadow: 0 0 50px rgba(0, 229, 255, 0.25); }
+}
+
+.cyber-shooter__lock-title {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: #ffffff;
+  margin: 12px 0 8px;
+  text-transform: uppercase;
+}
+
+.cyber-shooter__lock-lead {
+  font-size: 14px;
+  color: #00f576;
+  font-weight: 600;
+  margin-bottom: 20px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.cyber-shooter__lock-hint {
+  display: inline-block;
+  background: linear-gradient(135deg, #00f576, #00e5ff);
+  color: #040711;
+  font-weight: 800;
+  font-size: 15px;
+  padding: 12px 30px;
+  border-radius: 30px;
+  letter-spacing: 1px;
+  margin-top: 14px;
+  box-shadow: 0 0 20px rgba(0, 245, 118, 0.4);
+}
+
+.cyber-shooter__controls-guide {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 24px;
+  text-align: left;
+  background: rgba(6, 10, 20, 0.6);
+  padding: 14px 18px;
+  border-radius: 10px;
+  font-size: 12px;
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cyber-shooter__controls-guide strong {
+  color: #00e5ff;
+}
+
+/* -------------------------------------------------------------
+ * Dynamic Crosshair & Hitmarkers
+ * ------------------------------------------------------------- */
+.cyber-shooter__crosshair-wrap {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 20;
+}
+
+.cyber-shooter__crosshair-dot {
+  width: 4px;
+  height: 4px;
+  background-color: #00f576;
+  border-radius: 50%;
+  box-shadow: 0 0 6px #00f576;
+}
+
+.cyber-shooter__crosshair-line {
+  position: absolute;
+  background-color: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 4px rgba(0, 245, 118, 0.8);
+}
+
+.cyber-shooter__crosshair-line--top {
+  top: -14px; left: 1px; width: 2px; height: 8px;
+}
+.cyber-shooter__crosshair-line--bottom {
+  bottom: -14px; left: 1px; width: 2px; height: 8px;
+}
+.cyber-shooter__crosshair-line--left {
+  left: -14px; top: 1px; width: 8px; height: 2px;
+}
+.cyber-shooter__crosshair-line--right {
+  right: -14px; top: 1px; width: 8px; height: 2px;
+}
+
+/* Hitmarker X */
+.cyber-shooter__hitmarker {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  pointer-events: none;
+  animation: hitmarkerAnim 0.18s forwards ease-out;
+}
+
+.cyber-shooter__hitmarker::before,
+.cyber-shooter__hitmarker::after {
+  content: "";
+  position: absolute;
+  background-color: #ffffff;
+  box-shadow: 0 0 8px #ffffff;
+}
+
+.cyber-shooter__hitmarker::before {
+  top: 0; left: 10px; width: 4px; height: 24px;
+}
+.cyber-shooter__hitmarker::after {
+  top: 10px; left: 0; width: 24px; height: 4px;
+}
+
+.cyber-shooter__hitmarker--headshot::before,
+.cyber-shooter__hitmarker--headshot::after {
+  background-color: #ff3366;
+  box-shadow: 0 0 14px #ff3366;
+}
+
+@keyframes hitmarkerAnim {
+  0% { transform: translate(-50%, -50%) rotate(45deg) scale(0.7); opacity: 1; }
+  100% { transform: translate(-50%, -50%) rotate(45deg) scale(1.3); opacity: 0; }
+}
+
+/* ADS Sniper Scope Overlay */
+.cyber-shooter__scope-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 15;
+  background: radial-gradient(circle at center, transparent 28%, rgba(0, 0, 0, 0.94) 34%, #000000 70%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cyber-shooter__scope-reticle {
+  width: 320px;
+  height: 320px;
+  border: 1.5px solid rgba(0, 245, 118, 0.4);
+  border-radius: 50%;
+  position: relative;
+}
+
+.cyber-shooter__scope-reticle::before,
+.cyber-shooter__scope-reticle::after {
+  content: "";
+  position: absolute;
+  background: rgba(0, 245, 118, 0.6);
+}
+
+.cyber-shooter__scope-reticle::before {
+  top: 0; bottom: 0; left: 50%; width: 1px;
+}
+.cyber-shooter__scope-reticle::after {
+  left: 0; right: 0; top: 50%; height: 1px;
+}
+
+/* -------------------------------------------------------------
+ * Bottom HUD: Health, Shields, Ammo, Abilities
+ * ------------------------------------------------------------- */
+.cyber-shooter__hud-bottom {
+  position: absolute;
+  bottom: 24px;
+  left: 28px;
+  right: 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  pointer-events: none;
+  z-index: 25;
+}
+
+.cyber-shooter__vitals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(10, 16, 28, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  padding: 14px 20px;
+  border-radius: 12px;
+  min-width: 220px;
+}
+
+.cyber-shooter__vital-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cyber-shooter__vital-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #94a3b8;
+}
+
+.cyber-shooter__vital-track {
+  width: 100%;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.cyber-shooter__vital-fill {
+  height: 100%;
+  transition: width 0.15s ease-out;
+}
+
+.cyber-shooter__vital-fill--hp {
+  background: linear-gradient(90deg, #00f576, #34d399);
+  box-shadow: 0 0 10px rgba(0, 245, 118, 0.5);
+}
+
+.cyber-shooter__vital-fill--hp-low {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+}
+
+.cyber-shooter__vital-fill--shield {
+  background: linear-gradient(90deg, #00e5ff, #38bdf8);
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+}
+
+/* Middle Abilities Bar */
+.cyber-shooter__abilities {
+  display: flex;
+  gap: 12px;
+  background: rgba(10, 16, 28, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  padding: 10px 16px;
+  border-radius: 12px;
+}
+
+.cyber-shooter__ability-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.cyber-shooter__ability-icon {
+  width: 44px;
+  height: 44px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #00e5ff;
+  font-weight: 800;
+  font-size: 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+.cyber-shooter__ability-icon--ready {
+  border-color: #00f576;
+  color: #00f576;
+  box-shadow: 0 0 12px rgba(0, 245, 118, 0.25);
+}
+
+.cyber-shooter__ability-key {
+  font-size: 10px;
+  font-weight: 800;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+}
+
+/* Ammo & Weapon Display */
+.cyber-shooter__ammo-box {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: rgba(10, 16, 28, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  padding: 14px 24px;
+  border-radius: 12px;
+  text-align: right;
+}
+
+.cyber-shooter__ammo-numbers {
+  font-size: 36px;
+  font-weight: 900;
+  color: #ffffff;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.cyber-shooter__ammo-numbers span {
+  font-size: 18px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.cyber-shooter__weapon-name {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* -------------------------------------------------------------
+ * Top HUD: Killfeed & Match Status
+ * ------------------------------------------------------------- */
+.cyber-shooter__hud-top {
+  position: absolute;
+  top: 24px;
+  left: 28px;
+  right: 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  pointer-events: none;
+  z-index: 25;
+}
+
+.cyber-shooter__branding {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(10, 16, 28, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+  padding: 8px 16px;
+  border-radius: 24px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.cyber-shooter__killfeed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 380px;
+}
+
+.cyber-shooter__killfeed-item {
+  background: rgba(10, 16, 28, 0.85);
+  border-left: 3px solid #00f576;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  backdrop-filter: blur(6px);
+  animation: killfeedFadeIn 0.25s ease-out;
+}
+
+@keyframes killfeedFadeIn {
+  0% { opacity: 0; transform: translateX(20px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+.cyber-shooter__killfeed-weapon {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  color: #00e5ff;
+}
+
+.cyber-shooter__killfeed-headshot {
+  color: #ff3366;
+  font-weight: 900;
+}
+
+/* -------------------------------------------------------------
+ * Tab Scoreboard Overlay
+ * ------------------------------------------------------------- */
+.cyber-shooter__scoreboard {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 7, 17, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 40;
+  pointer-events: none;
+}
+
+.cyber-shooter__scoreboard-card {
+  background: rgba(13, 22, 40, 0.95);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  box-shadow: 0 0 40px rgba(0, 229, 255, 0.15);
+  border-radius: 14px;
+  padding: 24px 32px;
+  width: 680px;
+  max-width: 90vw;
+}
+
+.cyber-shooter__scoreboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+  font-size: 13px;
+}
+
+.cyber-shooter__scoreboard-table th {
+  text-align: left;
+  color: #64748b;
+  font-weight: 800;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.cyber-shooter__scoreboard-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.cyber-shooter__scoreboard-row--me {
+  background: rgba(0, 245, 118, 0.12);
+  color: #00f576 !important;
+}
+
+/* -------------------------------------------------------------
+ * Elimination / Respawn Overlay
+ * ------------------------------------------------------------- */
+.cyber-shooter__elim-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, rgba(239, 68, 68, 0.3) 0%, rgba(4, 7, 17, 0.9) 100%);
+  backdrop-filter: blur(6px);
+  z-index: 45;
+  pointer-events: none;
+}
+
+.cyber-shooter__elim-title {
+  font-size: 36px;
+  font-weight: 900;
+  color: #ff4d4f;
+  letter-spacing: 2px;
+  margin-bottom: 12px;
+  text-shadow: 0 0 20px rgba(255, 77, 79, 0.6);
+}
+
+.cyber-shooter__elim-countdown {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+/* Top Close Button */
+.cyber-shooter__close-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 60;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cyber-shooter__close-btn:hover {
+  background: rgba(239, 68, 68, 0.8);
+  border-color: #ef4444;
+  transform: scale(1.05);
+}

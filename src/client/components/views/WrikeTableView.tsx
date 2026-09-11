@@ -28,6 +28,7 @@ interface WrikeTableViewProps {
   onOpenCreate: () => void;
   onRefreshTickets?: () => void;
   hideHeader?: boolean;
+  dataScope?: 'authorized' | 'assigned' | 'reported';
 }
 
 export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
@@ -39,8 +40,9 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
   onOpenCreate,
   onRefreshTickets,
   hideHeader = false,
+  dataScope = 'authorized',
 }) => {
-  const { allUsers, fetchWithAuth } = useAuth();
+  const { allUsers, currentUser, fetchWithAuth } = useAuth();
   const { t } = useI18n();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('ALL');
@@ -64,7 +66,8 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
     setIsArchiveOpen(true);
     setIsLoadingArchive(true);
     try {
-      const response = await fetchWithAuth('/api/tickets?archived=true');
+      const scope = dataScope === 'reported' ? '&scope=reported' : '';
+      const response = await fetchWithAuth(`/api/tickets?archived=true${scope}`);
       const data = await response.json();
       setArchivedTickets(data.success && Array.isArray(data.tickets) ? data.tickets : []);
     } catch {
@@ -122,6 +125,27 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
 
   const getApplication = (appId?: string) => {
     return applications.find((a) => a.id === appId);
+  };
+
+  const canClaimWorkflowQueue = (ticket: Ticket) => Boolean(
+    ticket.workflowRunId
+    && ticket.workflowWorkItemId
+    && !ticket.assigneeId
+    && ticket.targetDepartmentId === currentUser?.departmentId
+    && (!ticket.targetSectionId || ticket.targetSectionId === currentUser?.sectionId),
+  );
+
+  const claimWorkflowQueue = async (ticket: Ticket, event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (!ticket.workflowRunId || !ticket.workflowWorkItemId) return;
+    try {
+      const response = await fetchWithAuth(`/api/orchestration/instances/${ticket.workflowRunId}/work-items/${ticket.workflowWorkItemId}/claim`, { method: 'POST' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.error || 'İş sizə təyin edilə bilmədi.');
+      onRefreshTickets?.();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'İş sizə təyin edilə bilmədi.');
+    }
   };
 
   const getStatusPill = (ticket: Ticket) => {
@@ -392,7 +416,7 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
                         (() => {
                           const dept = departments?.find((d) => d.id === (ticket.targetDepartmentId || ticket.departmentId));
                           return (
-                            <div className="flex items-center gap-1.5 text-xs text-semantic-info-strong">
+                            <div className="flex flex-col items-start gap-1.5 text-xs text-semantic-info-strong">
                               <span
                                 className="px-2.5 py-0.5 rounded-full bg-semantic-info-soft border border-semantic-info-soft-border text-label font-bold tracking-tight flex items-center gap-1.5"
                                 title={dept ? `${dept.name} ${t('Department Queue')} - ${t('Waiting for claim')}` : t('Department Queue')}
@@ -402,6 +426,15 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
                                   {dept?.name || (ticket.targetDepartmentId ? t('Department Queue') : t('Unassigned'))}
                                 </span>
                               </span>
+                              {canClaimWorkflowQueue(ticket) && (
+                                <button
+                                  type="button"
+                                  onClick={(event) => void claimWorkflowQueue(ticket, event)}
+                                  className="wrike-btn-secondary px-2 py-1 text-label"
+                                >
+                                  Özümə təyin et
+                                </button>
+                              )}
                             </div>
                           );
                         })()
@@ -466,9 +499,9 @@ export const WrikeTableView: React.FC<WrikeTableViewProps> = ({
               <div>
                 <h2 id="ticket-archive-title" className="flex items-center gap-2 text-sm font-bold text-semantic-primary">
                   <Archive className="h-4 w-4 text-semantic-brand" />
-                  Completed lifecycle archive
+                  {dataScope === 'reported' ? 'Request archive' : 'Completed lifecycle archive'}
                 </h2>
-                <p className="mt-1 text-xs text-semantic-muted">Only tickets whose final workflow node completed appear here.</p>
+                <p className="mt-1 text-xs text-semantic-muted">{dataScope === 'reported' ? 'Your requests appear here only after their final accepted or rejected workflow outcome.' : 'Only tickets whose final workflow node completed appear here.'}</p>
               </div>
               <button type="button" onClick={() => setIsArchiveOpen(false)} className="rounded-lg p-2 text-semantic-muted hover:bg-semantic-subtle hover:text-semantic-primary" aria-label="Close archive">
                 <X className="h-4 w-4" />

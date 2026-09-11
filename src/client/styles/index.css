@@ -5,6 +5,16 @@
 @tailwind components;
 @tailwind utilities;
 
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
 body {
   margin: 0;
   padding: 0;
@@ -19,6 +29,10 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+}
+
+#root {
+  overflow: hidden;
 }
 
 /* Modal viewport contract: every fixed modal owns the complete viewport and
@@ -251,19 +265,26 @@ body {
    The scope deliberately includes each persisted sub-editor so a workflow stage never
    drops back to an unstructured form simply because it is a specialised capability. */
 .threat-model-workspace { box-shadow: 0 14px 34px color-mix(in srgb, var(--color-jira-text) 7%, transparent); overflow-anchor: none; }
-.threat-model-stage-scroll { display: flex; align-items: center; gap: 0.35rem; overflow-x: auto; scrollbar-width: thin; padding-bottom: 0.15rem; }
-.threat-model-stage { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 0.45rem; min-height: 2.25rem; padding: 0.45rem 0.65rem; border: 1px solid transparent; border-radius: 0.625rem; color: var(--color-jira-muted); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); transition: background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard); }
+/* Workflow steps behave as a dense progress control: adjacent stages share a
+   consistent rhythm instead of looking like ten unrelated action buttons.
+   The strip stays scrollable but never shows a raw horizontal scrollbar —
+   edge fades in the component signal the overflow instead. */
+.threat-model-stage-scroll { display: flex; align-items: center; gap: 0.125rem; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; scroll-snap-type: x proximity; }
+.threat-model-stage-scroll::-webkit-scrollbar { display: none; }
+.threat-model-stage { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 0.3rem; min-height: 1.9rem; padding: 0.3rem 0.5rem; border: 1px solid transparent; border-radius: 0.5rem; color: var(--color-jira-muted); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); scroll-snap-align: start; transition: background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard); }
 .threat-model-stage:hover { color: var(--color-jira-text); background: var(--color-jira-hover); }
 .threat-model-stage:focus-visible { outline: 2px solid var(--color-jira-focus); outline-offset: 2px; }
 .threat-model-stage-active { background: var(--surface-panel); border-color: var(--color-jira-border); color: var(--color-jira-blue-500); box-shadow: var(--shadow-jira-xs); }
-.threat-model-stage-index { display: grid; place-items: center; width: 1.15rem; height: 1.15rem; border-radius: 999px; background: var(--color-jira-border); color: var(--color-jira-muted); font-family: var(--font-family-mono); font-size: 0.625rem; font-weight: 700; }
+.threat-model-stage-index { display: grid; place-items: center; width: 1.05rem; height: 1.05rem; border-radius: 999px; background: var(--color-jira-border); color: var(--color-jira-muted); font-family: var(--font-family-mono); font-size: 0.625rem; font-weight: 700; }
 .threat-model-stage-active .threat-model-stage-index { background: var(--color-jira-blue-500); color: var(--text-inverse); }
 .threat-model-stage-count { min-width: 1.1rem; padding: 0.1rem 0.3rem; border-radius: 999px; background: var(--color-jira-surface); border: 1px solid var(--color-jira-border); color: var(--color-jira-muted); font-family: var(--font-family-mono); font-size: 0.625rem; font-weight: 700; line-height: 1; text-align: center; }
 .threat-model-stage-active .threat-model-stage-count { background: var(--color-jira-blue-500); border-color: var(--color-jira-blue-500); color: var(--text-inverse); }
-.threat-model-pane-intro { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.25rem 0 0.4rem; }
-.threat-model-pane-icon { display: grid; flex: 0 0 auto; place-items: center; width: 2rem; height: 2rem; border-radius: 0.625rem; background: var(--color-jira-brand-surface); border: 1px solid var(--color-jira-info-border); color: var(--color-jira-brand); }
-.threat-model-pane-intro h3 { margin: 0.08rem 0 0; color: var(--color-jira-text); font-size: var(--font-size-md); font-weight: var(--font-weight-bold); letter-spacing: var(--letter-spacing-tight); }
-.threat-model-pane-intro p { margin: 0.2rem 0 0; color: var(--color-jira-muted); font-size: var(--font-size-xs); line-height: 1.45; }
+/* Overflow hints for the stage strip: fades blend with the nav surface and only
+   appear on the side that actually has hidden stages. */
+.tm-stage-fade { position: absolute; top: 0; bottom: 0; width: 36px; z-index: 1; pointer-events: none; opacity: 0; transition: opacity 160ms ease-out; }
+.tm-stage-fade.is-visible { opacity: 1; }
+.tm-stage-fade-left { left: 0; background: linear-gradient(to right, color-mix(in srgb, var(--color-jira-surface) 40%, var(--surface-panel)) 30%, transparent); }
+.tm-stage-fade-right { right: 0; background: linear-gradient(to left, color-mix(in srgb, var(--color-jira-surface) 40%, var(--surface-panel)) 30%, transparent); }
 .threat-governance-subnav { width: fit-content; max-width: 100%; }
 .threat-governance-editor form, .threat-governance-editor > section, .threat-governance-editor > details, .threat-model-workspace form > fieldset { accent-color: var(--color-jira-blue-500); }
 .threat-governance-editor label, .threat-model-workspace form label { color: var(--color-jira-muted); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); line-height: 1.35; }
@@ -272,7 +293,17 @@ body {
 .threat-governance-editor details > summary, .threat-model-workspace details > summary { cursor: pointer; color: var(--color-jira-text); font-size: var(--font-size-xs); font-weight: var(--font-weight-bold); }
 .threat-governance-editor details[open] > summary, .threat-model-workspace details[open] > summary { margin-bottom: 0.875rem; color: var(--color-jira-blue-500); }
 .threat-governance-editor [role="alert"], .threat-model-workspace [role="alert"] { border-radius: var(--radius-md); }
-@media (max-width: 640px) { .threat-model-stage-nav { padding-inline: 0.75rem; } .threat-model-stage { padding-inline: 0.55rem; } .threat-model-pane-intro { padding-top: 0; } }
+@media (max-width: 640px) { .threat-model-stage-nav { padding-inline: 0.75rem; } .threat-model-stage { padding-inline: 0.55rem; } }
+
+/* Governance settings slide-over: the drawer enters from the right edge while the
+   scrim fades, so adjusting policy never displaces the review in progress. */
+.tm-drawer-backdrop { animation: tm-fade-in 160ms ease-out; }
+.tm-drawer { animation: tm-slide-in 220ms cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes tm-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tm-slide-in { from { transform: translateX(32px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .tm-drawer, .tm-drawer-backdrop { animation: none; }
+}
 
 input[type="date"] { cursor: pointer; position: relative; }
 input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.7; padding: var(--space-1); border-radius: var(--radius-xs); transition: opacity var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard); }

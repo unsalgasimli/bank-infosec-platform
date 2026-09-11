@@ -102,6 +102,19 @@ export class OrchestrationController {
     catch (error) { OrchestrationController.fail(res, error, 'Failed to claim workflow work item'); }
   }
 
+  public static claimApproval(req: Request, res: Response) {
+    try {
+      const instanceId = String(req.params.id);
+      const chainId = String(req.params.chainId);
+      const chain = db.data.approvals.find((item) => item.id === chainId && item.workflowInstanceId === instanceId);
+      if (!chain?.nodeInstanceId) throw new OrchestrationError('Approval queue not found.', 404);
+      const workItem = db.data.workItemsV2.find((item) => item.nodeInstanceId === chain.nodeInstanceId && item.workflowInstanceId === instanceId);
+      if (!workItem) throw new OrchestrationError('Approval queue work item not found.', 404);
+      WorkflowRuntimeService.claimWorkItem(workItem.id, OrchestrationController.actor(req));
+      res.json({ success: true });
+    } catch (error) { OrchestrationController.fail(res, error, 'Failed to claim approval queue'); }
+  }
+
   public static addComment(req: Request, res: Response) {
     try {
       const input = z.object({ body: z.string().trim().min(1).max(5000) }).parse(req.body);

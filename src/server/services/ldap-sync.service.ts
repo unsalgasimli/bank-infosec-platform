@@ -44,6 +44,8 @@ import {
   calculateCanonicalScore,
   getDepartmentColor,
   getDepartmentIcon,
+  canonicalizeDirectoryHierarchyName,
+  makeHierarchyNodeId,
 } from './ldap-directory.data.js';
 
 export type { LDAPRawEntry, DepartmentMappingResult, ParsedHierarchy, UserApprovalHierarchy, ApprovalChainNode };
@@ -111,6 +113,14 @@ const directorySyncRetryDelay = (attempt: number): Promise<void> => new Promise(
   setTimeout(resolve, baseDelayMs + Math.floor(Math.random() * 100));
 });
 
+// These are test/infrastructure fixtures, not human organisational units.
+// Keep them out of the live department hierarchy even when they pre-date the
+// directory projection or are present in a restored development database.
+const NON_OPERATIONAL_DEPARTMENT_IDS = new Set(['dept-cmdb-test']);
+const isNonOperationalDepartment = (department: Pick<BankDepartment, 'id' | 'code' | 'name'>): boolean =>
+  NON_OPERATIONAL_DEPARTMENT_IDS.has(department.id)
+  || /^(?:cmdb\s*test|cmdbtest)$/i.test(`${department.code || ''} ${department.name || ''}`.trim());
+
 export class LDAPSyncService {
   private static lastSyncReport: LDAPSyncReport | null = null;
   private static syncInFlight: Promise<LDAPSyncReport> | null = null;
@@ -164,7 +174,10 @@ export class LDAPSyncService {
   private static async withDatabaseSyncLock<T>(operation: (client: pg.PoolClient) => Promise<T>): Promise<T> {
     const lockKey = 'aegissec:active-directory-sync';
     return pgClient.transaction(async (client) => {
-      await client.query('SET TRANSACTION ISOLATION LEVEL SERIALIZABLE');
+      // `pgClient.transaction` deliberately starts READ COMMITTED.  The
+      // transaction-scoped advisory lock below serializes directory writers;
+      // escalating a full-projection write to SERIALIZABLE made unrelated
+      // scheduler/CMDB writes abort a valid LDAP snapshot indefinitely.
       const lockResult = await client.query<{ locked: boolean }>(
         'SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS locked',
         [lockKey],
@@ -214,6 +227,73 @@ export class LDAPSyncService {
     return user.organizationEligible !== false &&
       classifyDirectoryAccount(user) === 'HUMAN' &&
       hasHumanDirectoryName(user);
+  }
+
+  /**
+   * Retire a historical spelling-node only after its canonical counterpart
+   * exists.  References move instead of being deleted, so tickets/audit rows
+   * remain referentially safe and disabled users cannot resurrect the alias on
+   * a later sync.
+   */
+  private static consolidateCanonicalHierarchyAliases(syncedSectionIds: Set<string>): number {
+    const sections = db.data.departmentSections || [];
+    const now = new Date().toISOString();
+    let consolidated = 0;
+
+    for (const source of sections) {
+      const canonicalName = canonicalizeDirectoryHierarchyName(source.name);
+      const kind = source.sectionType === 'BOLME' || source.sectionType === 'SEKTOR' ? 'unit' : 'section';
+      const targetId = makeHierarchyNodeId(kind, source.departmentId, canonicalName);
+      if (source.id === targetId) {
+        if (source.name !== canonicalName) {
+          source.name = canonicalName;
+          source.updatedAt = now;
+        }
+        continue;
+      }
+
+      const target = sections.find((candidate) =>
+        candidate.id === targetId
+        && candidate.departmentId === source.departmentId
+        && candidate.sectionType === source.sectionType,
+      );
+      if (!target) continue;
+
+      target.name = canonicalName;
+      target.isActive = target.isActive !== false || source.isActive !== false;
+      target.updatedAt = now;
+      for (const user of db.data.users || []) {
+        if (user.sectionId === source.id) {
+          user.sectionId = target.id;
+          user.sectionName = target.name;
+        }
+        if (user.unitId === source.id) {
+          user.unitId = target.id;
+          user.unitName = target.name;
+        }
+      }
+      for (const child of sections) {
+        if (child.parentSectionId === source.id) {
+          child.parentSectionId = target.id;
+          child.updatedAt = now;
+        }
+      }
+
+      source.isActive = false;
+      source.managerId = undefined;
+      source.managerName = undefined;
+      source.managerEmail = undefined;
+      source.memberCount = 0;
+      source.updatedAt = now;
+      syncedSectionIds.delete(source.id);
+      syncedSectionIds.add(target.id);
+      consolidated++;
+    }
+
+    if (consolidated > 0) {
+      logger.info({ consolidated }, 'Consolidated confirmed Active Directory hierarchy spelling aliases');
+    }
+    return consolidated;
   }
 
   /**
@@ -797,9 +877,17 @@ export class LDAPSyncService {
     let baselineByName = new Map<string, DirectoryBaselineRecord>();
     let baselineByEmployeeId = new Map<string, DirectoryBaselineRecord>();
     let baselineByBranch = new Map<string, DirectoryBaselineRecord>();
+    let baselineHierarchyKeys = new Set<string>();
+    let baselineLoaded = false;
     if (config.DB_TYPE === 'postgres' && !isUnitTestProcess()) {
       try {
         const baseline = await DirectoryBaselineService.loadCurrent(client);
+        baselineLoaded = baseline.length > 0;
+        baselineHierarchyKeys = new Set(
+          baseline.flatMap((record) => [record.sectionName, record.unitName]
+            .filter(Boolean)
+            .map((name) => `${record.departmentId}|${normalizeDirectoryKey(name)}`)),
+        );
         const baselineNameCandidates = new Map<string, DirectoryBaselineRecord[]>();
         for (const record of baseline) {
           const nameKey = makeDirectoryNameMatchKey(record.fullName);
@@ -889,8 +977,8 @@ export class LDAPSyncService {
       const branchSignal = extractDirectoryBranchName([
         rawDept,
         title,
-        ...groups,
         ...extractOrganizationalUnits(entry.distinguishedName),
+        ...groups,
       ]);
       const branchBaseline = branchSignal
         ? baselineByBranch.get(makeDirectoryBranchMatchKey(branchSignal))
@@ -1058,7 +1146,11 @@ export class LDAPSyncService {
         (u) => employeeId && normalizeDirectoryEmployeeId((u as any).baselineEmployeeId) === employeeId
       );
       const sameNameCandidates = existingUsers.filter(
-        (u) => makeDirectoryNameMatchKey(u.fullName) === makeDirectoryNameMatchKey(displayName) && u.directorySource === 'ACTIVE_DIRECTORY'
+        // A fuzzy key is useful for the HR baseline, but is not an identity
+        // key.  For example, it collapsed “Roza Huseynova” and “Araz
+        // Huseynov”.  Only an exact normalized full name may be the final
+        // fallback after objectGUID, employee ID, username, and email.
+        (u) => normalizeDirectoryKey(u.fullName) === normalizeDirectoryKey(displayName) && u.directorySource === 'ACTIVE_DIRECTORY'
       );
       const existingUser = existingByObjectGuid
         || existingByEmployeeId
@@ -1107,7 +1199,14 @@ export class LDAPSyncService {
 
       if (!existingUser) {
         // === ADDED NEW USER ===
-        const newId = `usr-${sAMAccountName.replace(/[^a-z0-9]/g, '-')}`;
+        const baseUserId = `usr-${sAMAccountName.replace(/[^a-z0-9]/g, '-')}`;
+        // Earlier fuzzy matching could leave an unrelated employee holding a
+        // deterministic username ID.  Never overwrite that person: make the
+        // incoming directory object independently addressable until the
+        // legacy record can be reconciled safely.
+        const newId = existingUsers.some((user) => user.id === baseUserId)
+          ? `${baseUserId}-${(objectGuid || createHash('sha256').update(sAMAccountName).digest('hex')).replace(/[^a-z0-9]/gi, '').slice(0, 8)}`
+          : baseUserId;
         const newUser: BankUser = {
           id: newId,
           username: sAMAccountName,
@@ -1298,6 +1397,12 @@ export class LDAPSyncService {
       }
     }
 
+    // Canonical section IDs are created while users are projected.  Now that
+    // all live and historical user references are in memory, safely fold any
+    // confirmed AD spelling aliases into those canonical nodes before manager
+    // and member-count resolution.
+    this.consolidateCanonicalHierarchyAliases(syncedSectionIds);
+
     // Derive department and section leadership from AD manager relations and titles.
     for (const dept of db.data.departments || []) {
       const deptMembers = db.data.users.filter((u) => u.departmentId === dept.id && u.isActive && this.isOrganizationEligible(u));
@@ -1409,6 +1514,77 @@ export class LDAPSyncService {
     for (const dept of db.data.departments || []) {
       if (dept.directorySource === 'ACTIVE_DIRECTORY' && !syncedDepartmentIds.has(dept.id)) {
         dept.isActive = false;
+      }
+    }
+
+    // A child hierarchy node can never remain selectable when its parent
+    // department is historical/inactive. This closes the stale-section gap
+    // left by older projections that deactivated departments first.
+    const activeDepartmentIds = new Set(
+      (db.data.departments || []).filter((dept) => dept.isActive !== false).map((dept) => dept.id),
+    );
+    for (const section of db.data.departmentSections || []) {
+      if (section.isActive !== false && !activeDepartmentIds.has(section.departmentId)) {
+        section.isActive = false;
+        section.managerId = undefined;
+        section.managerName = undefined;
+        section.managerEmail = undefined;
+        section.updatedAt = new Date().toISOString();
+      }
+    }
+
+    // A section/unit inferred only from disabled or technical AD identities is
+    // not an operational hierarchy node. Keep a zero-member node only when
+    // the current HR workbook explicitly confirms that department/name pair;
+    // otherwise quarantine it so stale mappings cannot reappear on the next
+    // sync. Active human members always keep a newly introduced AD structure.
+    if (baselineLoaded) {
+      const activeHumanUsers = db.data.users.filter((user) => user.isActive && this.isOrganizationEligible(user));
+      for (const section of db.data.departmentSections || []) {
+        if (section.isActive === false) continue;
+        const childIds = new Set(
+          (db.data.departmentSections || [])
+            .filter((child) => child.parentSectionId === section.id)
+            .map((child) => child.id),
+        );
+        const hasActiveMember = activeHumanUsers.some((user) =>
+          user.sectionId === section.id
+          || user.unitId === section.id
+          || (user.unitId ? childIds.has(user.unitId) : false),
+        );
+        const hierarchyKey = `${section.departmentId}|${normalizeDirectoryKey(section.name)}`;
+        if (!hasActiveMember && !baselineHierarchyKeys.has(hierarchyKey)) {
+          section.isActive = false;
+          section.managerId = undefined;
+          section.managerName = undefined;
+          section.managerEmail = undefined;
+          section.updatedAt = new Date().toISOString();
+        }
+      }
+    }
+
+    // Test/fixture departments must never leak into the operational
+    // hierarchy. They are intentionally retained for referential integrity,
+    // but their users and queues are disabled and excluded from assignment.
+    const quarantinedDepartmentIds = new Set(
+      (db.data.departments || [])
+        .filter((dept) => isNonOperationalDepartment(dept))
+        .map((dept) => dept.id),
+    );
+    if (quarantinedDepartmentIds.size > 0) {
+      for (const dept of db.data.departments || []) {
+        if (!quarantinedDepartmentIds.has(dept.id)) continue;
+        dept.isActive = false;
+        dept.managerId = undefined;
+      }
+      for (const user of db.data.users || []) {
+        if (!user.departmentId || !quarantinedDepartmentIds.has(user.departmentId)) continue;
+        user.isActive = false;
+        user.managerId = undefined;
+        user.sectionId = undefined;
+      }
+      for (const section of db.data.departmentSections || []) {
+        if (quarantinedDepartmentIds.has(section.departmentId)) section.isActive = false;
       }
     }
 

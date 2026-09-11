@@ -163,6 +163,7 @@ export class TicketsController {
     const targetDepartmentId = targetTeam?.departmentId || targetSection?.departmentId || targetDepartment?.id;
 
     let assignees: Array<{ id: string; fullName: string; title: string; departmentId: string; sectionId?: string; sectionName?: string; sectionCode?: string; teamIds: string[] }> = [];
+    const sectionsMap = new Map(sections.map((s) => [s.id, s]));
 
     if (targetDepartmentId) {
       if (isPostgres) {
@@ -188,16 +189,20 @@ export class TicketsController {
         const userRows = await pgClient.query(userQuery, params);
         assignees = userRows.rows
           .filter((row) => isGenuineEmployeeOrIntern(row as any, [], row.id))
-          .map((row) => ({
-            id: row.id,
-            fullName: row.full_name,
-            title: row.title || 'Bank Specialist',
-            departmentId: row.department_id,
-            sectionId: row.section_id || row.unit_id,
-            sectionName: sections.find((s) => s.id === (row.section_id || row.unit_id))?.name,
-            sectionCode: sections.find((s) => s.id === (row.section_id || row.unit_id))?.code,
-            teamIds: Array.isArray(row.team_ids) ? row.team_ids : [],
-          }));
+          .map((row) => {
+            const sid = row.section_id || row.unit_id;
+            const sec = sid ? sectionsMap.get(sid) : undefined;
+            return {
+              id: row.id,
+              fullName: row.full_name,
+              title: row.title || 'Bank Specialist',
+              departmentId: row.department_id,
+              sectionId: sid,
+              sectionName: sec?.name,
+              sectionCode: sec?.code,
+              teamIds: Array.isArray(row.team_ids) ? row.team_ids : [],
+            };
+          });
       } else {
         assignees = (db.data.users || [])
           .filter((candidate) =>
@@ -210,16 +215,19 @@ export class TicketsController {
               : candidate.departmentId === targetDepartmentId || Boolean(targetTeam && candidate.teamIds?.includes(targetTeam.id)))
           )
           .sort((left, right) => left.fullName.localeCompare(right.fullName, 'az'))
-          .map(({ id, fullName, title, departmentId, sectionId, teamIds }) => ({
-            id,
-            fullName,
-            title,
-            departmentId,
-            sectionId,
-            sectionName: sections.find((section) => section.id === sectionId)?.name,
-            sectionCode: sections.find((section) => section.id === sectionId)?.code,
-            teamIds,
-          }));
+          .map(({ id, fullName, title, departmentId, sectionId, teamIds }) => {
+            const sec = sectionId ? sectionsMap.get(sectionId) : undefined;
+            return {
+              id,
+              fullName,
+              title,
+              departmentId,
+              sectionId,
+              sectionName: sec?.name,
+              sectionCode: sec?.code,
+              teamIds,
+            };
+          });
       }
     }
 
@@ -293,17 +301,25 @@ export class TicketsController {
     const user = req.user!;
     const jql = req.query.jql as string;
     const archivedOnly = req.query.archived === 'true';
+    const reportedOnly = req.query.scope === 'reported';
 
     // Refresh SLAs before returning
     SLAService.refreshAllTicketSLAs();
 
     const lifecycleTickets = (db.data.tickets || []).filter((ticket) => archivedOnly === Boolean(ticket.archivedAt));
-    const filteredTickets = SearchService.query(lifecycleTickets, jql, user);
+    const authorizedTickets = SearchService.query(lifecycleTickets, jql, user);
+    // Requests are requester-owned records.  Include both normal submissions
+    // and legacy/on-behalf records where the authenticated user is the actual
+    // requester; never use the UI filter as the authorization boundary.
+    const filteredTickets = reportedOnly
+      ? authorizedTickets.filter((ticket) => ticket.requesterId === user.id || ticket.reporterId === user.id)
+      : authorizedTickets;
 
     res.json({
       success: true,
       total: filteredTickets.length,
       archived: archivedOnly,
+      scope: reportedOnly ? 'reported' : 'authorized',
       tickets: filteredTickets,
     });
   }

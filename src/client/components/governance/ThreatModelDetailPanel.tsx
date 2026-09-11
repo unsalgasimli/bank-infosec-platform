@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -13,16 +13,11 @@ import {
   FileCheck,
   Cpu,
   Layers,
-  ArrowRight,
   Clock,
   Check,
   XCircle,
   FileText,
   History,
-  Calendar,
-  ChevronRight,
-  ExternalLink,
-  Sparkles,
   Info
 } from 'lucide-react';
 import { Badge } from '../common/Badge.js';
@@ -154,10 +149,26 @@ export const ThreatModelDetailPanel: React.FC<Props> = ({ detail, fetchWithAuth,
   const [enterpriseRisk, setEnterpriseRisk] = useState({ threatId: '', title: '', mitigationPlan: '', reviewDate: '' });
   const [evidence, setEvidence] = useState({ attachmentId: '', controlId: '', linkedEntityType: 'THREAT_MODEL' });
   const [approval, setApproval] = useState({ stage: 'APPSEC', decision: 'APPROVED', comments: '' });
-  const activeStage = tabs.find((tab) => tab.id === activeTab) || tabs[0];
-  const ActiveStageIcon = activeStage.icon;
   const pendingScrollHost = useRef<HTMLElement | null>(null);
   const pendingScrollTop = useRef<number | null>(null);
+  const stageScrollRef = useRef<HTMLDivElement | null>(null);
+  const [stageOverflow, setStageOverflow] = useState({ left: false, right: false });
+
+  // The stage strip hides its scrollbar, so the edge fades are the overflow affordance.
+  const updateStageOverflow = useCallback(() => {
+    const node = stageScrollRef.current;
+    if (!node) return;
+    setStageOverflow({
+      left: node.scrollLeft > 4,
+      right: node.scrollLeft + node.clientWidth < node.scrollWidth - 4,
+    });
+  }, []);
+
+  useEffect(() => {
+    updateStageOverflow();
+    window.addEventListener('resize', updateStageOverflow);
+    return () => window.removeEventListener('resize', updateStageOverflow);
+  }, [activeTab, detail, updateStageOverflow]);
 
   // A tab replaces a substantial amount of DOM. Preserve the workspace viewport so
   // users do not lose their position in a long screening or architecture review.
@@ -387,72 +398,77 @@ export const ThreatModelDetailPanel: React.FC<Props> = ({ detail, fetchWithAuth,
   };
 
   return (
-    <main className="threat-model-workspace bg-semantic-panel border border-semantic-jira-border rounded-2xl shadow-sm min-h-[560px] overflow-hidden flex flex-col">
-      {/* Policy & Screening Top Bar */}
-      <div className="px-6 py-2.5 bg-semantic-jira-surface/70 border-b border-semantic-jira-border flex items-center justify-between text-xs">
-        <div className="flex items-center gap-2">
-          <Shield className="w-3.5 h-3.5 text-semantic-jira-brand" />
-          <span className="text-caption font-semibold text-semantic-jira-muted">
-            {detail.model.tier == null ? t('Security screening required') : `${t('Policy-derived tier')}:`}
+    <main className="threat-model-workspace bg-semantic-panel border border-semantic-jira-border rounded-2xl shadow-sm min-h-[560px] xl:min-h-0 overflow-hidden flex flex-col">
+      {/* Model identity header: key, status, revision, policy tier and classification
+          share one row; the release gate sits at the end as the single verdict chip. */}
+      <div className="shrink-0 px-4 py-3 border-b border-semantic-jira-border bg-semantic-panel">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          <span className="font-mono text-sm font-bold text-semantic-jira-brand tracking-tight">
+            {detail.model.key}
           </span>
-          {detail.model.tier != null && (
-            <span className="font-mono font-bold text-micro px-1.5 py-0.5 rounded bg-semantic-jira-brand-surface text-semantic-jira-brand border border-semantic-jira-info-border">
+          <Badge type="SEVERITY" value={detail.model.criticality} size="sm" />
+          <span className="text-caption font-medium px-2 py-0.5 rounded capitalize bg-semantic-jira-surface text-semantic-jira-muted border border-semantic-jira-border/60">
+            {t(detail.model.status.toLowerCase().replaceAll('_', ' '))}
+          </span>
+          <span className="font-mono text-micro font-semibold px-2 py-0.5 rounded bg-semantic-jira-surface border border-semantic-jira-border text-semantic-jira-muted">
+            v{detail.model.revisionNumber || 1}
+          </span>
+          {detail.model.tier != null ? (
+            <span
+              title={t('Policy-derived tier')}
+              className="font-mono font-bold text-micro px-1.5 py-0.5 rounded bg-semantic-jira-brand-surface text-semantic-jira-brand border border-semantic-jira-info-border"
+            >
               TM-{detail.model.tier}
             </span>
+          ) : (
+            <span
+              title={t('Security screening required')}
+              className="inline-flex items-center gap-1 text-micro font-semibold px-1.5 py-0.5 rounded bg-semantic-warning-surface text-semantic-warning border border-semantic-warning-border"
+            >
+              <Shield className="w-3 h-3" />
+              {t('Security screening required')}
+            </span>
           )}
-        </div>
-        <div className="flex items-center gap-1.5 text-caption font-mono text-semantic-jira-muted">
-          <Lock className="w-3 h-3 text-semantic-jira-muted" />
-          <span>{formatDataClassification(detail.model.dataClassification, t)}</span>
-        </div>
-      </div>
-
-      {/* Model Title & Gate Status Header */}
-      <div className="p-6 border-b border-semantic-jira-border flex flex-wrap gap-4 items-start justify-between bg-semantic-panel">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2.5">
-            <span className="font-mono text-sm font-bold text-semantic-jira-brand tracking-tight">
-              {detail.model.key}
-            </span>
-            <Badge type="SEVERITY" value={detail.model.criticality} size="sm" />
-            <span className="font-mono text-micro font-semibold px-2 py-0.5 rounded bg-semantic-jira-surface border border-semantic-jira-border text-semantic-jira-muted">
-              v{detail.model.revisionNumber || 1}
-            </span>
-            <span className="text-caption font-medium px-2 py-0.5 rounded capitalize bg-semantic-jira-surface text-semantic-jira-muted border border-semantic-jira-border/60">
-              {t(detail.model.status.toLowerCase().replaceAll('_', ' '))}
-            </span>
-          </div>
-          <h2 className="text-xl font-bold text-semantic-jira-primary tracking-tight">
-            {detail.model.title}
-          </h2>
-        </div>
-
-        <div className="flex items-center gap-2.5">
+          <span className="inline-flex items-center gap-1 text-caption font-mono text-semantic-jira-muted">
+            <Lock className="w-3 h-3" />
+            <span>{formatDataClassification(detail.model.dataClassification, t)}</span>
+          </span>
           <div
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold tracking-wider border shadow-xs ${
+            className={`ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold tracking-wider border shadow-xs ${
               detail.releaseGate?.allowed
                 ? 'border-semantic-success-border bg-semantic-success-surface text-semantic-success'
                 : 'border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger'
             }`}
           >
             {detail.releaseGate?.allowed ? (
-              <ShieldCheck className="w-4 h-4" />
+              <ShieldCheck className="w-3.5 h-3.5" />
             ) : (
-              <ShieldAlert className="w-4 h-4" />
+              <ShieldAlert className="w-3.5 h-3.5" />
             )}
             <span>
               {detail.releaseGate?.allowed ? t('RELEASE GATE: ALLOWED') : t('RELEASE GATE: BLOCKED')}
             </span>
           </div>
         </div>
+        <h2 className="text-lg font-bold text-semantic-jira-primary tracking-tight mt-1.5 truncate">
+          {detail.model.title}
+        </h2>
       </div>
 
       {/* Tab Navigation Strip with Count Pills */}
       <div
-        className="threat-model-stage-nav px-4 py-3 border-b border-semantic-jira-border bg-semantic-jira-surface/40"
+        className="threat-model-stage-nav relative px-3 py-2 border-b border-semantic-jira-border bg-semantic-jira-surface/40"
         aria-label="Threat model workflow"
       >
-        <div className="threat-model-stage-scroll" role="tablist" aria-label={t('Threat model stages')}>
+        <div aria-hidden="true" className={`tm-stage-fade tm-stage-fade-left ${stageOverflow.left ? 'is-visible' : ''}`} />
+        <div aria-hidden="true" className={`tm-stage-fade tm-stage-fade-right ${stageOverflow.right ? 'is-visible' : ''}`} />
+        <div
+          ref={stageScrollRef}
+          className="threat-model-stage-scroll"
+          role="tablist"
+          aria-label={t('Threat model stages')}
+          onScroll={updateStageOverflow}
+        >
           {tabs.map((tab, index) => {
             const isActive = activeTab === tab.id;
             const badgeCount = getTabBadge(tab.id);
@@ -479,16 +495,9 @@ export const ThreatModelDetailPanel: React.FC<Props> = ({ detail, fetchWithAuth,
         </div>
       </div>
 
-      {/* Tab Content Body */}
-      <div className="p-6 text-xs space-y-5 flex-1 bg-semantic-jira-surface/20">
-        <div className="threat-model-pane-intro">
-          <div className="threat-model-pane-icon"><ActiveStageIcon className="w-4 h-4" /></div>
-          <div>
-            <div className="text-micro font-bold uppercase tracking-[0.12em] text-semantic-jira-brand">{t('Workflow stage')} {tabs.findIndex((tab) => tab.id === activeTab) + 1} / {tabs.length}</div>
-            <h3>{t(activeStage.label)}</h3>
-            <p>{t(activeStage.description)}</p>
-          </div>
-        </div>
+      {/* Tab Content Body: scrolls independently on wide screens so the workflow
+          stage rail and model header stay anchored while content moves. */}
+      <div className="p-4 text-xs space-y-4 flex-1 min-h-0 xl:overflow-y-auto custom-scrollbar bg-semantic-jira-surface/20">
         {activeTab === 'overview' && <Overview detail={detail} counts={counts} onSelectTab={setActiveTab} />}
         {activeTab === 'readiness' && (
           <ThreatModelGovernanceEditor
@@ -938,12 +947,12 @@ const Overview: React.FC<{
   const totalControls = detail.controls.length;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3.5">
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-        <div className="bg-semantic-panel border border-semantic-jira-border rounded-xl p-4 shadow-sm space-y-1">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-semantic-panel border border-semantic-jira-border rounded-xl px-3.5 py-3 shadow-sm space-y-0.5">
           <div className="text-caption font-semibold text-semantic-jira-muted">{t('Critical threats')}</div>
-          <div className={`text-2xl font-bold tracking-tight ${(counts?.critical || 0) > 0 ? 'text-semantic-danger' : 'text-semantic-jira-primary'}`}>
+          <div className={`text-xl font-bold tracking-tight ${(counts?.critical || 0) > 0 ? 'text-semantic-danger' : 'text-semantic-jira-primary'}`}>
             {counts?.critical || 0}
           </div>
           <div className="text-micro text-semantic-jira-muted font-medium">
@@ -951,9 +960,9 @@ const Overview: React.FC<{
           </div>
         </div>
 
-        <div className="bg-semantic-panel border border-semantic-jira-border rounded-xl p-4 shadow-sm space-y-1">
+        <div className="bg-semantic-panel border border-semantic-jira-border rounded-xl px-3.5 py-3 shadow-sm space-y-0.5">
           <div className="text-caption font-semibold text-semantic-jira-muted">{t('High threats')}</div>
-          <div className={`text-2xl font-bold tracking-tight ${(counts?.high || 0) > 0 ? 'text-semantic-warning' : 'text-semantic-jira-primary'}`}>
+          <div className={`text-xl font-bold tracking-tight ${(counts?.high || 0) > 0 ? 'text-semantic-warning' : 'text-semantic-jira-primary'}`}>
             {counts?.high || 0}
           </div>
           <div className="text-micro text-semantic-jira-muted font-medium">
@@ -961,9 +970,9 @@ const Overview: React.FC<{
           </div>
         </div>
 
-        <div className="bg-semantic-panel border border-semantic-jira-border rounded-xl p-4 shadow-sm space-y-1">
+        <div className="bg-semantic-panel border border-semantic-jira-border rounded-xl px-3.5 py-3 shadow-sm space-y-0.5">
           <div className="text-caption font-semibold text-semantic-jira-muted">{t('Controls pending verification')}</div>
-          <div className={`text-2xl font-bold tracking-tight ${(counts?.pending || 0) > 0 ? 'text-semantic-jira-brand' : 'text-semantic-jira-primary'}`}>
+          <div className={`text-xl font-bold tracking-tight ${(counts?.pending || 0) > 0 ? 'text-semantic-jira-brand' : 'text-semantic-jira-primary'}`}>
             {counts?.pending || 0}
           </div>
           <div className="text-micro text-semantic-jira-muted font-medium">
@@ -971,9 +980,9 @@ const Overview: React.FC<{
           </div>
         </div>
 
-        <div className="bg-semantic-panel border border-semantic-jira-border rounded-xl p-4 shadow-sm space-y-1">
+        <div className="bg-semantic-panel border border-semantic-jira-border rounded-xl px-3.5 py-3 shadow-sm space-y-0.5">
           <div className="text-caption font-semibold text-semantic-jira-muted">{t('Total Components')}</div>
-          <div className="text-2xl font-bold tracking-tight text-semantic-jira-primary">
+          <div className="text-xl font-bold tracking-tight text-semantic-jira-primary">
             {detail.components.length}
           </div>
           <div className="text-micro text-semantic-jira-muted font-medium">
@@ -984,7 +993,7 @@ const Overview: React.FC<{
 
       {/* Release Gate Banner */}
       {detail.releaseGate?.blockers?.length ? (
-        <div className="border border-semantic-danger-border bg-semantic-danger-surface rounded-xl p-4.5 shadow-xs space-y-2.5">
+        <div className="border border-semantic-danger-border bg-semantic-danger-surface rounded-xl p-4 shadow-xs space-y-2.5">
           <div className="flex items-center gap-2 font-bold text-xs text-semantic-danger uppercase tracking-wider">
             <AlertTriangle className="w-4 h-4 flex-shrink-0" />
             <span>{t('Release blockers')} ({detail.releaseGate.blockers.length})</span>
@@ -1011,7 +1020,7 @@ const Overview: React.FC<{
       )}
 
       {/* Model Scope & Context Card */}
-      <div className="bg-semantic-panel border border-semantic-jira-border rounded-xl p-5 shadow-sm space-y-3.5">
+      <div className="bg-semantic-panel border border-semantic-jira-border rounded-xl p-4 shadow-sm space-y-3.5">
         <div className="flex items-center justify-between pb-2 border-b border-semantic-jira-border/60">
           <div className="flex items-center gap-2 font-bold text-caption text-semantic-jira-primary uppercase tracking-wider">
             <Info className="w-4 h-4 text-semantic-jira-brand" />
@@ -1047,44 +1056,6 @@ const Overview: React.FC<{
               {detail.model.changeId || t('None')}
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Quick Jump Action Bar */}
-      <div className="bg-semantic-panel border border-semantic-jira-border rounded-xl p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs font-semibold text-semantic-jira-primary">
-          <Sparkles className="w-4 h-4 text-semantic-jira-brand" />
-          <span>{t('Quick Actions')}:</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => onSelectTab('threats-pro')}
-            className="jira-btn-secondary text-xs flex items-center gap-1.5"
-          >
-            <span>{t('Manage Threats')}</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => onSelectTab('controls-pro')}
-            className="jira-btn-secondary text-xs flex items-center gap-1.5"
-          >
-            <span>{t('Manage Controls')}</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => onSelectTab('architecture-pro')}
-            className="jira-btn-secondary text-xs flex items-center gap-1.5"
-          >
-            <span>{t('Review Architecture')}</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => onSelectTab('approvals')}
-            className="jira-btn-primary text-xs flex items-center gap-1.5"
-          >
-            <span>{t('Submit for Approval')}</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
         </div>
       </div>
     </div>
@@ -1300,7 +1271,7 @@ const ApprovalsPipelineView: React.FC<{
   return (
     <div className="space-y-4">
       {/* Submit for Review Action Card */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4.5 bg-semantic-panel border border-semantic-jira-border rounded-xl shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-semantic-panel border border-semantic-jira-border rounded-xl shadow-sm">
         <div className="space-y-0.5">
           <h4 className="font-bold text-sm text-semantic-jira-primary">{t('Submit Model for Review')}</h4>
           <p className="text-xs text-semantic-jira-muted">
@@ -1696,11 +1667,11 @@ const Form: React.FC<{
   busy: boolean;
   children: React.ReactNode;
 }> = ({ title, onSubmit, submit, busy, children }) => (
-  <form onSubmit={onSubmit} className="border border-semantic-jira-border bg-semantic-panel rounded-xl p-5 shadow-sm space-y-4">
+  <form onSubmit={onSubmit} className="border border-semantic-jira-border bg-semantic-panel rounded-xl p-4 shadow-sm space-y-3.5">
     <div className="font-bold text-semantic-jira-primary uppercase tracking-wider text-caption pb-2 border-b border-semantic-jira-border/60">
       {title}
     </div>
-    <div className="grid md:grid-cols-2 gap-3.5">{children}</div>
+    <div className="grid md:grid-cols-2 gap-3">{children}</div>
     <div className="pt-2">
       <button disabled={busy} className="jira-btn-primary flex items-center gap-1.5" type="submit">
         <Plus className="w-4 h-4" />
@@ -1714,7 +1685,7 @@ const VerificationExecutionContext: React.FC<{ value: any; onChange: (value: any
   const { t } = useI18n();
 
   return (
-    <section className="border border-semantic-jira-info-border bg-semantic-jira-brand-surface/40 rounded-xl p-5 space-y-3">
+    <section className="border border-semantic-jira-info-border bg-semantic-jira-brand-surface/40 rounded-xl p-4 space-y-3">
       <div>
         <h3 className="font-bold text-semantic-jira-primary uppercase tracking-wider text-caption">
           {t('Reproducibility context')}
@@ -1773,7 +1744,7 @@ const Records: React.FC<{ title: string; items: any[]; render: (item: any) => st
 const Dfd: React.FC<{ components: any[]; flows: any[] }> = ({ components, flows }) => {
   const { t } = useI18n();
   return (
-    <section className="bg-semantic-panel border border-semantic-jira-border rounded-xl p-5 shadow-sm space-y-3">
+    <section className="bg-semantic-panel border border-semantic-jira-border rounded-xl p-4 shadow-sm space-y-3">
       <div className="flex items-center gap-2">
         <Cpu className="w-4 h-4 text-semantic-jira-brand" />
         <h3 className="font-bold text-semantic-jira-primary uppercase tracking-wider text-caption">

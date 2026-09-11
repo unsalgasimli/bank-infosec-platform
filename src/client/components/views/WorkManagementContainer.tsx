@@ -128,6 +128,7 @@ export const WorkManagementContainer: React.FC<WorkManagementContainerProps> = (
             onOpenCreate={onOpenCreate}
             onRefreshTickets={onRefreshTickets}
             hideHeader={true}
+            dataScope={dataScope}
           />
         )}
 

@@ -19,6 +19,7 @@ function createRateLimiter(options: {
     legacyHeaders: false,
     skipSuccessfulRequests: options.skipSuccessfulRequests || false,
     skip: (req) => {
+      if (req.originalUrl?.includes('/api/shooter') || req.path?.includes('/shooter')) return true;
       // In local development, never throttle localhost/loopback requests
       if (config.NODE_ENV === 'development') {
         const ip = req.ip || '';

@@ -52,7 +52,7 @@ import { DirectoryAssignmentSelect } from '../common/DirectoryAssignmentSelect.j
 import { AccessibleDatePicker } from '../common/AccessibleDatePicker.js';
 
 type ProjectPayload = ProjectSummary & { tasks?: Ticket[]; activity?: any[] };
-type WorkspaceTab = 'overview' | 'tasks' | 'kanban' | 'timeline' | 'capacity' | 'files' | 'activity' | 'settings' | 'access';
+type WorkspaceTab = 'overview' | 'tasks' | 'kanban' | 'timeline' | 'capacity' | 'files' | 'activity' | 'audit' | 'settings' | 'access';
 
 const tabs: Array<[WorkspaceTab, string]> = [
   ['overview', 'Overview'],
@@ -62,6 +62,7 @@ const tabs: Array<[WorkspaceTab, string]> = [
   ['capacity', 'Capacity'],
   ['files', 'Files'],
   ['activity', 'Activity'],
+  ['audit', 'Audit export'],
 ];
 
 const healthStyle: Record<ProjectHealth, string> = {
@@ -581,6 +582,7 @@ const ProjectDetail: React.FC<any> = ({
         {tab === 'capacity' && <Capacity data={projectData} allUsers={allUsers} />}
         {tab === 'files' && <Files />}
         {tab === 'activity' && <Activity data={projectData} allUsers={allUsers} />}
+        {tab === 'audit' && <ProjectAuditExport project={project} data={projectData} linkedThreatModelId={linkedThreatModelId} threatModelLookup={threatModelLookup} fetchWithAuth={fetchWithAuth} />}
         {tab === 'access' && (
           <Access
             data={projectData}
@@ -696,19 +698,18 @@ const Overview: React.FC<any> = ({ data, allUsers = [], departments = [], ldapGr
           )}
         </section>
 
-        {project.category === 'SOFTWARE_DEVELOPMENT' && (
-          <section className="rounded-xl border border-semantic-brand-border bg-semantic-brand-surface shadow-sm">
+        <section className="rounded-xl border border-semantic-brand-border bg-semantic-brand-surface shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-semantic-brand-border px-5 py-4">
               <div>
                 <p className="text-caption font-bold uppercase tracking-widest text-semantic-success">Security delivery cycle</p>
                 <h2 className="mt-1 text-sm font-bold text-semantic-primary">One governed flow from development plan to release</h2>
-                <p className="mt-1 text-xs text-semantic-jira-muted-stronger">Developers document the initial plan and exposure first; independent departments then review. Resulting control work returns here as the final development cycle.</p>
+                <p className="mt-1 text-xs text-semantic-jira-muted-stronger">Developers and business analysts record the initial plan and exposure first; independent security review follows. Resulting control work returns here as the final delivery cycle.</p>
               </div>
               {threatModelId ? <a className="wrike-btn-primary px-3 py-2 text-xs" href={`/security-grc/threat-modeling?modelId=${encodeURIComponent(threatModelId)}`}><ShieldCheck className="h-3.5 w-3.5" /> Open linked Threat Model</a> : threatModelLookup === 'loading' ? <button className="wrike-btn-subtle px-3 py-2 text-xs" disabled><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking linked model…</button> : threatModelLookup === 'error' ? <button className="wrike-btn-secondary px-3 py-2 text-xs" onClick={onRetryThreatModelLookup}><RotateCw className="h-3.5 w-3.5" /> Retry model check</button> : <button className="wrike-btn-primary px-3 py-2 text-xs" onClick={onStartThreatModel}><ShieldCheck className="h-3.5 w-3.5" /> Start Threat Model</button>}
             </div>
             <div className="grid gap-px bg-semantic-brand-border md:grid-cols-4">
               {([
-                ['1', 'DEV plan & exposure', 'Architecture, data, boundaries, integrations and assumptions.', ['ARCHITECTURE_REVIEW', 'THREAT_MODEL_WORKSHOP']],
+                ['1', 'Plan & exposure', 'Architecture, data, boundaries, integrations and assumptions.', ['ARCHITECTURE_REVIEW', 'THREAT_MODEL_WORKSHOP']],
                 ['2', 'Independent review', 'AppSec and Security Architecture record separate decisions.', ['APPSEC_THREAT_MODEL_REVIEW', 'SECURITY_ARCHITECTURE_APPROVAL']],
                 ['3', 'Control implementation', 'Required mitigations are created as project-scoped development work.', ['SECURITY_REMEDIATION']],
                 ['4', 'Evidence & release gate', 'Independent verification and approved model are required to release.', ['SECURITY_VERIFICATION', 'HIGH_RISK_SECURITY_TEST']],
@@ -727,8 +728,7 @@ const Overview: React.FC<any> = ({ data, allUsers = [], departments = [], ldapGr
               <span>{securityTasks.length ? `${completedSecurityTasks}/${securityTasks.length} linked security tasks complete` : 'Creating the screening and initial developer tasks through the governed queue.'}</span>
               <span className="font-semibold text-semantic-success">Ticket done ≠ control verified</span>
             </div>
-          </section>
-        )}
+        </section>
 
         <section className="rounded-xl border border-semantic-border bg-semantic-panel shadow-sm">
           <SectionTitle
@@ -1537,6 +1537,61 @@ const Activity: React.FC<any> = ({ data, allUsers = [] }) => {
   );
 };
 
+const ProjectAuditExport: React.FC<{ project: Project; data: ProjectPayload; linkedThreatModelId?: string; threatModelLookup: 'loading' | 'ready' | 'error'; fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response> }> = ({ project, data, linkedThreatModelId, threatModelLookup, fetchWithAuth }) => {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const registration = [
+    ['Description', Boolean(project.description?.trim())],
+    ['Objective', Boolean(project.objective?.trim())],
+    ['Scope & boundaries', Boolean(project.scope?.trim())],
+    ['Success criteria', Boolean(project.successCriteria?.trim())],
+    ['Accountability & dates', Boolean(project.ownerId && project.managerId && project.departmentId && project.startDate && project.targetDate)],
+    ['Threat Model', Boolean(linkedThreatModelId)],
+  ];
+  const download = async () => {
+    if (busy) return;
+    setBusy(true); setError('');
+    try {
+      const response = await fetchWithAuth(`/api/projects/${project.id}/audit-export`);
+      if (!response.ok) {
+        const problem = await response.json().catch(() => ({}));
+        throw new Error(problem.error || 'Audit export could not be prepared.');
+      }
+      const blob = await response.blob();
+      const name = response.headers.get('content-disposition')?.match(/filename="?([^";]+)"?/)?.[1] || `${project.identifier}-audit.json`;
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url; link.download = name; document.body.appendChild(link); link.click(); link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Audit export could not be prepared.'); }
+    finally { setBusy(false); }
+  };
+  return <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+    <section className="rounded-xl border border-semantic-border bg-semantic-panel shadow-sm">
+      <SectionTitle title="Audit-ready project record" />
+      <div className="space-y-4 p-5">
+        <div className="rounded-lg border border-semantic-info-border bg-semantic-info-surface p-4 text-sm text-semantic-jira-muted-stronger">
+          The export is generated from the authorized project record, its scoped work items, task discussions, dependencies, attachment metadata, activity ledger, and readable Threat Model records. It records an export event and includes a SHA-256 integrity digest; it is not a digital signature.
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {registration.map(([label, complete]) => <div key={label as string} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${complete ? 'border-semantic-success-border bg-semantic-success-surface text-semantic-success' : 'border-semantic-warning-note-border bg-semantic-warning-note text-semantic-warning-note-text'}`}><span>{complete ? '✓' : '!'}</span>{label as string}</div>)}
+        </div>
+        {threatModelLookup === 'loading' && <p className="text-xs text-semantic-muted">Checking the linked Threat Model before export…</p>}
+        {threatModelLookup === 'error' && <p className="text-xs text-amber-700">Threat Model status could not be read. The exported package will explicitly record any unavailable Threat Model data.</p>}
+        {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+        <button onClick={() => void download()} disabled={busy} className="wrike-btn-primary px-4 py-2 text-sm disabled:opacity-60"><FileCheck className="h-4 w-4" />{busy ? 'Preparing audit package…' : 'Export audit package (.json)'}</button>
+      </div>
+    </section>
+    <aside className="space-y-5">
+      <section className="rounded-xl border border-semantic-border bg-semantic-panel p-4 shadow-sm">
+        <p className="text-caption font-bold uppercase tracking-widest text-semantic-muted">Package coverage</p>
+        <dl className="mt-3 space-y-2 text-sm"><div className="flex justify-between"><dt>Work items</dt><dd className="font-bold">{data.tasks?.length || 0}</dd></div><div className="flex justify-between"><dt>Project events</dt><dd className="font-bold">{data.activity?.length || 0}</dd></div><div className="flex justify-between"><dt>Members</dt><dd className="font-bold">{data.members?.length || 0}</dd></div><div className="flex justify-between"><dt>Threat Model</dt><dd className="font-bold">{linkedThreatModelId ? 'Linked' : 'Pending'}</dd></div></dl>
+      </section>
+      <section className="rounded-xl border border-semantic-warning-note-border bg-semantic-warning-note p-4 text-xs text-semantic-warning-note-text"><b>Authorization boundary:</b> the package includes only records this project member may read. Attachment binary content is never embedded; its metadata and activity trail remain visible for audit traceability.</section>
+    </aside>
+  </div>;
+};
+
 // ==========================================
 // ENTERPRISE PROJECT ACCESS MANAGEMENT TAB
 // ==========================================
@@ -1815,6 +1870,8 @@ const Access: React.FC<{
               <option value="ALL">All Roles</option>
               <option value="OWNER">Owner</option>
               <option value="PROJECT_MANAGER">Project Manager</option>
+              <option value="DEVELOPER">Developer</option>
+              <option value="BUSINESS_ANALYST">Business Analyst</option>
               <option value="CONTRIBUTOR">Contributor</option>
               <option value="VIEWER">Viewer</option>
               <option value="RESTRICTED_CONTRIBUTOR">Restricted</option>
@@ -1908,13 +1965,17 @@ const Access: React.FC<{
                                   ? 'text-purple-700 bg-purple-50/50 border-purple-200'
                                   : member.role === 'PROJECT_MANAGER'
                                   ? 'text-blue-700 bg-blue-50/50 border-blue-200'
-                                  : member.role === 'CONTRIBUTOR'
+                                  : member.role === 'DEVELOPER'
                                   ? 'text-emerald-700 bg-emerald-50/50 border-emerald-200'
+                                  : member.role === 'BUSINESS_ANALYST'
+                                  ? 'text-violet-700 bg-violet-50/50 border-violet-200'
                                   : 'text-slate-700'
                               }`}
                             >
                               <option value="OWNER">Owner (Full Control)</option>
                               <option value="PROJECT_MANAGER">Project Manager</option>
+                              <option value="DEVELOPER">Developer</option>
+                              <option value="BUSINESS_ANALYST">Business Analyst</option>
                               <option value="CONTRIBUTOR">Contributor</option>
                               <option value="VIEWER">Viewer (Read-only)</option>
                               <option value="RESTRICTED_CONTRIBUTOR">Restricted Contributor</option>
@@ -1930,8 +1991,10 @@ const Access: React.FC<{
                                 ? 'bg-purple-50 text-purple-700 border-purple-200'
                                 : member.role === 'PROJECT_MANAGER'
                                 ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                : member.role === 'CONTRIBUTOR'
+                                : member.role === 'DEVELOPER'
                                 ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : member.role === 'BUSINESS_ANALYST'
+                                ? 'bg-violet-50 text-violet-700 border-violet-200'
                                 : 'bg-semantic-subtle text-semantic-secondary border-slate-200'
                             }`}
                           >
@@ -2214,8 +2277,8 @@ const categoryOptions: SelectOption[] = [
   },
   {
     value: 'SOFTWARE_DEVELOPMENT',
-    label: 'Software Development',
-    sublabel: 'Engineering & digital services',
+    label: 'Software Delivery',
+    sublabel: 'Features, bespoke applications & integrations',
     icon: <Code className="w-4 h-4 text-indigo-600" />,
   },
   {
@@ -2293,6 +2356,8 @@ const subjectTypeOptions: SelectOption[] = [
 const memberRoleOptions: SelectOption[] = [
   { value: 'OWNER', label: 'Owner (Full Control)', sublabel: 'Project lifecycle, governance & settings' },
   { value: 'PROJECT_MANAGER', label: 'Project Manager', sublabel: 'Delivery orchestration, tasks & milestones' },
+  { value: 'DEVELOPER', label: 'Developer', sublabel: 'Implementation tasks, technical evidence & threat-model contribution' },
+  { value: 'BUSINESS_ANALYST', label: 'Business Analyst', sublabel: 'Requirements, scope evidence & project discussions' },
   { value: 'CONTRIBUTOR', label: 'Contributor', sublabel: 'Task creation, progress updates & evidence' },
   { value: 'VIEWER', label: 'Viewer', sublabel: 'Read-only visibility into deliverables' },
   { value: 'RESTRICTED_CONTRIBUTOR', label: 'Restricted Contributor', sublabel: 'Limited assignment scope' },
@@ -2312,6 +2377,9 @@ const ProjectForm: React.FC<{
     name: '',
     key: '',
     description: '',
+    objective: '',
+    scope: '',
+    successCriteria: '',
     departmentId: currentUser?.departmentId || '',
     sectionId: currentUser?.sectionId || '',
     ownerId: currentUser?.id || '',
@@ -2417,7 +2485,7 @@ const ProjectForm: React.FC<{
           <button
             type="submit"
             form="project-creation-form"
-            disabled={busy || !form.name.trim() || !form.key.trim()}
+            disabled={busy || !form.name.trim() || !form.key.trim() || !form.description.trim() || !form.objective.trim() || !form.scope.trim() || !form.successCriteria.trim() || !form.departmentId || !form.ownerId || !form.managerId || !form.startDate || !form.targetDate}
             className="wrike-btn-primary px-5 py-2 text-sm flex items-center gap-2 disabled:opacity-50"
           >
             {busy ? (
@@ -2481,19 +2549,29 @@ const ProjectForm: React.FC<{
           </Field>
 
           <div className="md:col-span-2">
-            <Field label="Description / objective">
+            <Field label="Project description" required hint="Context that remains meaningful in an audit export.">
               <textarea
+                required
                 value={form.description}
                 onChange={(e) => set('description', e.target.value)}
                 className="wrike-input min-h-[85px] w-full text-sm resize-y"
-                placeholder="What this project will achieve, deliverables, scope boundaries, and business goals..."
+                placeholder="What is being delivered, why it matters, and the decision context..."
               />
             </Field>
+          </div>
+          <div className="md:col-span-2">
+            <Field label="Business objective" required hint="The measurable outcome the business expects."><textarea required value={form.objective} onChange={(e) => set('objective', e.target.value)} className="wrike-input min-h-[72px] w-full text-sm resize-y" placeholder="e.g. Reduce manual access-review time while preserving approval evidence." /></Field>
+          </div>
+          <div className="md:col-span-2">
+            <Field label="Scope and boundaries" required hint="In scope, out of scope, integrations, systems, and decision boundaries."><textarea required value={form.scope} onChange={(e) => set('scope', e.target.value)} className="wrike-input min-h-[72px] w-full text-sm resize-y" placeholder="Systems, users, data, integrations, exclusions, and operational boundaries..." /></Field>
+          </div>
+          <div className="md:col-span-2">
+            <Field label="Success criteria" required hint="Observable completion and acceptance conditions."><textarea required value={form.successCriteria} onChange={(e) => set('successCriteria', e.target.value)} className="wrike-input min-h-[72px] w-full text-sm resize-y" placeholder="Acceptance measures, required approvals, evidence, and release conditions..." /></Field>
           </div>
         </FormSection>
 
         <FormSection title="Ownership & Department" description="Active Directory organizational routing">
-          <Field label="Department" hint="Primary organizational unit">
+          <Field label="Department" required hint="Primary organizational unit">
             <CustomSelect
               value={form.departmentId}
               onChange={(value) => {
@@ -2550,7 +2628,7 @@ const ProjectForm: React.FC<{
             />
           </Field>
 
-          <Field label="Project Manager" hint="Operational delivery lead">
+          <Field label="Project Manager" required hint="Operational delivery lead">
             <CustomSelect
               value={form.managerId}
               onChange={(value) => set('managerId', value)}
@@ -2563,7 +2641,7 @@ const ProjectForm: React.FC<{
         </FormSection>
 
         <FormSection title="Schedule & Timeline" description="Target baseline for delivery commitments">
-          <Field label="Start date">
+          <Field label="Start date" required>
             <AccessibleDatePicker
               value={form.startDate || ''}
               onChange={(val) => set('startDate', val)}
@@ -2571,7 +2649,7 @@ const ProjectForm: React.FC<{
             />
           </Field>
 
-          <Field label="Target completion">
+          <Field label="Target completion" required>
             <AccessibleDatePicker
               value={form.targetDate || ''}
               onChange={(val) => set('targetDate', val)}
@@ -2597,6 +2675,10 @@ const ProjectForm: React.FC<{
               options={categoryOptions}
               searchable={false}
             />
+          </Field>
+
+          <Field label="Business criticality" required hint="Drives the initial security review tier.">
+            <CustomSelect value={form.businessCriticality} onChange={(value) => set('businessCriticality', value)} options={priorityOptions} searchable={false} />
           </Field>
 
           <div className="md:col-span-2">

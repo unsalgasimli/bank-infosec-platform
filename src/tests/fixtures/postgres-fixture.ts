@@ -297,6 +297,12 @@ function installOrchestrationFixture(data: DatabaseSchema, owner: any): void {
 
   const existingTemplates = data.workflowCatalogTemplates.length;
   const requiredTemplateIds = new Set(['template-standard-task', 'template-usb-access', 'template-software-feature', 'template-production-deployment', 'template-application-access', 'template-employee-onboarding', 'template-employee-offboarding']);
+  for (const templateId of requiredTemplateIds) {
+    const t = data.workflowCatalogTemplates.find((item) => item.id === templateId);
+    if (t && t.lifecycle !== 'PUBLISHED') t.lifecycle = 'PUBLISHED';
+    const def = t && data.workflowDefinitions.find((item) => item.id === t.workflowDefinitionId);
+    if (def && def.lifecycle !== 'PUBLISHED') def.lifecycle = 'PUBLISHED';
+  }
   const addTemplate = (id: string, workflowDefinitionId: string, title: string, scope: any = 'COMPANY', departmentId?: string) => {
     if (!data.workflowCatalogTemplates.some((item) => item.id === id)) data.workflowCatalogTemplates.push({ id, workflowDefinitionId, publishedWorkflowVersion: 1, title, purpose: title, domain: 'GENERAL', category: 'Test', scope, departmentId, ownerId: owner.id, maintainerIds: [], tags: ['test-fixture'], iconName: 'Workflow', estimatedDurationMinutes: 60, stageCount: 1, departmentCount: 1, approvalCount: 0, automationCount: 0, runCount: 0, successRate: 0, favoriteUserIds: [], lifecycle: 'PUBLISHED', changeLog: 'Test fixture template.' } as any);
   };

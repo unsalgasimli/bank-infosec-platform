@@ -29,9 +29,14 @@ const AdminCenterView = lazy(() => import('./components/admin/AdminCenterView.js
 const DepartmentHubView = lazy(() => import('./components/departments/DepartmentHubView.js').then((m) => ({ default: m.DepartmentHubView })));
 const DepartmentAdminPortal = lazy(() => import('./components/departments/DepartmentAdminPortal.js').then((m) => ({ default: m.DepartmentAdminPortal })));
 const UniversalWorkflowWorkspace = lazy(() => import('./components/workflows/UniversalWorkflowWorkspace.js').then((m) => ({ default: m.UniversalWorkflowWorkspace })));
+const AliveDashboardView = lazy(() => import('./components/alive/views/AliveDashboardView.js').then((m) => ({ default: m.AliveDashboardView })));
+const AliveWorkManagementView = lazy(() => import('./components/alive/views/AliveWorkManagementView.js').then((m) => ({ default: m.AliveWorkManagementView })));
+const AliveApprovalsView = lazy(() => import('./components/alive/views/AliveApprovalsView.js').then((m) => ({ default: m.AliveApprovalsView })));
+const AliveCMDBView = lazy(() => import('./components/alive/views/AliveCMDBView.js').then((m) => ({ default: m.AliveCMDBView })));
 import { AccessDeniedView } from './components/common/AccessDeniedView.js';
 import { LDAPSignInModal } from './components/auth/LDAPSignInModal.js';
 import { BankAuthPortal } from './components/auth/BankAuthPortal.js';
+import { FlightEasterEgg } from './components/game/FlightEasterEgg.js';
 import { Ticket } from '../shared/types/ticket.js';
 import { BankApplication, BankAsset } from '../shared/types/asset.js';
 import { BankDepartment } from '../shared/types/auth.js';
@@ -147,6 +152,21 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
+  const refreshPendingApprovals = () => {
+    if (!currentUser) return;
+
+    return fetchWithAuth('/api/approvals/pending')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && (data.pendingApprovals || data.pending)) {
+          const list = data.pendingApprovals || data.pending || [];
+          setPendingApprovalsList(list);
+          setPendingApprovalsCount(list.length);
+        }
+      })
+      .catch(() => {});
+  };
+
   const loadData = () => {
     if (!currentUser) return;
 
@@ -162,16 +182,7 @@ export const App: React.FC = () => {
       .catch((err) => console.error(err));
 
     // Load Pending Approvals
-    fetchWithAuth('/api/approvals/pending')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && (data.pendingApprovals || data.pending)) {
-          const list = data.pendingApprovals || data.pending || [];
-          setPendingApprovalsList(list);
-          setPendingApprovalsCount(list.length);
-        }
-      })
-      .catch(() => {});
+    refreshPendingApprovals();
 
     // Load Applications & Assets
     fetchWithAuth('/api/cmdb/applications')
@@ -405,6 +416,42 @@ export const App: React.FC = () => {
   // Check RBAC permission for the active destination
   const isAuthorized = canUserAccessDestination(currentUser, activeDestination);
 
+  // Per-destination ticket scopes shared by the Classic and Alive implementations
+  // so both experiences always render identical data.
+  const myAssignedTickets = tickets.filter(
+    (t) =>
+      t.assigneeId === currentUser?.id ||
+      (!t.assigneeId && (
+        (t.targetDepartmentId && t.targetDepartmentId === currentUser?.departmentId) ||
+        (t.departmentId && t.departmentId === currentUser?.departmentId) ||
+        (t.assignmentGroupId && currentUser?.teamIds?.includes(t.assignmentGroupId)) ||
+        t.participatingDepartmentIds?.includes(currentUser?.departmentId || '')
+      ))
+  );
+  const mySubmittedTickets = tickets.filter(
+    (t) => t.requesterId === currentUser?.id || t.reporterId === currentUser?.id
+  );
+  const incidentTickets = scopedTickets.filter((t) => t.category === 'INCIDENT' || t.ticketTypeId === 'INCIDENT');
+  const serviceRequestTickets = scopedTickets.filter(
+    (t) =>
+      t.category === 'GENERAL_REQUEST' ||
+      t.category === 'IAM_REQUEST' ||
+      t.ticketTypeName?.includes('Request') ||
+      Boolean(t.tags?.includes('REQUEST'))
+  );
+  const changeTickets = scopedTickets.filter(
+    (t) =>
+      Boolean(t.tags?.includes('CAB')) ||
+      Boolean(t.tags?.includes('CHANGE')) ||
+      Boolean(t.ticketTypeName?.includes('Change'))
+  );
+  const problemTickets = scopedTickets.filter(
+    (t) =>
+      Boolean(t.tags?.includes('RCA')) ||
+      Boolean(t.tags?.includes('PROBLEM')) ||
+      Boolean(t.ticketTypeName?.includes('Problem'))
+  );
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-semantic-auth-loading flex flex-col items-center justify-center text-slate-300">
@@ -526,16 +573,7 @@ export const App: React.FC = () => {
             <WorkManagementContainer
               title="My Assigned Tasks"
               description="Tasks, remediation actions, and requests assigned directly to you."
-              tickets={tickets.filter(
-                (t) =>
-                  t.assigneeId === currentUser?.id ||
-                  (!t.assigneeId && (
-                    (t.targetDepartmentId && t.targetDepartmentId === currentUser?.departmentId) ||
-                    (t.departmentId && t.departmentId === currentUser?.departmentId) ||
-                    (t.assignmentGroupId && currentUser?.teamIds?.includes(t.assignmentGroupId)) ||
-                    t.participatingDepartmentIds?.includes(currentUser?.departmentId || '')
-                  ))
-              )}
+              tickets={myAssignedTickets}
               applications={applications}
               assets={assets}
               departments={departments}
@@ -553,9 +591,7 @@ export const App: React.FC = () => {
             <WorkManagementContainer
               title="My Submitted Requests"
               description="Service tickets, access requests, and change orders submitted by you."
-              tickets={tickets.filter(
-                (t) => t.reporterId === currentUser?.id
-              )}
+              tickets={mySubmittedTickets}
               applications={applications}
               assets={assets}
               departments={departments}
@@ -572,8 +608,7 @@ export const App: React.FC = () => {
           {activeDestination === 'approvals' && (
             <ApprovalsView
               pendingApprovals={pendingApprovalsList}
-              onOpenTicket={(id) => handleNavigate(activeDestination, id)}
-              onRefresh={loadData}
+              onRefresh={refreshPendingApprovals}
             />
           )}
 
@@ -595,7 +630,7 @@ export const App: React.FC = () => {
             <WorkManagementContainer
               title={t('Service Incidents')}
               description={t('Live service outage tickets, SLA countdown timers, and resolution tracking.')}
-              tickets={scopedTickets.filter((t) => t.category === 'INCIDENT' || t.ticketTypeId === 'INCIDENT')}
+              tickets={incidentTickets}
               applications={applications}
               assets={assets}
               departments={departments}
@@ -612,13 +647,7 @@ export const App: React.FC = () => {
             <WorkManagementContainer
               title={t('Service Requests')}
               description={t('General IT, SecOps, and access fulfillment tickets.')}
-              tickets={scopedTickets.filter(
-                (t) =>
-                  t.category === 'GENERAL_REQUEST' ||
-                  t.category === 'IAM_REQUEST' ||
-                  t.ticketTypeName?.includes('Request') ||
-                  Boolean(t.tags?.includes('REQUEST'))
-              )}
+              tickets={serviceRequestTickets}
               applications={applications}
               assets={assets}
               departments={departments}
@@ -635,12 +664,7 @@ export const App: React.FC = () => {
             <WorkManagementContainer
               title={t('Change Management (CAB)')}
               description={t('Production change authorizations, release windows, and rollback plans.')}
-              tickets={scopedTickets.filter(
-                (t) =>
-                  Boolean(t.tags?.includes('CAB')) ||
-                  Boolean(t.tags?.includes('CHANGE')) ||
-                  Boolean(t.ticketTypeName?.includes('Change'))
-              )}
+              tickets={changeTickets}
               applications={applications}
               assets={assets}
               departments={departments}
@@ -657,12 +681,7 @@ export const App: React.FC = () => {
             <WorkManagementContainer
               title={t('Problem Management & RCA')}
               description={t('Root Cause Analysis (RCA) records and Known Error Database (KEDB).')}
-              tickets={scopedTickets.filter(
-                (t) =>
-                  Boolean(t.tags?.includes('RCA')) ||
-                  Boolean(t.tags?.includes('PROBLEM')) ||
-                  Boolean(t.ticketTypeName?.includes('Problem'))
-              )}
+              tickets={problemTickets}
               applications={applications}
               assets={assets}
               departments={departments}
@@ -844,6 +863,86 @@ export const App: React.FC = () => {
     </ViewErrorBoundary>
   );
 
+  // Alive experience swaps in its kinetic-first implementations for the
+  // destinations that have one; every other destination keeps the shared
+  // workspace content and inherits Alive styling through the token layer.
+  const aliveWorkManagementConfig: Record<string, { title: string; description: string; createButtonLabel: string; tickets: Ticket[] }> = {
+    'my-tasks': { title: 'My Assigned Tasks', description: 'Tasks, remediation actions, and requests assigned directly to you.', createButtonLabel: 'New Task', tickets: myAssignedTickets },
+    'my-requests': { title: 'My Submitted Requests', description: 'Service tickets, access requests, and change orders submitted by you.', createButtonLabel: 'New Request', tickets: mySubmittedTickets },
+    'service-incidents': { title: 'Service Incidents', description: 'Live service outage tickets, SLA countdown timers, and resolution tracking.', createButtonLabel: 'Report Incident', tickets: incidentTickets },
+    'service-requests': { title: 'Service Requests', description: 'General IT, SecOps, and access fulfillment tickets.', createButtonLabel: 'New Request', tickets: serviceRequestTickets },
+    'service-changes': { title: 'Change Management (CAB)', description: 'Production change authorizations, release windows, and rollback plans.', createButtonLabel: 'Request Change', tickets: changeTickets },
+    'service-problems': { title: 'Problem Management & RCA', description: 'Root Cause Analysis (RCA) records and Known Error Database (KEDB).', createButtonLabel: 'Log Problem', tickets: problemTickets },
+  };
+
+  const buildAliveOverride = (): React.ReactNode => {
+    // An open ticket or an RBAC block renders through the shared workspace
+    // content (split detail / access shield), exactly like Classic.
+    if ((selectedTicketId && ticketDetailData?.ticket) || !isAuthorized) return null;
+    const workConfig = aliveWorkManagementConfig[activeDestination];
+    if (workConfig) {
+      return (
+        <AliveWorkManagementView
+          title={workConfig.title}
+          description={workConfig.description}
+          tickets={workConfig.tickets}
+          applications={applications}
+          assets={assets}
+          departments={departments}
+          onSelectTicket={handleSelectTicket}
+          onOpenCreate={() => setIsCreateModalOpen(true)}
+          onRefreshTickets={loadData}
+          createButtonLabel={workConfig.createButtonLabel}
+        />
+      );
+    }
+    switch (activeDestination) {
+      case 'my-work-overview':
+        return (
+          <AliveDashboardView
+            tickets={tickets}
+            pendingApprovalsCount={pendingApprovalsCount}
+            onSelectTicket={handleSelectTicket}
+            onNavigate={(v) => handleNavigate(v)}
+            onOpenCreate={() => setIsCreateModalOpen(true)}
+          />
+        );
+      case 'approvals':
+        return (
+          <AliveApprovalsView
+            pendingApprovals={pendingApprovalsList}
+            onOpenTicket={(ticketId) => {
+              const match = tickets.find((tk) => tk.id === ticketId || tk.key === ticketId);
+              if (match) handleSelectTicket(match);
+            }}
+            onRefresh={refreshPendingApprovals}
+          />
+        );
+      case 'configuration-items':
+      case 'applications':
+      case 'business-services':
+        return (
+          <AliveCMDBView
+            applications={applications}
+            assets={assets}
+            onOpenCreateTicket={() => setIsCreateModalOpen(true)}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  const aliveOverrideElement = experience === 'alive' ? buildAliveOverride() : null;
+
+  const shellChildren = aliveOverrideElement ? (
+    <ViewErrorBoundary fallback={viewErrorFallback}>
+      <React.Suspense fallback={<ViewSuspenseFallback />}>
+        {aliveOverrideElement}
+      </React.Suspense>
+    </ViewErrorBoundary>
+  ) : workspaceContent;
+
   if (experience === 'alive') {
     return (
       <AliveAppShell
@@ -859,13 +958,6 @@ export const App: React.FC = () => {
         pendingApprovalsCount={pendingApprovalsCount}
         departments={departments}
         departmentsCount={departments.length}
-        activeDepartmentId={activeDepartmentId}
-        onSelectDepartment={(dId) => {
-          setActiveDepartmentId(dId);
-          if (dId) setSelectedAdminDeptId(dId);
-        }}
-        activeCompanyId={activeCompanyId}
-        onSelectCompany={setActiveCompanyId}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onTicketCreated={(t) => {
@@ -877,7 +969,8 @@ export const App: React.FC = () => {
         onOpenCreate={() => setIsCreateModalOpen(true)}
         onCloseCreate={() => setIsCreateModalOpen(false)}
       >
-        {workspaceContent}
+        {shellChildren}
+        <FlightEasterEgg />
       </AliveAppShell>
     );
   }
@@ -913,6 +1006,7 @@ export const App: React.FC = () => {
       onCloseCreate={() => setIsCreateModalOpen(false)}
     >
       {workspaceContent}
+      <FlightEasterEgg />
     </AppLayout>
   );
 };

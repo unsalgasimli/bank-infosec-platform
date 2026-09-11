@@ -2558,6 +2558,7 @@ export const UniversalWorkflowWorkspace: React.FC<{
         <RuntimeView
           instances={instances}
           execution={selectedExecution}
+          currentUser={currentUser}
           onOpen={(id: string) => void openExecution(id)}
           onComplete={(id: string, output: Record<string, unknown>) => void completeWorkItem(id, output)}
           onClaim={(id: string) => void claimWorkItem(id)}
@@ -2796,7 +2797,10 @@ const DynamicIntakeModal = ({
   onSubmit,
   busy,
 }: any) => {
-  const bindSessionIdentity = requestType.id === "request-usb-access";
+  // A manual workflow launch is always owned by the signed-in employee.
+  // Never render requester/department as an editable selector: the server
+  // derives the same values before it validates and creates the ticket.
+  const bindSessionIdentity = true;
   useEffect(() => {
     if (!bindSessionIdentity || !currentUser?.id) return;
     setValues((current: Record<string, any>) => {
@@ -3035,7 +3039,7 @@ const DynamicField = ({
           </span>
           <span className="flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/30 bg-semantic-panel px-2 py-1 text-caption font-bold uppercase tracking-wide text-semantic-success">
             <LockKeyhole className="h-3 w-3" />
-            LDAP session
+            Launch owner
           </span>
         </div>
       ) : field.type === "USER" ? (
@@ -3854,6 +3858,7 @@ const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRem
   const assignmentDepartmentId = directoryIdFromOption(node.assignment?.departmentId, "department");
   const assignmentSectionId = directoryIdFromOption(node.assignment?.sectionId, "section");
   const approvalDepartmentId = directoryIdFromOption(node.approval?.departmentId, "department");
+  const approvalSectionId = directoryIdFromOption(node.approval?.sectionId, "section");
   const selectedAssignmentSection = directorySections.find((section: any) => section.id === assignmentSectionId);
   const departmentUsers = directory.users.filter((user: any) =>
     assignmentSectionId
@@ -3865,13 +3870,13 @@ const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRem
   const approvalApproverSource = usesDynamicApprovalDepartment && node.approval?.approverSource === "SPECIFIC_USER"
     ? "DEPARTMENT_MEMBERS"
     : node.approval?.approverSource || "DEPARTMENT_MEMBERS";
-  const approvalDepartmentUsers = directory.users.filter((user: any) => approvalDepartmentSource !== "STATIC" || !approvalDepartmentId || user.departmentId === approvalDepartmentId);
+  const approvalDepartmentUsers = directory.users.filter((user: any) => approvalDepartmentSource !== "STATIC"
+    || (approvalSectionId ? user.sectionId === approvalSectionId : !approvalDepartmentId || user.departmentId === approvalDepartmentId));
   const departmentOptions: SelectOption[] = [
     {
       value: "",
-      label: "No organisational target",
-      sublabel: "Clear the selected department or section",
-      badge: "ALL",
+      label: "Təşkilati hədəf seçilməyib",
+      sublabel: "Seçilmiş departament, filial və ya bölməni təmizlə",
     },
     ...[...directory.departments]
       .sort((left: any, right: any) => left.name.localeCompare(right.name, "az"))
@@ -3879,8 +3884,7 @@ const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRem
         {
           value: `department:${department.id}`,
           label: department.name,
-          sublabel: department.code ? `Department queue · ${department.code}` : "Department queue",
-          badge: department.code,
+          sublabel: "Departament / filial",
         },
         ...directorySections
           .filter((section: any) => section.departmentId === department.id)
@@ -3888,12 +3892,15 @@ const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRem
           .map((section: any) => ({
             value: `section:${section.id}`,
             label: `↳ ${section.name}`,
-            sublabel: `Section of ${department.name}${section.code ? ` · ${section.code}` : ""}`,
-            badge: section.code || "SECTION",
+            sublabel: department.name,
           })),
       ]),
   ];
-  const approvalDepartmentOptions = departmentOptions.filter((option) => option.value === "" || option.value.startsWith("department:"));
+  const approvalTargetValue = approvalSectionId
+    ? `section:${approvalSectionId}`
+    : approvalDepartmentId
+      ? `department:${approvalDepartmentId}`
+      : "";
   const assignmentTargetValue = assignmentSectionId
     ? `section:${assignmentSectionId}`
     : assignmentDepartmentId
@@ -4076,7 +4083,7 @@ const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRem
     {node.type === "APPROVAL" && (
       <>
         <label className="mb-3 block">
-          <span className="mini-label">Şöbə / filial mənbəyi</span>
+          <span className="mini-label">Təşkilati hədəf mənbəyi</span>
           <select
             value={approvalDepartmentSource}
             onChange={(event) =>
@@ -4085,6 +4092,7 @@ const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRem
                   ...node.approval,
                   departmentSource: event.target.value,
                   departmentId: undefined,
+                  sectionId: undefined,
                   specificUserIds: undefined,
                   ...(event.target.value !== "STATIC" && node.approval?.approverSource === "SPECIFIC_USER"
                     ? { approverSource: "DEPARTMENT_MEMBERS" }
@@ -4094,7 +4102,7 @@ const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRem
             }
             className="wrike-input mt-1 w-full"
           >
-            <option value="STATIC">Sabit şöbə / filial</option>
+            <option value="STATIC">Sabit təşkilati hədəf</option>
             <option value="REQUESTER_DEPARTMENT">Sorğunu yaradanın şöbə / filialı</option>
             <option value="REQUESTER_PARENT_DEPARTMENT">Sorğunu yaradanın üst şöbəsi</option>
             <option value="TICKET_DEPARTMENT">Formda seçilən şöbə / filial</option>
@@ -4103,28 +4111,31 @@ const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRem
         </label>
         {approvalDepartmentSource === "STATIC" && (
           <label className="mb-3 block">
-            <span className="mini-label">Sabit şöbə / filial</span>
-            <select
+            <span className="mini-label">Sabit təşkilati hədəf</span>
+            <CustomSelect
               id={`workflow-approval-department-${node.id}`}
-              value={approvalDepartmentId ? `department:${approvalDepartmentId}` : ""}
-              onChange={(event) =>
+              value={approvalTargetValue}
+              onChange={(target) => {
+                const [kind, id] = target.split(":", 2);
+                const normalizedId = directoryIdFromOption(id, kind === "section" ? "section" : "department");
+                const section = kind === "section" ? directorySections.find((item: any) => item.id === normalizedId) : undefined;
                 onChange({
                   approval: {
                     ...node.approval,
-                    departmentId: directoryIdFromOption(event.target.value, "department"),
+                    departmentId: directoryIdFromOption(kind === "department" ? normalizedId : section?.departmentId, "department"),
+                    sectionId: section?.id,
                     specificUserIds: undefined,
                   },
-                })
-              }
-              className="wrike-input mt-1 w-full cursor-pointer"
-              aria-label="Sabit şöbə və ya filial seçin"
-            >
-              {approvalDepartmentOptions.map((department) => (
-                <option key={department.value} value={department.value}>
-                  {department.label}
-                </option>
-              ))}
-            </select>
+                });
+              }}
+              options={departmentOptions}
+              placeholder="Şöbə, filial və ya bölmə seçin…"
+              searchPlaceholder="Şöbə, filial, bölmə və ya AD kodu axtarın…"
+              className="mt-1"
+            />
+            <span className="mt-1 block text-xs leading-4 text-semantic-muted">
+              Bölmə seçimi təsdiqçiləri həmin AD bölməsi ilə məhdudlaşdırır.
+            </span>
           </label>
         )}
         <label className="mb-3 block">
@@ -4455,7 +4466,7 @@ const NodeInspector = ({ node, workflow, directory, onChange, onDuplicate, onRem
 );
 };
 
-const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDecision, onRetry, onComment }: any) => {
+const RuntimeView = ({ instances, execution, currentUser, onOpen, onComplete, onClaim, onDecision, onRetry, onComment }: any) => {
   const [comment, setComment] = useState("");
   const [confirmationItem, setConfirmationItem] = useState<any>(null);
   const [informationResponse, setInformationResponse] = useState("");
@@ -4606,6 +4617,7 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDeci
                     )
                     .map((item: any) => {
                       const isInformationRequest = execution.nodes.some((node: any) => node.id === item.nodeInstanceId && node.nodeType === "INFORMATION_REQUEST");
+                      const canComplete = item.assigneeId === currentUser?.id;
                       return <div
                         key={item.id}
                         className="rounded-xl border border-slate-200 p-3"
@@ -4620,15 +4632,17 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDeci
                           {item.assignmentGroupId || "Workflow owner queue"} ·{" "}
                           {item.status}
                         </div>
-                        {item.status !== "IN_PROGRESS" && (
+                        {item.status !== "IN_PROGRESS" && item.canClaim && (
                           <button onClick={() => onClaim(item.id)} className="wrike-btn-secondary mt-3 w-full py-1.5 text-xs">Claim work</button>
                         )}
-                        <button
-                          onClick={() => { setInformationResponse(""); setConfirmationItem({ ...item, isInformationRequest }); }}
-                          className="wrike-btn-primary mt-2 w-full py-1.5 text-xs"
-                        >
-                          {isInformationRequest ? "Provide response" : "I confirm"}
-                        </button>
+                        {canComplete && (
+                          <button
+                            onClick={() => { setInformationResponse(""); setConfirmationItem({ ...item, isInformationRequest }); }}
+                            className="wrike-btn-primary mt-2 w-full py-1.5 text-xs"
+                          >
+                            {isInformationRequest ? "Provide response" : "I confirm"}
+                          </button>
+                        )}
                       </div>;
                     })}
                   {!execution.workItems.some(
@@ -4642,28 +4656,43 @@ const RuntimeView = ({ instances, execution, onOpen, onComplete, onClaim, onDeci
                   )}
                 </div>
               </section>
-              {execution.approvals?.filter((chain: any) => chain.status === "PENDING").length > 0 && (
+              {execution.approvals?.length > 0 && (
                 <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                  <h3 className="mb-3 text-sm font-bold text-amber-900">Pending approvals</h3>
+                  <h3 className="mb-3 text-sm font-bold text-amber-900">Təsdiq statusu</h3>
                   <div className="space-y-3">
-                    {execution.approvals.filter((chain: any) => chain.status === "PENDING").map((chain: any) => (
-                      <div key={chain.id} className="rounded-xl border border-amber-200 bg-semantic-panel p-3">
+                    {execution.approvals.map((chain: any) => {
+                      const queue = chain.queue;
+                      const pendingSteps = chain.steps.filter((step: any) => step.status === "PENDING");
+                      const actionableStep = pendingSteps.find((step: any) => step.canDecide);
+                      const decidedStep = chain.steps.find((step: any) => ["APPROVED", "REJECTED"].includes(step.status));
+                      const queueName = queue?.sectionName || queue?.departmentName || "authorized approval queue";
+                      const isPending = chain.status === "PENDING";
+                      return (
+                      <div key={chain.id} className={`rounded-xl border bg-semantic-panel p-3 ${chain.status === "APPROVED" ? "border-emerald-200" : chain.status === "REJECTED" ? "border-red-200" : "border-amber-200"}`}>
                         <div className="text-xs font-bold">{chain.title}</div>
-                        {chain.steps.filter((step: any) => step.status === "PENDING").map((step: any) => (
-                          <div key={step.id} className="mt-2 rounded-lg bg-slate-50 p-2">
-                            <div className="text-caption text-slate-600">{step.assignedApproverName || step.requiredRole || "Eligible approval queue"}</div>
-                            {step.canDecide ? (
-                              <div className="mt-2 flex gap-2">
-                                <button onClick={() => onDecision(chain.id, step.id, "APPROVED")} className="flex-1 rounded bg-emerald-600 px-2 py-1.5 text-caption font-bold text-white">Approve</button>
-                                <button onClick={() => onDecision(chain.id, step.id, "REJECTED")} className="flex-1 rounded bg-red-600 px-2 py-1.5 text-caption font-bold text-white">Reject + comment</button>
-                              </div>
-                            ) : (
-                              <div className="mt-2 text-caption text-slate-500">Waiting for the assigned approver.</div>
-                            )}
+                        <div className="mt-2 rounded-lg bg-slate-50 p-2 text-caption">
+                          {chain.status === "APPROVED" ? (
+                            <span className="font-semibold text-emerald-700">Təsdiqləndi: {decidedStep?.decisionByUserName || "səlahiyyətli təsdiqləyən"}</span>
+                          ) : chain.status === "REJECTED" ? (
+                            <span className="font-semibold text-red-700">Rədd edildi: {decidedStep?.decisionByUserName || "səlahiyyətli təsdiqləyən"}</span>
+                          ) : queue?.claimedByUserName ? (
+                            <span className="text-blue-700"><strong>{queue.claimedByUserName}</strong> özünə təyin etdi · qərar gözlənilir.</span>
+                          ) : (
+                            <span className="text-amber-700"><strong>{queueName}</strong> şöbəsinə təyin olunub · uyğun əməkdaşın özünə təyin etməsi gözlənilir.</span>
+                          )}
+                        </div>
+                        {isPending && !queue?.claimedByUserId && queue?.workItemId && (
+                          <button onClick={() => onClaim(queue.workItemId)} className="wrike-btn-secondary mt-2 w-full py-1.5 text-xs">Özümə təyin et</button>
+                        )}
+                        {isPending && actionableStep && (
+                          <div className="mt-2 flex gap-2">
+                            <button onClick={() => onDecision(chain.id, actionableStep.id, "APPROVED")} className="flex-1 rounded bg-emerald-600 px-2 py-1.5 text-caption font-bold text-white">Təsdiqlə</button>
+                            <button onClick={() => onDecision(chain.id, actionableStep.id, "REJECTED")} className="flex-1 rounded bg-red-600 px-2 py-1.5 text-caption font-bold text-white">Rədd et + qeyd</button>
                           </div>
-                        ))}
+                        )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </section>
               )}

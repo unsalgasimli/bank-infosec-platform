@@ -198,6 +198,20 @@ function titleMatchScore(left: string, right: string): number {
   return matched.length / Math.max(leftTokens.length, rightTokens.length);
 }
 
+/**
+ * The HR workbook is authoritative for branch leadership while AD is being
+ * corrected.  A group lead or a cashier manager is not the branch manager,
+ * so accept only the explicit "filialının müdiri"-style title.
+ */
+function isExplicitBranchManager(record: Pick<DirectoryBaselineRecord, 'structureName' | 'title'>): boolean {
+  if (!matchKnownBranchEntry(record.structureName)) return false;
+  // `normalizeDirectoryKey` intentionally preserves Azerbaijani letters, so
+  // match both native and transliterated titles without broadening this into
+  // a group-lead or cash-manager match.
+  const title = normalizeDirectoryText(record.title).toLocaleLowerCase('az');
+  return /filial(?:ının|inin)\s+(?:müdiri|mudiri|rəhbəri|rehberi|direktoru)/.test(title);
+}
+
 export function readDirectoryBaselineWorkbook(filePath: string): DirectoryBaselineRecord[] {
   const absolutePath = path.resolve(filePath);
   if (!fs.existsSync(absolutePath)) throw new Error(`Directory baseline workbook not found: ${absolutePath}`);
@@ -373,6 +387,18 @@ export class DirectoryBaselineService {
         if (mapping.unitId) sectionMappings.set(mapping.unitId, { mapping, isUnit: true });
       }
 
+      // Do not retain a manager from an obsolete AD department assignment.
+      // The source is deliberately narrow: only a uniquely matched employee
+      // with the workbook's explicit branch-manager title may own a branch.
+      const branchManagerCandidates = new Map<string, Set<string>>();
+      for (const match of matches) {
+        if (!isExplicitBranchManager(match.record)) continue;
+        const departmentId = mapBaselineRecord(match.record).departmentId;
+        const candidates = branchManagerCandidates.get(departmentId) || new Set<string>();
+        candidates.add(match.id);
+        branchManagerCandidates.set(departmentId, candidates);
+      }
+
       const divisionNames: Record<string, { code: string; name: string }> = {
         'div-banking': { code: 'BANKING', name: 'Bank əməliyyatları və biznes' },
         'div-it': { code: 'IT', name: 'İnformasiya Texnologiyaları' },
@@ -408,6 +434,25 @@ export class DirectoryBaselineService {
         [[...departmentMappings.keys()]]
       );
 
+      const branchDepartmentIds = [...departmentMappings.values()]
+        .filter((mapping) => Boolean(matchKnownBranchEntry(mapping.departmentName)))
+        .map((mapping) => mapping.departmentId);
+      if (branchDepartmentIds.length > 0) {
+        await client.query(
+          `UPDATE bank_departments
+              SET manager_id=NULL, updated_at=NOW()
+            WHERE id = ANY($1::text[])`,
+          [branchDepartmentIds]
+        );
+        for (const [departmentId, candidates] of branchManagerCandidates) {
+          if (candidates.size !== 1) continue;
+          await client.query(
+            'UPDATE bank_departments SET manager_id=$2, updated_at=NOW() WHERE id=$1',
+            [departmentId, [...candidates][0]]
+          );
+        }
+      }
+
       const sortedSections = [...sectionMappings.values()].sort((left, right) => {
         return Number(left.isUnit) - Number(right.isUnit);
       });
@@ -416,7 +461,11 @@ export class DirectoryBaselineService {
         const isUnit = node.isUnit;
         const id = isUnit ? mapping.unitId! : mapping.sectionId!;
         const name = isUnit ? mapping.unitName! : mapping.sectionName!;
-        const code = isUnit ? mapping.unitCode! : mapping.sectionCode!;
+        // Legacy AD codes are not unique across a department.  The workbook
+        // hierarchy is keyed by its real Azerbaijani label, so use a stable,
+        // scoped code derived from that label rather than importing an
+        // ambiguous technical code which can make the whole monthly feed fail.
+        const code = `${isUnit ? 'BOLME' : 'SOBE'}-${slugifyDept(name)}`.slice(0, 64);
         const parentSectionId = isUnit ? mapping.sectionId || null : null;
         await client.query(
           `INSERT INTO bank_department_sections(id,department_id,code,name,section_type,parent_section_id,has_own_manager,is_active,source_payload)

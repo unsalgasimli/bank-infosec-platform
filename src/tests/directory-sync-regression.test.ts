@@ -3,7 +3,7 @@ import test from 'node:test';
 import { db } from '../server/db/database.js';
 import { LDAPSyncService } from '../server/services/ldap-sync.service.js';
 import { mapBaselineRecord } from '../server/services/directory-baseline.service.js';
-import { extractDirectoryBranchName, makeDepartmentNodeId, makeDirectoryBranchMatchKey, makeDirectoryNameMatchKey, normalizeDirectoryEmployeeId, normalizeDirectoryObjectGuid } from '../server/services/ldap-directory.data.js';
+import { canonicalizeDirectoryHierarchyName, extractDirectoryBranchName, makeDepartmentNodeId, makeDirectoryBranchMatchKey, makeDirectoryNameMatchKey, makeHierarchyNodeId, mapDepartment, normalizeDirectoryEmployeeId, normalizeDirectoryObjectGuid } from '../server/services/ldap-directory.data.js';
 
 test('binary AD objectGUID values normalize to the same stable identity key', () => {
   const binaryGuid = Buffer.from('00112233445566778899aabbccddeeff', 'hex');
@@ -19,6 +19,10 @@ test('binary AD objectGUID values normalize to the same stable identity key', ()
   assert.equal(makeDirectoryBranchMatchKey('Bərdə filialı'), makeDirectoryBranchMatchKey('Barda Branch - SG'));
   assert.equal(extractDirectoryBranchName(['Barda Branch - SG']), 'Barda');
   assert.equal(extractDirectoryBranchName(['Bərdə filialının Kassa müdiri']), 'Bərdə');
+  assert.equal(extractDirectoryBranchName(['MXD - SG']), 'MXD');
+  assert.equal(extractDirectoryBranchName(['MXD']), 'MXD');
+  assert.equal(extractDirectoryBranchName(['MXD-Printers']), undefined);
+  assert.equal(extractDirectoryBranchName(['Filiallar SG']), undefined);
 });
 
 test('baseline roots preserve the workbook structure instead of job-function remapping', () => {
@@ -32,6 +36,98 @@ test('baseline roots preserve the workbook structure instead of job-function rem
   assert.equal(mapping.divisionId, 'div-banking');
   assert.ok(!mapping.unitId || mapping.unitId.length <= 128);
   assert.ok(makeDepartmentNodeId('Çox uzun struktur adı '.repeat(8)).length <= 64);
+});
+
+test('MXD branch SG and OU map to one canonical branch root', () => {
+  const mapping = mapBaselineRecord({
+    structureName: 'MXD filialı',
+    title: 'MXD filialının Kassa müdiri',
+  });
+
+  assert.equal(mapping.departmentId, 'dept-mxd-filiali');
+  assert.equal(mapping.departmentName, 'MXD filialı');
+  assert.equal(mapping.departmentCode, 'BRANCH_MXD');
+  assert.equal(mapping.divisionId, 'div-banking');
+
+  const sgMapping = mapDepartment(
+    'Pərakəndə Bankçılıq Departamenti',
+    'Kassir - Əməliyyatçı',
+    ['MXD - SG'],
+    'CN=Employee,OU=Kassa,OU=PBD,OU=MXD,OU=Branch Users,DC=Expressbank,DC=az',
+  );
+  assert.equal(sgMapping.departmentId, 'dept-mxd-filiali');
+});
+
+test('confirmed AD spelling aliases share one canonical hierarchy label and ID', () => {
+  assert.equal(canonicalizeDirectoryHierarchyName('Xəzinadarlıq şöbəsi'), 'Xəzinədarlıq şöbəsi');
+  assert.equal(canonicalizeDirectoryHierarchyName('İnkasassiya şöbəsi'), 'İnkassasiya şöbəsi');
+  assert.equal(
+    canonicalizeDirectoryHierarchyName('Biznes proseslərinin təhlili və optimallaşdırılması şöbəsi'),
+    'Biznes proseslərin təhlili və optimallaşdırılması şöbəsi',
+  );
+  assert.equal(
+    makeHierarchyNodeId('section', 'dept-treasury', 'Xəzinadarlıq şöbəsi'),
+    makeHierarchyNodeId('section', 'dept-treasury', 'Xəzinədarlıq şöbəsi'),
+  );
+  const treasury = mapDepartment('Xəzinadarlıq şöbəsi', 'Böyük Xəzinədar');
+  assert.equal(treasury.sectionId, 'section-dept-treasury-xezinedarliq-sobesi');
+  assert.equal(treasury.sectionName, 'Xəzinədarlıq şöbəsi');
+});
+
+test('daily sync consolidates a confirmed alias node without losing member references', async () => {
+  const originalData = structuredClone(db.data);
+  const originalQuery = LDAPSyncService.queryLdapDirectory;
+  const canonicalSectionId = 'section-dept-treasury-xezinedarliq-sobesi';
+  const legacySectionId = 'section-dept-treasury-xezinadarliq-sobesi';
+  const directoryUser = (id: string, username: string, fullName: string, title: string, sectionId: string, sectionName: string) => ({
+    id,
+    username,
+    sAMAccountName: username,
+    email: `${username}@expressbank.az`,
+    fullName,
+    title,
+    divisionId: 'div-banking',
+    departmentId: 'dept-treasury',
+    sectionId,
+    sectionName,
+    teamIds: [],
+    roles: ['REQUESTER' as const],
+    securityClearance: 'RESTRICTED' as const,
+    ownedApplicationIds: [],
+    ownedAssetIds: [],
+    ownedRiskIds: [],
+    isActive: true,
+    directorySource: 'ACTIVE_DIRECTORY' as const,
+    directoryAccountType: 'HUMAN' as const,
+    organizationEligible: true,
+  });
+  db.data.users = [
+    directoryUser('usr-c-bagirov', 'c.bagirov', 'Camil Bagirov', 'Müdir', canonicalSectionId, 'Xəzinədarlıq şöbəsi'),
+    directoryUser('usr-gunay-badalova', 'gunay.badalova', 'Gunay Badalova', 'Böyük Xəzinədar', legacySectionId, 'Xəzinadarlıq şöbəsi'),
+  ];
+  db.data.departments = [{ id: 'dept-treasury', divisionId: 'div-banking', name: 'Xəzinədarlıq Departamenti', code: 'TREASURY', isActive: true, directorySource: 'ACTIVE_DIRECTORY' }];
+  db.data.departmentSections = [
+    { id: canonicalSectionId, departmentId: 'dept-treasury', name: 'Xəzinədarlıq şöbəsi', code: 'SEC_XEZINEDARLIQ_SOBESI', sectionType: 'SOBE', hasOwnManager: true, isActive: true, directorySource: 'ACTIVE_DIRECTORY' },
+    { id: legacySectionId, departmentId: 'dept-treasury', name: 'Xəzinadarlıq şöbəsi', code: 'SEC_XEZINADARLIQ_SOBESI', sectionType: 'SOBE', hasOwnManager: true, isActive: true, directorySource: 'ACTIVE_DIRECTORY' },
+  ];
+  LDAPSyncService.queryLdapDirectory = async () => ({
+    isLiveLdap: true,
+    users: [
+      { sAMAccountName: 'c.bagirov', displayName: 'Camil Bagirov', mail: 'c.bagirov@expressbank.az', title: 'Müdir', department: 'Xəzinədarlıq şöbəsi', userAccountControl: 512 },
+      { sAMAccountName: 'gunay.badalova', displayName: 'Gunay Badalova', mail: 'gunay.badalova@expressbank.az', title: 'Böyük Xəzinədar', department: 'Xəzinədarlıq şöbəsi', userAccountControl: 512 },
+    ],
+  });
+
+  try {
+    const report = await LDAPSyncService.syncAllUsers({ trigger: 'MANUAL_TRIGGER' });
+    assert.equal(report.snapshotAccepted, true);
+    assert.equal(db.data.departmentSections.find((section) => section.id === legacySectionId)?.isActive, false);
+    assert.ok(db.data.users.every((user) => user.sectionId === canonicalSectionId));
+    assert.equal(db.data.departmentSections.find((section) => section.id === canonicalSectionId)?.memberCount, 2);
+  } finally {
+    LDAPSyncService.queryLdapDirectory = originalQuery;
+    db.data = originalData;
+  }
 });
 
 test('daily sync keeps the user row across sAMAccountName changes and clears removed managers', async () => {

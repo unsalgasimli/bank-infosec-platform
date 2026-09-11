@@ -300,10 +300,18 @@ export class SLAService {
     return changed;
   }
 
+  private static lastRefreshAt = 0;
+
   /**
    * Automatically refresh SLA statuses across all active tickets.
+   * Throttled to at most once per 60 seconds unless explicitly forced (e.g. background worker).
    */
-  public static refreshAllTicketSLAs(): void {
+  public static refreshAllTicketSLAs(force = false): void {
+    const now = Date.now();
+    if (!force && now - this.lastRefreshAt < 60_000) {
+      return;
+    }
+    this.lastRefreshAt = now;
     let changed = false;
     for (const ticket of (db.data.tickets || [])) {
       if (ticket.statusCategory !== 'DONE' && ticket.statusCategory !== 'CANCELLED') {

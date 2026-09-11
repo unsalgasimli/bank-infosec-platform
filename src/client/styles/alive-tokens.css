@@ -45,12 +45,93 @@
   --color-brand-ink: #FFFFFF;
   --status-success-bg: rgba(0, 245, 118, 0.12);
   --status-success-text: #00F576;
+  --status-success-border: rgba(0, 245, 118, 0.32);
   --status-warning-bg: rgba(251, 191, 36, 0.12);
   --status-warning-text: #FBBF24;
+  --status-warning-border: rgba(251, 191, 36, 0.32);
   --status-danger-bg: rgba(255, 83, 83, 0.14);
   --status-danger-text: #FF5353;
+  --status-danger-border: rgba(255, 83, 83, 0.32);
   --status-info-bg: rgba(56, 189, 248, 0.12);
   --status-info-text: #38BDF8;
+  --status-info-border: rgba(56, 189, 248, 0.32);
+  --status-purple-bg: rgba(192, 132, 252, 0.12);
+  --status-purple-text: #C084FC;
+  --status-purple-border: rgba(192, 132, 252, 0.32);
+
+  /* Extended classic soft-scale remapped onto the luminous status system.
+     The light-only card/note/utility tints (success-card #F6FCF9, warning-note
+     #FFFAF0, info-utility #EFF6FF…) are glaring patches on the matte canvas
+     and their seeded dark texts turn illegible once surfaces flip. */
+  --color-brand-50: rgba(0, 245, 118, 0.10);
+  --color-brand-100: var(--status-success-border);
+
+  --color-success-soft: var(--status-success-bg);
+  --color-success-soft-border: var(--status-success-border);
+  --color-success-ring: rgba(0, 245, 118, 0.18);
+  --color-success-strong-soft: var(--status-success-bg);
+  --color-success-strong-border: var(--status-success-border);
+  --color-success-pale: rgba(0, 245, 118, 0.07);
+  --color-success-pale-border: rgba(0, 245, 118, 0.25);
+  --color-success-strong: var(--status-success-text);
+  --color-success-card: var(--surface-panel);
+  --surface-success-card: var(--surface-panel);
+  --surface-project-success: var(--status-success-bg);
+
+  --color-danger-50: var(--status-danger-bg);
+  --color-danger-100: var(--status-danger-border);
+  --color-danger-strong: #FF6B6B;
+  --color-danger-card: var(--surface-panel);
+  --surface-danger-card: var(--surface-panel);
+  --surface-danger-utility: var(--status-danger-bg);
+  --surface-danger-critical: rgba(255, 83, 83, 0.16);
+  --border-danger-critical: var(--status-danger-border);
+  --text-danger-critical: var(--status-danger-text);
+  --color-jira-blocked-border: var(--status-danger-border);
+
+  --color-warning-50: var(--status-warning-bg);
+  --color-warning-100: var(--status-warning-border);
+  --color-warning-500: var(--status-warning-text);
+  --color-warning-strong: var(--status-warning-text);
+  --color-warning-border-strong: rgba(251, 191, 36, 0.45);
+  --color-warning-soft: var(--status-warning-bg);
+  --color-warning-soft-border: var(--status-warning-border);
+  --color-warning-amber-soft: var(--status-warning-bg);
+  --color-warning-highlight: rgba(251, 191, 36, 0.18);
+  --color-warning-card: var(--surface-panel);
+  --surface-warning-card: var(--surface-panel);
+  --surface-warning-note: var(--status-warning-bg);
+  --border-warning-note: var(--status-warning-border);
+  --text-warning-note: var(--status-warning-text);
+  --surface-warning-legacy: rgba(251, 191, 36, 0.10);
+  --border-warning-legacy: var(--status-warning-border);
+  --text-warning-legacy: var(--status-warning-text);
+
+  --color-info-50: var(--status-info-bg);
+  --color-info-100: var(--status-info-border);
+  --color-info-500: var(--status-info-text);
+  --color-info-strong: var(--status-info-text);
+  --color-info-hover: #6AD0FF;
+  --color-info-soft: var(--status-info-bg);
+  --color-info-soft-border: var(--status-info-border);
+  --color-jira-soft: var(--status-info-bg);
+  --color-jira-soft-border: var(--status-info-border);
+  --color-jira-blue-100: var(--status-info-border);
+  --color-jira-blue-500: #38BDF8;
+  --surface-info-canvas: rgba(56, 189, 248, 0.06);
+  --surface-info-utility: var(--status-info-bg);
+  --surface-info-utility-alt: rgba(56, 189, 248, 0.08);
+  --border-info-utility: var(--status-info-border);
+  --text-info-utility: var(--status-info-text);
+
+  --color-purple-50: var(--status-purple-bg);
+  --color-purple-100: var(--status-purple-border);
+  --color-purple-soft: var(--status-purple-bg);
+  --color-purple-600: #A855F7;
+  --text-purple-muted: var(--status-purple-text);
+
+  --color-surface-alt: var(--surface-hover);
+  --border-jira-muted: var(--border-strong);
 
   /* Jira/Wrike Primitives Remapped for Matte Near-Black Alive Workspace */
   --color-jira-surface: #121215;
@@ -543,4 +624,351 @@
 [data-ui-experience="alive"] aside nav {
   background-color: var(--surface-panel) !important;
   border-color: var(--border-default) !important;
+}
+
+/* ==========================================================================
+   ALIVE GLOBAL PALETTE HARMONIZATION
+   Most workspace views were authored against the classic light palette using
+   literal Tailwind white/slate utilities and pastel status tints. On the
+   matte near-black Alive canvas those render as glaring light patches, so
+   every literal light palette utility is remapped onto the Alive token scale.
+
+   Matching strategy: token-equality attribute selectors ([class~="..."])
+   bind the exact utility class regardless of variant prefixes and cannot
+   collide with sibling shades (bg-slate-50 never matches bg-slate-500).
+   Translucent accent utilities (bg-emerald-500/10, border-slate-500/30) and
+   dark-slate utilities (slate-300 text, slate-700+ borders/backgrounds) are
+   already legible on the dark canvas and are deliberately left untouched.
+   ========================================================================== */
+
+/* --- Surfaces ------------------------------------------------------------ */
+[data-ui-experience="alive"] [class~="bg-white"] {
+  background-color: var(--surface-panel) !important;
+}
+
+[data-ui-experience="alive"] [class~="bg-slate-50"],
+[data-ui-experience="alive"] [class^="bg-slate-50/"],
+[data-ui-experience="alive"] [class*=" bg-slate-50/"] {
+  background-color: var(--surface-page-muted) !important;
+}
+
+[data-ui-experience="alive"] [class~="bg-slate-100"] {
+  background-color: var(--surface-subtle) !important;
+}
+
+[data-ui-experience="alive"] [class~="bg-slate-200"] {
+  background-color: var(--surface-hover) !important;
+}
+
+[data-ui-experience="alive"] [class~="bg-slate-400"],
+[data-ui-experience="alive"] [class~="bg-slate-500"] {
+  background-color: var(--border-strong) !important;
+}
+
+/* --- Typography ---------------------------------------------------------- */
+[data-ui-experience="alive"] [class~="text-slate-950"],
+[data-ui-experience="alive"] [class~="text-slate-900"],
+[data-ui-experience="alive"] [class~="text-slate-800"] {
+  color: var(--text-strongest) !important;
+}
+
+[data-ui-experience="alive"] [class~="text-slate-700"],
+[data-ui-experience="alive"] [class~="text-slate-600"] {
+  color: var(--text-primary) !important;
+}
+
+[data-ui-experience="alive"] [class~="text-slate-500"] {
+  color: var(--text-secondary) !important;
+}
+
+[data-ui-experience="alive"] [class~="text-slate-400"] {
+  color: var(--text-muted) !important;
+}
+
+/* --- Hairlines & dividers ------------------------------------------------ */
+[data-ui-experience="alive"] [class~="border-slate-100"] {
+  border-color: var(--border-subtle) !important;
+}
+
+[data-ui-experience="alive"] [class~="border-slate-200"],
+[data-ui-experience="alive"] [class^="border-slate-200/"],
+[data-ui-experience="alive"] [class*=" border-slate-200/"] {
+  border-color: var(--border-default) !important;
+}
+
+[data-ui-experience="alive"] [class~="border-slate-300"] {
+  border-color: var(--border-strong) !important;
+}
+
+[data-ui-experience="alive"] [class~="divide-slate-100"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--border-subtle);
+}
+
+[data-ui-experience="alive"] [class~="divide-slate-200"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--border-default);
+}
+
+/* Elevation rings that rely on black alpha (invisible on the matte canvas). */
+[data-ui-experience="alive"] [class~="ring-black/5"],
+[data-ui-experience="alive"] [class~="ring-black/10"] {
+  --tw-ring-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* --- Interactive states -------------------------------------------------- */
+[data-ui-experience="alive"] [class~="hover:bg-slate-50"]:hover,
+[data-ui-experience="alive"] [class^="hover:bg-slate-50/"]:hover,
+[data-ui-experience="alive"] [class*=" hover:bg-slate-50/"]:hover,
+[data-ui-experience="alive"] [class~="hover:bg-slate-100"]:hover,
+[data-ui-experience="alive"] [class~="hover:bg-slate-200"]:hover {
+  background-color: var(--surface-hover) !important;
+}
+
+[data-ui-experience="alive"] [class~="hover:border-slate-200"]:hover,
+[data-ui-experience="alive"] [class~="hover:border-slate-300"]:hover {
+  border-color: var(--border-strong) !important;
+}
+
+[data-ui-experience="alive"] [class~="hover:text-slate-900"]:hover,
+[data-ui-experience="alive"] [class~="hover:text-slate-800"]:hover,
+[data-ui-experience="alive"] [class~="hover:text-slate-700"]:hover {
+  color: var(--text-strongest) !important;
+}
+
+[data-ui-experience="alive"] [class~="hover:text-slate-600"]:hover,
+[data-ui-experience="alive"] [class~="hover:text-slate-500"]:hover {
+  color: var(--text-secondary) !important;
+}
+
+/* =========================================================================
+   PASTEL STATUS TINTS → LUMINOUS ALIVE STATUS TOKENS
+   Solid pastel chip backgrounds (color-50/100), their pastel borders
+   (color-200) and the dark status text seated on them (color-600..900)
+   are remapped to the translucent Alive status scale. Vivid mid-shades
+   (color-500) and translucent accents (color-500/10) already read well
+   on dark and stay untouched.
+   ========================================================================= */
+
+/* --- Success (emerald / green / teal) ------------------------------------ */
+[data-ui-experience="alive"] [class~="bg-emerald-50"],
+[data-ui-experience="alive"] [class^="bg-emerald-50/"],
+[data-ui-experience="alive"] [class*=" bg-emerald-50/"],
+[data-ui-experience="alive"] [class~="bg-emerald-100"],
+[data-ui-experience="alive"] [class^="bg-emerald-100/"],
+[data-ui-experience="alive"] [class*=" bg-emerald-100/"],
+[data-ui-experience="alive"] [class~="bg-green-50"],
+[data-ui-experience="alive"] [class~="bg-teal-50"] {
+  background-color: var(--status-success-bg) !important;
+}
+
+[data-ui-experience="alive"] [class~="border-emerald-200"],
+[data-ui-experience="alive"] [class^="border-emerald-200/"],
+[data-ui-experience="alive"] [class*=" border-emerald-200/"],
+[data-ui-experience="alive"] [class~="border-emerald-300"],
+[data-ui-experience="alive"] [class~="border-teal-200"] {
+  border-color: var(--status-success-border) !important;
+}
+
+[data-ui-experience="alive"] [class~="text-emerald-600"],
+[data-ui-experience="alive"] [class~="text-emerald-700"],
+[data-ui-experience="alive"] [class~="text-emerald-800"],
+[data-ui-experience="alive"] [class~="text-emerald-900"],
+[data-ui-experience="alive"] [class~="text-teal-900"] {
+  color: var(--status-success-text) !important;
+}
+
+[data-ui-experience="alive"] [class~="ring-emerald-200"],
+[data-ui-experience="alive"] [class~="ring-emerald-100"] {
+  --tw-ring-color: var(--status-success-border) !important;
+}
+
+[data-ui-experience="alive"] [class~="hover:bg-emerald-50"]:hover,
+[data-ui-experience="alive"] [class~="hover:bg-emerald-100"]:hover {
+  background-color: var(--status-success-bg) !important;
+}
+
+[data-ui-experience="alive"] [class~="hover:border-emerald-200"]:hover,
+[data-ui-experience="alive"] [class~="hover:border-emerald-300"]:hover {
+  border-color: var(--status-success-border) !important;
+}
+
+[data-ui-experience="alive"] [class~="hover:text-emerald-800"]:hover {
+  color: var(--status-success-text) !important;
+}
+
+/* --- Danger (rose / red) -------------------------------------------------- */
+[data-ui-experience="alive"] [class~="bg-rose-50"],
+[data-ui-experience="alive"] [class^="bg-rose-50/"],
+[data-ui-experience="alive"] [class*=" bg-rose-50/"],
+[data-ui-experience="alive"] [class~="bg-rose-100"],
+[data-ui-experience="alive"] [class~="bg-red-50"],
+[data-ui-experience="alive"] [class^="bg-red-50/"],
+[data-ui-experience="alive"] [class*=" bg-red-50/"],
+[data-ui-experience="alive"] [class~="bg-red-100"] {
+  background-color: var(--status-danger-bg) !important;
+}
+
+[data-ui-experience="alive"] [class~="border-rose-200"],
+[data-ui-experience="alive"] [class~="border-rose-300"],
+[data-ui-experience="alive"] [class~="border-red-200"] {
+  border-color: var(--status-danger-border) !important;
+}
+
+[data-ui-experience="alive"] [class~="text-rose-600"],
+[data-ui-experience="alive"] [class~="text-rose-700"],
+[data-ui-experience="alive"] [class~="text-rose-800"],
+[data-ui-experience="alive"] [class~="text-red-600"],
+[data-ui-experience="alive"] [class~="text-red-700"],
+[data-ui-experience="alive"] [class~="text-red-800"] {
+  color: var(--status-danger-text) !important;
+}
+
+[data-ui-experience="alive"] [class~="ring-red-200"] {
+  --tw-ring-color: var(--status-danger-border) !important;
+}
+
+[data-ui-experience="alive"] [class~="hover:bg-rose-50"]:hover,
+[data-ui-experience="alive"] [class~="hover:bg-red-50"]:hover {
+  background-color: var(--status-danger-bg) !important;
+}
+
+[data-ui-experience="alive"] [class~="hover:text-rose-600"]:hover,
+[data-ui-experience="alive"] [class~="hover:text-rose-700"]:hover {
+  color: var(--status-danger-text) !important;
+}
+
+/* --- Warning (amber / yellow / orange) ------------------------------------ */
+[data-ui-experience="alive"] [class~="bg-amber-50"],
+[data-ui-experience="alive"] [class^="bg-amber-50/"],
+[data-ui-experience="alive"] [class*=" bg-amber-50/"],
+[data-ui-experience="alive"] [class~="bg-amber-100"],
+[data-ui-experience="alive"] [class~="bg-yellow-50"],
+[data-ui-experience="alive"] [class~="bg-orange-50"] {
+  background-color: var(--status-warning-bg) !important;
+}
+
+[data-ui-experience="alive"] [class~="border-amber-200"],
+[data-ui-experience="alive"] [class~="border-yellow-200"] {
+  border-color: var(--status-warning-border) !important;
+}
+
+[data-ui-experience="alive"] [class~="text-amber-600"],
+[data-ui-experience="alive"] [class~="text-amber-700"],
+[data-ui-experience="alive"] [class~="text-amber-800"],
+[data-ui-experience="alive"] [class~="text-amber-900"] {
+  color: var(--status-warning-text) !important;
+}
+
+[data-ui-experience="alive"] [class~="hover:bg-amber-50"]:hover {
+  background-color: var(--status-warning-bg) !important;
+}
+
+/* --- Info (blue / sky / indigo) ------------------------------------------- */
+[data-ui-experience="alive"] [class~="bg-blue-50"],
+[data-ui-experience="alive"] [class^="bg-blue-50/"],
+[data-ui-experience="alive"] [class*=" bg-blue-50/"],
+[data-ui-experience="alive"] [class~="bg-blue-100"],
+[data-ui-experience="alive"] [class^="bg-blue-100/"],
+[data-ui-experience="alive"] [class*=" bg-blue-100/"],
+[data-ui-experience="alive"] [class~="bg-sky-50"],
+[data-ui-experience="alive"] [class~="bg-indigo-50"] {
+  background-color: var(--status-info-bg) !important;
+}
+
+[data-ui-experience="alive"] [class~="border-blue-100"],
+[data-ui-experience="alive"] [class~="border-blue-200"],
+[data-ui-experience="alive"] [class^="border-blue-200/"],
+[data-ui-experience="alive"] [class*=" border-blue-200/"],
+[data-ui-experience="alive"] [class~="border-blue-300"],
+[data-ui-experience="alive"] [class~="border-sky-200"] {
+  border-color: var(--status-info-border) !important;
+}
+
+[data-ui-experience="alive"] [class~="text-blue-500"],
+[data-ui-experience="alive"] [class~="text-blue-600"],
+[data-ui-experience="alive"] [class~="text-blue-700"],
+[data-ui-experience="alive"] [class~="text-blue-800"],
+[data-ui-experience="alive"] [class~="text-blue-900"],
+[data-ui-experience="alive"] [class~="text-blue-950"],
+[data-ui-experience="alive"] [class~="text-sky-500"],
+[data-ui-experience="alive"] [class~="text-sky-700"],
+[data-ui-experience="alive"] [class~="text-indigo-500"],
+[data-ui-experience="alive"] [class~="text-indigo-600"],
+[data-ui-experience="alive"] [class~="text-indigo-700"] {
+  color: var(--status-info-text) !important;
+}
+
+[data-ui-experience="alive"] [class~="ring-blue-200"] {
+  --tw-ring-color: var(--status-info-border) !important;
+}
+
+[data-ui-experience="alive"] [class~="hover:bg-blue-50"]:hover,
+[data-ui-experience="alive"] [class~="hover:bg-blue-100"]:hover {
+  background-color: var(--status-info-bg) !important;
+}
+
+[data-ui-experience="alive"] [class~="hover:border-blue-300"]:hover {
+  border-color: var(--status-info-border) !important;
+}
+
+/* --- Light gradient stops -------------------------------------------------
+   Mirrors Tailwind 3.4's generated stop variable shape so soft light washes
+   (e.g. the workflow catalog hero) fade from the matte panel instead of white.
+   via rules must follow from rules: both redefine --tw-gradient-stops and the
+   three-stop list has to win. */
+[data-ui-experience="alive"] [class~="from-white"] {
+  --tw-gradient-from: var(--surface-panel) var(--tw-gradient-from-position);
+  --tw-gradient-to: transparent var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+
+[data-ui-experience="alive"] [class^="from-emerald-50/"],
+[data-ui-experience="alive"] [class*=" from-emerald-50/"] {
+  --tw-gradient-from: rgba(0, 245, 118, 0.10) var(--tw-gradient-from-position);
+  --tw-gradient-to: transparent var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+
+[data-ui-experience="alive"] [class~="via-slate-50/50"],
+[data-ui-experience="alive"] [class^="via-slate-50/"],
+[data-ui-experience="alive"] [class*=" via-slate-50/"] {
+  --tw-gradient-to: transparent var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--surface-subtle) var(--tw-gradient-via-position), var(--tw-gradient-to);
+}
+
+[data-ui-experience="alive"] [class^="to-emerald-50/"],
+[data-ui-experience="alive"] [class*=" to-emerald-50/"],
+[data-ui-experience="alive"] [class^="to-teal-50/"],
+[data-ui-experience="alive"] [class*=" to-teal-50/"] {
+  --tw-gradient-to: rgba(0, 245, 118, 0.08) var(--tw-gradient-to-position);
+}
+
+/* --- Purple (purple / violet) ---------------------------------------------- */
+[data-ui-experience="alive"] [class~="bg-purple-50"],
+[data-ui-experience="alive"] [class^="bg-purple-50/"],
+[data-ui-experience="alive"] [class*=" bg-purple-50/"],
+[data-ui-experience="alive"] [class~="bg-purple-100"],
+[data-ui-experience="alive"] [class^="bg-purple-100/"],
+[data-ui-experience="alive"] [class*=" bg-purple-100/"],
+[data-ui-experience="alive"] [class~="bg-violet-50"] {
+  background-color: var(--status-purple-bg) !important;
+}
+
+[data-ui-experience="alive"] [class~="border-purple-200"],
+[data-ui-experience="alive"] [class~="border-violet-200"] {
+  border-color: var(--status-purple-border) !important;
+}
+
+[data-ui-experience="alive"] [class~="text-purple-600"],
+[data-ui-experience="alive"] [class~="text-purple-700"],
+[data-ui-experience="alive"] [class~="text-purple-800"],
+[data-ui-experience="alive"] [class~="text-violet-700"] {
+  color: var(--status-purple-text) !important;
+}
+
+[data-ui-experience="alive"] [class~="ring-purple-200"] {
+  --tw-ring-color: var(--status-purple-border) !important;
+}
+
+[data-ui-experience="alive"] [class~="hover:border-purple-300"]:hover {
+  border-color: var(--status-purple-border) !important;
 }

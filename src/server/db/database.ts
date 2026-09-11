@@ -214,7 +214,7 @@ export class Database {
   }
 
   public transaction<T>(operation: () => T, options: { persist?: boolean } = {}): T {
-    const snapshot = JSON.parse(JSON.stringify(this.data)) as DatabaseSchema;
+    const snapshot = structuredClone(this.data) as DatabaseSchema;
     const outboxCheckpoint = OutboxService.checkpoint();
     try {
       const result = operation();

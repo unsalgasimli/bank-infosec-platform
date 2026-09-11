@@ -87,7 +87,8 @@ export class StandardTaskTemplateService {
       changed = true;
     }
 
-    if (!db.data.workflowDefinitions.some((item) => item.id === DEFINITION_ID)) {
+    const existingDef = db.data.workflowDefinitions.find((item) => item.id === DEFINITION_ID);
+    if (!existingDef) {
       const definition: WorkflowDefinition = {
         id: DEFINITION_ID,
         key: 'standard-task',
@@ -106,6 +107,9 @@ export class StandardTaskTemplateService {
         updatedAt: now,
       };
       db.data.workflowDefinitions.push(definition);
+      changed = true;
+    } else if (existingDef.lifecycle !== 'PUBLISHED') {
+      existingDef.lifecycle = 'PUBLISHED';
       changed = true;
     }
 
@@ -194,7 +198,8 @@ export class StandardTaskTemplateService {
       changed = true;
     }
 
-    if (!db.data.workflowCatalogTemplates.some((item) => item.id === TEMPLATE_ID)) {
+    const existingTemplate = db.data.workflowCatalogTemplates.find((item) => item.id === TEMPLATE_ID);
+    if (!existingTemplate) {
       const template: WorkflowCatalogTemplate = {
         id: TEMPLATE_ID,
         workflowDefinitionId: DEFINITION_ID,
@@ -223,6 +228,9 @@ export class StandardTaskTemplateService {
         requestTypeId: REQUEST_TYPE_ID,
       };
       db.data.workflowCatalogTemplates.push(template);
+      changed = true;
+    } else if (existingTemplate.lifecycle !== 'PUBLISHED') {
+      existingTemplate.lifecycle = 'PUBLISHED';
       changed = true;
     }
 

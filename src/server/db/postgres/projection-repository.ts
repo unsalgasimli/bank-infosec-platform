@@ -736,7 +736,9 @@ export class PostgresProjectionRepository {
           [type.id, type.name, type.inverseName, type.isDependency, type.preventsCycles, type.isActive !== false, json(type)]
         );
       }
-      for (const ci of data.configurationItems || []) {
+      for (let index = 0; index < (data.configurationItems || []).length; index++) {
+        const ci = data.configurationItems![index];
+        if (!changed('configurationItems', ci as RecordValue, index)) continue;
         if (!userIds.has(ci.createdBy) || !userIds.has(ci.updatedBy)) continue;
         await client.query(
           `INSERT INTO configuration_items(id,ci_number,name,display_name,type_id,status,lifecycle_status,environment,criticality,business_criticality,description,owner_user_id,technical_owner_user_id,business_owner_user_id,support_group_id,department_id,location_id,vendor,manufacturer,model,serial_number,asset_tag,hostname,fqdn,ip_address,mac_address,operating_system,os_version,external_reference,source,source_system,source_record_id,discovery_status,last_discovered_at,last_verified_at,last_seen_at,last_sync_at,sync_status,details,version,created_at,updated_at,created_by,updated_by,archived_at,source_payload)
@@ -758,7 +760,9 @@ export class PostgresProjectionRepository {
         );
       }
       const ciIds = new Set((data.configurationItems || []).map((ci) => ci.id));
-      for (const relationship of data.ciRelationships || []) {
+      for (let index = 0; index < (data.ciRelationships || []).length; index++) {
+        const relationship = data.ciRelationships![index];
+        if (!changed('ciRelationships', relationship as RecordValue, index)) continue;
         if (!ciIds.has(relationship.sourceCiId) || !ciIds.has(relationship.targetCiId)) continue;
         await client.query(`INSERT INTO ci_relationships(id,source_ci_id,target_ci_id,relationship_type_id,status,description,source,confidence,valid_from,valid_to,created_at,created_by,archived_at,source_payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb) ON CONFLICT(id) DO UPDATE SET status=EXCLUDED.status,description=EXCLUDED.description,confidence=EXCLUDED.confidence,valid_to=EXCLUDED.valid_to,archived_at=EXCLUDED.archived_at,source_payload=EXCLUDED.source_payload`, [relationship.id, relationship.sourceCiId, relationship.targetCiId, relationship.relationshipTypeId, relationship.status, relationship.description || null, relationship.source, relationship.confidence, iso(relationship.validFrom), relationship.validTo ? iso(relationship.validTo) : null, iso(relationship.createdAt), userIds.has(relationship.createdBy) ? relationship.createdBy : null, relationship.archivedAt ? iso(relationship.archivedAt) : null, json(relationship)]);
         await client.query(
@@ -771,7 +775,9 @@ export class PostgresProjectionRepository {
             relationship.retiredAt ? iso(relationship.retiredAt) : relationship.archivedAt ? iso(relationship.archivedAt) : null]
         );
       }
-      for (const link of data.ciRecordLinks || []) {
+      for (let index = 0; index < (data.ciRecordLinks || []).length; index++) {
+        const link = data.ciRecordLinks![index];
+        if (!changed('ciRecordLinks', link as RecordValue, index)) continue;
         if (!ciIds.has(link.ciId)) continue;
         await client.query(`INSERT INTO ci_record_links(id,ci_id,record_type,record_id,relationship,created_at,created_by,source_payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb) ON CONFLICT(id) DO UPDATE SET relationship=EXCLUDED.relationship,source_payload=EXCLUDED.source_payload`, [link.id, link.ciId, link.recordType, link.recordId, link.relationship, iso(link.createdAt), userIds.has(link.createdBy) ? link.createdBy : null, json(link)]);
       }
@@ -824,6 +830,7 @@ export class PostgresProjectionRepository {
       }
 
       const ticketById = new Map((data.tickets || []).map((item) => [item.id, item]));
+      const ticketIndexMap = new Map((data.tickets || []).map((item, index) => [item.id, index]));
       const orderedTickets: any[] = [];
       const visited = new Set<string>();
       const append = (ticket: any): void => { if (visited.has(ticket.id)) return; if (ticket.parentTicketId && ticketById.has(ticket.parentTicketId)) append(ticketById.get(ticket.parentTicketId)); visited.add(ticket.id); orderedTickets.push(ticket); };
@@ -840,7 +847,7 @@ export class PostgresProjectionRepository {
         return true;
       });
       for (const ticket of persistableTickets) {
-        const ticketIndex = data.tickets?.indexOf(ticket) ?? -1;
+        const ticketIndex = ticketIndexMap.get(ticket.id) ?? -1;
         if (ticketIndex >= 0 && !changed('tickets', ticket as RecordValue, ticketIndex)) continue;
         const createdAt = iso(ticket.createdAt);
         const userRef = (id: unknown) => id && userIds.has(id as string) ? id : null;
@@ -994,6 +1001,21 @@ export class PostgresProjectionRepository {
       const relational = new Set(['divisions','departments','teams','users','assets','applications','cmdbTypes','cmdbRelationshipTypes','configurationItems','ciRelationships','ciRecordLinks','slaPolicies','workflows','tickets','approvals','comments','attachments','auditEvents','connections','ticketRelationships','ticketTasks','ticketWorklogs','ticketSlaInstances','ticketSatisfaction','ticketAiRecommendations']);
       for (const [collection, value] of Object.entries(data)) {
         if (relational.has(collection) || !Array.isArray(value)) continue;
+        const prevCollHashes = previousHashes.get(collection);
+        const nextCollHashes = nextHashes.get(collection);
+        let collectionChanged = false;
+        if (!prevCollHashes || !nextCollHashes || prevCollHashes.size !== nextCollHashes.size) {
+          collectionChanged = true;
+        } else {
+          for (const [id, h] of nextCollHashes.entries()) {
+            if (prevCollHashes.get(id) !== h) {
+              collectionChanged = true;
+              break;
+            }
+          }
+        }
+        if (!collectionChanged) continue;
+
         const records = value as RecordValue[];
         const recordIds = records.map((record, index) => recordId(record, index));
         if (recordIds.length === 0) {

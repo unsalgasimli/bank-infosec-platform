@@ -1,0 +1,535 @@
+/* Expressbank Cyber Sweeper (Zero-Day Defuser) Styles */
+
+.cs-arcade {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  background: radial-gradient(circle at center, rgba(10, 16, 26, 0.88) 0%, rgba(3, 5, 8, 0.98) 100%);
+  backdrop-filter: blur(12px);
+  animation: cs-fade-in 0.22s ease-out;
+  user-select: none;
+  overflow: hidden;
+}
+
+.cs-arcade__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  max-width: min(1080px, 98vw);
+  max-height: min(96vh, 760px);
+  background: linear-gradient(180deg, #151e2e 0%, #0c121c 60%, #070a10 100%);
+  border: 2px solid rgba(0, 245, 118, 0.35);
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 0 50px rgba(0, 245, 118, 0.2),
+    0 30px 80px rgba(0, 0, 0, 0.85);
+  overflow: hidden;
+}
+
+/* Header */
+.cs-arcade__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 18px;
+  background: linear-gradient(90deg, #080d15 0%, #131c2c 50%, #080d15 100%);
+  border-bottom: 2px solid rgba(0, 245, 118, 0.3);
+  gap: 12px;
+}
+
+.cs-arcade__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cs-arcade__title-group h2 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #ffffff;
+  margin: 0;
+  text-shadow: 0 0 10px rgba(0, 245, 118, 0.6);
+}
+
+.cs-arcade__title-group span {
+  font-family: 'VT323', monospace;
+  font-size: 0.95rem;
+  color: #00f576;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cs-arcade__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cs-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 9999px;
+  font-family: 'VT323', monospace;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: #a0aec0;
+}
+
+.cs-btn:hover {
+  background: rgba(0, 245, 118, 0.15);
+  border-color: rgba(0, 245, 118, 0.4);
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(0, 245, 118, 0.25);
+  transform: translateY(-1px);
+}
+
+.cs-btn--accent {
+  background: rgba(0, 245, 118, 0.2);
+  border-color: #00f576;
+  color: #00f576;
+}
+
+.cs-btn--close {
+  padding: 5px;
+  border-radius: 8px;
+  border-color: rgba(255, 51, 68, 0.3);
+  color: #ff4b5c;
+  background: rgba(255, 51, 68, 0.1);
+}
+
+.cs-btn--close:hover {
+  background: rgba(255, 51, 68, 0.25);
+  border-color: #ff4b5c;
+  color: #ffffff;
+}
+
+/* Difficulty Selector Bar */
+.cs-diff-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 18px;
+  background: #090e18;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cs-diff-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cs-diff-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #8fa0b5;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cs-diff-tab:hover {
+  color: #ffffff;
+  border-color: rgba(0, 245, 118, 0.4);
+}
+
+.cs-diff-tab--active {
+  background: rgba(0, 245, 118, 0.16);
+  border-color: #00f576;
+  color: #00f576;
+  box-shadow: 0 0 10px rgba(0, 245, 118, 0.3);
+}
+
+.cs-best-standing {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.55rem;
+  color: #ffb800;
+}
+
+/* Control Dashboard (7-Segment Displays & Sentinel Face) */
+.cs-dashboard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 18px;
+  background: linear-gradient(180deg, #05080e 0%, #0d1421 100%);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+/* 7-Segment Retro Digital LED Displays */
+.cs-led-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.cs-led-label {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.48rem;
+  color: #64748b;
+  letter-spacing: 0.08em;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+}
+
+.cs-led-screen {
+  padding: 2px 10px;
+  background: #020408;
+  border: 2px solid #1e293b;
+  border-radius: 6px;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.9);
+}
+
+.cs-led-value {
+  font-family: 'VT323', monospace;
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  color: #ff3344;
+  text-shadow: 0 0 10px rgba(255, 51, 68, 0.7);
+}
+
+.cs-led-value--timer {
+  color: #00f576;
+  text-shadow: 0 0 10px rgba(0, 245, 118, 0.7);
+}
+
+/* Center Interactive Sentinel Face */
+.cs-sentinel-center {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cs-face-button {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: radial-gradient(circle at 35% 35%, #2a384f 0%, #111827 100%);
+  border: 2px solid #3b4d6a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.6),
+    inset 0 2px 4px rgba(255, 255, 255, 0.15);
+  transition: all 0.12s ease;
+  font-size: 1.4rem;
+}
+
+.cs-face-button:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.cs-sonar-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(0, 229, 255, 0.1);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  border-radius: 8px;
+  color: #00e5ff;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.68rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cs-sonar-btn:hover:not(:disabled) {
+  background: rgba(0, 229, 255, 0.25);
+  box-shadow: 0 0 15px rgba(0, 229, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.cs-sonar-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: #334155;
+  color: #64748b;
+}
+
+.cs-sonar-btn--active {
+  background: #00e5ff !important;
+  color: #04121a !important;
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.7) !important;
+  animation: cs-pulse 1s infinite;
+}
+
+/* Minesweeper Grid Enclosure - STRICTLY NO SCROLL */
+.cs-grid-wrapper {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px 12px;
+  overflow: hidden !important;
+  background: radial-gradient(ellipse at center, #0a101b 0%, #04070d 100%);
+}
+
+.cs-grid {
+  display: inline-grid;
+  gap: var(--cs-gap, 2px);
+  padding: 8px;
+  background: #05080e;
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  box-shadow:
+    inset 0 0 20px rgba(0, 0, 0, 0.8),
+    0 10px 30px rgba(0, 0, 0, 0.6);
+  user-select: none;
+}
+
+/* Individual Minesweeper Cell - Dynamic sizing */
+.cs-cell {
+  position: relative;
+  width: var(--cs-cell-size, 26px);
+  height: var(--cs-cell-size, 26px);
+  font-size: var(--cs-cell-font, 11px);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Press Start 2P', monospace;
+  font-weight: bold;
+  cursor: pointer;
+  user-select: none;
+  box-sizing: border-box;
+  padding: 0;
+  transition: background 0.08s ease, transform 0.08s ease;
+}
+
+/* Unrevealed 3D Cell */
+.cs-cell--unrevealed {
+  background: linear-gradient(145deg, #1e293b, #0f172a);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow:
+    inset 1px 1px 1px rgba(255, 255, 255, 0.2),
+    0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+.cs-cell--unrevealed:hover {
+  background: linear-gradient(145deg, #28374d, #141e33);
+  border-color: rgba(0, 245, 118, 0.5);
+  box-shadow: 0 0 10px rgba(0, 245, 118, 0.3);
+}
+
+/* Revealed Recessed Cell */
+.cs-cell--revealed {
+  background: #080c14;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.8);
+  cursor: default;
+}
+
+/* Flagged Cell */
+.cs-cell--flagged {
+  border-color: #ffb800;
+  box-shadow: 0 0 8px rgba(255, 184, 0, 0.4);
+}
+
+/* Exploded Mine Cell */
+.cs-cell--exploded {
+  background: #dc2626 !important;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.8) !important;
+  animation: cs-shake 0.3s ease;
+}
+
+/* Sonar Highlight Effect */
+.cs-cell--sonar {
+  border-color: #00e5ff !important;
+  box-shadow: 0 0 14px rgba(0, 229, 255, 0.8) !important;
+  animation: cs-pulse 0.8s ease;
+}
+
+/* Number Colors */
+.cs-num--1 { color: #38bdf8; text-shadow: 0 0 6px rgba(56, 189, 248, 0.4); }
+.cs-num--2 { color: #4ade80; text-shadow: 0 0 6px rgba(74, 222, 128, 0.4); }
+.cs-num--3 { color: #f87171; text-shadow: 0 0 6px rgba(248, 113, 113, 0.4); }
+.cs-num--4 { color: #c084fc; text-shadow: 0 0 6px rgba(192, 132, 252, 0.4); }
+.cs-num--5 { color: #fb923c; text-shadow: 0 0 6px rgba(251, 146, 60, 0.4); }
+.cs-num--6 { color: #2dd4bf; text-shadow: 0 0 6px rgba(45, 212, 191, 0.4); }
+.cs-num--7 { color: #f43f5e; text-shadow: 0 0 6px rgba(244, 63, 94, 0.4); }
+.cs-num--8 { color: #cbd5e1; text-shadow: 0 0 6px rgba(203, 213, 225, 0.4); }
+
+/* Quick Guide Footer */
+.cs-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 24px;
+  background: #060910;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: 'VT323', monospace;
+  font-size: 1rem;
+  color: #728498;
+}
+
+.cs-guide-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cs-guide-item kbd {
+  padding: 1px 6px;
+  background: #1a2232;
+  border: 1px solid #2d3b54;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: #cbd5e1;
+}
+
+/* Victory Analytics Modal */
+.cs-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 8, 14, 0.88);
+  backdrop-filter: blur(8px);
+  padding: 24px;
+  animation: cs-pop-in 0.25s ease-out;
+}
+
+.cs-modal__card {
+  width: min(440px, 92%);
+  background: linear-gradient(180deg, #182436 0%, #0d1421 100%);
+  border: 2px solid #00f576;
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 0 40px rgba(0, 245, 118, 0.3);
+  text-align: center;
+}
+
+.cs-modal__title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #ffffff;
+  margin-bottom: 6px;
+  text-shadow: 0 0 15px rgba(0, 245, 118, 0.6);
+}
+
+.cs-modal__subtitle {
+  font-family: 'VT323', monospace;
+  font-size: 1.2rem;
+  color: #94a3b8;
+  margin-bottom: 20px;
+}
+
+.cs-stats-table {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 14px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+
+.cs-stat-box {
+  display: flex;
+  flex-direction: column;
+}
+
+.cs-stat-box__label {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.5rem;
+  color: #64748b;
+  margin-bottom: 3px;
+}
+
+.cs-stat-box__val {
+  font-family: 'VT323', monospace;
+  font-size: 1.6rem;
+  font-weight: bold;
+  color: #00f576;
+}
+
+.cs-modal__btn-group {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.cs-modal-btn {
+  padding: 10px 20px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 10px;
+  border: 1px solid #00f576;
+  background: #00f576;
+  color: #041407;
+  cursor: pointer;
+  box-shadow: 0 0 16px rgba(0, 245, 118, 0.4);
+  transition: all 0.15s ease;
+}
+
+.cs-modal-btn:hover {
+  filter: brightness(1.15);
+  transform: translateY(-2px);
+}
+
+.cs-modal-btn--secondary {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #cbd5e1;
+  box-shadow: none;
+}
+
+.cs-modal-btn--secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: #ffffff;
+}
+
+/* Animations */
+@keyframes cs-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes cs-pop-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes cs-shake {
+  0%, 100% { transform: translate(0, 0); }
+  20%, 60% { transform: translate(-4px, 2px); }
+  40%, 80% { transform: translate(4px, -2px); }
+}
+
+@keyframes cs-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}

@@ -1,4 +1,4 @@
-export type ProjectRole = 'OWNER' | 'PROJECT_MANAGER' | 'CONTRIBUTOR' | 'VIEWER' | 'RESTRICTED_CONTRIBUTOR';
+export type ProjectRole = 'OWNER' | 'PROJECT_MANAGER' | 'DEVELOPER' | 'BUSINESS_ANALYST' | 'CONTRIBUTOR' | 'VIEWER' | 'RESTRICTED_CONTRIBUTOR';
 export type ProjectStatus = 'DRAFT' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'ARCHIVED';
 export type ProjectHealth = 'ON_TRACK' | 'AT_RISK' | 'DELAYED' | 'BLOCKED' | 'COMPLETED' | 'ON_HOLD';
 export type ProjectPriority = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
